@@ -1,0 +1,904 @@
+'use client';
+
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import {
+  CrmTask,
+  CrmLead,
+  CrmCustomer,
+  CrmSalesOpportunity,
+  CrmPurchaseStock,
+  CrmCampaign,
+  CrmUser,
+  PermissionRule,
+  UserRole,
+  DealStage,
+  CrmQuotation,
+  CrmSalesOrder,
+  CrmInvoice,
+  CrmReceipt,
+  CrmDeliveryNote,
+  TaskStatus,
+  TaskPriority,
+  TaskType,
+} from '@/types/enterprise-crm';
+import {
+  mockTasks,
+  mockLeads,
+  mockCustomers,
+  mockSalesOpportunities,
+  mockPurchaseStocks,
+  mockCampaigns,
+  mockUsers,
+  mockRbacRules,
+  mockQuotations,
+  mockSalesOrders,
+  mockInvoices,
+  mockReceipts,
+  mockDeliveryNotes,
+} from '@/data/mockEnterpriseData';
+
+interface EnterpriseCrmContextType {
+  currentRole: UserRole;
+  setCurrentRole: (role: UserRole) => void;
+  tasks: CrmTask[];
+  leads: CrmLead[];
+  customers: CrmCustomer[];
+  salesOpportunities: CrmSalesOpportunity[];
+  quotations: CrmQuotation[];
+  salesOrders: CrmSalesOrder[];
+  invoices: CrmInvoice[];
+  receipts: CrmReceipt[];
+  deliveryNotes: CrmDeliveryNote[];
+  purchaseStocks: CrmPurchaseStock[];
+  campaigns: CrmCampaign[];
+  users: CrmUser[];
+  rbacRules: PermissionRule[];
+
+  // Global Search
+  globalSearch: string;
+  setGlobalSearch: (search: string) => void;
+
+  // Task Actions
+  addTask: (task: Omit<CrmTask, 'id' | 'slNo'>) => void;
+  createTask: (task: Partial<CrmTask> & { taskDetails: string }) => CrmTask;
+  assignTask: (taskId: string, employeeName: string, managerName?: string) => void;
+  acceptTask: (taskId: string, employeeName?: string) => void;
+  startTask: (taskId: string, employeeName?: string) => void;
+  updateTaskProgress: (taskId: string, progress: number, employeeName?: string, note?: string) => void;
+  completeTask: (taskId: string, employeeName?: string, notes?: string) => void;
+  reviewTask: (taskId: string, managerName?: string, notes?: string) => void;
+  addCommentToTask: (taskId: string, text: string, author?: string, role?: string) => void;
+  updateTaskStatusWorkflow: (taskId: string, status: TaskStatus, actor?: string, role?: string, note?: string) => void;
+  updateTask: (id: string, updated: Partial<CrmTask>) => void;
+  toggleTaskStatus: (id: string) => void;
+  deleteTask: (id: string) => void;
+
+  // Lead Actions
+  addLead: (lead: Omit<CrmLead, 'id' | 'slNo'>) => void;
+  assignLead: (leadId: string, employeeName: string, managerName?: string) => void;
+  updateLead: (id: string, updated: Partial<CrmLead>) => void;
+  deleteLead: (id: string) => void;
+
+  // Customer Actions
+  addCustomer: (cust: Omit<CrmCustomer, 'id' | 'slNo'>) => void;
+  assignCustomer: (customerId: string, employeeName: string, managerName?: string) => void;
+  updateCustomer: (id: string, updated: Partial<CrmCustomer>) => void;
+  deleteCustomer: (id: string) => void;
+
+  // Opportunity Actions
+  addOpportunity: (opp: Omit<CrmSalesOpportunity, 'id' | 'createdAt'>) => void;
+  updateOpportunity: (id: string, updated: Partial<CrmSalesOpportunity>) => void;
+  updateOpportunityStage: (id: string, newStage: DealStage) => void;
+  deleteOpportunity: (id: string) => void;
+
+  // Quotation Actions
+  addQuotation: (quote: Omit<CrmQuotation, 'id'>) => void;
+  updateQuotation: (id: string, updated: Partial<CrmQuotation>) => void;
+  deleteQuotation: (id: string) => void;
+
+  // Sales Order Actions
+  addSalesOrder: (order: Omit<CrmSalesOrder, 'id'>) => void;
+  updateSalesOrder: (id: string, updated: Partial<CrmSalesOrder>) => void;
+  deleteSalesOrder: (id: string) => void;
+
+  // Invoice Actions
+  addInvoice: (inv: Omit<CrmInvoice, 'id'>) => void;
+  updateInvoice: (id: string, updated: Partial<CrmInvoice>) => void;
+  deleteInvoice: (id: string) => void;
+
+  // Receipt Actions
+  addReceipt: (rec: Omit<CrmReceipt, 'id'>) => void;
+  deleteReceipt: (id: string) => void;
+
+  // Delivery Note Actions
+  addDeliveryNote: (dn: Omit<CrmDeliveryNote, 'id'>) => void;
+  deleteDeliveryNote: (id: string) => void;
+
+  // Stock / Purchase
+  addStockItem: (item: Omit<CrmPurchaseStock, 'id' | 'slNo'>) => void;
+  updateStockItem: (id: string, updated: Partial<CrmPurchaseStock>) => void;
+  deleteStockItem: (id: string) => void;
+
+  // User Actions
+  addUser: (user: Omit<CrmUser, 'id' | 'lastLogin'>) => void;
+  deleteUser: (id: string) => void;
+
+  // Campaign Actions
+  addCampaign: (campaign: Omit<CrmCampaign, 'id' | 'slNo'>) => void;
+  updateCampaign: (id: string, updated: Partial<CrmCampaign>) => void;
+  toggleCampaignListing: (id: string) => void;
+  deleteCampaign: (id: string) => void;
+
+  // Clear / Reset All Module Data
+  clearAllData: () => void;
+}
+
+const EnterpriseCrmContext = createContext<EnterpriseCrmContextType | undefined>(undefined);
+
+export function EnterpriseCrmProvider({ children }: { children: React.ReactNode }) {
+  const [currentRole, setCurrentRole] = useState<UserRole>('Super Admin');
+  const [globalSearch, setGlobalSearch] = useState('');
+
+  const [tasks, setTasks] = useState<CrmTask[]>([]);
+  const [leads, setLeads] = useState<CrmLead[]>([]);
+  const [customers, setCustomers] = useState<CrmCustomer[]>([]);
+  const [salesOpportunities, setSalesOpportunities] = useState<CrmSalesOpportunity[]>([]);
+  const [quotations, setQuotations] = useState<CrmQuotation[]>([]);
+  const [salesOrders, setSalesOrders] = useState<CrmSalesOrder[]>([]);
+  const [invoices, setInvoices] = useState<CrmInvoice[]>([]);
+  const [receipts, setReceipts] = useState<CrmReceipt[]>([]);
+  const [deliveryNotes, setDeliveryNotes] = useState<CrmDeliveryNote[]>([]);
+  const [purchaseStocks, setPurchaseStocks] = useState<CrmPurchaseStock[]>([]);
+  const [campaigns, setCampaigns] = useState<CrmCampaign[]>([]);
+  const [users, setUsers] = useState<CrmUser[]>(mockUsers);
+  const [rbacRules, setRbacRules] = useState<PermissionRule[]>(mockRbacRules);
+
+  // Clear / Purge all mock data
+  const clearAllData = () => {
+    try {
+      localStorage.removeItem('crm_leads_data');
+      localStorage.removeItem('crm_customers_data');
+      localStorage.removeItem('crm_opportunities_data');
+      localStorage.removeItem('crm_tasks_data');
+      localStorage.removeItem('crm_quotations_data');
+      localStorage.removeItem('crm_orders_data');
+      localStorage.removeItem('crm_invoices_data');
+      localStorage.removeItem('crm_receipts_data');
+      localStorage.removeItem('crm_delivery_notes_data');
+      localStorage.removeItem('crm_campaigns_data');
+      localStorage.removeItem('crm_stocks_data');
+      localStorage.removeItem('cool_worker_tasks');
+      localStorage.removeItem('cool_material_requests');
+      localStorage.removeItem('cool_timesheet');
+      localStorage.removeItem('crm_manager_tasks');
+      localStorage.removeItem('crm_manager_opportunities');
+      localStorage.removeItem('crm_manager_activities');
+      setLeads([]);
+      setCustomers([]);
+      setSalesOpportunities([]);
+      setTasks([]);
+      setQuotations([]);
+      setSalesOrders([]);
+      setInvoices([]);
+      setReceipts([]);
+      setDeliveryNotes([]);
+      setCampaigns([]);
+      setPurchaseStocks([]);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Load persisted data on mount (filtering out any old seed mock entries)
+  useEffect(() => {
+    try {
+      const isPurged = localStorage.getItem('crm_clean_state_purged_v4');
+      if (!isPurged) {
+        clearAllData();
+        localStorage.setItem('crm_clean_state_purged_v4', 'true');
+        return;
+      }
+
+      const storedLeads = localStorage.getItem('crm_leads_data');
+      if (storedLeads) setLeads(JSON.parse(storedLeads));
+
+      const storedCustomers = localStorage.getItem('crm_customers_data');
+      if (storedCustomers) setCustomers(JSON.parse(storedCustomers));
+
+      const storedOpps = localStorage.getItem('crm_opportunities_data');
+      if (storedOpps) setSalesOpportunities(JSON.parse(storedOpps));
+
+      const storedTasks = localStorage.getItem('crm_tasks_data');
+      if (storedTasks) setTasks(JSON.parse(storedTasks));
+
+      const storedQuotes = localStorage.getItem('crm_quotations_data');
+      if (storedQuotes) setQuotations(JSON.parse(storedQuotes));
+
+      const storedOrders = localStorage.getItem('crm_orders_data');
+      if (storedOrders) setSalesOrders(JSON.parse(storedOrders));
+
+      const storedInvoices = localStorage.getItem('crm_invoices_data');
+      if (storedInvoices) setInvoices(JSON.parse(storedInvoices));
+
+      const storedReceipts = localStorage.getItem('crm_receipts_data');
+      if (storedReceipts) setReceipts(JSON.parse(storedReceipts));
+
+      const storedDeliveryNotes = localStorage.getItem('crm_delivery_notes_data');
+      if (storedDeliveryNotes) setDeliveryNotes(JSON.parse(storedDeliveryNotes));
+
+      const storedCampaigns = localStorage.getItem('crm_campaigns_data');
+      if (storedCampaigns) setCampaigns(JSON.parse(storedCampaigns));
+
+      const storedStocks = localStorage.getItem('crm_stocks_data');
+      if (storedStocks) setPurchaseStocks(JSON.parse(storedStocks));
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  // Helper to persist state
+  const persist = (key: string, data: any) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Task Handlers
+  const addTask = (taskData: Omit<CrmTask, 'id' | 'slNo'>) => {
+    const newTask: CrmTask = {
+      ...taskData,
+      id: `TSK-${Math.floor(1000 + Math.random() * 9000)}`,
+      slNo: tasks.length + 1,
+    };
+    const updated = [newTask, ...tasks];
+    setTasks(updated);
+    persist('crm_tasks_data', updated);
+  };
+
+  const createTask = (taskData: Partial<CrmTask> & { taskDetails: string }) => {
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const assigneeName = taskData.assignedEmployee || taskData.assignee?.name || 'Tariq Mansour';
+    const newTask: CrmTask = {
+      description: '',
+      customer: 'Client Facility',
+      taskUnder: 'General Maintenance',
+      taskType: 'HVAC Repair',
+      dueDate: new Date().toISOString().split('T')[0],
+      dueTime: '4 Hours',
+      priority: 'High',
+      assignedEmployee: assigneeName,
+      assignedBy: 'Alex Rivera (Operations Manager)',
+      createdBy: 'Alex Rivera (Operations Manager)',
+      assignee: {
+        name: assigneeName,
+        role: 'Technician',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+      },
+      ...taskData,
+      id: `TSK-${Math.floor(1000 + Math.random() * 9000)}`,
+      slNo: tasks.length + 1,
+      status: taskData.status || 'Assigned',
+      progress: taskData.progress || 0,
+      createdAt: new Date().toISOString(),
+      history: [
+        {
+          id: `log-${Date.now()}`,
+          timestamp: `${now} - ${new Date().toLocaleDateString()}`,
+          user: taskData.createdBy || taskData.assignedBy || 'Alex Rivera (Operations Manager)',
+          userRole: 'Manager',
+          action: 'Created & Assigned',
+          note: `Task assigned to ${assigneeName}`,
+        },
+      ],
+      comments: taskData.comments || [],
+    };
+    const updated = [newTask, ...tasks];
+    setTasks(updated);
+    persist('crm_tasks_data', updated);
+    return newTask;
+  };
+
+  const assignTask = (taskId: string, employeeName: string, managerName = 'Alex Rivera (Operations Manager)') => {
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const list = tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const history = t.history || [];
+      return {
+        ...t,
+        assignedEmployee: employeeName,
+        assignee: { ...t.assignee, name: employeeName },
+        status: 'Assigned',
+        history: [
+          ...history,
+          {
+            id: `log-${Date.now()}`,
+            timestamp: `${now} - ${new Date().toLocaleDateString()}`,
+            user: managerName,
+            userRole: 'Manager',
+            action: 'Assigned',
+            note: `Assigned to ${employeeName}`,
+          },
+        ],
+      };
+    });
+    setTasks(list);
+    persist('crm_tasks_data', list);
+  };
+
+  const acceptTask = (taskId: string, employeeName = 'Jordan Hayes') => {
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const list = tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const history = t.history || [];
+      return {
+        ...t,
+        status: 'Accepted',
+        history: [
+          ...history,
+          {
+            id: `log-${Date.now()}`,
+            timestamp: `${now} - ${new Date().toLocaleDateString()}`,
+            user: employeeName,
+            userRole: 'Employee',
+            action: 'Accepted',
+            note: 'Employee accepted the task',
+          },
+        ],
+      };
+    });
+    setTasks(list);
+    persist('crm_tasks_data', list);
+  };
+
+  const startTask = (taskId: string, employeeName = 'Jordan Hayes') => {
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const list = tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const history = t.history || [];
+      return {
+        ...t,
+        status: 'In Progress',
+        progress: Math.max(t.progress || 0, 15),
+        history: [
+          ...history,
+          {
+            id: `log-${Date.now()}`,
+            timestamp: `${now} - ${new Date().toLocaleDateString()}`,
+            user: employeeName,
+            userRole: 'Employee',
+            action: 'Started',
+            note: 'Work started on task',
+          },
+        ],
+      };
+    });
+    setTasks(list);
+    persist('crm_tasks_data', list);
+  };
+
+  const updateTaskProgress = (taskId: string, progress: number, employeeName = 'Jordan Hayes', note?: string) => {
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const list = tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const history = t.history || [];
+      return {
+        ...t,
+        progress,
+        status: progress === 100 ? 'Completed' : 'In Progress',
+        history: [
+          ...history,
+          {
+            id: `log-${Date.now()}`,
+            timestamp: `${now} - ${new Date().toLocaleDateString()}`,
+            user: employeeName,
+            userRole: 'Employee',
+            action: 'Progress Update',
+            progress,
+            note: note || `Updated progress to ${progress}%`,
+          },
+        ],
+      };
+    });
+    setTasks(list);
+    persist('crm_tasks_data', list);
+  };
+
+  const completeTask = (taskId: string, employeeName = 'Jordan Hayes', notes?: string) => {
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const list = tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const history = t.history || [];
+      return {
+        ...t,
+        status: 'Completed',
+        progress: 100,
+        completedAt: new Date().toISOString(),
+        history: [
+          ...history,
+          {
+            id: `log-${Date.now()}`,
+            timestamp: `${now} - ${new Date().toLocaleDateString()}`,
+            user: employeeName,
+            userRole: 'Employee',
+            action: 'Completed',
+            note: notes || 'Task completed by employee',
+          },
+        ],
+      };
+    });
+    setTasks(list);
+    persist('crm_tasks_data', list);
+  };
+
+  const reviewTask = (taskId: string, managerName = 'Alex Rivera (Operations Manager)', notes?: string) => {
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const list = tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const history = t.history || [];
+      return {
+        ...t,
+        status: 'Reviewed',
+        reviewedAt: new Date().toISOString(),
+        reviewedBy: managerName,
+        history: [
+          ...history,
+          {
+            id: `log-${Date.now()}`,
+            timestamp: `${now} - ${new Date().toLocaleDateString()}`,
+            user: managerName,
+            userRole: 'Manager',
+            action: 'Reviewed',
+            note: notes || 'Manager approved & signed off on task completion',
+          },
+        ],
+      };
+    });
+    setTasks(list);
+    persist('crm_tasks_data', list);
+  };
+
+  const addCommentToTask = (taskId: string, text: string, author = 'Jordan Hayes', role = 'Employee') => {
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const list = tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const comments = t.comments || [];
+      const history = t.history || [];
+      return {
+        ...t,
+        comments: [
+          ...comments,
+          {
+            id: `cmt-${Date.now()}`,
+            author,
+            role,
+            text,
+            timestamp: `${now} - ${new Date().toLocaleDateString()}`,
+          },
+        ],
+        history: [
+          ...history,
+          {
+            id: `log-${Date.now()}`,
+            timestamp: `${now} - ${new Date().toLocaleDateString()}`,
+            user: author,
+            userRole: role,
+            action: 'Comment Added',
+            note: text,
+          },
+        ],
+      };
+    });
+    setTasks(list);
+    persist('crm_tasks_data', list);
+  };
+
+  const updateTaskStatusWorkflow = (taskId: string, status: TaskStatus, actor = 'User', role = 'Manager', note?: string) => {
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const list = tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const history = t.history || [];
+      return {
+        ...t,
+        status,
+        history: [
+          ...history,
+          {
+            id: `log-${Date.now()}`,
+            timestamp: `${now} - ${new Date().toLocaleDateString()}`,
+            user: actor,
+            userRole: role,
+            action: `Status: ${status}`,
+            note: note || `Status updated to ${status}`,
+          },
+        ],
+      };
+    });
+    setTasks(list);
+    persist('crm_tasks_data', list);
+  };
+
+  const updateTask = (id: string, updated: Partial<CrmTask>) => {
+    const list = tasks.map((t) => (t.id === id ? { ...t, ...updated } : t));
+    setTasks(list);
+    persist('crm_tasks_data', list);
+  };
+
+  const toggleTaskStatus = (id: string) => {
+    const list = tasks.map((t) =>
+      t.id === id ? { ...t, status: (t.status === 'Completed' ? 'Pending' : 'Completed') as any } : t
+    );
+    setTasks(list);
+    persist('crm_tasks_data', list);
+  };
+
+  const deleteTask = (id: string) => {
+    const list = tasks.filter((t) => t.id !== id);
+    setTasks(list);
+    persist('crm_tasks_data', list);
+  };
+
+  // Lead Handlers
+  const addLead = (leadData: Omit<CrmLead, 'id' | 'slNo'>) => {
+    const newLead: CrmLead = {
+      ...leadData,
+      id: `lead-${Date.now()}`,
+      slNo: leads.length + 1,
+    };
+    const updated = [newLead, ...leads];
+    setLeads(updated);
+    persist('crm_leads_data', updated);
+  };
+
+  const assignLead = (leadId: string, employeeName: string, managerName = 'Alex Rivera (Operations Manager)') => {
+    const list = leads.map((l) => {
+      if (l.id !== leadId) return l;
+      return {
+        ...l,
+        assignedEmployee: employeeName,
+        assignedManager: managerName,
+        owner: employeeName,
+        leadAssigned: { name: employeeName, avatar: l.leadAssigned?.avatar },
+        status: l.status === 'New' ? 'Qualified' : l.status,
+        lastActivity: `Assigned to ${employeeName}`,
+        lastActivityDate: new Date().toISOString().split('T')[0],
+      };
+    });
+    setLeads(list);
+    persist('crm_leads_data', list);
+  };
+
+  const updateLead = (id: string, updated: Partial<CrmLead>) => {
+    const list = leads.map((l) => (l.id === id ? { ...l, ...updated } : l));
+    setLeads(list);
+    persist('crm_leads_data', list);
+  };
+
+  const deleteLead = (id: string) => {
+    const list = leads.filter((l) => l.id !== id);
+    setLeads(list);
+    persist('crm_leads_data', list);
+  };
+
+  // Customer Handlers
+  const addCustomer = (custData: Omit<CrmCustomer, 'id' | 'slNo'>) => {
+    const newCust: CrmCustomer = {
+      ...custData,
+      id: `cust-${Date.now()}`,
+      slNo: customers.length + 1,
+    };
+    const updated = [newCust, ...customers];
+    setCustomers(updated);
+    persist('crm_customers_data', updated);
+  };
+
+  const assignCustomer = (customerId: string, employeeName: string, managerName = 'Alex Rivera (Operations Manager)') => {
+    const list = customers.map((c) => {
+      if (c.id !== customerId) return c;
+      return {
+        ...c,
+        owner: employeeName,
+        lastActivity: `Assigned to ${employeeName}`,
+      };
+    });
+    setCustomers(list);
+    persist('crm_customers_data', list);
+  };
+
+  const updateCustomer = (id: string, updated: Partial<CrmCustomer>) => {
+    const list = customers.map((c) => (c.id === id ? { ...c, ...updated } : c));
+    setCustomers(list);
+    persist('crm_customers_data', list);
+  };
+
+  const deleteCustomer = (id: string) => {
+    const list = customers.filter((c) => c.id !== id);
+    setCustomers(list);
+    persist('crm_customers_data', list);
+  };
+
+  // Opportunity Handlers
+  const addOpportunity = (oppData: Omit<CrmSalesOpportunity, 'id' | 'createdAt'>) => {
+    const newOpp: CrmSalesOpportunity = {
+      ...oppData,
+      id: `opp-${Date.now()}`,
+      createdAt: new Date().toISOString().split('T')[0],
+      opportunityCode: `OPP-${Date.now().toString().slice(-4)}`,
+    };
+    const updated = [newOpp, ...salesOpportunities];
+    setSalesOpportunities(updated);
+    persist('crm_opportunities_data', updated);
+  };
+
+  const updateOpportunity = (id: string, updated: Partial<CrmSalesOpportunity>) => {
+    const list = salesOpportunities.map((o) => (o.id === id ? { ...o, ...updated } : o));
+    setSalesOpportunities(list);
+    persist('crm_opportunities_data', list);
+  };
+
+  const updateOpportunityStage = (id: string, newStage: DealStage) => {
+    const list = salesOpportunities.map((opp) => (opp.id === id ? { ...opp, stage: newStage } : opp));
+    setSalesOpportunities(list);
+    persist('crm_opportunities_data', list);
+  };
+
+  const deleteOpportunity = (id: string) => {
+    const list = salesOpportunities.filter((opp) => opp.id !== id);
+    setSalesOpportunities(list);
+    persist('crm_opportunities_data', list);
+  };
+
+  // Quotation Handlers
+  const addQuotation = (quoteData: Omit<CrmQuotation, 'id'>) => {
+    const newQuote: CrmQuotation = {
+      ...quoteData,
+      id: `quote-${Date.now()}`,
+      quotationNumber: quoteData.quotationNumber || `QT-${Date.now().toString().slice(-4)}`,
+    };
+    const updated = [newQuote, ...quotations];
+    setQuotations(updated);
+    persist('crm_quotations_data', updated);
+  };
+
+  const updateQuotation = (id: string, updated: Partial<CrmQuotation>) => {
+    const list = quotations.map((q) => (q.id === id ? { ...q, ...updated } : q));
+    setQuotations(list);
+    persist('crm_quotations_data', list);
+  };
+
+  const deleteQuotation = (id: string) => {
+    const list = quotations.filter((q) => q.id !== id);
+    setQuotations(list);
+    persist('crm_quotations_data', list);
+  };
+
+  // Sales Order Handlers
+  const addSalesOrder = (orderData: Omit<CrmSalesOrder, 'id'>) => {
+    const newOrder: CrmSalesOrder = {
+      ...orderData,
+      id: `ord-${Date.now()}`,
+      orderNumber: orderData.orderNumber || `SO-${Date.now().toString().slice(-4)}`,
+    };
+    const updated = [newOrder, ...salesOrders];
+    setSalesOrders(updated);
+    persist('crm_orders_data', updated);
+  };
+
+  const updateSalesOrder = (id: string, updated: Partial<CrmSalesOrder>) => {
+    const list = salesOrders.map((o) => (o.id === id ? { ...o, ...updated } : o));
+    setSalesOrders(list);
+    persist('crm_orders_data', list);
+  };
+
+  const deleteSalesOrder = (id: string) => {
+    const list = salesOrders.filter((o) => o.id !== id);
+    setSalesOrders(list);
+    persist('crm_orders_data', list);
+  };
+
+  // Invoice Handlers
+  const addInvoice = (invData: Omit<CrmInvoice, 'id'>) => {
+    const newInv: CrmInvoice = {
+      ...invData,
+      id: `inv-${Date.now()}`,
+      invoiceNumber: invData.invoiceNumber || `INV-${Date.now().toString().slice(-4)}`,
+    };
+    const updated = [newInv, ...invoices];
+    setInvoices(updated);
+    persist('crm_invoices_data', updated);
+  };
+
+  const updateInvoice = (id: string, updated: Partial<CrmInvoice>) => {
+    const list = invoices.map((inv) => (inv.id === id ? { ...inv, ...updated } : inv));
+    setInvoices(list);
+    persist('crm_invoices_data', list);
+  };
+
+  const deleteInvoice = (id: string) => {
+    const list = invoices.filter((inv) => inv.id !== id);
+    setInvoices(list);
+    persist('crm_invoices_data', list);
+  };
+
+  // Receipt Handlers
+  const addReceipt = (recData: Omit<CrmReceipt, 'id'>) => {
+    const newRec: CrmReceipt = {
+      ...recData,
+      id: `rec-${Date.now()}`,
+      receiptNumber: recData.receiptNumber || `REC-${Date.now().toString().slice(-4)}`,
+    };
+    const updated = [newRec, ...receipts];
+    setReceipts(updated);
+  };
+
+  const deleteReceipt = (id: string) => {
+    setReceipts((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  // Delivery Note Handlers
+  const addDeliveryNote = (dnData: Omit<CrmDeliveryNote, 'id'>) => {
+    const newDn: CrmDeliveryNote = {
+      ...dnData,
+      id: `dn-${Date.now()}`,
+      deliveryNoteNumber: dnData.deliveryNoteNumber || `DN-${Date.now().toString().slice(-4)}`,
+    };
+    const updated = [newDn, ...deliveryNotes];
+    setDeliveryNotes(updated);
+  };
+
+  const deleteDeliveryNote = (id: string) => {
+    setDeliveryNotes((prev) => prev.filter((d) => d.id !== id));
+  };
+
+  // Stock / Purchase Handlers
+  const addStockItem = (itemData: Omit<CrmPurchaseStock, 'id' | 'slNo'>) => {
+    const newItem: CrmPurchaseStock = {
+      ...itemData,
+      id: `stk-${Date.now()}`,
+      slNo: purchaseStocks.length + 1,
+    };
+    const updated = [newItem, ...purchaseStocks];
+    setPurchaseStocks(updated);
+    persist('crm_stocks_data', updated);
+  };
+
+  const updateStockItem = (id: string, updated: Partial<CrmPurchaseStock>) => {
+    const list = purchaseStocks.map((s) => (s.id === id ? { ...s, ...updated } : s));
+    setPurchaseStocks(list);
+    persist('crm_stocks_data', list);
+  };
+
+  const deleteStockItem = (id: string) => {
+    const list = purchaseStocks.filter((s) => s.id !== id);
+    setPurchaseStocks(list);
+    persist('crm_stocks_data', list);
+  };
+
+  // User Handlers
+  const addUser = (userData: Omit<CrmUser, 'id' | 'lastLogin'>) => {
+    const newUser: CrmUser = {
+      ...userData,
+      id: `usr-${Date.now()}`,
+      lastLogin: 'Never',
+    };
+    const updated = [newUser, ...users];
+    setUsers(updated);
+  };
+
+  const deleteUser = (id: string) => {
+    setUsers((prev) => prev.filter((u) => u.id !== id));
+  };
+
+  // Campaign Handlers
+  const addCampaign = (campaignData: Omit<CrmCampaign, 'id' | 'slNo'>) => {
+    const newCmp: CrmCampaign = {
+      ...campaignData,
+      id: `cmp-${Date.now()}`,
+      slNo: campaigns.length + 1,
+    };
+    const updated = [...campaigns, newCmp];
+    setCampaigns(updated);
+    persist('crm_campaigns_data', updated);
+  };
+
+  const updateCampaign = (id: string, updated: Partial<CrmCampaign>) => {
+    const list = campaigns.map((c) => (c.id === id ? { ...c, ...updated } : c));
+    setCampaigns(list);
+    persist('crm_campaigns_data', list);
+  };
+
+  const toggleCampaignListing = (id: string) => {
+    const list = campaigns.map((c) => (c.id === id ? { ...c, listing: !c.listing } : c));
+    setCampaigns(list);
+    persist('crm_campaigns_data', list);
+  };
+
+  const deleteCampaign = (id: string) => {
+    const list = campaigns.filter((c) => c.id !== id);
+    setCampaigns(list);
+    persist('crm_campaigns_data', list);
+  };
+
+  return (
+    <EnterpriseCrmContext.Provider
+      value={{
+        currentRole,
+        setCurrentRole,
+        tasks,
+        leads,
+        customers,
+        salesOpportunities,
+        quotations,
+        salesOrders,
+        invoices,
+        receipts,
+        deliveryNotes,
+        purchaseStocks,
+        campaigns,
+        users,
+        rbacRules,
+        globalSearch,
+        setGlobalSearch,
+        addTask,
+        createTask,
+        assignTask,
+        acceptTask,
+        startTask,
+        updateTaskProgress,
+        completeTask,
+        reviewTask,
+        addCommentToTask,
+        updateTaskStatusWorkflow,
+        updateTask,
+        toggleTaskStatus,
+        deleteTask,
+        addLead,
+        assignLead,
+        updateLead,
+        deleteLead,
+        addCustomer,
+        assignCustomer,
+        updateCustomer,
+        deleteCustomer,
+        addOpportunity,
+        updateOpportunity,
+        updateOpportunityStage,
+        deleteOpportunity,
+        addQuotation,
+        updateQuotation,
+        deleteQuotation,
+        addSalesOrder,
+        updateSalesOrder,
+        deleteSalesOrder,
+        addInvoice,
+        updateInvoice,
+        deleteInvoice,
+        addReceipt,
+        deleteReceipt,
+        addDeliveryNote,
+        deleteDeliveryNote,
+        addStockItem,
+        updateStockItem,
+        deleteStockItem,
+        addUser,
+        deleteUser,
+        addCampaign,
+        updateCampaign,
+        toggleCampaignListing,
+        deleteCampaign,
+        clearAllData,
+      }}
+    >
+      {children}
+    </EnterpriseCrmContext.Provider>
+  );
+}
+
+export function useEnterpriseCrm() {
+  const context = useContext(EnterpriseCrmContext);
+  if (!context) {
+    throw new Error('useEnterpriseCrm must be used within EnterpriseCrmProvider');
+  }
+  return context;
+}
