@@ -65,7 +65,7 @@ export function WorkerShell({ children, title, subtitle }: WorkerShellProps) {
     setAttendance({ ...updated });
   };
 
-  const displayName = currentUser?.name || 'Jordan Hayes';
+  const displayName = currentUser?.name || 'Employee';
   const displayRole = currentUser?.designation || 'Field Operations Specialist';
 
   return (
@@ -165,12 +165,6 @@ export function WorkerShell({ children, title, subtitle }: WorkerShellProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
-              href="/worker/materials?action=new"
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors shadow-2xs"
-            >
-              <span>+ Request Material</span>
-            </Link>
             <Link
               href="/worker/tasks"
               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#2563EB] text-white text-xs font-bold hover:bg-blue-700 transition-colors shadow-xs"

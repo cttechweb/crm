@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation';
 import { EnterpriseCrmProvider } from '@/context/EnterpriseCrmContext';
 import { SuperAdminProvider } from '@/context/SuperAdminContext';
 import { EnterpriseTopHeader } from '@/components/layout/EnterpriseTopHeader';
-import { EnterpriseNavbar } from '@/components/layout/EnterpriseNavbar';
 import { SuperAdminSidebar } from '@/components/layout/SuperAdminSidebar';
 import { SuperAdminHeader } from '@/components/layout/SuperAdminHeader';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
@@ -58,14 +57,9 @@ export function EnterpriseShell({ children }: { children: React.ReactNode }) {
           </div>
         ) : (
           <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] flex flex-col font-sans antialiased w-full max-w-full">
-            {/* Level 1: Top Brand & Profile Header */}
-            <React.Suspense fallback={<div className="h-12 bg-white border-b border-slate-200" />}>
+            {/* Unified Top Brand, Navigation & Profile Header */}
+            <React.Suspense fallback={<div className="h-[96px] bg-white border-b border-slate-200" />}>
               <EnterpriseTopHeader />
-            </React.Suspense>
-
-            {/* Level 2: Sticky Horizontal Navbar with Module Dropdowns */}
-            <React.Suspense fallback={<div className="h-10 bg-slate-900 border-b border-slate-800" />}>
-              <EnterpriseNavbar />
             </React.Suspense>
 
             {/* Main Application Container — 100% Full Width Edge-to-Edge */}

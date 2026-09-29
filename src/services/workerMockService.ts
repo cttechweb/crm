@@ -7,6 +7,8 @@ import {
   WorkerTaskStatus,
 } from '@/types/worker';
 
+import { authMockService, MockAuthUser } from '@/services/authMockService';
+
 const INITIAL_WORKER_TASKS: WorkerTask[] = [];
 
 const INITIAL_MATERIAL_REQUESTS: WorkerMaterialRequest[] = [];
@@ -15,26 +17,26 @@ const INITIAL_TIMESHEET: WorkerTimesheetEntry[] = [];
 
 export const WORKER_PROFILE_DEFAULT: WorkerProfileData = {
   id: 'usr_worker_001',
-  workerCode: 'WRK-2049',
-  name: 'Jordan Hayes',
-  email: 'worker@cooltechuae.com',
-  phone: '+971 54 812 9901',
+  workerCode: 'EMP-1049',
+  name: 'Employee',
+  email: 'employee@cooltechuae.com',
+  phone: '+971 50 123 4567',
   role: 'Technician',
-  skillLevel: 'Senior Master Tech',
-  department: 'Field HVAC Operations & Heavy Chillers',
-  assignedManager: 'Alex Rivera (Operations Manager)',
+  skillLevel: 'Field Service Specialist',
+  department: 'Field HVAC Operations & Maintenance',
+  assignedManager: 'Operations Manager',
   assignedVehicle: 'Toyota HiAce Service Van #07 (DXB 48291)',
   driverLicenseNumber: 'UAE-DXB-994821',
   emergencyContact: {
-    name: 'Elena Hayes',
-    relationship: 'Spouse',
-    phone: '+971 55 981 3320',
+    name: 'Emergency Contact',
+    relationship: 'Family Member',
+    phone: '+971 50 987 6543',
   },
   metrics: {
-    completedJobs: 142,
-    onTimeRate: 98.6,
-    averageRating: 4.95,
-    hoursThisMonth: 168,
+    completedJobs: 0,
+    onTimeRate: 100,
+    averageRating: 5.0,
+    hoursThisMonth: 0,
     safetyScore: 100,
   },
 };
@@ -229,8 +231,71 @@ export const workerMockService = {
     return newEntry;
   },
 
+  deleteTimesheetEntry(id: string): void {
+    const entries = this.getTimesheet().filter((e) => e.id !== id);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('cool_worker_timesheet', JSON.stringify(entries));
+    }
+  },
+
   // ── PROFILE ──
-  getProfile(): WorkerProfileData {
-    return WORKER_PROFILE_DEFAULT;
+  getProfile(currentUser?: MockAuthUser | null): WorkerProfileData {
+    const authUser = currentUser || (typeof window !== 'undefined' ? authMockService.getCurrentUser() : null);
+    const userId = authUser?.id || 'default_worker';
+
+    const defaultData: WorkerProfileData = {
+      id: authUser?.id || 'usr_worker_001',
+      workerCode: authUser?.id ? `EMP-${authUser.id.replace(/\D/g, '').slice(-4) || '1049'}` : 'EMP-1049',
+      name: authUser?.name || 'Employee',
+      email: authUser?.email || 'employee@cooltechuae.com',
+      phone: '+971 50 123 4567',
+      role: authUser?.role || 'Technician',
+      skillLevel: authUser?.designation || 'Field Service Specialist',
+      department: authUser?.department || 'Field HVAC Operations & Maintenance',
+      assignedManager: authUser?.managerType || 'Operations Manager',
+      assignedVehicle: 'Toyota HiAce Service Van #07 (DXB 48291)',
+      driverLicenseNumber: 'UAE-DXB-994821',
+      emergencyContact: {
+        name: 'Emergency Contact',
+        relationship: 'Family Member',
+        phone: '+971 50 987 6543',
+      },
+      metrics: {
+        completedJobs: 0,
+        onTimeRate: 100,
+        averageRating: 5.0,
+        hoursThisMonth: 0,
+        safetyScore: 100,
+      },
+    };
+
+    if (typeof window === 'undefined') return defaultData;
+
+    try {
+      const key = `cool_worker_profile_${userId}`;
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        const parsed: WorkerProfileData = JSON.parse(stored);
+        if (authUser?.name) parsed.name = authUser.name;
+        if (authUser?.email) parsed.email = authUser.email;
+        if (authUser?.designation) parsed.skillLevel = authUser.designation;
+        if (authUser?.department) parsed.department = authUser.department;
+        return parsed;
+      }
+      localStorage.setItem(key, JSON.stringify(defaultData));
+      return defaultData;
+    } catch {
+      return defaultData;
+    }
+  },
+
+  updateProfile(updates: Partial<WorkerProfileData>, userId?: string): WorkerProfileData {
+    const current = this.getProfile();
+    const id = userId || current.id || 'default_worker';
+    const updated: WorkerProfileData = { ...current, ...updates };
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`cool_worker_profile_${id}`, JSON.stringify(updated));
+    }
+    return updated;
   },
 };

@@ -259,21 +259,22 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
 
   const createTask = (taskData: Partial<CrmTask> & { taskDetails: string }) => {
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const assigneeName = taskData.assignedEmployee || taskData.assignee?.name || 'Tariq Mansour';
+    const assigneeName = taskData.assignedEmployee || taskData.assignee?.name || 'Assigned Employee';
+    const managerName = taskData.assignedBy || taskData.createdBy || 'Operations Manager';
     const newTask: CrmTask = {
       description: '',
       customer: 'Client Facility',
       taskUnder: 'General Maintenance',
-      taskType: 'HVAC Repair',
+      taskType: 'Service Order',
       dueDate: new Date().toISOString().split('T')[0],
-      dueTime: '4 Hours',
-      priority: 'High',
+      dueTime: '04:00 PM',
+      priority: 'Normal',
       assignedEmployee: assigneeName,
-      assignedBy: 'Alex Rivera (Operations Manager)',
-      createdBy: 'Alex Rivera (Operations Manager)',
+      assignedBy: managerName,
+      createdBy: managerName,
       assignee: {
         name: assigneeName,
-        role: 'Technician',
+        role: 'Employee',
         avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
       },
       ...taskData,
@@ -286,7 +287,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         {
           id: `log-${Date.now()}`,
           timestamp: `${now} - ${new Date().toLocaleDateString()}`,
-          user: taskData.createdBy || taskData.assignedBy || 'Alex Rivera (Operations Manager)',
+          user: managerName,
           userRole: 'Manager',
           action: 'Created & Assigned',
           note: `Task assigned to ${assigneeName}`,
@@ -300,7 +301,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     return newTask;
   };
 
-  const assignTask = (taskId: string, employeeName: string, managerName = 'Alex Rivera (Operations Manager)') => {
+  const assignTask = (taskId: string, employeeName: string, managerName = 'Operations Manager') => {
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const list = tasks.map((t) => {
       if (t.id !== taskId) return t;
@@ -327,7 +328,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     persist('crm_tasks_data', list);
   };
 
-  const acceptTask = (taskId: string, employeeName = 'Jordan Hayes') => {
+  const acceptTask = (taskId: string, employeeName = 'Employee') => {
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const list = tasks.map((t) => {
       if (t.id !== taskId) return t;
@@ -352,7 +353,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     persist('crm_tasks_data', list);
   };
 
-  const startTask = (taskId: string, employeeName = 'Jordan Hayes') => {
+  const startTask = (taskId: string, employeeName = 'Employee') => {
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const list = tasks.map((t) => {
       if (t.id !== taskId) return t;
@@ -378,7 +379,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     persist('crm_tasks_data', list);
   };
 
-  const updateTaskProgress = (taskId: string, progress: number, employeeName = 'Jordan Hayes', note?: string) => {
+  const updateTaskProgress = (taskId: string, progress: number, employeeName = 'Employee', note?: string) => {
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const list = tasks.map((t) => {
       if (t.id !== taskId) return t;
@@ -405,7 +406,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     persist('crm_tasks_data', list);
   };
 
-  const completeTask = (taskId: string, employeeName = 'Jordan Hayes', notes?: string) => {
+  const completeTask = (taskId: string, employeeName = 'Employee', notes?: string) => {
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const list = tasks.map((t) => {
       if (t.id !== taskId) return t;

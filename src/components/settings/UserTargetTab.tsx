@@ -1,12 +1,41 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Plus } from 'lucide-react';
+import { Plus, Target, Award } from 'lucide-react';
 
 export function UserTargetTab() {
+  const [usersList, setUsersList] = useState<any[]>([]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('cezcon_crm_users_list');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setUsersList(parsed);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   const formatCurrency = (n: number) => `$${n.toLocaleString()}`;
+
+  const rows = usersList.length > 0
+    ? usersList.map((u, idx) => ({
+        name: u.name,
+        role: u.designation || u.role || 'Sales Executive',
+        deals: 15 + (idx % 5) * 3,
+        targetRev: 120000 + (idx % 4) * 25000,
+        closedRev: 110000 + (idx % 3) * 20000,
+        pct: Math.round(((110000 + (idx % 3) * 20000) / (120000 + (idx % 4) * 25000)) * 100),
+      }))
+    : [
+        { name: 'Senior Sales Representative', role: 'Sales Executive', deals: 15, targetRev: 120000, closedRev: 110000, pct: 92 },
+      ];
 
   return (
     <Card className="border-slate-200 bg-white p-5 space-y-4">
@@ -34,12 +63,7 @@ export function UserTargetTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {[
-              { name: 'Alex Rivera', role: 'Senior Sales Executive', deals: 20, targetRev: 180000, closedRev: 154000, pct: 85 },
-              { name: 'Sarah Jenkins', role: 'Operations Manager', deals: 15, targetRev: 120000, closedRev: 125000, pct: 104 },
-              { name: 'Jordan Hayes', role: 'Worker', deals: 12, targetRev: 90000, closedRev: 68000, pct: 75 },
-              { name: 'Elena Rostova', role: 'Worker', deals: 10, targetRev: 75000, closedRev: 82000, pct: 109 },
-            ].map((row, i) => (
+            {rows.map((row, i) => (
               <tr key={i} className="hover:bg-slate-50/80 transition-colors">
                 <td className="py-3 px-4 font-bold text-slate-900">{row.name}</td>
                 <td className="py-3 px-3 text-slate-600">{row.role}</td>
@@ -64,8 +88,9 @@ export function UserTargetTab() {
                 </td>
                 <td className="py-3 px-3">
                   <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${row.pct >= 100 ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
-                      }`}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      row.pct >= 100 ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'
+                    }`}
                   >
                     {row.pct >= 100 ? 'Exceeded' : 'In Progress'}
                   </span>

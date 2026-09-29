@@ -95,22 +95,8 @@ const WORKER_NAV_ITEMS: EnterpriseNavItem[] = [
     path: '/worker/deals',
     iconName: 'Briefcase',
   },
-  {
-    id: 'employee-calendar',
-    label: 'Calendar',
-    path: '/worker/calendar',
-    iconName: 'Calendar',
-  },
-  {
-    id: 'employee-materials',
-    label: 'Materials',
-    path: '/worker/materials',
-    iconName: 'Package',
-    children: [
-      { label: 'My Requisitions', href: '/worker/materials', iconName: 'Package' },
-      { label: '+ New Requisition', href: '/worker/materials?action=new', iconName: 'Package' },
-    ],
-  },
+
+
   {
     id: 'employee-timesheet',
     label: 'Timesheet',
@@ -171,6 +157,26 @@ export function EnterpriseNavbar() {
     setMobileMenuOpen(false);
   }, [pathname]);
 
+  const menuTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnterNav = (itemId: string, hasChildren: boolean) => {
+    if (!hasChildren) return;
+    if (menuTimeoutRef.current) {
+      clearTimeout(menuTimeoutRef.current);
+      menuTimeoutRef.current = null;
+    }
+    setActiveMenu(itemId);
+  };
+
+  const handleMouseLeaveNav = () => {
+    if (menuTimeoutRef.current) {
+      clearTimeout(menuTimeoutRef.current);
+    }
+    menuTimeoutRef.current = setTimeout(() => {
+      setActiveMenu(null);
+    }, 180);
+  };
+
   const handleMenuClick = (itemId: string, hasChildren: boolean, path?: string) => {
     if (!hasChildren) {
       setActiveMenu(null);
@@ -193,18 +199,18 @@ export function EnterpriseNavbar() {
   return (
     <nav
       ref={navContainerRef}
-      className="bg-white border-b border-slate-200 px-3 sm:px-6 shadow-2xs sticky top-0 z-[1000] relative"
+      className="flex items-center relative flex-shrink-0 h-10 w-full overflow-visible"
     >
-      <div className="flex items-center justify-between h-10">
+      <div className="flex items-center w-full justify-between lg:justify-start overflow-visible">
         {/* Desktop Horizontal Menu */}
-        <div className="hidden md:flex items-center h-10 overflow-visible">
+        <div className="hidden lg:flex items-center gap-0.5 flex-nowrap h-10 overflow-visible">
           {activeNavItems.map((item) => {
             const hasChildren = !!(item.children && item.children.length > 0);
             const isMenuOpen = activeMenu === item.id;
             const isRouteActive =
               item.path === pathname ||
               (item.id !== 'dashboard' && pathname.startsWith(`/${item.id}`));
-            const isHighlighted = isRouteActive || isMenuOpen;
+            const isHighlighted = isMenuOpen || isRouteActive;
 
             // Direct link for Dashboard / Report / Leads / Tasks
             if (!hasChildren && item.path) {
@@ -212,11 +218,15 @@ export function EnterpriseNavbar() {
                 <Link
                   key={item.id}
                   href={item.path}
+                  onMouseEnter={() => {
+                    if (menuTimeoutRef.current) clearTimeout(menuTimeoutRef.current);
+                    setActiveMenu(null);
+                  }}
                   className={cn(
-                    'h-10 flex items-center gap-1.5 px-3 text-xs font-bold transition-all select-none',
+                    'h-10 flex items-center gap-1.5 px-3.5 text-xs font-bold transition-colors select-none whitespace-nowrap flex-shrink-0',
                     isRouteActive
-                      ? 'bg-[#002B49] text-white'
-                      : 'text-slate-800 hover:bg-slate-100/80 hover:text-[#2563EB]'
+                      ? 'bg-[#2563EB] text-white shadow-xs'
+                      : 'text-slate-800 hover:bg-blue-50 hover:text-[#2563EB]'
                   )}
                 >
                   <span>{HEADER_ICONS[item.iconName]?.(isRouteActive)}</span>
@@ -232,17 +242,24 @@ export function EnterpriseNavbar() {
 
             // Dropdown items
             return (
-              <div key={item.id} className="relative h-10 flex items-center">
+              <div
+                key={item.id}
+                className="relative h-10 flex items-center flex-shrink-0 overflow-visible"
+                onMouseEnter={() => handleMouseEnterNav(item.id, hasChildren)}
+                onMouseLeave={handleMouseLeaveNav}
+              >
                 <button
                   type="button"
                   onClick={() => handleMenuClick(item.id, hasChildren)}
                   onKeyDown={(e) => handleKeyDown(e, item.id, hasChildren)}
                   aria-expanded={isMenuOpen}
                   className={cn(
-                    'h-10 flex items-center gap-1.5 px-3 text-xs font-bold cursor-pointer transition-all select-none focus:outline-none',
-                    isHighlighted
+                    'h-10 flex items-center gap-1.5 px-3.5 text-xs font-bold cursor-pointer transition-colors select-none focus:outline-none whitespace-nowrap flex-shrink-0',
+                    isMenuOpen
                       ? 'bg-[#002B49] text-white shadow-xs'
-                      : 'text-slate-800 hover:bg-slate-100/80 hover:text-[#2563EB]'
+                      : isRouteActive
+                        ? 'bg-[#2563EB] text-white shadow-xs'
+                        : 'text-slate-800 hover:bg-blue-50 hover:text-[#2563EB]'
                   )}
                 >
                   <span>{HEADER_ICONS[item.iconName]?.(isHighlighted)}</span>
@@ -255,7 +272,7 @@ export function EnterpriseNavbar() {
                   <ChevronDown
                     className={cn(
                       'w-3 h-3 transition-transform duration-150',
-                      isHighlighted ? 'text-white' : 'text-[#2563EB]',
+                      isHighlighted ? 'text-white' : 'text-slate-400',
                       isMenuOpen ? 'rotate-180' : ''
                     )}
                   />
@@ -274,8 +291,8 @@ export function EnterpriseNavbar() {
           })}
         </div>
 
-        {/* Mobile Hamburger Toggle Button */}
-        <div className="flex md:hidden items-center justify-between w-full py-2">
+        {/* Mobile / Tablet Hamburger Toggle Button (< lg) */}
+        <div className="flex lg:hidden items-center justify-between w-full h-10 py-1">
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
             <span className="text-xs font-bold text-slate-800 truncate">
@@ -286,17 +303,17 @@ export function EnterpriseNavbar() {
           </div>
           <button
             onClick={() => setMobileMenuOpen(true)}
-            className="p-1.5 rounded-md text-slate-700 hover:bg-slate-100 flex items-center gap-1 text-xs font-medium cursor-pointer"
+            className="p-1.5 rounded-md text-slate-700 hover:bg-slate-100 flex items-center gap-1 text-xs font-medium cursor-pointer border border-slate-200"
             aria-label="Open navigation menu"
           >
-            <Menu className="w-5 h-5 text-slate-700" />
+            <Menu className="w-4 h-4 text-slate-700" />
           </button>
         </div>
       </div>
 
       {/* Mobile Slide-Over Drawer Navigation */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[2000] md:hidden animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[2000] lg:hidden animate-in fade-in duration-150">
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"

@@ -31,13 +31,24 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { DealStage } from '@/types/enterprise-crm';
+import { DealStage, CrmTask } from '@/types/enterprise-crm';
 import { useRouter } from 'next/navigation';
 import { authMockService } from '@/services/authMockService';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { users, customers, leads, tasks, salesOpportunities } = useEnterpriseCrm();
+  const {
+    users,
+    customers,
+    leads,
+    tasks,
+    salesOpportunities,
+    quotations,
+    salesOrders,
+    invoices,
+    receipts,
+    deliveryNotes,
+  } = useEnterpriseCrm();
 
   const [dateFilter, setDateFilter] = useState('month');
   const [repFilter, setRepFilter] = useState('all');
@@ -51,77 +62,144 @@ export default function DashboardPage() {
     }
   }, [router]);
 
+  // Dynamic filter by executive/rep
+  const filteredOpportunities = (salesOpportunities || []).filter((o) => {
+    if (repFilter === 'all') return true;
+    return o.owner?.toLowerCase() === repFilter.toLowerCase();
+  });
+
+  const filteredLeads = (leads || []).filter((l) => {
+    if (repFilter === 'all') return true;
+    return (
+      l.leadAssigned?.name?.toLowerCase() === repFilter.toLowerCase() ||
+      l.owner?.toLowerCase() === repFilter.toLowerCase() ||
+      l.assignedEmployee?.toLowerCase() === repFilter.toLowerCase()
+    );
+  });
+
+  const filteredTasks = (tasks || []).filter((t: CrmTask) => {
+    if (repFilter === 'all') return true;
+    return t.assignee?.name?.toLowerCase() === repFilter.toLowerCase();
+  });
+
+  const filteredCustomers = (customers || []).filter((c) => {
+    if (repFilter === 'all') return true;
+    return c.owner?.toLowerCase() === repFilter.toLowerCase();
+  });
+
   // Business calculations
-  const totalPipeline = salesOpportunities.reduce((acc, o) => acc + o.amount, 0);
-  const hotLeadsCount = leads.filter((l) => l.rating === 'Hot').length;
-  const overdueTasksCount = tasks.filter((t) => t.status === 'Overdue').length;
-  const urgentTasksCount = tasks.filter((t) => t.priority === 'Urgent').length;
+  const totalPipelineFromDeals = filteredOpportunities.reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
+  const totalQuotationsValue = (quotations || []).reduce((acc, q) => acc + (Number(q.totalAmount) || 0), 0);
+  const totalPipeline = totalPipelineFromDeals > 0 ? totalPipelineFromDeals : totalQuotationsValue;
 
-  const quotationsValue = salesOpportunities
-    .filter((o) => o.stage === 'Quotation' || o.stage === 'Opportunity')
-    .reduce((acc, o) => acc + o.amount, 0);
+  const hotLeadsCount = filteredLeads.filter((l) => l.rating === 'Hot' || l.rating === 'HOT').length;
+  const overdueTasksCount = filteredTasks.filter((t) => t.status === 'Overdue').length;
+  const urgentTasksCount = filteredTasks.filter((t) => t.priority === 'Urgent' || t.priority === 'High').length;
 
-  const confirmedOrdersValue = salesOpportunities
-    .filter((o) => o.stage === 'Order' || o.stage === 'Invoice' || o.stage === 'Receipt' || o.stage === 'Delivery Note')
-    .reduce((acc, o) => acc + o.amount, 0);
+  const quotationsCount = (quotations || []).length + filteredOpportunities.filter((o) => o.stage === 'Quotation' || o.stage === 'Opportunity').length;
+  const openQuotationsValue = totalQuotationsValue > 0
+    ? totalQuotationsValue
+    : filteredOpportunities
+        .filter((o) => o.stage === 'Quotation' || o.stage === 'Opportunity')
+        .reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
 
   // Corporate pipeline breakdown
   const pipelineStages: { stage: DealStage; count: number; value: number; prob: number; color: string }[] = [
     {
       stage: 'Opportunity',
-      count: salesOpportunities.filter((o) => o.stage === 'Opportunity').length,
-      value: salesOpportunities.filter((o) => o.stage === 'Opportunity').reduce((a, o) => a + o.amount, 0),
+      count: filteredOpportunities.filter((o) => o.stage === 'Opportunity').length,
+      value: filteredOpportunities.filter((o) => o.stage === 'Opportunity').reduce((a, o) => a + (Number(o.amount) || 0), 0),
       prob: 30,
       color: 'bg-blue-600',
     },
     {
       stage: 'Quotation',
-      count: salesOpportunities.filter((o) => o.stage === 'Quotation').length,
-      value: salesOpportunities.filter((o) => o.stage === 'Quotation').reduce((a, o) => a + o.amount, 0),
+      count: Math.max((quotations || []).length, filteredOpportunities.filter((o) => o.stage === 'Quotation').length),
+      value: Math.max(
+        totalQuotationsValue,
+        filteredOpportunities.filter((o) => o.stage === 'Quotation').reduce((a, o) => a + (Number(o.amount) || 0), 0)
+      ),
       prob: 60,
       color: 'bg-indigo-600',
     },
     {
       stage: 'Order',
-      count: salesOpportunities.filter((o) => o.stage === 'Order').length,
-      value: salesOpportunities.filter((o) => o.stage === 'Order').reduce((a, o) => a + o.amount, 0),
+      count: Math.max((salesOrders || []).length, filteredOpportunities.filter((o) => o.stage === 'Order').length),
+      value: Math.max(
+        (salesOrders || []).reduce((a, s) => a + (Number(s.totalAmount || s.amount) || 0), 0),
+        filteredOpportunities.filter((o) => o.stage === 'Order').reduce((a, o) => a + (Number(o.amount) || 0), 0)
+      ),
       prob: 80,
       color: 'bg-amber-600',
     },
     {
       stage: 'Proforma Invoice',
-      count: salesOpportunities.filter((o) => o.stage === 'Proforma Invoice').length,
-      value: salesOpportunities.filter((o) => o.stage === 'Proforma Invoice').reduce((a, o) => a + o.amount, 0),
+      count: filteredOpportunities.filter((o) => o.stage === 'Proforma Invoice').length,
+      value: filteredOpportunities.filter((o) => o.stage === 'Proforma Invoice').reduce((a, o) => a + (Number(o.amount) || 0), 0),
       prob: 90,
       color: 'bg-purple-600',
     },
     {
       stage: 'Invoice',
-      count: salesOpportunities.filter((o) => o.stage === 'Invoice').length,
-      value: salesOpportunities.filter((o) => o.stage === 'Invoice').reduce((a, o) => a + o.amount, 0),
+      count: Math.max((invoices || []).length, filteredOpportunities.filter((o) => o.stage === 'Invoice').length),
+      value: Math.max(
+        (invoices || []).reduce((a, i) => a + (Number(i.totalAmount || i.amount) || 0), 0),
+        filteredOpportunities.filter((o) => o.stage === 'Invoice').reduce((a, o) => a + (Number(o.amount) || 0), 0)
+      ),
       prob: 95,
       color: 'bg-emerald-600',
     },
     {
       stage: 'Delivery Note',
-      count: salesOpportunities.filter((o) => o.stage === 'Delivery Note').length,
-      value: salesOpportunities.filter((o) => o.stage === 'Delivery Note').reduce((a, o) => a + o.amount, 0),
+      count: Math.max((deliveryNotes || []).length, filteredOpportunities.filter((o) => o.stage === 'Delivery Note').length),
+      value: filteredOpportunities.filter((o) => o.stage === 'Delivery Note').reduce((a, o) => a + (Number(o.amount) || 0), 0),
       prob: 100,
       color: 'bg-teal-600',
     },
   ];
 
-  // Monthly revenue performance
+  // Calculate actual realized monthly revenue
+  const totalInvoicedRevenue = (invoices || []).reduce((sum, inv) => sum + (Number(inv.totalAmount || inv.amount) || 0), 0);
+  const totalReceiptsRevenue = (receipts || []).reduce((sum, rec) => sum + (Number(rec.amount) || 0), 0);
+  const currentMonthRevenue = Math.max(totalInvoicedRevenue, totalReceiptsRevenue);
+
   const monthlyRevenueRows = [
-    { month: 'September 2026', target: 100000, achieved: 128000, variance: 28000, pct: 128, status: 'Exceeded' },
-    { month: 'August 2026', target: 90000, achieved: 112000, variance: 22000, pct: 124, status: 'Exceeded' },
-    { month: 'July 2026', target: 85000, achieved: 104000, variance: 19000, pct: 122, status: 'Exceeded' },
-    { month: 'June 2026', target: 80000, achieved: 95000, variance: 15000, pct: 118, status: 'Achieved' },
-    { month: 'May 2026', target: 70000, achieved: 89000, variance: 19000, pct: 127, status: 'Exceeded' },
+    {
+      month: 'September 2026',
+      target: 100000,
+      achieved: currentMonthRevenue,
+      variance: currentMonthRevenue - 100000,
+      pct: Math.round((currentMonthRevenue / 100000) * 100),
+      status: currentMonthRevenue >= 100000 ? 'Achieved' : 'In Progress',
+    },
+    {
+      month: 'August 2026',
+      target: 90000,
+      achieved: 112000,
+      variance: 22000,
+      pct: 124,
+      status: 'Exceeded',
+    },
+    {
+      month: 'July 2026',
+      target: 85000,
+      achieved: 104000,
+      variance: 19000,
+      pct: 122,
+      status: 'Exceeded',
+    },
+    {
+      month: 'June 2026',
+      target: 80000,
+      achieved: 95000,
+      variance: 15000,
+      pct: 118,
+      status: 'Achieved',
+    },
   ];
 
   return (
-    <div className="space-y-4 pb-12">
+    <div className="space-y-4 pb-12 w-full">
       {/* ── Enterprise Control Bar ───────────────────────────────────── */}
       <div className="bg-white border border-slate-200 rounded-lg p-3 sm:p-4 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -133,7 +211,7 @@ export default function DashboardPage() {
               Sales & Commercial Operations Dashboard
             </h1>
             <p className="text-[11px] text-slate-500 mt-1">
-              Cool Technologies Enterprise CRM • Real-time Executive Overview & Pipeline Intelligence
+              Cool Technologies Enterprise CRM • Real-time Executive Overview &amp; Pipeline Intelligence
             </p>
           </div>
         </div>
@@ -161,13 +239,15 @@ export default function DashboardPage() {
               className="bg-transparent text-slate-700 font-medium focus:outline-none cursor-pointer"
             >
               <option value="all">All Executives</option>
-              <option value="alex">Alex Rivera</option>
-              <option value="elena">Elena Rostova</option>
-              <option value="jordan">Jordan Hayes</option>
+              {(users || []).map((u) => (
+                <option key={u.id} value={u.name}>
+                  {u.name} ({u.role})
+                </option>
+              ))}
             </select>
           </div>
 
-          <Link href="/leads?action=add">
+          <Link href="/leads">
             <Button
               variant="primary"
               size="sm"
@@ -178,7 +258,7 @@ export default function DashboardPage() {
             </Button>
           </Link>
 
-          <Link href="/sales?action=add">
+          <Link href="/sales/opportunities">
             <Button
               variant="outline"
               size="sm"
@@ -209,9 +289,9 @@ export default function DashboardPage() {
             </p>
             <div className="flex items-center justify-between text-[11px] mt-1 text-slate-500">
               <span className="text-emerald-600 font-semibold flex items-center">
-                <ArrowUpRight className="w-3 h-3 mr-0.5" /> +18.5% YoY
+                <ArrowUpRight className="w-3 h-3 mr-0.5" /> Live Pipeline
               </span>
-              <span>{salesOpportunities.length} Active Deals</span>
+              <span>{filteredOpportunities.length} Active Deals</span>
             </div>
           </div>
         </div>
@@ -228,11 +308,11 @@ export default function DashboardPage() {
           </div>
           <div className="mt-2">
             <p className="text-xl font-bold text-slate-900 tracking-tight">
-              {formatCurrency(quotationsValue)}
+              {formatCurrency(openQuotationsValue)}
             </p>
             <div className="flex items-center justify-between text-[11px] mt-1 text-slate-500">
               <span className="text-blue-600 font-semibold">In Proposal Phase</span>
-              <span>2 Proposals</span>
+              <span>{quotationsCount} Proposals</span>
             </div>
           </div>
         </div>
@@ -249,11 +329,11 @@ export default function DashboardPage() {
           </div>
           <div className="mt-2">
             <p className="text-xl font-bold text-slate-900 tracking-tight">
-              {leads.length} Leads
+              {filteredLeads.length} Leads
             </p>
             <div className="flex items-center justify-between text-[11px] mt-1 text-slate-500">
               <span className="text-rose-600 font-semibold">{hotLeadsCount} Hot Priority</span>
-              <span>80% Qualified</span>
+              <span>Live Inquiries</span>
             </div>
           </div>
         </div>
@@ -270,11 +350,11 @@ export default function DashboardPage() {
           </div>
           <div className="mt-2">
             <p className="text-xl font-bold text-slate-900 tracking-tight">
-              {customers.length} Accounts
+              {filteredCustomers.length} Accounts
             </p>
             <div className="flex items-center justify-between text-[11px] mt-1 text-slate-500">
-              <span className="text-emerald-600 font-semibold">100% Active</span>
-              <span>Tier-1 Enterprise</span>
+              <span className="text-emerald-600 font-semibold">100% Verified</span>
+              <span>Enterprise Client Accounts</span>
             </div>
           </div>
         </div>
@@ -291,7 +371,7 @@ export default function DashboardPage() {
           </div>
           <div className="mt-2">
             <p className="text-xl font-bold text-slate-900 tracking-tight">
-              {tasks.length} Tasks
+              {filteredTasks.length} Tasks
             </p>
             <div className="flex items-center justify-between text-[11px] mt-1 text-slate-500">
               {overdueTasksCount > 0 ? (
@@ -319,7 +399,7 @@ export default function DashboardPage() {
             </p>
           </div>
           <Link
-            href="/sales"
+            href="/sales/opportunities"
             className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1"
           >
             View Full Pipeline <ChevronRight className="w-3.5 h-3.5" />
@@ -361,14 +441,14 @@ export default function DashboardPage() {
           <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Active Commercial Inquiries & Deals
+                Active Commercial Inquiries &amp; Deals
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-bold">
-                {salesOpportunities.length} Deals
+                {filteredOpportunities.length} Deals
               </span>
             </div>
             <Link
-              href="/sales"
+              href="/sales/opportunities"
               className="text-xs font-semibold text-blue-600 hover:underline flex items-center gap-1"
             >
               All Inquiries <ArrowRight className="w-3 h-3" />
@@ -376,48 +456,62 @@ export default function DashboardPage() {
           </div>
 
           <div className="overflow-x-auto flex-1">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
-                <tr>
-                  <th className="py-2.5 px-3">Opportunity / Client</th>
-                  <th className="py-2.5 px-3">Stage</th>
-                  <th className="py-2.5 px-3">Executive</th>
-                  <th className="py-2.5 px-3 text-right">Value ($)</th>
-                  <th className="py-2.5 px-3 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {salesOpportunities.map((opp) => (
-                  <tr key={opp.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-2.5 px-3">
-                      <p className="font-bold text-slate-900 line-clamp-1">{opp.title}</p>
-                      <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                        <Building2 className="w-3 h-3 text-slate-400" />
-                        <span>{opp.customer}</span>
-                      </p>
-                    </td>
-                    <td className="py-2.5 px-3 whitespace-nowrap">
-                      <StatusBadge status={opp.stage} />
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
-                      <span className="font-medium">{opp.owner}</span>
-                    </td>
-                    <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                      <span className="font-bold text-slate-900">{formatCurrency(opp.amount)}</span>
-                      <p className="text-[10px] text-slate-400">{opp.probability}% Prob</p>
-                    </td>
-                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                      <Link
-                        href="/sales"
-                        className="inline-block px-2 py-1 rounded border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:text-blue-600 hover:border-blue-200 transition-colors"
-                      >
-                        Manage
-                      </Link>
-                    </td>
+            {filteredOpportunities.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-400 space-y-2">
+                <Briefcase className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="font-semibold text-slate-600">No active commercial deals yet.</p>
+                <Link
+                  href="/sales/opportunities"
+                  className="inline-flex items-center gap-1 text-blue-600 hover:underline font-semibold"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Create First Opportunity</span>
+                </Link>
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                  <tr>
+                    <th className="py-2.5 px-3">Opportunity / Client</th>
+                    <th className="py-2.5 px-3">Stage</th>
+                    <th className="py-2.5 px-3">Executive</th>
+                    <th className="py-2.5 px-3 text-right">Value</th>
+                    <th className="py-2.5 px-3 text-center">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredOpportunities.map((opp) => (
+                    <tr key={opp.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-2.5 px-3">
+                        <p className="font-bold text-slate-900 line-clamp-1">{opp.title}</p>
+                        <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                          <Building2 className="w-3 h-3 text-slate-400" />
+                          <span>{opp.customer}</span>
+                        </p>
+                      </td>
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <StatusBadge status={opp.stage} />
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+                        <span className="font-medium">{opp.owner}</span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <span className="font-bold text-slate-900">{formatCurrency(opp.amount)}</span>
+                        <p className="text-[10px] text-slate-400">{opp.probability}% Prob</p>
+                      </td>
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        <Link
+                          href="/sales/opportunities"
+                          className="inline-block px-2 py-1 rounded border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:text-blue-600 hover:border-blue-200 transition-colors"
+                        >
+                          Manage
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 
@@ -426,10 +520,10 @@ export default function DashboardPage() {
           <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Daily Execution & Follow-up Queue
+                Daily Execution &amp; Follow-up Queue
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">
-                {tasks.length}
+                {filteredTasks.length}
               </span>
             </div>
             <Link
@@ -441,38 +535,52 @@ export default function DashboardPage() {
           </div>
 
           <div className="divide-y divide-slate-100 flex-1 overflow-y-auto max-h-[380px]">
-            {tasks.map((task) => (
-              <div key={task.id} className="p-3 hover:bg-slate-50/80 transition-colors flex items-start gap-2.5">
-                <div className="mt-0.5 flex-shrink-0">
-                  {task.priority === 'Urgent' ? (
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 block ring-2 ring-rose-100" />
-                  ) : task.priority === 'High' ? (
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 block ring-2 ring-amber-100" />
-                  ) : (
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 block ring-2 ring-blue-100" />
-                  )}
-                </div>
+            {filteredTasks.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-400 space-y-2">
+                <CheckSquare className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="font-semibold text-slate-600">No pending operational milestones.</p>
+                <Link
+                  href="/tasks"
+                  className="inline-flex items-center gap-1 text-blue-600 hover:underline font-semibold"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Create New Task</span>
+                </Link>
+              </div>
+            ) : (
+              filteredTasks.map((task) => (
+                <div key={task.id} className="p-3 hover:bg-slate-50/80 transition-colors flex items-start gap-2.5">
+                  <div className="mt-0.5 flex-shrink-0">
+                    {task.priority === 'Urgent' ? (
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500 block ring-2 ring-rose-100" />
+                    ) : task.priority === 'High' ? (
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 block ring-2 ring-amber-100" />
+                    ) : (
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500 block ring-2 ring-blue-100" />
+                    )}
+                  </div>
 
-                <div className="min-w-0 flex-1 text-xs">
-                  <p className="font-semibold text-slate-900 line-clamp-2 leading-tight">
-                    {task.taskDetails}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
-                    <span className="text-slate-600 font-medium">{task.assignee.name}</span>
-                    <span>•</span>
-                    <span className="text-blue-600 font-medium">{task.taskType}</span>
-                    <span>•</span>
-                    <span className="text-slate-400 flex items-center gap-0.5">
-                      <Clock className="w-3 h-3" /> {task.dueDate}
-                    </span>
+                  <div className="min-w-0 flex-1 text-xs">
+                    <p className="font-semibold text-slate-900 line-clamp-2 leading-tight">
+                      {task.taskDetails}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
+                      <span className="text-slate-600 font-medium">{task.assignee?.name}</span>
+                      <span>•</span>
+                      <span className="text-blue-600 font-medium">{task.taskType}</span>
+                      <span>•</span>
+                      <span className="text-slate-400 flex items-center gap-0.5">
+                        <Clock className="w-3 h-3" /> {task.dueDate}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex-shrink-0">
+                    <StatusBadge status={task.status} />
                   </div>
                 </div>
-
-                <div className="flex-shrink-0">
-                  <StatusBadge status={task.status} />
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -482,7 +590,7 @@ export default function DashboardPage() {
         <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
           <div>
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-              Monthly Commercial Revenue Ledger & Quota Attainment
+              Monthly Commercial Revenue Ledger &amp; Quota Attainment
             </h3>
             <p className="text-[11px] text-slate-500 mt-0.5">
               Historical variance ledger comparing contractual quota with realized revenue
@@ -498,9 +606,9 @@ export default function DashboardPage() {
             <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
               <tr>
                 <th className="py-2.5 px-4">Financial Period</th>
-                <th className="py-2.5 px-4 text-right">Quota Target ($)</th>
-                <th className="py-2.5 px-4 text-right">Achieved Revenue ($)</th>
-                <th className="py-2.5 px-4 text-right">Variance ($)</th>
+                <th className="py-2.5 px-4 text-right">Quota Target</th>
+                <th className="py-2.5 px-4 text-right">Achieved Revenue</th>
+                <th className="py-2.5 px-4 text-right">Variance</th>
                 <th className="py-2.5 px-4 text-center">Attainment Rate</th>
                 <th className="py-2.5 px-4 text-center">Status</th>
               </tr>
@@ -515,8 +623,8 @@ export default function DashboardPage() {
                   <td className="py-2.5 px-4 text-right font-bold text-slate-900">
                     {formatCurrency(row.achieved)}
                   </td>
-                  <td className="py-2.5 px-4 text-right font-bold text-emerald-600">
-                    +{formatCurrency(row.variance)}
+                  <td className={`py-2.5 px-4 text-right font-bold ${row.variance >= 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
+                    {row.variance >= 0 ? `+${formatCurrency(row.variance)}` : formatCurrency(row.variance)}
                   </td>
                   <td className="py-2.5 px-4 text-center">
                     <div className="inline-flex items-center gap-1.5 font-bold text-slate-800">
@@ -530,7 +638,13 @@ export default function DashboardPage() {
                     </div>
                   </td>
                   <td className="py-2.5 px-4 text-center">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        row.status === 'Exceeded' || row.status === 'Achieved'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : 'bg-blue-50 text-blue-700 border border-blue-200'
+                      }`}
+                    >
                       {row.status}
                     </span>
                   </td>

@@ -33,7 +33,11 @@ import {
   Briefcase,
   Layers,
   ArrowRight,
+  ArrowLeft,
+  ArrowUp,
+  ArrowDown,
   Tag,
+  Menu,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -115,7 +119,26 @@ export interface ReportDefinition {
 }
 
 const INITIAL_STANDARD_REPORTS: ReportDefinition[] = [
-  { id: 1, title: 'Opportunity Closing', category: 'Sales', description: 'Opportunity pipeline closures and win-loss status analysis', canCustomize: true, defaultColumns: ['SL.No', 'Opportunity ID', 'Title', 'Customer', 'Assigned Rep', 'Est. Value ($)', 'Close Date', 'Stage', 'Probability'] },
+  {
+    id: 1,
+    title: 'Opportunity Closing',
+    category: 'Sales',
+    description: 'Opportunity pipeline closures and win-loss status analysis',
+    canCustomize: true,
+    defaultColumns: [
+      'SL.No',
+      'Opportunity Closed Date',
+      'Opportunity Owner',
+      'Opportunity Title',
+      'Opportunity Number',
+      'Opportunity Amount',
+      'Stage',
+      'Opportunity Cost',
+      'Opportunity Profit',
+      'Opportunity Rating',
+      'Company Name',
+    ],
+  },
   { id: 2, title: 'Services', category: 'Operations', description: 'Service master listing (Service type items) with unit, category and brand breakdown', canCustomize: false, defaultColumns: ['SL.No', 'Service Code', 'Service Name', 'Category', 'Unit', 'Base Rate ($)', 'SLA (Hrs)', 'Status'] },
   { id: 3, title: 'Product', category: 'Purchase', description: 'Product master listing (Product type items) with unit, category, store and stock levels', canCustomize: false, defaultColumns: ['SL.No', 'SKU', 'Product Name', 'Category', 'Store / Warehouse', 'Stock Level', 'Reorder Point', 'Unit Price ($)', 'Valuation ($)'] },
   { id: 4, title: 'Sales', category: 'Sales', description: 'Comprehensive sales performance and gross margin reporting', canCustomize: true, defaultColumns: ['SL.No', 'Order No', 'Order Date', 'Customer', 'Items Count', 'Gross Total ($)', 'Cost ($)', 'Gross Profit ($)', 'Margin %', 'Status'] },
@@ -148,6 +171,65 @@ const TOOLTIP_STYLE = {
   boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
 };
 
+const ALL_REPORT_FIELDS_POOL = [
+  'Lead Contact Name',
+  'Lead Date',
+  'Account Mobile',
+  'Account Phone',
+  'Account Email',
+  'Account Source',
+  'Account Source Name',
+  'Account Office',
+  'Account Industry',
+  'Contact Name',
+  'Business Mobile',
+  'Personal Mobile',
+  'Contact Whatsapp',
+  'Contact Email',
+  'Quotation Ref',
+  'Billing Address',
+  'Payment Mode',
+  'Probability %',
+];
+
+const DEFAULT_OPP_SELECTED_FIELDS = [
+  'Opportunity Closed Date',
+  'Opportunity Owner',
+  'Opportunity Title',
+  'Opportunity Number',
+  'Opportunity Amount',
+  'Stage',
+  'Opportunity Cost',
+  'Opportunity Profit',
+  'Opportunity Rating',
+  'Company Name',
+];
+
+const SEARCH_OPTIONS_COLUMNS = [
+  [
+    'Closed Month & Date',
+    'Closed Start & End Date',
+    'Created Date',
+    'Quotation Prepared',
+    'Inactive From',
+  ],
+  [
+    'Opportunity Month & Year',
+    'Campaign',
+    'Source',
+  ],
+  [
+    'Opportunity Owner',
+    'Business Opportunity',
+    'Industry',
+  ],
+  [
+    'Created By',
+    'Stage',
+    'Tags',
+  ],
+];
+
 export default function ReportsPage() {
   const crm = useEnterpriseCrm();
 
@@ -159,6 +241,8 @@ export default function ReportsPage() {
   const [runningReport, setRunningReport] = useState<ReportDefinition | null>(null);
   const [customizingReport, setCustomizingReport] = useState<ReportDefinition | null>(null);
   const [editingReport, setEditingReport] = useState<ReportDefinition | null>(null);
+  const [isFilterSidebarOpen, setIsFilterSidebarOpen] = useState(true);
+  const [selectedOrderMonthYear, setSelectedOrderMonthYear] = useState('Select');
 
   // Live Filter Controls in Running View
   const [reportSearchQuery, setReportSearchQuery] = useState('');
@@ -170,6 +254,13 @@ export default function ReportsPage() {
   const [showVisualChart, setShowVisualChart] = useState(true);
 
   // Customization Form State
+  const [customReportName, setCustomReportName] = useState('');
+  const [customReportDesc, setCustomReportDesc] = useState('');
+  const [availableFields, setAvailableFields] = useState<string[]>(ALL_REPORT_FIELDS_POOL);
+  const [selectedFieldsList, setSelectedFieldsList] = useState<string[]>(DEFAULT_OPP_SELECTED_FIELDS);
+  const [activeAvailableItem, setActiveAvailableItem] = useState<string | null>(null);
+  const [activeSelectedItem, setActiveSelectedItem] = useState<string | null>(null);
+  const [checkedSearchOptions, setCheckedSearchOptions] = useState<string[]>(['Closed Month & Date']);
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [groupByDimension, setGroupByDimension] = useState('None');
   const [customSortBy, setCustomSortBy] = useState('Default');
@@ -204,32 +295,116 @@ export default function ReportsPage() {
 
     // 1. Opportunity Closing
     if (id === 1) {
-      rows = (crm.salesOpportunities || []).map((opp, idx) => ({
-        'SL.No': idx + 1,
-        'Opportunity ID': `OPP-${opp.id.slice(-5).toUpperCase()}`,
-        'Title': opp.title,
-        'Customer': opp.customer,
-        'Assigned Rep': opp.owner,
-        'Est. Value ($)': `$${(opp.amount || 15000).toLocaleString()}`,
-        '_rawVal': opp.amount || 15000,
-        'Close Date': opp.expectedClose || '28-09-2026',
-        'Stage': opp.stage,
-        'Probability': `${opp.probability || 75}%`,
-      }));
-      const totalVal = rows.reduce((acc, r) => acc + (r._rawVal || 0), 0);
-      const wonCount = rows.filter((r) => String(r['Stage']).toLowerCase().includes('won') || String(r['Stage']).toLowerCase().includes('invoice')).length;
+      rows = [
+        {
+          'SL.No': 1,
+          'Opportunity Closed Date': '30 Jun 2029',
+          'Opportunity Owner': 'Unnikrishnan Krishnankutty Nair',
+          'Opportunity Title': 'BAYZ101 Proposed Residential Tower on Plot#3466893@Business Bay B6+GF+91F+RF',
+          'Opportunity Number': 'CTEQ#5875',
+          'Opportunity Amount': '6,800,000.00',
+          'Stage': 'Enquiry',
+          'Opportunity Cost': '0.00',
+          'Opportunity Profit': '6,800,000.00',
+          'Opportunity Rating': 'WARM',
+          'Company Name': 'Sky International Technical Works LLC',
+          _rawVal: 6800000,
+        },
+        {
+          'SL.No': 2,
+          'Opportunity Closed Date': '03 Oct 2028',
+          'Opportunity Owner': 'MUHAMMAD HAMZA',
+          'Opportunity Title': 'Split ACs',
+          'Opportunity Number': 'CTEQ#4757',
+          'Opportunity Amount': '36,220.00',
+          'Stage': 'Enquiry',
+          'Opportunity Cost': '0.00',
+          'Opportunity Profit': '0.00',
+          'Opportunity Rating': 'WARM',
+          'Company Name': 'AIM TECHNICAL',
+          _rawVal: 36220,
+        },
+        {
+          'SL.No': 3,
+          'Opportunity Closed Date': '10 Oct 2026',
+          'Opportunity Owner': 'NEBIN BENNY',
+          'Opportunity Title': '2TR WINDOW AC',
+          'Opportunity Number': 'CTEQ#7070',
+          'Opportunity Amount': '33,480.00',
+          'Stage': 'Offer Sent',
+          'Opportunity Cost': '0.00',
+          'Opportunity Profit': '0.00',
+          'Opportunity Rating': 'COLD',
+          'Company Name': 'CAT INTERNATIONAL LIMITED - L.L.C - S.P.C',
+          _rawVal: 33480,
+        },
+        {
+          'SL.No': 4,
+          'Opportunity Closed Date': '07 Oct 2026',
+          'Opportunity Owner': 'JISMON JOSE',
+          'Opportunity Title': 'SPLIT AC UNITS',
+          'Opportunity Number': 'CTEQ#7066',
+          'Opportunity Amount': '82,460.00',
+          'Stage': 'Enquiry',
+          'Opportunity Cost': '0.00',
+          'Opportunity Profit': '82,460.00',
+          'Opportunity Rating': 'COLD',
+          'Company Name': 'MASRI ENGINEERING & CONTRACTING MEC SAL',
+          _rawVal: 82460,
+        },
+        {
+          'SL.No': 5,
+          'Opportunity Closed Date': '07 Oct 2026',
+          'Opportunity Owner': 'NEBIN BENNY',
+          'Opportunity Title': 'CHEST FREEZER - SUPER GENERAL',
+          'Opportunity Number': 'CTEQ#7052',
+          'Opportunity Amount': '1,295.00',
+          'Stage': 'Offer Sent',
+          'Opportunity Cost': '0.00',
+          'Opportunity Profit': '1,295.00',
+          'Opportunity Rating': 'COLD',
+          'Company Name': 'LUCENT GENERAL CONTRACTING EST',
+          _rawVal: 1295,
+        },
+        {
+          'SL.No': 6,
+          'Opportunity Closed Date': '07 Oct 2026',
+          'Opportunity Owner': 'NEBIN BENNY',
+          'Opportunity Title': 'WATER CHILLER 3TR & 5TR',
+          'Opportunity Number': 'CTEQ#7048',
+          'Opportunity Amount': '16,700.00',
+          'Stage': 'Offer Sent',
+          'Opportunity Cost': '0.00',
+          'Opportunity Profit': '0.00',
+          'Opportunity Rating': 'COLD',
+          'Company Name': 'INNOVO BUILD L.L.C',
+          _rawVal: 16700,
+        },
+        {
+          'SL.No': 7,
+          'Opportunity Closed Date': '07 Oct 2026',
+          'Opportunity Owner': 'NEBIN BENNY',
+          'Opportunity Title': '1.5TR & 2TR SPLIT AC INVERTER',
+          'Opportunity Number': 'CTEQ#7034',
+          'Opportunity Amount': '35,050.00',
+          'Stage': 'On Review',
+          'Opportunity Cost': '0.00',
+          'Opportunity Profit': '35,050.00',
+          'Opportunity Rating': 'COLD',
+          'Company Name': 'ZUBLIN CONSTRUCTION L.L.C',
+          _rawVal: 35050,
+        },
+      ];
       stats = [
-        { label: 'Total Pipeline Value', value: `$${totalVal.toLocaleString()}`, sub: 'Active Deals' },
+        { label: 'Total Pipeline Value', value: '$7,005,205.00', sub: 'Active Deals' },
         { label: 'Total Opportunities', value: `${rows.length}`, sub: 'Logged Deals' },
-        { label: 'Won Deals', value: `${wonCount}`, sub: `${rows.length ? Math.round((wonCount / rows.length) * 100) : 0}% Win Rate`, color: 'text-emerald-600' },
-        { label: 'Avg Deal Size', value: `$${rows.length ? Math.round(totalVal / rows.length).toLocaleString() : 0}`, sub: 'Ticket Size' },
+        { label: 'Closing Deals', value: '7', sub: 'Pipeline Active', color: 'text-emerald-600' },
+        { label: 'Avg Ticket Size', value: '$1,000,743.00', sub: 'High Value' },
       ];
       chartData = [
-        { name: 'Prospect', value: 12 },
-        { name: 'Qualified', value: 18 },
-        { name: 'Proposal', value: 9 },
-        { name: 'Won', value: 14 },
-        { name: 'Lost', value: 4 },
+        { name: 'Enquiry', value: 3 },
+        { name: 'Offer Sent', value: 3 },
+        { name: 'On Review', value: 1 },
       ];
     }
     // 2. Services
@@ -642,18 +817,86 @@ export default function ReportsPage() {
   // Open Customize
   const handleOpenCustomize = (report: ReportDefinition) => {
     setCustomizingReport(report);
-    setSelectedColumns(report.defaultColumns);
-    setGroupByDimension('None');
-    setCustomSortBy('Default');
+    setCustomReportName(report.title);
+    setCustomReportDesc(report.description);
+    const initialSelected =
+      report.defaultColumns && report.defaultColumns.length > 0
+        ? report.defaultColumns
+        : DEFAULT_OPP_SELECTED_FIELDS;
+    setSelectedFieldsList(initialSelected);
+    setAvailableFields(ALL_REPORT_FIELDS_POOL.filter((f) => !initialSelected.includes(f)));
+    setActiveAvailableItem(null);
+    setActiveSelectedItem(null);
+    setCheckedSearchOptions(['Closed Month & Date']);
   };
 
-  // Apply Customization
-  const handleApplyCustomize = (e: React.FormEvent) => {
+  const handleMoveFieldRight = () => {
+    if (!activeAvailableItem) return;
+    setSelectedFieldsList((prev) => [...prev, activeAvailableItem]);
+    setAvailableFields((prev) => prev.filter((f) => f !== activeAvailableItem));
+    setActiveAvailableItem(null);
+  };
+
+  const handleMoveFieldLeft = () => {
+    if (!activeSelectedItem) return;
+    setAvailableFields((prev) => [...prev, activeSelectedItem]);
+    setSelectedFieldsList((prev) => prev.filter((f) => f !== activeSelectedItem));
+    setActiveSelectedItem(null);
+  };
+
+  const handleMoveFieldUp = () => {
+    if (!activeSelectedItem) return;
+    const idx = selectedFieldsList.indexOf(activeSelectedItem);
+    if (idx <= 0) return;
+    const next = [...selectedFieldsList];
+    const [removed] = next.splice(idx, 1);
+    next.splice(idx - 1, 0, removed);
+    setSelectedFieldsList(next);
+  };
+
+  const handleMoveFieldDown = () => {
+    if (!activeSelectedItem) return;
+    const idx = selectedFieldsList.indexOf(activeSelectedItem);
+    if (idx < 0 || idx >= selectedFieldsList.length - 1) return;
+    const next = [...selectedFieldsList];
+    const [removed] = next.splice(idx, 1);
+    next.splice(idx + 1, 0, removed);
+    setSelectedFieldsList(next);
+  };
+
+  const handleCheckAllSearchOptions = () => {
+    const allOpts = SEARCH_OPTIONS_COLUMNS.flat();
+    if (checkedSearchOptions.length === allOpts.length) {
+      setCheckedSearchOptions([]);
+    } else {
+      setCheckedSearchOptions(allOpts);
+    }
+  };
+
+  const handleToggleSearchOption = (opt: string) => {
+    if (checkedSearchOptions.includes(opt)) {
+      setCheckedSearchOptions((prev) => prev.filter((o) => o !== opt));
+    } else {
+      setCheckedSearchOptions((prev) => [...prev, opt]);
+    }
+  };
+
+  const handleApplyCustomizationAndRun = (e: React.FormEvent) => {
     e.preventDefault();
     if (!customizingReport) return;
-    setRunningReport(customizingReport);
+    const updatedReport: ReportDefinition = {
+      ...customizingReport,
+      title: customReportName.trim() || customizingReport.title,
+      description: customReportDesc.trim(),
+      defaultColumns: selectedFieldsList.length > 0 ? selectedFieldsList : customizingReport.defaultColumns,
+    };
+    setStandardReports((prev) =>
+      prev.map((r) => (r.id === customizingReport.id ? updatedReport : r))
+    );
+    setSelectedColumns(selectedFieldsList.length > 0 ? selectedFieldsList : customizingReport.defaultColumns);
+    setRunningReport(updatedReport);
     setCustomizingReport(null);
-    showToast(`Custom view applied for ${customizingReport.title}`);
+    showToast(`Custom view applied and report generated`);
   };
 
   // Open Edit
@@ -688,289 +931,412 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* VIEW MODE 1: LIVE REPORT WORKSPACE RUNNER */}
-      {runningReport ? (
-        <div className="space-y-4 animate-in fade-in duration-200">
-          {/* Header Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 p-4 rounded-lg shadow-xs">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setRunningReport(null)}
-                className="px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
-              >
-                <span>←</span> Back to Report List
-              </button>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-base font-bold text-slate-900">{runningReport.title}</h1>
-                  <span className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    Live Running
-                  </span>
-                  <span className="px-2 py-0.5 rounded text-[10.5px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                    {runningReport.category}
-                  </span>
+      {/* VIEW MODE 1: CEZCON CRM REPORT CUSTOMIZATION VIEW */}
+      {customizingReport ? (
+        <div className="bg-white border border-slate-200 rounded-md shadow-xs overflow-hidden animate-in fade-in duration-150">
+          {/* Top Bar matching Cezcon */}
+          <div className="bg-slate-100/90 border-b border-slate-200 px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-slate-600" />
+              <h2 className="text-xs sm:text-sm font-semibold text-slate-800">
+                {customizingReport.title} Report Customization
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCustomizingReport(null)}
+              className="w-5 h-5 bg-[#d9534f] hover:bg-red-600 text-white rounded text-xs flex items-center justify-center cursor-pointer transition-colors"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+
+          <form onSubmit={handleApplyCustomizationAndRun} className="p-5 space-y-6 text-xs text-slate-700">
+            {/* Top Form Row: Left Name/Desc + Right Dual List Selector */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left Side: Report Name & Description */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="grid grid-cols-3 gap-2 items-center">
+                  <label className="text-slate-700 font-medium flex items-center gap-1">
+                    <span>Report Name</span>
+                    <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
+                  </label>
+                  <div className="col-span-2">
+                    <input
+                      type="text"
+                      required
+                      value={customReportName}
+                      onChange={(e) => setCustomReportName(e.target.value)}
+                      className="w-full bg-white border border-emerald-600 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                    />
+                  </div>
                 </div>
-                <p className="text-slate-500 text-xs mt-0.5">{runningReport.description}</p>
-              </div>
-            </div>
 
-            {/* Action Bar */}
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowVisualChart(!showVisualChart)}
-                className={`px-3 py-1.5 rounded border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
-                  showVisualChart ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5" />
-                <span>{showVisualChart ? 'Hide Chart' : 'Show Chart'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleRefreshData}
-                disabled={isLiveRefreshing}
-                className="px-3 py-1.5 rounded border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLiveRefreshing ? 'animate-spin text-blue-600' : ''}`} />
-                <span>Refresh</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleExportCSV}
-                className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Export CSV / Excel</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="px-3 py-1.5 rounded bg-[#002D4A] hover:bg-[#001E33] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Print / PDF</span>
-              </button>
-            </div>
-          </div>
-
-          {/* KPI Metrics Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {liveReportData.stats.map((st, idx) => (
-              <div key={idx} className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-2xs">
-                <p className="text-[11px] font-semibold text-slate-500">{st.label}</p>
-                <p className={`text-xl font-extrabold mt-1 text-slate-900 ${st.color || ''}`}>{st.value}</p>
-                {st.sub && <p className="text-[10.5px] text-slate-400 mt-0.5">{st.sub}</p>}
-              </div>
-            ))}
-          </div>
-
-          {/* Optional Visual Chart Breakdown */}
-          {showVisualChart && liveReportData.chartData.length > 0 && (
-            <Card className="bg-white border-slate-200">
-              <CardHeader className="py-2.5 px-4 border-b border-slate-100 flex items-center justify-between">
-                <CardTitle className="text-xs font-bold text-slate-800 flex items-center gap-2">
-                  <TrendingUp className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Live Analytical Breakdown: {runningReport.title}</span>
-                </CardTitle>
-                <span className="text-[11px] text-slate-400">Dynamic Metrics</span>
-              </CardHeader>
-              <CardContent className="pt-3 pb-2">
-                <div className="h-44 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={liveReportData.chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                      <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} />
-                      <Bar dataKey="value" name="Value" fill="#2563EB" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                <div className="grid grid-cols-3 gap-2 items-start">
+                  <label className="text-slate-700 font-medium pt-1.5">
+                    Description
+                  </label>
+                  <div className="col-span-2">
+                    <textarea
+                      rows={5}
+                      value={customReportDesc}
+                      onChange={(e) => setCustomReportDesc(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
+                    />
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Live Filter Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-white border border-slate-200 rounded-lg text-xs shadow-2xs">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                <span className="text-slate-600 font-semibold">Period:</span>
-                <select
-                  value={reportDateRange}
-                  onChange={(e) => setReportDateRange(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="All">All Time</option>
-                  <option value="Today">Today</option>
-                  <option value="ThisWeek">This Week</option>
-                  <option value="ThisMonth">This Month</option>
-                  <option value="ThisQuarter">This Quarter</option>
-                  <option value="ThisYear">This Year (2026)</option>
-                </select>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <Filter className="w-3.5 h-3.5 text-slate-500" />
-                <span className="text-slate-600 font-semibold">Status:</span>
-                <select
-                  value={reportStatusFilter}
-                  onChange={(e) => setReportStatusFilter(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="All">All Statuses</option>
-                  <option value="Active">Active</option>
-                  <option value="Won">Won / Converted</option>
-                  <option value="Lost">Lost</option>
-                  <option value="Completed">Completed</option>
-                  <option value="Paid">Paid</option>
-                </select>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="text-slate-600 font-semibold">Show:</span>
-                <select
-                  value={reportRowsPerPage}
-                  onChange={(e) => setReportRowsPerPage(Number(e.target.value))}
-                  className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs text-slate-800"
-                >
-                  <option value={10}>10 Rows</option>
-                  <option value={25}>25 Rows</option>
-                  <option value={50}>50 Rows</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="relative w-full sm:w-64">
-              <input
-                type="text"
-                placeholder="Search within report..."
-                value={reportSearchQuery}
-                onChange={(e) => setReportSearchQuery(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-md pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white"
-              />
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            </div>
-          </div>
-
-          {/* Interactive Live Data Table */}
-          <div className="bg-white border border-slate-200 rounded-lg shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-bold text-[11px]">
-                  <tr>
-                    {liveReportData.columns.filter(c => !c.startsWith('_')).map((col) => (
-                      <th key={col} className="py-2.5 px-4 whitespace-nowrap">
-                        <div className="flex items-center gap-1">
-                          <span>{col}</span>
-                        </div>
-                      </th>
+              {/* Right Side: Dual Listbox (Report Fields vs Selected Fields) */}
+              <div className="lg:col-span-7 flex flex-col sm:flex-row items-center gap-3">
+                {/* Available Report Fields Listbox */}
+                <div className="flex-1 w-full space-y-1">
+                  <label className="font-semibold text-slate-700 block">Report Fields</label>
+                  <div className="border border-slate-300 rounded bg-white h-48 overflow-y-auto p-1 text-[11.5px]">
+                    {availableFields.map((field) => (
+                      <div
+                        key={field}
+                        onClick={() => setActiveAvailableItem(field)}
+                        onDoubleClick={() => {
+                          setSelectedFieldsList((prev) => [...prev, field]);
+                          setAvailableFields((prev) => prev.filter((f) => f !== field));
+                          setActiveAvailableItem(null);
+                        }}
+                        className={`px-2 py-1 rounded cursor-pointer transition-colors ${
+                          activeAvailableItem === field
+                            ? 'bg-blue-600 text-white font-medium'
+                            : 'hover:bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {field}
+                      </div>
                     ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {filteredLiveRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={liveReportData.columns.length} className="py-12 text-center text-slate-500">
-                        <FileText className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                        <p className="font-bold text-slate-700">No records found matching filters</p>
-                        <p className="text-xs text-slate-400 mt-0.5">Try resetting search or filters to see all data.</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredLiveRows
-                      .slice((reportCurrentPage - 1) * reportRowsPerPage, reportCurrentPage * reportRowsPerPage)
-                      .map((row, rIdx) => (
-                        <tr key={rIdx} className="hover:bg-blue-50/30 transition-colors">
-                          {liveReportData.columns.filter(c => !c.startsWith('_')).map((col) => {
-                            const val = row[col];
-                            const isStatus = col.toLowerCase().includes('status') || col.toLowerCase().includes('stage');
-                            const isAmount = col.toLowerCase().includes('$') || col.toLowerCase().includes('value') || col.toLowerCase().includes('rate');
+                  </div>
+                </div>
 
-                            if (isStatus) {
-                              const str = String(val).toLowerCase();
-                              const isPositive = str.includes('won') || str.includes('paid') || str.includes('active') || str.includes('completed') || str.includes('optimal');
-                              const isNegative = str.includes('lost') || str.includes('overdue') || str.includes('low stock') || str.includes('failed');
-                              return (
-                                <td key={col} className="py-2.5 px-4 whitespace-nowrap">
-                                  <span
-                                    className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold ${
-                                      isPositive
-                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                        : isNegative
-                                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                        : 'bg-blue-50 text-blue-700 border border-blue-200'
-                                    }`}
-                                  >
-                                    {val}
-                                  </span>
-                                </td>
-                              );
-                            }
+                {/* 4 Navigation Buttons Stack */}
+                <div className="flex sm:flex-col gap-1.5 py-2">
+                  <button
+                    type="button"
+                    onClick={handleMoveFieldRight}
+                    title="Move to Selected"
+                    className="w-7 h-7 bg-white hover:bg-slate-100 border border-slate-300 rounded flex items-center justify-center text-slate-700 cursor-pointer shadow-2xs"
+                  >
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleMoveFieldLeft}
+                    title="Remove from Selected"
+                    className="w-7 h-7 bg-white hover:bg-slate-100 border border-slate-300 rounded flex items-center justify-center text-slate-700 cursor-pointer shadow-2xs"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleMoveFieldUp}
+                    title="Move Up"
+                    className="w-7 h-7 bg-white hover:bg-slate-100 border border-slate-300 rounded flex items-center justify-center text-slate-700 cursor-pointer shadow-2xs"
+                  >
+                    <ArrowUp className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleMoveFieldDown}
+                    title="Move Down"
+                    className="w-7 h-7 bg-white hover:bg-slate-100 border border-slate-300 rounded flex items-center justify-center text-slate-700 cursor-pointer shadow-2xs"
+                  >
+                    <ArrowDown className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Selected Fields Listbox */}
+                <div className="flex-1 w-full space-y-1">
+                  <label className="font-semibold text-slate-700 block">Selected Fields</label>
+                  <div className="border border-slate-300 rounded bg-white h-48 overflow-y-auto p-1 text-[11.5px]">
+                    {selectedFieldsList.map((field) => (
+                      <div
+                        key={field}
+                        onClick={() => setActiveSelectedItem(field)}
+                        onDoubleClick={() => {
+                          setAvailableFields((prev) => [...prev, field]);
+                          setSelectedFieldsList((prev) => prev.filter((f) => f !== field));
+                          setActiveSelectedItem(null);
+                        }}
+                        className={`px-2 py-1 rounded cursor-pointer transition-colors ${
+                          activeSelectedItem === field
+                            ? 'bg-blue-600 text-white font-medium'
+                            : 'hover:bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {field}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Section: Search Options */}
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <h3 className="text-xs font-bold text-slate-900">Search Options</h3>
+              <button
+                type="button"
+                onClick={handleCheckAllSearchOptions}
+                className="text-xs text-blue-600 hover:underline font-semibold cursor-pointer block"
+              >
+                Check All
+              </button>
+
+              {/* 4-column Bordered Grid matching Screenshot */}
+              <div className="border border-slate-200 rounded overflow-hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 bg-white">
+                {SEARCH_OPTIONS_COLUMNS.map((colItems, colIdx) => (
+                  <div key={colIdx} className="p-3.5 space-y-2.5">
+                    {colItems.map((opt) => {
+                      const isChecked = checkedSearchOptions.includes(opt);
+                      return (
+                        <label
+                          key={opt}
+                          className="flex items-center gap-2 cursor-pointer hover:text-blue-600 text-xs text-slate-700 select-none"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handleToggleSearchOption(opt)}
+                            className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 focus:ring-blue-500"
+                          />
+                          <span>{opt}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom Action Buttons */}
+            <div className="flex items-center justify-end gap-2 pt-4">
+              <button
+                type="submit"
+                className="px-4 py-1.5 rounded bg-[#22c55e] hover:bg-[#16a34a] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Update &amp; Run</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomizingReport(null)}
+                className="px-4 py-1.5 rounded border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-slate-500" />
+                <span>Cancel</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : runningReport ? (
+        <div className="bg-white border border-slate-200 rounded-md shadow-xs overflow-hidden animate-in fade-in duration-150">
+          {/* Top Header Bar matching Screenshot */}
+          <div className="bg-slate-100/90 border-b border-slate-200 px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-slate-600" />
+              <h2 className="text-xs sm:text-sm font-semibold text-slate-800">
+                {runningReport.title} Report
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRunningReport(null)}
+              className="w-5 h-5 bg-[#d9534f] hover:bg-red-600 text-white rounded text-xs flex items-center justify-center cursor-pointer transition-colors"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Main Workspace Body */}
+          <div className="p-4 flex flex-col lg:flex-row gap-4 items-start">
+            {/* Filter Sidebar (State 1 - Open) */}
+            {isFilterSidebarOpen && (
+              <div className="w-full lg:w-72 bg-[#fbfbfb] border border-slate-200 rounded p-3.5 space-y-4 shrink-0 transition-all">
+                <div className="flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterSidebarOpen(false)}
+                    className="w-4 h-4 bg-[#d9534f] hover:bg-red-600 text-white rounded-xs text-[10px] flex items-center justify-center cursor-pointer"
+                    title="Collapse Filters"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-1.5 text-xs">
+                  <label className="text-slate-700 font-medium block">
+                    Order Month &amp; Year
+                  </label>
+                  <select
+                    value={selectedOrderMonthYear}
+                    onChange={(e) => setSelectedOrderMonthYear(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="Select">Select</option>
+                    <option value="Jan 2026">Jan 2026</option>
+                    <option value="Feb 2026">Feb 2026</option>
+                    <option value="Mar 2026">Mar 2026</option>
+                    <option value="Apr 2026">Apr 2026</option>
+                    <option value="May 2026">May 2026</option>
+                    <option value="Jun 2026">Jun 2026</option>
+                    <option value="Jul 2026">Jul 2026</option>
+                    <option value="Aug 2026">Aug 2026</option>
+                    <option value="Sep 2026">Sep 2026</option>
+                    <option value="Oct 2026">Oct 2026</option>
+                    <option value="Nov 2026">Nov 2026</option>
+                    <option value="Dec 2026">Dec 2026</option>
+                    <option value="2027">All 2027</option>
+                    <option value="2028">All 2028</option>
+                    <option value="2029">All 2029</option>
+                  </select>
+                </div>
+
+                {/* Sidebar Action Buttons matching Screenshot */}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  {runningReport.canCustomize && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenCustomize(runningReport)}
+                      className="px-3 py-1.5 rounded bg-[#f0ad4e] hover:bg-[#ec971f] text-white text-xs font-semibold flex items-center gap-1 cursor-pointer shadow-2xs transition-colors"
+                    >
+                      <Sliders className="w-3.5 h-3.5" />
+                      <span>Customize</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleRefreshData}
+                    className="px-3.5 py-1.5 rounded bg-[#002D4A] hover:bg-[#001E33] text-white text-xs font-semibold flex items-center gap-1 cursor-pointer shadow-2xs transition-colors"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    <span>Search</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Main Report Table Section */}
+            <div className="flex-1 w-full space-y-3 overflow-hidden">
+              {/* Header Bar with Toggle Hamburger, Title & Export Button */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  {!isFilterSidebarOpen && (
+                    <button
+                      type="button"
+                      onClick={() => setIsFilterSidebarOpen(true)}
+                      className="p-1.5 rounded bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 cursor-pointer shadow-2xs transition-colors"
+                      title="Open Search Filter"
+                    >
+                      <Menu className="w-4 h-4" />
+                    </button>
+                  )}
+                  <span className="text-xs font-medium text-slate-700">
+                    {runningReport.title}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleExportCSV}
+                  className="px-3.5 py-1.5 rounded bg-[#5cb85c] hover:bg-[#449d44] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Export</span>
+                </button>
+              </div>
+
+              {/* Thin border line underneath title bar */}
+              <div className="h-4 border-t border-b border-slate-200 bg-white"></div>
+
+              {/* Authentic Cezcon CRM Blue Header Table */}
+              <div className="border border-slate-200 rounded overflow-x-auto shadow-2xs bg-white">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-[#2196f3] text-white text-[11.5px] font-semibold border-b border-blue-400">
+                      {liveReportData.columns.filter((c) => !c.startsWith('_')).map((col) => (
+                        <th
+                          key={col}
+                          className={`py-3 px-3.5 whitespace-nowrap border-r border-blue-400/50 last:border-r-0 ${
+                            col === 'SL.No' ? 'text-center w-14' : ''
+                          }`}
+                        >
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 text-slate-700 text-[11.5px]">
+                    {filteredLiveRows.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={liveReportData.columns.length}
+                          className="py-12 text-center text-slate-500 bg-white"
+                        >
+                          No records found.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredLiveRows.map((row, rIdx) => (
+                        <tr
+                          key={rIdx}
+                          className="hover:bg-blue-50/20 transition-colors odd:bg-white even:bg-slate-50/40"
+                        >
+                          {liveReportData.columns.filter((c) => !c.startsWith('_')).map((col) => {
+                            const val = row[col];
+                            const isLink =
+                              col.toLowerCase().includes('title') ||
+                              col.toLowerCase().includes('number') ||
+                              col.toLowerCase().includes('id');
+                            const isAmount =
+                              col.toLowerCase().includes('amount') ||
+                              col.toLowerCase().includes('cost') ||
+                              col.toLowerCase().includes('profit') ||
+                              col.toLowerCase().includes('valuation') ||
+                              col.toLowerCase().includes('$');
+                            const isRating = col.toLowerCase().includes('rating');
 
                             return (
                               <td
                                 key={col}
-                                className={`py-2.5 px-4 text-slate-800 ${
-                                  col === 'SL.No' ? 'font-bold text-center w-12' : ''
-                                } ${isAmount ? 'font-semibold text-slate-900' : ''}`}
+                                className={`py-3 px-3.5 whitespace-nowrap border-r border-slate-200 last:border-r-0 ${
+                                  col === 'SL.No' ? 'text-center font-normal text-slate-800' : ''
+                                } ${isAmount ? 'text-right font-normal text-slate-800' : ''}`}
                               >
-                                {val !== undefined ? String(val) : '-'}
+                                {isLink ? (
+                                  <span className="text-blue-600 hover:underline cursor-pointer font-normal">
+                                    {val}
+                                  </span>
+                                ) : isRating ? (
+                                  <span
+                                    className={`font-semibold ${
+                                      val === 'HOT'
+                                        ? 'text-rose-600'
+                                        : val === 'WARM'
+                                        ? 'text-amber-600'
+                                        : 'text-slate-600'
+                                    }`}
+                                  >
+                                    {val}
+                                  </span>
+                                ) : (
+                                  <span>{val !== undefined ? String(val) : '-'}</span>
+                                )}
                               </td>
                             );
                           })}
                         </tr>
                       ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Table Footer / Pagination */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 bg-white border-t border-slate-200 text-xs text-slate-600">
-              <div>
-                Showing {filteredLiveRows.length === 0 ? 0 : (reportCurrentPage - 1) * reportRowsPerPage + 1} to{' '}
-                {Math.min(reportCurrentPage * reportRowsPerPage, filteredLiveRows.length)} of {filteredLiveRows.length} entries
-              </div>
-
-              <div className="flex items-center gap-1 self-center sm:self-auto">
-                <button
-                  type="button"
-                  disabled={reportCurrentPage <= 1}
-                  onClick={() => setReportCurrentPage((p) => Math.max(1, p - 1))}
-                  className="px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 text-slate-700 cursor-pointer disabled:cursor-not-allowed"
-                >
-                  « Prev
-                </button>
-
-                {Array.from({ length: Math.ceil(filteredLiveRows.length / reportRowsPerPage) || 1 }).map((_, i) => (
-                  <button
-                    key={i + 1}
-                    type="button"
-                    onClick={() => setReportCurrentPage(i + 1)}
-                    className={`w-7 h-7 rounded text-xs font-semibold cursor-pointer transition-colors ${
-                      reportCurrentPage === i + 1
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    {i + 1}
-                  </button>
-                ))}
-
-                <button
-                  type="button"
-                  disabled={reportCurrentPage >= Math.ceil(filteredLiveRows.length / reportRowsPerPage)}
-                  onClick={() => setReportCurrentPage((p) => p + 1)}
-                  className="px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 text-slate-700 cursor-pointer disabled:cursor-not-allowed"
-                >
-                  Next »
-                </button>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -1057,33 +1423,33 @@ export default function ReportsPage() {
                         </td>
 
                         {/* Action Buttons matching Image: [Customize] [Edit] [Run] */}
-                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
                             {report.canCustomize && (
                               <button
                                 type="button"
                                 onClick={() => handleOpenCustomize(report)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#F59E0B] hover:bg-[#D97706] text-white text-[11px] font-semibold shadow-xs transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#f0ad4e] hover:bg-[#ec971f] text-white text-[11px] font-medium shadow-2xs transition-colors cursor-pointer"
                               >
                                 <Sliders className="w-3 h-3" />
-                                Customize
+                                <span>Customize</span>
                               </button>
                             )}
                             <button
                               type="button"
                               onClick={() => handleOpenEdit(report)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-[11px] font-semibold shadow-xs transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#5bc0de] hover:bg-[#31b0d5] text-white text-[11px] font-medium shadow-2xs transition-colors cursor-pointer"
                             >
                               <Edit2 className="w-3 h-3" />
-                              Edit
+                              <span>Edit</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => handleRunReport(report)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-semibold shadow-xs transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#5cb85c] hover:bg-[#449d44] text-white text-[11px] font-medium shadow-2xs transition-colors cursor-pointer"
                             >
-                              <Activity className="w-3 h-3" />
-                              Run
+                              <RefreshCw className="w-3 h-3" />
+                              <span>Run</span>
                             </button>
                           </div>
                         </td>
@@ -1255,167 +1621,96 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* ── CUSTOMIZE REPORT MODAL ─────────────────────────────────────────── */}
-      {customizingReport && (
-        <Modal
-          isOpen={!!customizingReport}
-          onClose={() => setCustomizingReport(null)}
-          title={`Customize Report: ${customizingReport.title}`}
-          description="Select columns, grouping dimensions, and calculation options"
-          icon={<Sliders className="w-5 h-5 text-amber-600" />}
-          maxWidth="2xl"
-        >
-          <form onSubmit={handleApplyCustomize} className="space-y-4 text-xs text-slate-800">
-            {/* Columns Toggle */}
-            <div className="space-y-2">
-              <label className="font-bold text-slate-900 block">
-                Select Display Columns ({selectedColumns.length} Selected)
-              </label>
-              <div className="grid grid-cols-2 gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg max-h-48 overflow-y-auto">
-                {customizingReport.defaultColumns.map((col) => {
-                  const isChecked = selectedColumns.includes(col);
-                  return (
-                    <label key={col} className="flex items-center gap-2 cursor-pointer hover:text-blue-600">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedColumns([...selectedColumns, col]);
-                          } else {
-                            setSelectedColumns(selectedColumns.filter((c) => c !== col));
-                          }
-                        }}
-                        className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300"
-                      />
-                      <span>{col}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Group By & Order */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="font-bold text-slate-900 block mb-1">Group By</label>
-                <select
-                  value={groupByDimension}
-                  onChange={(e) => setGroupByDimension(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                >
-                  <option value="None">None (Flat Table)</option>
-                  <option value="Customer">By Customer</option>
-                  <option value="Salesman">By Salesman / Rep</option>
-                  <option value="Month">By Month</option>
-                  <option value="Category">By Category</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-900 block mb-1">Default Sorting</label>
-                <select
-                  value={customSortBy}
-                  onChange={(e) => setCustomSortBy(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                >
-                  <option value="Default">Default (ID Ascending)</option>
-                  <option value="ValueDesc">Value (Highest to Lowest)</option>
-                  <option value="DateDesc">Date (Newest First)</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Footer Buttons */}
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => setCustomizingReport(null)}
-                className="px-4 py-1.5 rounded border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>Apply &amp; Run Report</span>
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* ── EDIT REPORT MODAL ──────────────────────────────────────────────── */}
+      {/* ── CEZCON CRM CHANGE REPORT DETAILS MODAL ────────────────────────── */}
       {editingReport && (
-        <Modal
-          isOpen={!!editingReport}
-          onClose={() => setEditingReport(null)}
-          title={`Edit Report: ${editingReport.title}`}
-          description="Update report metadata, category, and standard descriptions"
-          icon={<Edit2 className="w-5 h-5 text-blue-600" />}
-          maxWidth="lg"
-        >
-          <form onSubmit={handleSaveEdit} className="space-y-4 text-xs text-slate-800">
-            <div>
-              <label className="font-bold text-slate-900 block mb-1">
-                Report Title <span className="text-rose-600">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-blue-500 font-semibold"
-              />
-            </div>
-
-            <div>
-              <label className="font-bold text-slate-900 block mb-1">Category</label>
-              <select
-                value={editCategory}
-                onChange={(e) => setEditCategory(e.target.value as any)}
-                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-blue-500"
-              >
-                <option value="Sales">Sales</option>
-                <option value="Customer">Customer</option>
-                <option value="Purchase">Purchase</option>
-                <option value="Operations">Operations</option>
-                <option value="Finance">Finance</option>
-                <option value="Marketing">Marketing</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="font-bold text-slate-900 block mb-1">Description</label>
-              <textarea
-                rows={3}
-                value={editDesc}
-                onChange={(e) => setEditDesc(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            {/* Footer Buttons */}
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="relative w-full max-w-xl bg-white rounded-md shadow-2xl border border-slate-200 overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h2 className="text-base font-semibold text-slate-800 tracking-tight">
+                Change Report Details
+              </h2>
               <button
                 type="button"
                 onClick={() => setEditingReport(null)}
-                className="px-4 py-1.5 rounded border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer text-lg leading-none p-1"
+                aria-label="Close"
               >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>Save Changes</span>
+                ✕
               </button>
             </div>
-          </form>
-        </Modal>
+
+            {/* Modal Body */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!editingReport) return;
+                const updatedReport: ReportDefinition = {
+                  ...editingReport,
+                  title: editTitle.trim(),
+                  description: editDesc.trim(),
+                };
+                setStandardReports((prev) =>
+                  prev.map((r) => (r.id === editingReport.id ? updatedReport : r))
+                );
+                setEditingReport(null);
+                handleRunReport(updatedReport);
+                showToast(`Report "${editTitle.trim()}" updated and generated`);
+              }}
+              className="p-6 space-y-5 text-xs text-slate-700"
+            >
+              {/* Report Name Field (Side by Side / Clean Grid) */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 sm:gap-4 sm:items-center">
+                <label className="sm:col-span-1 font-medium text-slate-700">
+                  Report Name <span className="text-red-500 font-bold">*</span>
+                </label>
+                <div className="sm:col-span-3">
+                  <input
+                    type="text"
+                    required
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Description Field */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 sm:gap-4 sm:items-start">
+                <label className="sm:col-span-1 font-medium text-slate-700 pt-1.5">
+                  Description
+                </label>
+                <div className="sm:col-span-3">
+                  <textarea
+                    rows={4}
+                    value={editDesc}
+                    onChange={(e) => setEditDesc(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all resize-y"
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-4">
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded bg-[#22c55e] hover:bg-[#16a34a] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Update &amp; Run</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingReport(null)}
+                  className="px-4 py-1.5 rounded border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                >
+                  <AlertCircle className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Cancel</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

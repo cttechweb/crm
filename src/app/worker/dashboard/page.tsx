@@ -13,34 +13,43 @@ import {
   Play,
   Check,
   FileText,
-  Image as ImageIcon,
-  Package,
   Building2,
   MapPin,
   Truck,
   Plus,
   ArrowRight,
   TrendingUp,
-  Wrench,
   Users,
-  ShieldCheck,
-  Eye,
+  Target,
+  Briefcase,
+  AlertCircle,
 } from 'lucide-react';
-import { authMockService } from '@/services/authMockService';
+import { authMockService, MockAuthUser } from '@/services/authMockService';
+import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
+import { CrmTask, CrmLead, CrmCustomer } from '@/types/enterprise-crm';
 
 export default function EmployeeDashboardPage() {
+  const {
+    tasks: allTasks,
+    leads: allLeads,
+    customers: allCustomers,
+    salesOpportunities: allDeals,
+    updateTask,
+  } = useEnterpriseCrm();
+
   const [mounted, setMounted] = useState(false);
-  const [userName, setUserName] = useState('Shaheer');
-  const [currentTimeStr, setCurrentTimeStr] = useState('08:32 AM');
-  const [currentDateStr, setCurrentDateStr] = useState('Wednesday, 24 Sep 2026');
+  const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
+  const [userName, setUserName] = useState('Employee');
+  const [currentTimeStr, setCurrentTimeStr] = useState('08:00 AM');
+  const [currentDateStr, setCurrentDateStr] = useState('');
   const [greeting, setGreeting] = useState('Good Morning');
-  const [currentTaskCompleted, setCurrentTaskCompleted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     const user = authMockService.getCurrentUser();
-    if (user?.name) {
-      setUserName(user.name);
+    if (user) {
+      setCurrentUser(user);
+      if (user.name) setUserName(user.name);
     }
 
     const updateClock = () => {
@@ -73,39 +82,84 @@ export default function EmployeeDashboardPage() {
 
   if (!mounted) {
     return (
-      <div className="w-full min-h-[600px] flex items-center justify-center text-slate-400 text-xs">
-        Loading Employee Dashboard...
+      <div className="w-full min-h-[400px] flex items-center justify-center text-slate-400 text-xs">
+        Loading Live Dashboard...
       </div>
     );
   }
 
-  const initialLetter = userName.charAt(0).toUpperCase() || 'S';
+  // Filter tasks assigned to current user
+  const userTasks = (allTasks || []).filter(
+    (t: CrmTask) =>
+      !currentUser?.name ||
+      t.assignee?.name?.toLowerCase() === currentUser.name.toLowerCase()
+  );
+
+  const completedTasks = userTasks.filter(
+    (t) => t.status === 'Completed' || t.status === 'Done'
+  );
+  const inProgressTasks = userTasks.filter(
+    (t) => t.status === 'In Progress' || t.status === 'Accepted'
+  );
+  const pendingTasks = userTasks.filter(
+    (t) => t.status === 'Pending' || t.status === 'Assigned' || !t.status
+  );
+
+  const totalCount = userTasks.length;
+  const completedCount = completedTasks.length;
+  const inProgressCount = inProgressTasks.length;
+  const pendingCount = pendingTasks.length;
+
+  const completionRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 100;
+
+  // Active task: first in progress task, or first pending task
+  const activeTask = inProgressTasks[0] || pendingTasks[0] || userTasks[0] || null;
+
+  // Filter assigned leads & customers
+  const userLeads = (allLeads || []).filter(
+    (l: CrmLead) =>
+      !currentUser?.name ||
+      l.leadAssigned?.name?.toLowerCase() === currentUser.name.toLowerCase() ||
+      l.owner?.toLowerCase() === currentUser.name.toLowerCase() ||
+      l.assignedEmployee?.toLowerCase() === currentUser.name.toLowerCase()
+  );
+
+  const userCustomers = (allCustomers || []).slice(0, 4);
+
+  const handleStartTask = (taskId: string) => {
+    updateTask(taskId, { status: 'In Progress', progress: 30 });
+  };
+
+  const handleCompleteTask = (taskId: string) => {
+    updateTask(taskId, { status: 'Completed', progress: 100 });
+  };
+
+  const initialLetter = userName.charAt(0).toUpperCase() || 'E';
 
   return (
     <div className="w-full space-y-4 sm:space-y-5 animate-in fade-in duration-200 pb-12 overflow-x-hidden">
       {/* ── 1. TOP GREETING BANNER ── */}
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         {/* Left: User Avatar & Greeting */}
         <div className="flex items-center gap-3.5 sm:gap-4">
-          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-[#E8F1FD] text-[#1677FF] font-black text-xl sm:text-2xl flex items-center justify-center flex-shrink-0 shadow-2xs">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-[#002B49] to-[#0284C7] text-white font-bold text-xl sm:text-2xl flex items-center justify-center shrink-0 shadow-2xs">
             {initialLetter}
           </div>
           <div>
-            <h1 className="text-base sm:text-xl font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
+            <h1 className="text-base sm:text-xl font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
               <span>{greeting}, {userName}!</span>
               <span className="text-amber-500">☀️</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
-              You have <span className="font-bold text-slate-700">4 tasks</span> scheduled today. Keep going — you&apos;re doing great!
+              You have <span className="font-bold text-slate-800">{pendingCount + inProgressCount} active tasks</span> scheduled. Keep going — you&apos;re doing great!
             </p>
           </div>
         </div>
 
-        {/* Right: Date/Time & Weather Badges */}
+        {/* Right: Live Date/Time & Status Badges */}
         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
-          {/* Date & Time Box */}
-          <div className="flex-1 sm:flex-initial flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2">
-            <div className="text-[#1677FF]">
+          <div className="flex-1 sm:flex-initial flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2">
+            <div className="text-blue-600">
               <CalendarIcon className="w-4 h-4" />
             </div>
             <div className="leading-tight text-left">
@@ -114,8 +168,7 @@ export default function EmployeeDashboardPage() {
             </div>
           </div>
 
-          {/* Weather Box */}
-          <div className="flex-1 sm:flex-initial flex items-center gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3.5 py-2">
+          <div className="flex-1 sm:flex-initial flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2">
             <div className="text-amber-500">
               <Sun className="w-4 h-4 fill-amber-400" />
             </div>
@@ -127,48 +180,46 @@ export default function EmployeeDashboardPage() {
         </div>
       </div>
 
-      {/* ── 2. TOP 4 KPI METRIC CARDS ── */}
+      {/* ── 2. TOP 4 LIVE KPI METRIC CARDS ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-        {/* Metric 1: Today's Tasks */}
+        {/* Metric 1: My Tasks */}
         <Link
           href="/worker/tasks"
-          className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-2xs hover:shadow-xs hover:border-blue-200 transition-all flex items-start gap-3.5 group"
+          className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs hover:shadow-xs hover:border-blue-300 transition-all flex items-start gap-3.5 group"
         >
-          <div className="w-11 h-11 rounded-xl bg-[#E8F1FD] text-[#1677FF] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+          <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
             <ClipboardList className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600">Today&apos;s Tasks</span>
+              <span className="text-xs font-semibold text-slate-600">Total Tasks</span>
               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
             </div>
-            <div className="text-2xl font-black text-slate-900 mt-1">4</div>
+            <div className="text-2xl font-bold text-slate-900 mt-1">{totalCount}</div>
             <p className="text-[11px] text-slate-400 font-medium mt-0.5 truncate">
-              2 pending • 1 in progress • 1 completed
+              {pendingCount} pending • {inProgressCount} active
             </p>
           </div>
         </Link>
 
         {/* Metric 2: Completed */}
-        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-2xs flex items-start gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-[#ECFDF5] text-[#059669] flex items-center justify-center flex-shrink-0">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-start gap-3.5">
+          <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
             <CheckCircle2 className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600">Completed</span>
-              <span className="text-[11px] font-bold text-[#059669] flex items-center gap-0.5 bg-[#ECFDF5] px-1.5 py-0.5 rounded">
-                ↑ +100%
+              <span className="text-xs font-semibold text-slate-600">Completed</span>
+              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                {totalCount > 0 ? `${Math.round((completedCount / totalCount) * 100)}%` : '100%'}
               </span>
             </div>
-            <div className="text-2xl font-black text-slate-900 mt-1">
-              {currentTaskCompleted ? '2' : '1'}
-            </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-0.5">of 4 today</p>
+            <div className="text-2xl font-bold text-slate-900 mt-1">{completedCount}</div>
+            <p className="text-[11px] text-slate-400 font-medium mt-0.5">of {totalCount} total</p>
             <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
               <div
-                className="bg-[#059669] h-1.5 rounded-full transition-all duration-500"
-                style={{ width: currentTaskCompleted ? '50%' : '25%' }}
+                className="bg-emerald-600 h-1.5 rounded-full transition-all duration-500"
+                style={{ width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 100}%` }}
               />
             </div>
           </div>
@@ -177,540 +228,418 @@ export default function EmployeeDashboardPage() {
         {/* Metric 3: Pending */}
         <Link
           href="/worker/tasks?status=Pending"
-          className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-2xs hover:shadow-xs hover:border-amber-200 transition-all flex items-start gap-3.5 group"
+          className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs hover:shadow-xs hover:border-amber-300 transition-all flex items-start gap-3.5 group"
         >
-          <div className="w-11 h-11 rounded-xl bg-[#FFFBEB] text-[#D97706] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+          <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
             <Clock className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600">Pending</span>
+              <span className="text-xs font-semibold text-slate-600">Pending</span>
               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
             </div>
-            <div className="text-2xl font-black text-slate-900 mt-1">2</div>
+            <div className="text-2xl font-bold text-slate-900 mt-1">{pendingCount}</div>
             <p className="text-[11px] text-slate-400 font-medium mt-0.5">tasks remaining</p>
             <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
-              <div className="bg-[#D97706] h-1.5 rounded-full w-1/2" />
+              <div
+                className="bg-amber-500 h-1.5 rounded-full"
+                style={{ width: `${totalCount > 0 ? (pendingCount / totalCount) * 100 : 0}%` }}
+              />
             </div>
           </div>
         </Link>
 
-        {/* Metric 4: My Performance */}
-        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-2xs flex items-start gap-3.5 group">
-          <div className="w-11 h-11 rounded-xl bg-[#F5F3FF] text-[#7C3AED] flex items-center justify-center flex-shrink-0">
+        {/* Metric 4: My Performance / Completion Rate */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-start gap-3.5 group">
+          <div className="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
             <BarChart2 className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600">My Performance</span>
+              <span className="text-xs font-semibold text-slate-600">Completion Rate</span>
               <ChevronRight className="w-4 h-4 text-slate-400" />
             </div>
-            <div className="text-2xl font-black text-slate-900 mt-1">
-              {currentTaskCompleted ? '88%' : '75%'}
-            </div>
+            <div className="text-2xl font-bold text-slate-900 mt-1">{completionRate}%</div>
             <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-              {currentTaskCompleted ? '4 of 4 tasks completed' : '3 of 4 tasks completed'}
+              {completedCount} of {totalCount} completed
             </p>
             <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
               <div
-                className="bg-gradient-to-r from-[#1677FF] to-[#7C3AED] h-1.5 rounded-full transition-all duration-500"
-                style={{ width: currentTaskCompleted ? '88%' : '75%' }}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 h-1.5 rounded-full transition-all duration-500"
+                style={{ width: `${completionRate}%` }}
               />
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── 3. MIDDLE SECTION: TODAY'S TASKS TABLE + CURRENT TASK CARD ── */}
+      {/* ── 3. MIDDLE SECTION: LIVE TODAY'S TASKS TABLE + CURRENT ACTIVE TASK CARD ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
-        {/* Left Column (8 cols): Today's Tasks Table */}
-        <div className="lg:col-span-8 bg-white border border-[#E2E8F0] rounded-2xl shadow-xs overflow-hidden flex flex-col justify-between">
+        {/* Left Column (8 cols): Live Assigned Tasks Table */}
+        <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden flex flex-col justify-between">
           <div className="p-4 sm:p-5">
             {/* Header */}
-            <div className="flex items-center justify-between pb-3.5 border-b border-[#F1F5F9]">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-[#E8F1FD] text-[#1677FF] flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
                   <CalendarIcon className="w-4 h-4" />
                 </div>
                 <div>
-                  <h2 className="text-sm sm:text-base font-bold text-slate-900">Today&apos;s Tasks</h2>
-                  <p className="text-xs text-slate-400">Your assigned tasks for today</p>
+                  <h2 className="text-sm sm:text-base font-bold text-slate-900">Assigned Tasks</h2>
+                  <p className="text-xs text-slate-400">Live task queue from your operations schedule</p>
                 </div>
               </div>
               <Link
                 href="/worker/tasks"
-                className="text-xs font-bold text-[#1677FF] hover:text-blue-700 transition-colors"
+                className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors"
               >
-                View All
+                View All ({userTasks.length})
               </Link>
             </div>
 
-            {/* Responsive Table Container */}
-            <div className="overflow-x-auto mt-2 -mx-4 sm:mx-0">
-              <table className="w-full text-left border-collapse min-w-[620px] sm:min-w-full">
-                <thead>
-                  <tr className="border-b border-[#F1F5F9] text-[11px] font-semibold text-slate-400">
-                    <th className="py-3 px-3 sm:px-4">Time</th>
-                    <th className="py-3 px-3 sm:px-4">Task</th>
-                    <th className="py-3 px-3 sm:px-4">Customer</th>
-                    <th className="py-3 px-3 sm:px-4">Status</th>
-                    <th className="py-3 px-3 sm:px-4 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#F8FAFC] text-xs">
-                  {/* Task 1 */}
-                  <tr className="hover:bg-[#F8FAFC] transition-colors">
-                    <td className="py-3.5 px-3 sm:px-4 text-slate-500 whitespace-nowrap font-medium text-[11px]">
-                      09:00 AM – 11:00 AM
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4 font-bold text-slate-900">
-                      Emergency Chiller Compressor Fix
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4 text-slate-600">
-                      Emaar Hospitality Group
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#EBF3FE] text-[#1677FF]">
-                        {currentTaskCompleted ? 'Completed' : 'In Progress'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4 text-right">
-                      <Link
-                        href="/worker/tasks/active"
-                        className="inline-flex items-center justify-center px-4 py-1.5 rounded-lg bg-[#1677FF] hover:bg-blue-600 text-white font-bold text-xs shadow-2xs transition-colors"
-                      >
-                        Continue
-                      </Link>
-                    </td>
-                  </tr>
+            {/* Table Container */}
+            {userTasks.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-400 space-y-2">
+                <ClipboardList className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="font-semibold text-slate-600">No tasks currently assigned to you.</p>
+                <p className="text-slate-400">New assignments from your manager will appear here in real time.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto mt-2 -mx-4 sm:mx-0">
+                <table className="w-full text-left border-collapse min-w-[580px] sm:min-w-full">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-[11px] font-semibold text-slate-400">
+                      <th className="py-2.5 px-3 sm:px-4">Time / Due</th>
+                      <th className="py-2.5 px-3 sm:px-4">Task Details</th>
+                      <th className="py-2.5 px-3 sm:px-4">Customer / Site</th>
+                      <th className="py-2.5 px-3 sm:px-4">Status</th>
+                      <th className="py-2.5 px-3 sm:px-4 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 text-xs">
+                    {userTasks.slice(0, 5).map((task) => {
+                      const isDone = task.status === 'Completed' || task.status === 'Done';
+                      const isInProg = task.status === 'In Progress' || task.status === 'Accepted';
 
-                  {/* Task 2 */}
-                  <tr className="hover:bg-[#F8FAFC] transition-colors">
-                    <td className="py-3.5 px-3 sm:px-4 text-slate-500 whitespace-nowrap font-medium text-[11px]">
-                      01:00 PM – 03:00 PM
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4 font-bold text-slate-900">
-                      AC Unit Preventive Maintenance
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4 text-slate-600">
-                      Al Naboodah MEP
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#FEF3C7] text-[#D97706]">
-                        Pending
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4 text-right">
-                      <Link
-                        href="/worker/tasks"
-                        className="inline-flex items-center justify-center px-4 py-1.5 rounded-lg border border-[#93C5FD] hover:bg-[#EFF6FF] text-[#1677FF] font-bold text-xs transition-colors"
-                      >
-                        Start
-                      </Link>
-                    </td>
-                  </tr>
-
-                  {/* Task 3 */}
-                  <tr className="hover:bg-[#F8FAFC] transition-colors">
-                    <td className="py-3.5 px-3 sm:px-4 text-slate-500 whitespace-nowrap font-medium text-[11px]">
-                      03:30 PM – 05:00 PM
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4 font-bold text-slate-900">
-                      Split AC Gas Refill
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4 text-slate-600">
-                      Luxury Castle Contracting
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#FEF3C7] text-[#D97706]">
-                        Pending
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4 text-right">
-                      <Link
-                        href="/worker/tasks"
-                        className="inline-flex items-center justify-center px-4 py-1.5 rounded-lg border border-[#93C5FD] hover:bg-[#EFF6FF] text-[#1677FF] font-bold text-xs transition-colors"
-                      >
-                        Start
-                      </Link>
-                    </td>
-                  </tr>
-
-                  {/* Task 4 */}
-                  <tr className="hover:bg-[#F8FAFC] transition-colors">
-                    <td className="py-3.5 px-3 sm:px-4 text-slate-500 whitespace-nowrap font-medium text-[11px]">
-                      05:30 PM – 06:30 PM
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4 font-bold text-slate-900">
-                      Site Inspection
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4 text-slate-600">
-                      Golden Saif Construction
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#D1FAE5] text-[#059669]">
-                        Completed
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3 sm:px-4 text-right">
-                      <Link
-                        href="/worker/reports"
-                        className="inline-flex items-center justify-center px-4 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition-colors"
-                      >
-                        View
-                      </Link>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                      return (
+                        <tr key={task.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3 px-3 sm:px-4 text-slate-600 whitespace-nowrap font-mono text-[11px]">
+                            {task.dueDate || 'Today'} {task.dueTime ? `• ${task.dueTime}` : ''}
+                          </td>
+                          <td className="py-3 px-3 sm:px-4">
+                            <span className="font-bold text-slate-900 block">{task.taskDetails || task.taskType || 'Task'}</span>
+                            {task.priority && (
+                              <span className="text-[10px] text-slate-400">Priority: {task.priority}</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 sm:px-4 text-slate-600">
+                            {task.customer || task.location || 'Cool Tech Customer'}
+                          </td>
+                          <td className="py-3 px-3 sm:px-4">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isDone
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : isInProg
+                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+                              }`}
+                            >
+                              {task.status || 'Pending'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 sm:px-4 text-right whitespace-nowrap">
+                            {isDone ? (
+                              <Link
+                                href={`/worker/tasks`}
+                                className="inline-flex items-center justify-center px-3 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-colors"
+                              >
+                                View
+                              </Link>
+                            ) : isInProg ? (
+                              <button
+                                type="button"
+                                onClick={() => handleCompleteTask(task.id)}
+                                className="inline-flex items-center justify-center gap-1 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-2xs transition-colors cursor-pointer"
+                              >
+                                <Check className="w-3 h-3" />
+                                <span>Complete</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleStartTask(task.id)}
+                                className="inline-flex items-center justify-center gap-1 px-3 py-1 rounded-lg bg-[#002B49] hover:bg-[#001E33] text-white font-bold text-xs shadow-2xs transition-colors cursor-pointer"
+                              >
+                                <Play className="w-3 h-3 fill-current" />
+                                <span>Start</span>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Right Column (4 cols): Current Task Card */}
-        <div className="lg:col-span-4 bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between space-y-4">
-          <div className="space-y-3.5">
-            {/* Card Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-[#E8F1FD] text-[#1677FF] flex items-center justify-center">
-                  <CalendarIcon className="w-3.5 h-3.5" />
-                </div>
-                <h3 className="text-sm font-bold text-slate-900">Current Task</h3>
-              </div>
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-[#ECFDF5] text-[#059669] border border-emerald-200">
-                {currentTaskCompleted ? 'COMPLETED' : 'IN PROGRESS'}
-              </span>
-            </div>
-
-            {/* Task Title & Details */}
-            <div className="space-y-2">
-              <h4 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
-                Emergency Chiller Compressor Fix
-              </h4>
-
-              <div className="space-y-1.5 text-xs text-slate-500 pt-1">
+        {/* Right Column (4 cols): Live Current / Active Task Card */}
+        <div className="lg:col-span-4 bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between space-y-4">
+          {activeTask ? (
+            <div className="space-y-3.5">
+              {/* Card Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                  <span className="font-medium text-slate-700">Emaar Hospitality Group</span>
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <CalendarIcon className="w-3.5 h-3.5" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-900">Current Task</h3>
                 </div>
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                  <span>Downtown, Dubai</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                  <span>09:00 AM – 12:00 PM (3h)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Truck className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                  <span>Van #07 (DXB 48291)</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Progress Bar */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-700">Progress</span>
-                <span className="font-black text-[#1677FF]">
-                  {currentTaskCompleted ? '100%' : '40%'}
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                    activeTask.status === 'Completed' || activeTask.status === 'Done'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : activeTask.status === 'In Progress'
+                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                      : 'bg-amber-50 text-amber-700 border border-amber-200'
+                  }`}
+                >
+                  {activeTask.status || 'ACTIVE'}
                 </span>
               </div>
-              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div
-                  className="bg-[#1677FF] h-2 rounded-full transition-all duration-500"
-                  style={{ width: currentTaskCompleted ? '100%' : '40%' }}
-                />
+
+              {/* Task Title & Details */}
+              <div className="space-y-2">
+                <h4 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
+                  {activeTask.taskDetails || activeTask.taskType || 'Field Operation Milestone'}
+                </h4>
+
+                <div className="space-y-1.5 text-xs text-slate-500 pt-1">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="font-medium text-slate-700">
+                      {activeTask.customer || activeTask.location || 'Cool Tech Operations'}
+                    </span>
+                  </div>
+                  {activeTask.location && (
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span>{activeTask.location}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span>Due: {activeTask.dueDate || 'Today'} {activeTask.dueTime ? `at ${activeTask.dueTime}` : ''}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-700">Progress</span>
+                  <span className="font-bold text-blue-600">
+                    {activeTask.status === 'Completed' ? '100%' : activeTask.status === 'In Progress' ? '50%' : '10%'}
+                  </span>
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+                    style={{
+                      width:
+                        activeTask.status === 'Completed'
+                          ? '100%'
+                          : activeTask.status === 'In Progress'
+                          ? '50%'
+                          : '10%',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Description Box */}
+              {activeTask.description && (
+                <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3 flex items-start gap-2.5">
+                  <FileText className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-slate-700 leading-relaxed font-medium">
+                    {activeTask.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="pt-2">
+                {activeTask.status === 'Completed' || activeTask.status === 'Done' ? (
+                  <div className="p-2.5 bg-emerald-50 text-emerald-800 rounded-xl text-center font-bold text-xs flex items-center justify-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Task Completed</span>
+                  </div>
+                ) : activeTask.status === 'In Progress' ? (
+                  <button
+                    type="button"
+                    onClick={() => handleCompleteTask(activeTask.id)}
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Mark as Completed</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleStartTask(activeTask.id)}
+                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-[#002B49] hover:bg-[#001E33] text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Start This Task</span>
+                  </button>
+                )}
               </div>
             </div>
-
-            {/* Compressor Alert Note Box */}
-            <div className="bg-[#F0F7FF] border border-[#BFDBFE] rounded-xl p-3 flex items-start gap-2.5">
-              <FileText className="w-4 h-4 text-[#1677FF] flex-shrink-0 mt-0.5" />
-              <p className="text-[11px] text-slate-700 leading-relaxed font-medium">
-                Compressor 3 showing delta pressure error code E-409. Check refrigerant leak and test suction valve.
-              </p>
+          ) : (
+            <div className="p-8 text-center text-xs text-slate-400 space-y-2">
+              <CheckCircle2 className="w-8 h-8 text-slate-300 mx-auto" />
+              <p className="font-semibold text-slate-600">All tasks completed!</p>
+              <p className="text-slate-400">Great work today.</p>
             </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
-            <Link
-              href="/worker/tasks/active"
-              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-[#1677FF] hover:bg-blue-600 text-white font-bold text-xs shadow-xs transition-colors"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Continue Task</span>
-            </Link>
-            <button
-              type="button"
-              onClick={() => setCurrentTaskCompleted(!currentTaskCompleted)}
-              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold text-xs transition-colors cursor-pointer"
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>{currentTaskCompleted ? 'Completed ✓' : 'Mark as Completed'}</span>
-            </button>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* ── 4. BOTTOM 3 WIDGET CARDS ROW ── */}
+      {/* ── 4. BOTTOM LIVE WIDGETS ROW ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
-        {/* Widget 1: Recent Activities */}
-        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between">
+        {/* Widget 1: Assigned Leads */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-3.5 border-b border-[#F1F5F9]">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-[#E8F1FD] text-[#1677FF] flex items-center justify-center">
-                  <Clock className="w-3.5 h-3.5" />
+                <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <Target className="w-3.5 h-3.5" />
                 </div>
-                <h3 className="text-sm font-bold text-slate-900">Recent Activities</h3>
+                <h3 className="text-sm font-bold text-slate-900">My Leads</h3>
               </div>
-              <Link href="/worker/activities" className="text-xs font-bold text-[#1677FF] hover:text-blue-700">
+              <Link href="/worker/leads" className="text-xs font-bold text-blue-600 hover:text-blue-700">
                 View All
               </Link>
             </div>
 
-            <div className="space-y-3.5 pt-3.5">
-              {/* Activity 1 */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-6 h-6 rounded-full bg-[#ECFDF5] text-[#059669] flex items-center justify-center flex-shrink-0">
-                    <Check className="w-3 h-3 stroke-[3]" />
-                  </div>
-                  <span className="text-xs text-slate-800 font-medium truncate">
-                    Checked in at site <span className="text-slate-400 font-normal">(TSK-8921)</span>
-                  </span>
+            <div className="space-y-3 pt-3.5">
+              {userLeads.length === 0 ? (
+                <div className="text-center py-6 text-xs text-slate-400">
+                  No active leads assigned.
                 </div>
-                <span className="text-[11px] text-slate-400 whitespace-nowrap">08:05 AM</span>
-              </div>
-
-              {/* Activity 2 */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-6 h-6 rounded-full bg-[#EFF6FF] text-[#1677FF] flex items-center justify-center flex-shrink-0">
-                    <FileText className="w-3 h-3" />
-                  </div>
-                  <span className="text-xs text-slate-800 font-medium truncate">
-                    Added service note <span className="text-slate-400 font-normal">(TSK-8920)</span>
-                  </span>
-                </div>
-                <span className="text-[11px] text-slate-400 whitespace-nowrap">10:20 AM</span>
-              </div>
-
-              {/* Activity 3 */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-6 h-6 rounded-full bg-[#F5F3FF] text-[#7C3AED] flex items-center justify-center flex-shrink-0">
-                    <ImageIcon className="w-3 h-3" />
-                  </div>
-                  <span className="text-xs text-slate-800 font-medium truncate">
-                    Uploaded images <span className="text-slate-400 font-normal">(TSK-8920)</span>
-                  </span>
-                </div>
-                <span className="text-[11px] text-slate-400 whitespace-nowrap">02:15 PM</span>
-              </div>
-
-              {/* Activity 4 */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-6 h-6 rounded-full bg-[#FFFBEB] text-[#D97706] flex items-center justify-center flex-shrink-0">
-                    <Package className="w-3 h-3" />
-                  </div>
-                  <span className="text-xs text-slate-800 font-medium truncate">
-                    Requested material <span className="text-slate-400 font-normal">(TSK-8918)</span>
-                  </span>
-                </div>
-                <span className="text-[11px] text-slate-400 whitespace-nowrap">03:40 PM</span>
-              </div>
-
-              {/* Activity 5 */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-6 h-6 rounded-full bg-[#ECFDF5] text-[#059669] flex items-center justify-center flex-shrink-0">
-                    <Check className="w-3 h-3 stroke-[3]" />
-                  </div>
-                  <span className="text-xs text-slate-800 font-medium truncate">
-                    Completed job <span className="text-slate-400 font-normal">(TSK-8891)</span>
-                  </span>
-                </div>
-                <span className="text-[11px] text-slate-400 whitespace-nowrap">Yesterday</span>
-              </div>
+              ) : (
+                userLeads.slice(0, 4).map((lead) => (
+                  <Link
+                    key={lead.id}
+                    href="/worker/leads"
+                    className="flex items-center justify-between group hover:bg-slate-50 p-1.5 -mx-1.5 rounded-xl transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+                        {lead.contactDetails?.name || lead.leadSpecification || 'Lead Record'}
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-medium truncate">
+                        {lead.contactDetails?.company || lead.source || 'Direct Lead'}
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                      {lead.status || 'New'}
+                    </span>
+                  </Link>
+                ))
+              )}
             </div>
           </div>
         </div>
 
-        {/* Widget 2: My Customers */}
-        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between">
+        {/* Widget 2: Assigned Customers */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-3.5 border-b border-[#F1F5F9]">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-[#E8F1FD] text-[#1677FF] flex items-center justify-center">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
                   <Users className="w-3.5 h-3.5" />
                 </div>
-                <h3 className="text-sm font-bold text-slate-900">My Customers</h3>
+                <h3 className="text-sm font-bold text-slate-900">Customers</h3>
               </div>
-              <Link href="/worker/customers" className="text-xs font-bold text-[#1677FF] hover:text-blue-700">
+              <Link href="/worker/customers" className="text-xs font-bold text-blue-600 hover:text-blue-700">
                 View All
               </Link>
             </div>
 
-            <div className="space-y-3.5 pt-3.5">
-              {/* Customer 1 */}
-              <Link
-                href="/worker/customers"
-                className="flex items-center justify-between group hover:bg-[#F8FAFC] p-1.5 -mx-1.5 rounded-xl transition-colors"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-[#FEF3C7] text-amber-700 flex items-center justify-center font-black text-xs flex-shrink-0">
-                    EH
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-slate-900 truncate group-hover:text-[#1677FF] transition-colors">
-                      Emaar Hospitality Group
-                    </div>
-                    <div className="text-[11px] text-slate-400 font-medium">4 Jobs</div>
-                  </div>
+            <div className="space-y-3 pt-3.5">
+              {userCustomers.length === 0 ? (
+                <div className="text-center py-6 text-xs text-slate-400">
+                  No customer records found.
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-              </Link>
-
-              {/* Customer 2 */}
-              <Link
-                href="/worker/customers"
-                className="flex items-center justify-between group hover:bg-[#F8FAFC] p-1.5 -mx-1.5 rounded-xl transition-colors"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-[#FEE2E2] text-rose-700 flex items-center justify-center font-black text-xs flex-shrink-0">
-                    AN
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-slate-900 truncate group-hover:text-[#1677FF] transition-colors">
-                      Al Naboodah MEP
+              ) : (
+                userCustomers.map((cust) => (
+                  <Link
+                    key={cust.id}
+                    href="/worker/customers"
+                    className="flex items-center justify-between group hover:bg-slate-50 p-1.5 -mx-1.5 rounded-xl transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+                        {cust.customerName}
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-medium truncate">
+                        {cust.companyName || cust.companyGroup || cust.category || 'Client Account'}
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-400 font-medium">3 Jobs</div>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-              </Link>
-
-              {/* Customer 3 */}
-              <Link
-                href="/worker/customers"
-                className="flex items-center justify-between group hover:bg-[#F8FAFC] p-1.5 -mx-1.5 rounded-xl transition-colors"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-[#DCFCE7] text-emerald-700 flex items-center justify-center font-black text-xs flex-shrink-0">
-                    LC
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-slate-900 truncate group-hover:text-[#1677FF] transition-colors">
-                      Luxury Castle Contracting
-                    </div>
-                    <div className="text-[11px] text-slate-400 font-medium">5 Jobs</div>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-              </Link>
-
-              {/* Customer 4 */}
-              <Link
-                href="/worker/customers"
-                className="flex items-center justify-between group hover:bg-[#F8FAFC] p-1.5 -mx-1.5 rounded-xl transition-colors"
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-[#E0E7FF] text-indigo-700 flex items-center justify-center font-black text-xs flex-shrink-0">
-                    GS
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-slate-900 truncate group-hover:text-[#1677FF] transition-colors">
-                      Golden Saif Construction
-                    </div>
-                    <div className="text-[11px] text-slate-400 font-medium">2 Jobs</div>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-              </Link>
+                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                  </Link>
+                ))
+              )}
             </div>
           </div>
         </div>
 
-        {/* Widget 3: Material Requests */}
-        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between">
+        {/* Widget 3: Active Deals & Milestones */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-3.5 border-b border-[#F1F5F9]">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-[#E8F1FD] text-[#1677FF] flex items-center justify-center">
-                  <Package className="w-3.5 h-3.5" />
+                <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Briefcase className="w-3.5 h-3.5" />
                 </div>
-                <h3 className="text-sm font-bold text-slate-900">Material Requests</h3>
+                <h3 className="text-sm font-bold text-slate-900">Opportunities</h3>
               </div>
-              <Link href="/worker/materials" className="text-xs font-bold text-[#1677FF] hover:text-blue-700">
+              <Link href="/worker/deals" className="text-xs font-bold text-blue-600 hover:text-blue-700">
                 View All
               </Link>
             </div>
 
-            <div className="space-y-3 pt-3">
-              {/* Material 1 */}
-              <div className="flex items-center justify-between gap-2 p-1">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-[#F8FAFC] border border-slate-200 flex items-center justify-center text-slate-600 flex-shrink-0">
-                    <Package className="w-4 h-4 text-[#1677FF]" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-slate-900 truncate">R410A Refrigerant</div>
-                    <div className="text-[11px] text-slate-400 font-medium">2 Cylinders</div>
-                  </div>
+            <div className="space-y-3 pt-3.5">
+              {(allDeals || []).length === 0 ? (
+                <div className="text-center py-6 text-xs text-slate-400">
+                  No active opportunities logged.
                 </div>
-                <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#FEF3C7] text-[#D97706]">
-                  Pending
-                </span>
-              </div>
-
-              {/* Material 2 */}
-              <div className="flex items-center justify-between gap-2 p-1">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-[#F8FAFC] border border-slate-200 flex items-center justify-center text-slate-600 flex-shrink-0">
-                    <Wrench className="w-4 h-4 text-emerald-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-slate-900 truncate">Compressor Oil</div>
-                    <div className="text-[11px] text-slate-400 font-medium">1 Bottle</div>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#D1FAE5] text-[#059669]">
-                  Approved
-                </span>
-              </div>
-
-              {/* Material 3 */}
-              <div className="flex items-center justify-between gap-2 p-1">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-[#F8FAFC] border border-slate-200 flex items-center justify-center text-slate-600 flex-shrink-0">
-                    <ShieldCheck className="w-4 h-4 text-amber-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-slate-900 truncate">Filter Drier</div>
-                    <div className="text-[11px] text-slate-400 font-medium">3 Units</div>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#FEF3C7] text-[#D97706]">
-                  Pending
-                </span>
-              </div>
+              ) : (
+                (allDeals || []).slice(0, 4).map((deal) => (
+                  <Link
+                    key={deal.id}
+                    href="/worker/deals"
+                    className="flex items-center justify-between group hover:bg-slate-50 p-1.5 -mx-1.5 rounded-xl transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+                        {deal.title || deal.customer}
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-medium">
+                        AED {Number(deal.amount || 0).toLocaleString()}
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                      {deal.stage || 'Open'}
+                    </span>
+                  </Link>
+                ))
+              )}
             </div>
-          </div>
-
-          {/* Request Material Action Button */}
-          <div className="pt-3">
-            <Link
-              href="/worker/materials?action=new"
-              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#F0F7FF] hover:bg-[#E0EFFE] text-[#1677FF] font-bold text-xs border border-[#BFDBFE] transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Request Material</span>
-            </Link>
           </div>
         </div>
       </div>

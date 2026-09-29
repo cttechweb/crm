@@ -42,6 +42,9 @@ export interface WorkerTask {
   estimatedHours: number;
   actualHoursSpent?: number;
   assignedManager: string;
+  assignedManagerRole?: string;
+  assignedTime?: string;
+  department?: string;
   description: string;
   checklist: TaskChecklistItem[];
   partsUsed: TaskPartUsed[];
@@ -98,8 +101,8 @@ export interface WorkerProfileData {
   name: string;
   email: string;
   phone: string;
-  role: 'Technician' | 'Field Engineer' | 'Service Specialist' | 'Apprentice';
-  skillLevel: 'Senior Master Tech' | 'Grade A Certified' | 'Grade B' | 'Junior Tech';
+  role: string;
+  skillLevel: string;
   department: string;
   assignedManager: string;
   assignedVehicle: string;

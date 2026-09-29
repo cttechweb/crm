@@ -1,196 +1,383 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  UserCheck,
-  ShieldCheck,
-  Truck,
+  User,
   Phone,
   Mail,
-  Award,
-  Wrench,
+  Building2,
+  Briefcase,
+  Shield,
+  Truck,
+  HeartHandshake,
   Star,
   CheckCircle2,
-  Calendar,
-  AlertCircle,
-  FileCheck,
+  Edit2,
+  X,
+  Save,
 } from 'lucide-react';
 import { WorkerShell } from '@/components/layout/WorkerShell';
 import { workerMockService } from '@/services/workerMockService';
+import { authMockService, MockAuthUser } from '@/services/authMockService';
+import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
+import { WorkerProfileData } from '@/types/worker';
+import { CrmTask } from '@/types/enterprise-crm';
 
 export default function WorkerProfilePage() {
-  const profile = workerMockService.getProfile();
+  const { tasks: crmTasks } = useEnterpriseCrm();
+  const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
+  const [profile, setProfile] = useState<WorkerProfileData | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    phone: '',
+    assignedVehicle: '',
+    driverLicenseNumber: '',
+    emergencyContactName: '',
+    emergencyContactRelation: '',
+    emergencyContactPhone: '',
+  });
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  useEffect(() => {
+    const user = authMockService.getCurrentUser();
+    if (user) {
+      setCurrentUser(user);
+    }
+    const prof = workerMockService.getProfile(user);
+    setProfile(prof);
+    setEditForm({
+      phone: prof.phone || '+971 50 123 4567',
+      assignedVehicle: prof.assignedVehicle || 'Toyota HiAce Service Van #07 (DXB 48291)',
+      driverLicenseNumber: prof.driverLicenseNumber || 'UAE-DXB-994821',
+      emergencyContactName: prof.emergencyContact?.name || 'Emergency Contact',
+      emergencyContactRelation: prof.emergencyContact?.relationship || 'Family Member',
+      emergencyContactPhone: prof.emergencyContact?.phone || '+971 50 987 6543',
+    });
+  }, []);
+
+  const handleOpenEdit = () => {
+    if (!profile) return;
+    setEditForm({
+      phone: profile.phone || '',
+      assignedVehicle: profile.assignedVehicle || '',
+      driverLicenseNumber: profile.driverLicenseNumber || '',
+      emergencyContactName: profile.emergencyContact?.name || '',
+      emergencyContactRelation: profile.emergencyContact?.relationship || '',
+      emergencyContactPhone: profile.emergencyContact?.phone || '',
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile) return;
+
+    const updates: Partial<WorkerProfileData> = {
+      phone: editForm.phone,
+      assignedVehicle: editForm.assignedVehicle,
+      driverLicenseNumber: editForm.driverLicenseNumber,
+      emergencyContact: {
+        name: editForm.emergencyContactName,
+        relationship: editForm.emergencyContactRelation,
+        phone: editForm.emergencyContactPhone,
+      },
+    };
+
+    const updated = workerMockService.updateProfile(updates, currentUser?.id);
+    setProfile(updated);
+    setIsEditModalOpen(false);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const userName = currentUser?.name || profile?.name || 'Employee';
+  const userInitials = userName
+    .split(' ')
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const userRole = currentUser?.designation || profile?.skillLevel || 'Marketing Employee';
+  const workerCode = currentUser?.id
+    ? `EMP-${currentUser.id.replace(/\D/g, '').slice(-4) || '7011'}`
+    : profile?.workerCode || 'EMP-7011';
+  const department = currentUser?.department || profile?.department || 'Marketing & Operations';
+  const userEmail = currentUser?.email || profile?.email || 'shameem@gmail.com';
+  const userPhone = profile?.phone || '+971 50 123 4567';
+
+  // Calculate real completed jobs from context
+  const completedCrmTasks = (crmTasks || []).filter(
+    (t: CrmTask) =>
+      t.assignee?.name?.toLowerCase() === userName.toLowerCase() &&
+      (t.status === 'Completed' || t.status === 'Done')
+  );
+  const workerPortalTasks = workerMockService.getTasks().filter((t) => t.status === 'Completed');
+  const totalCompletedJobs = Math.max(completedCrmTasks.length, workerPortalTasks.length);
 
   return (
     <WorkerShell
-      title="Employee Profile & Fleet Asset Registry"
-      subtitle="Employee credentials, skill certifications, assigned service vehicle, and safety clearances"
+      title="My Profile"
+      subtitle="View and manage your employee details, contact info, and operational assignments"
     >
-      <div className="space-y-6">
-        {/* ── SECTION 1: PROFILE HERO CARD ── */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-5">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#002B49] to-[#00AEEF] text-white flex items-center justify-center font-black text-2xl shadow-md flex-shrink-0">
-              {profile.name
-                .split(' ')
-                .map((n) => n[0])
-                .join('')}
-            </div>
+      <div className="space-y-4 w-full">
+        {saveSuccess && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center gap-2 animate-in fade-in duration-150">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span className="font-medium">Profile updated successfully!</span>
+          </div>
+        )}
 
+        {/* ── PROFILE HEADER CARD ── */}
+        <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-[#002B49] to-[#0284C7] text-white flex items-center justify-center font-bold text-xl shadow-xs shrink-0">
+              {userInitials}
+            </div>
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-black text-slate-900">{profile.name}</h2>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                  {profile.skillLevel}
+                <h2 className="text-lg font-bold text-slate-900 capitalize">{userName}</h2>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                  {userRole}
                 </span>
-                <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-100 text-slate-700">
-                  {profile.workerCode}
+                <span className="px-2 py-0.5 rounded text-xs font-mono font-medium bg-slate-100 text-slate-600">
+                  {workerCode}
                 </span>
               </div>
-
-              <div className="text-xs text-slate-600 font-medium">{profile.department}</div>
-
-              <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-slate-500 pt-1">
+              <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-4 gap-y-1">
                 <span className="flex items-center gap-1">
                   <Mail className="w-3.5 h-3.5 text-slate-400" />
-                  {profile.email}
+                  {userEmail}
                 </span>
                 <span className="flex items-center gap-1">
                   <Phone className="w-3.5 h-3.5 text-slate-400" />
-                  {profile.phone}
+                  {userPhone}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center sm:text-left">
-              <span className="text-[10px] font-bold uppercase text-emerald-700 block">CSAT Rating</span>
-              <div className="flex items-center gap-1 font-black text-emerald-950 text-lg">
-                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                <span>{profile.metrics.averageRating} / 5.0</span>
-              </div>
+          <div className="flex items-center gap-3 self-end sm:self-center">
+            <div className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-center">
+              <span className="text-[10px] font-medium text-slate-400 uppercase block">Work Orders</span>
+              <span className="text-sm font-bold text-slate-800">{totalCompletedJobs} Completed</span>
             </div>
-
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-center sm:text-left">
-              <span className="text-[10px] font-bold uppercase text-blue-700 block">Total Completed</span>
-              <div className="font-black text-blue-950 text-lg">
-                {profile.metrics.completedJobs} Work Orders
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={handleOpenEdit}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+            >
+              <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+              <span>Edit Details</span>
+            </button>
           </div>
         </div>
 
-        {/* ── SECTION 2: 3-COLUMN DETAIL CARDS ── */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Card 1: Assigned Vehicle & Fleet Info */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                <Truck className="w-4 h-4" />
+        {/* ── 2-COLUMN SIMPLE DETAILS GRID ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Column 1: Employment & Organization Info */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Briefcase className="w-4 h-4 text-slate-500" />
+              <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
+                Employment Details
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-2 gap-y-3.5 gap-x-4 text-xs">
+              <div>
+                <span className="text-slate-400 block text-[11px]">Full Name</span>
+                <span className="font-semibold text-slate-800 capitalize">{userName}</span>
               </div>
               <div>
-                <h3 className="font-bold text-sm text-slate-900">Assigned Service Van</h3>
-                <p className="text-[11px] text-slate-500">Fleet Operations Management</p>
-              </div>
-            </div>
-
-            <div className="space-y-2.5 text-xs">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 block uppercase">Vehicle Description</span>
-                <span className="font-bold text-slate-900">{profile.assignedVehicle}</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase">UAE Driving License</span>
-                  <span className="font-mono font-bold text-slate-800">{profile.driverLicenseNumber}</span>
-                </div>
-                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80">
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase">Van Tool Audit</span>
-                  <span className="font-bold text-emerald-700">Verified Passed ✓</span>
-                </div>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
-                <span className="text-[10px] font-bold text-slate-400 block uppercase">Assigned Manager</span>
-                <span className="font-semibold text-slate-800">{profile.assignedManager}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 2: Technical Certifications & Safety */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                <Award className="w-4 h-4" />
+                <span className="text-slate-400 block text-[11px]">Employee Code</span>
+                <span className="font-mono font-semibold text-slate-800">{workerCode}</span>
               </div>
               <div>
-                <h3 className="font-bold text-sm text-slate-900">Technical Certifications</h3>
-                <p className="text-[11px] text-slate-500">Accredited HVAC Standards</p>
-              </div>
-            </div>
-
-            <div className="space-y-2 text-xs">
-              {[
-                { title: 'EPA Section 608 Universal Certification', issuer: 'HVAC Excellence', valid: 'Permanent' },
-                { title: 'UAE Civil Defense Fire & LOTO Compliance', issuer: 'Dubai Civil Defense', valid: '2028' },
-                { title: 'Carrier & York Heavy Chiller Specialist', issuer: 'OEM Factory Training', valid: '2027' },
-                { title: 'First Aid & High-Altitude Rigging', issuer: 'OSHAE Safety Board', valid: '2027' },
-              ].map((cert, idx) => (
-                <div key={idx} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-0.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-900">{cert.title}</span>
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span>{cert.issuer}</span>
-                    <span>Exp: {cert.valid}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Card 3: Emergency & Toolbox Registry */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-                <ShieldCheck className="w-4 h-4" />
+                <span className="text-slate-400 block text-[11px]">Designation</span>
+                <span className="font-medium text-slate-800">{userRole}</span>
               </div>
               <div>
-                <h3 className="font-bold text-sm text-slate-900">Emergency &amp; Support</h3>
-                <p className="text-[11px] text-slate-500">24/7 Operations Protocol</p>
+                <span className="text-slate-400 block text-[11px]">Department</span>
+                <span className="font-medium text-slate-800">{department}</span>
               </div>
-            </div>
-
-            <div className="space-y-2.5 text-xs">
-              <div className="p-3 bg-rose-50/60 rounded-xl border border-rose-200 space-y-1">
-                <span className="text-[10px] font-bold text-rose-700 block uppercase">
-                  Next of Kin / Emergency Contact
+              <div>
+                <span className="text-slate-400 block text-[11px]">Reporting Manager</span>
+                <span className="font-medium text-slate-800">{currentUser?.managerType || 'Operations Manager'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">Account Status</span>
+                <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  Active
                 </span>
-                <div className="font-bold text-slate-900">{profile.emergencyContact.name}</div>
-                <div className="text-slate-600">Relation: {profile.emergencyContact.relationship}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Column 2: Emergency Contact & Vehicle */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <HeartHandshake className="w-4 h-4 text-slate-500" />
+              <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
+                Emergency Contact &amp; Vehicle
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-2 gap-y-3.5 gap-x-4 text-xs">
+              <div>
+                <span className="text-slate-400 block text-[11px]">Emergency Contact</span>
+                <span className="font-semibold text-slate-800">
+                  {profile?.emergencyContact?.name || 'Emergency Contact'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">Relationship</span>
+                <span className="font-medium text-slate-800">
+                  {profile?.emergencyContact?.relationship || 'Family Member'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">Emergency Phone</span>
                 <a
-                  href={`tel:${profile.emergencyContact.phone}`}
-                  className="inline-flex items-center gap-1 text-rose-700 font-bold hover:underline"
+                  href={`tel:${profile?.emergencyContact?.phone || '+971509876543'}`}
+                  className="font-medium text-blue-600 hover:underline"
                 >
-                  <Phone className="w-3 h-3" />
-                  {profile.emergencyContact.phone}
+                  {profile?.emergencyContact?.phone || '+971 50 987 6543'}
                 </a>
               </div>
-
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 block uppercase">
-                  Central Operations Helpline
+              <div>
+                <span className="text-slate-400 block text-[11px]">Assigned Vehicle</span>
+                <span className="font-medium text-slate-800">
+                  {profile?.assignedVehicle || 'Van #07 (DXB 48291)'}
                 </span>
-                <div className="font-bold text-slate-900">Cool Tech Dispatch Room</div>
-                <div className="text-blue-600 font-bold">+971 4 800 COOL (2665)</div>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">Driving License</span>
+                <span className="font-mono font-medium text-slate-800">
+                  {profile?.driverLicenseNumber || 'UAE-DXB-994821'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[11px]">Helpline Support</span>
+                <span className="font-medium text-slate-800">+971 4 800 COOL</span>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* ── MODAL: Edit Profile ── */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="fixed inset-0" onClick={() => setIsEditModalOpen(false)} />
+          <div className="relative z-10 bg-white rounded-xl border border-slate-200 max-w-md w-full shadow-2xl overflow-hidden text-xs">
+            <div className="border-b border-slate-100 px-4 py-3 flex items-center justify-between">
+              <h3 className="font-bold text-slate-800 text-sm">Edit Profile Details</h3>
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProfile} className="p-4 space-y-3.5">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Phone Number</label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  placeholder="+971 50 123 4567"
+                  className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Assigned Vehicle</label>
+                  <input
+                    type="text"
+                    value={editForm.assignedVehicle}
+                    onChange={(e) => setEditForm({ ...editForm, assignedVehicle: e.target.value })}
+                    placeholder="Van #07 (DXB 48291)"
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Driving License</label>
+                  <input
+                    type="text"
+                    value={editForm.driverLicenseNumber}
+                    onChange={(e) => setEditForm({ ...editForm, driverLicenseNumber: e.target.value })}
+                    placeholder="UAE-DXB-994821"
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 pt-3 space-y-2.5">
+                <span className="text-[11px] font-bold text-slate-700 block">
+                  Emergency Contact Details
+                </span>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-slate-600">Contact Name</label>
+                    <input
+                      type="text"
+                      value={editForm.emergencyContactName}
+                      onChange={(e) => setEditForm({ ...editForm, emergencyContactName: e.target.value })}
+                      placeholder="Contact Name"
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-slate-600">Relationship</label>
+                    <input
+                      type="text"
+                      value={editForm.emergencyContactRelation}
+                      onChange={(e) => setEditForm({ ...editForm, emergencyContactRelation: e.target.value })}
+                      placeholder="Relationship"
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-600">Emergency Phone</label>
+                  <input
+                    type="text"
+                    value={editForm.emergencyContactPhone}
+                    onChange={(e) => setEditForm({ ...editForm, emergencyContactPhone: e.target.value })}
+                    placeholder="+971 50 987 6543"
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 pt-3 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-3 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1 px-4 py-1.5 rounded bg-[#002B49] hover:bg-[#001E33] text-white font-bold text-xs transition-colors cursor-pointer shadow-xs"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </WorkerShell>
   );
 }

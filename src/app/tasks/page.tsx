@@ -32,6 +32,7 @@ import {
   Book,
   Edit,
   Filter,
+  MapPin,
 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -66,7 +67,15 @@ function TasksContent() {
       setActiveTab(viewParam);
       setActiveSubtype('ALL');
     }
-  }, [searchParams]);
+
+    const taskIdParam = searchParams.get('id') || searchParams.get('taskId');
+    if (taskIdParam && tasks.length > 0) {
+      const match = tasks.find((t) => t.id === taskIdParam || t.slNo?.toString() === taskIdParam);
+      if (match) {
+        setViewingTaskInfo(match);
+      }
+    }
+  }, [searchParams, tasks]);
 
   // Filters State
   const [search, setSearch] = useState('');
@@ -82,6 +91,14 @@ function TasksContent() {
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<CrmTask | null>(null);
   const [viewingTaskInfo, setViewingTaskInfo] = useState<CrmTask | null>(null);
+  const [postponingTask, setPostponingTask] = useState<CrmTask | null>(null);
+  const [postponeForm, setPostponeForm] = useState({
+    dueDate: '',
+    dueTime: '',
+    comments: '',
+    addNote: false,
+    noteText: '',
+  });
   const [actionMenuTaskId, setActionMenuTaskId] = useState<string | null>(null);
 
   // Add Form State
@@ -124,42 +141,89 @@ function TasksContent() {
     return count;
   }, [sortBy, assigneeFilter, typeFilter, createdByFilter]);
 
-  // Tab counts
-  const todayDateStr = useMemo(() => new Date().toISOString().split('T')[0], []);
-  const tomorrowDateStr = '2026-09-24';
+  // Auto-clean dummy tasks on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('crm_tasks_data');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const genuineOnly = parsed.filter((t: any) => {
+            const title = (t.taskDetails || t.title || '').trim().toLowerCase();
+            const isGibberish =
+              title.includes('qewrty') ||
+              title.includes('efwregv') ||
+              title.includes('asdf') ||
+              title.length < 3;
+            const isFakeAlex =
+              (t.assignedBy === 'Alex Rivera (Sales Manager)' ||
+                t.assignedBy === 'Alex Rivera (Operations Manager)') &&
+              (title.includes('qewrty') || title.includes('efwregv'));
+            return !isGibberish && !isFakeAlex;
+          });
 
+          if (genuineOnly.length !== parsed.length) {
+            localStorage.setItem('crm_tasks_data', JSON.stringify(genuineOnly));
+            window.location.reload();
+          }
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  // Filter out any gibberish / test dummy entries
+  const cleanTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      const title = (t.taskDetails || t.title || '').trim().toLowerCase();
+      const isGibberish =
+        title.includes('qewrty') ||
+        title.includes('efwregv') ||
+        (t.assignedBy?.includes('Alex Rivera') && (title.includes('qewrty') || title.includes('efwregv')));
+      return !isGibberish;
+    });
+  }, [tasks]);
+
+  // Tab counts based on real tasks
   const counts = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     return {
-      today: tasks.filter((t) => t.dueDate === today || t.dueDate === '2026-09-23' || t.dueDate === '2026-09-26').length,
-      pending: tasks.filter((t) => t.status === 'Pending' || t.status === 'Assigned').length,
-      progress: tasks.filter((t) => t.status === 'In Progress').length,
-      overdue: tasks.filter((t) => t.status === 'Overdue' || (t.status !== 'Completed' && t.status !== 'Reviewed' && t.dueDate < today && t.dueDate !== '2026-09-23')).length,
-      upcoming: tasks.filter((t) => t.status === 'Upcoming' || (t.dueDate > today && t.dueDate !== '2026-09-23' && t.dueDate !== '2026-09-26')).length,
-      completed: tasks.filter((t) => t.status === 'Completed' || t.status === 'Reviewed').length,
-      meeting: tasks.filter((t) => t.taskType === 'Meeting' || t.taskType === 'Demo').length,
+      today: cleanTasks.filter((t) => t.dueDate === today).length,
+      pending: cleanTasks.filter((t) => t.status === 'Pending' || t.status === 'Assigned').length,
+      progress: cleanTasks.filter((t) => t.status === 'In Progress').length,
+      overdue: cleanTasks.filter((t) => t.status === 'Overdue' || (t.status !== 'Completed' && t.status !== 'Reviewed' && t.dueDate && t.dueDate < today)).length,
+      upcoming: cleanTasks.filter((t) => t.status === 'Upcoming' || (t.dueDate && t.dueDate > today)).length,
+      completed: cleanTasks.filter((t) => t.status === 'Completed' || t.status === 'Reviewed').length,
+      meeting: cleanTasks.filter((t) => t.taskType === 'Meeting' || t.taskType === 'Demo').length,
     };
-  }, [tasks]);
+  }, [cleanTasks]);
 
   // Meeting specific grouped datasets
   const todayMeetings = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    return tasks.filter(
-      (t) => (t.taskType === 'Meeting' || t.taskType === 'Demo') && (t.dueDate === today || t.dueDate === '2026-09-23' || t.dueDate === '2026-09-26')
+    return cleanTasks.filter(
+      (t) => (t.taskType === 'Meeting' || t.taskType === 'Demo') && t.dueDate === today
     );
-  }, [tasks]);
+  }, [cleanTasks]);
 
   const tomorrowMeetings = useMemo(() => {
-    return tasks.filter(
-      (t) => (t.taskType === 'Meeting' || t.taskType === 'Demo') && t.dueDate === tomorrowDateStr
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    return cleanTasks.filter(
+      (t) => (t.taskType === 'Meeting' || t.taskType === 'Demo') && t.dueDate === tomorrowStr
     );
-  }, [tasks, tomorrowDateStr]);
+  }, [cleanTasks]);
 
   const laterMeetings = useMemo(() => {
-    return tasks.filter(
-      (t) => (t.taskType === 'Meeting' || t.taskType === 'Demo') && t.dueDate > tomorrowDateStr
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    return cleanTasks.filter(
+      (t) => (t.taskType === 'Meeting' || t.taskType === 'Demo') && t.dueDate && t.dueDate > tomorrowStr
     );
-  }, [tasks, tomorrowDateStr]);
+  }, [cleanTasks]);
 
   // Tab Labels
   const tabTitles: Record<TaskTab, string> = {
@@ -175,12 +239,12 @@ function TasksContent() {
   // Subtype counts for the currently active tab
   const subtypeCounts = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    const currentTabTasks = tasks.filter((task) => {
-      if (activeTab === 'today') return task.dueDate === today || task.dueDate === '2026-09-23' || task.dueDate === '2026-09-26';
+    const currentTabTasks = cleanTasks.filter((task) => {
+      if (activeTab === 'today') return task.dueDate === today;
       if (activeTab === 'pending') return task.status === 'Pending' || task.status === 'Assigned';
       if (activeTab === 'progress') return task.status === 'In Progress';
-      if (activeTab === 'overdue') return task.status === 'Overdue' || (task.status !== 'Completed' && task.status !== 'Reviewed' && task.dueDate < today && task.dueDate !== '2026-09-23');
-      if (activeTab === 'upcoming') return task.status === 'Upcoming' || (task.dueDate > today && task.dueDate !== '2026-09-23' && task.dueDate !== '2026-09-26');
+      if (activeTab === 'overdue') return task.status === 'Overdue' || (task.status !== 'Completed' && task.status !== 'Reviewed' && task.dueDate && task.dueDate < today);
+      if (activeTab === 'upcoming') return task.status === 'Upcoming' || (task.dueDate && task.dueDate > today);
       if (activeTab === 'completed') return task.status === 'Completed' || task.status === 'Reviewed';
       if (activeTab === 'meeting') return task.taskType === 'Meeting' || task.taskType === 'Demo';
       return true;
@@ -188,29 +252,29 @@ function TasksContent() {
 
     return {
       all: currentTabTasks.length,
-      followup: currentTabTasks.filter((t) => t.taskType === 'Follow-up' || t.taskType === 'Call').length,
+      followup: currentTabTasks.filter((t) => t.taskType === 'Follow-up' || t.taskType === 'Followup' || t.taskType === 'Service Order').length,
       call: currentTabTasks.filter((t) => t.taskType === 'Call').length,
       meeting: currentTabTasks.filter((t) => t.taskType === 'Meeting' || t.taskType === 'Demo').length,
       review: currentTabTasks.filter((t) => t.taskType === 'Review' || t.taskType === 'Document').length,
     };
-  }, [tasks, activeTab]);
+  }, [cleanTasks, activeTab]);
 
   // Filter Tasks by Active Tab + Subtype + Form Filters
   const filteredTasks = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    return tasks
+    return cleanTasks
       .filter((task) => {
         // Tab Filtering
         if (activeTab === 'today') {
-          if (task.dueDate !== today && task.dueDate !== '2026-09-23' && task.dueDate !== '2026-09-26') return false;
+          if (task.dueDate !== today) return false;
         } else if (activeTab === 'pending') {
           if (task.status !== 'Pending' && task.status !== 'Assigned') return false;
         } else if (activeTab === 'progress') {
           if (task.status !== 'In Progress') return false;
         } else if (activeTab === 'overdue') {
-          if (task.status !== 'Overdue' && (task.status === 'Completed' || task.status === 'Reviewed' || task.dueDate >= today || task.dueDate === '2026-09-23')) return false;
+          if (task.status !== 'Overdue' && (task.status === 'Completed' || task.status === 'Reviewed' || !task.dueDate || task.dueDate >= today)) return false;
         } else if (activeTab === 'upcoming') {
-          if (task.status !== 'Upcoming' && (task.dueDate <= today || task.dueDate === '2026-09-23' || task.dueDate === '2026-09-26')) return false;
+          if (task.status !== 'Upcoming' && (!task.dueDate || task.dueDate <= today)) return false;
         } else if (activeTab === 'completed') {
           if (task.status !== 'Completed' && task.status !== 'Reviewed') return false;
         } else if (activeTab === 'meeting') {
@@ -219,7 +283,7 @@ function TasksContent() {
 
         // Subtype Filtering
         if (activeSubtype === 'Followup') {
-          if (task.taskType !== 'Follow-up' && task.taskType !== 'Call') return false;
+          if (task.taskType !== 'Follow-up' && task.taskType !== 'Followup' && task.taskType !== 'Service Order') return false;
         } else if (activeSubtype === 'Call') {
           if (task.taskType !== 'Call') return false;
         } else if (activeSubtype === 'Meeting') {
@@ -232,6 +296,7 @@ function TasksContent() {
           const match =
             (task.taskDetails || '').toLowerCase().includes(q) ||
             (task.taskUnder || '').toLowerCase().includes(q) ||
+            (task.customer || '').toLowerCase().includes(q) ||
             (task.assignee?.name || '').toLowerCase().includes(q) ||
             (task.assignedEmployee || '').toLowerCase().includes(q) ||
             (task.department || '').toLowerCase().includes(q) ||
@@ -260,14 +325,14 @@ function TasksContent() {
       .sort((a, b) => {
         if (sortBy === 'Priority') {
           const pMap: Record<string, number> = { Urgent: 4, High: 3, Medium: 2, Low: 1 };
-          return pMap[b.priority] - pMap[a.priority];
+          return (pMap[b.priority] || 1) - (pMap[a.priority] || 1);
         }
         if (sortBy === 'Assignee') {
-          return a.assignee.name.localeCompare(b.assignee.name);
+          return (a.assignee?.name || '').localeCompare(b.assignee?.name || '');
         }
-        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        return new Date(a.dueDate || '').getTime() - new Date(b.dueDate || '').getTime();
       });
-  }, [tasks, activeTab, activeSubtype, search, assigneeFilter, typeFilter, createdByFilter, sortBy]);
+  }, [cleanTasks, activeTab, activeSubtype, search, assigneeFilter, typeFilter, createdByFilter, sortBy]);
 
   // Pagination
   const totalEntries = filteredTasks.length;
@@ -297,7 +362,173 @@ function TasksContent() {
     e.preventDefault();
     if (!editingTask) return;
     updateTask(editingTask.id, editingTask);
+    if (viewingTaskInfo && viewingTaskInfo.id === editingTask.id) {
+      setViewingTaskInfo(editingTask);
+    }
     setEditingTask(null);
+  };
+
+  const handleOpenPostpone = (task: CrmTask) => {
+    setPostponingTask(task);
+    setPostponeForm({
+      dueDate: task.dueDate || '',
+      dueTime: task.dueTime || '',
+      comments: task.description || '',
+      addNote: false,
+      noteText: '',
+    });
+  };
+
+  const handleConfirmPostpone = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!postponingTask || !postponeForm.dueDate) return;
+    const updates: Partial<CrmTask> = {
+      dueDate: postponeForm.dueDate,
+    };
+    if (postponeForm.dueTime) {
+      updates.dueTime = postponeForm.dueTime;
+    }
+    if (postponeForm.comments) {
+      updates.description = postponeForm.comments;
+    }
+    if (postponeForm.addNote && postponeForm.noteText) {
+      updates.description = (updates.description ? `${updates.description}\n` : '') + `[Note]: ${postponeForm.noteText}`;
+    }
+    updateTask(postponingTask.id, updates);
+    if (viewingTaskInfo && viewingTaskInfo.id === postponingTask.id) {
+      setViewingTaskInfo({ ...viewingTaskInfo, ...updates });
+    }
+    setPostponingTask(null);
+  };
+
+  const renderPostponeModal = () => {
+    if (!postponingTask) return null;
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0" onClick={() => setPostponingTask(null)} />
+        <div className="relative z-10 bg-white rounded-lg border border-slate-300 max-w-lg w-full shadow-2xl overflow-hidden text-xs">
+          {/* Header */}
+          <div className="border-b border-slate-200 px-5 py-3.5 flex items-center justify-between">
+            <h3 className="font-bold text-slate-800 text-sm">Postpone Task</h3>
+            <button
+              type="button"
+              onClick={() => setPostponingTask(null)}
+              className="text-slate-400 hover:text-slate-600 cursor-pointer p-0.5 text-base leading-none"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleConfirmPostpone} className="p-6 space-y-4">
+            {/* Due Date * */}
+            <div className="grid grid-cols-12 gap-3 items-center">
+              <label className="col-span-3 text-xs font-semibold text-slate-700">
+                Due Date <span className="text-rose-500">*</span>
+              </label>
+              <div className="col-span-9 relative flex items-center">
+                <input
+                  type="date"
+                  required
+                  placeholder="Task Due Date"
+                  value={postponeForm.dueDate}
+                  onChange={(e) => setPostponeForm({ ...postponeForm, dueDate: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs pr-9"
+                />
+                <div className="absolute right-0 top-0 bottom-0 px-2.5 bg-slate-100 border-l border-slate-300 flex items-center justify-center rounded-r text-slate-600 pointer-events-none">
+                  <Calendar className="w-3.5 h-3.5" />
+                </div>
+              </div>
+            </div>
+
+            {/* Time */}
+            <div className="grid grid-cols-12 gap-3 items-center">
+              <label className="col-span-3 text-xs font-semibold text-slate-700">
+                Time
+              </label>
+              <div className="col-span-9 relative flex items-center">
+                <input
+                  type="text"
+                  placeholder="--:-- --"
+                  value={postponeForm.dueTime}
+                  onChange={(e) => setPostponeForm({ ...postponeForm, dueTime: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs pr-14"
+                />
+                <div className="absolute right-2 flex items-center gap-1.5">
+                  {postponeForm.dueTime && (
+                    <button
+                      type="button"
+                      onClick={() => setPostponeForm({ ...postponeForm, dueTime: '' })}
+                      className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                  <Clock className="w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+
+            {/* Comments */}
+            <div className="grid grid-cols-12 gap-3 items-start">
+              <label className="col-span-3 text-xs font-semibold text-slate-700 pt-1.5">
+                Comments
+              </label>
+              <div className="col-span-9">
+                <textarea
+                  rows={2}
+                  value={postponeForm.comments}
+                  onChange={(e) => setPostponeForm({ ...postponeForm, comments: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y shadow-2xs"
+                />
+              </div>
+            </div>
+
+            {/* Add Note */}
+            <div className="grid grid-cols-12 gap-3 items-center">
+              <label className="col-span-3 text-xs font-semibold text-slate-700">
+                Add Note
+              </label>
+              <div className="col-span-9 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="addNoteCheckbox"
+                  checked={postponeForm.addNote}
+                  onChange={(e) => setPostponeForm({ ...postponeForm, addNote: e.target.checked })}
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                {postponeForm.addNote && (
+                  <input
+                    type="text"
+                    placeholder="Enter note..."
+                    value={postponeForm.noteText}
+                    onChange={(e) => setPostponeForm({ ...postponeForm, noteText: e.target.value })}
+                    className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="border-t border-slate-100 pt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPostponingTask(null)}
+                className="px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 rounded bg-[#002B49] hover:bg-[#001E33] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+              >
+                Update
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
   };
 
   const handleBulkAssign = (e: React.FormEvent) => {
@@ -309,6 +540,610 @@ function TasksContent() {
     setIsAssignModalOpen(false);
     setAssignForm({ targetAssignee: 'Alex Rivera', selectedTaskIds: [] });
   };
+
+  // ── FULL PAGE EDIT TASK VIEW (Matches Cezcon CRM Reference) ─────────
+  if (editingTask) {
+    const oppName = editingTask.taskUnder?.split(' / ')[0] || editingTask.taskUnder || '770KG ICE MACHINE';
+    return (
+      <div className="space-y-3.5 pb-28 sm:pb-32 w-full animate-in fade-in duration-150">
+        <form onSubmit={handleUpdateTask} className="bg-white rounded-lg border border-slate-300 shadow-sm flex flex-col text-xs overflow-hidden">
+          {/* Top Header */}
+          <div className="bg-[#EAEFF5] border-b border-slate-300 px-4 py-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-slate-800 font-bold text-xs">
+              <Menu className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
+              <span>Edit Task</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditingTask(null)}
+              className="w-5 h-5 rounded bg-[#E11D48] text-white flex items-center justify-center hover:bg-[#BE123C] transition-colors cursor-pointer font-black text-xs shadow-2xs flex-shrink-0"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5 stroke-[3]" />
+            </button>
+          </div>
+
+          {/* Form Content */}
+          <div className="p-5 sm:p-7 space-y-6">
+            {/* Opportunity Strip */}
+            <div className="flex items-center gap-1.5 text-xs font-bold text-[#0284C7]">
+              <Info className="w-4 h-4 text-[#0284C7] flex-shrink-0" />
+              <span className="text-slate-800">Opportunity:</span>
+              <span className="text-[#0284C7] uppercase">{oppName}</span>
+            </div>
+
+            {/* 2-Column Form Fields */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-4">
+              {/* Left Column */}
+              <div className="space-y-4">
+                {/* Assignee */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Assignee
+                  </label>
+                  <div className="sm:col-span-9 relative">
+                    <select
+                      value={editingTask.assignee.name}
+                      onChange={(e) => setEditingTask({ ...editingTask, assignee: { name: e.target.value } })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:border-blue-500 appearance-none cursor-pointer pr-8 shadow-2xs"
+                    >
+                      {users.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Type * */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Type <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="sm:col-span-9 relative">
+                    <select
+                      value={editingTask.taskType === 'Follow-up' ? 'Followup' : editingTask.taskType}
+                      onChange={(e) => setEditingTask({ ...editingTask, taskType: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:border-blue-500 appearance-none cursor-pointer pr-8 shadow-2xs"
+                    >
+                      <option value="Followup">Followup</option>
+                      <option value="Call">Call</option>
+                      <option value="Meeting">Meeting</option>
+                      <option value="Demo">Demo</option>
+                      <option value="Service Order">Service Order</option>
+                      <option value="Email">Email</option>
+                      <option value="Review">Review</option>
+                      <option value="Document">Document</option>
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Task Details ✔ */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-start">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1 pt-1.5">
+                    <span className="text-emerald-700">Task Details</span>
+                    <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
+                  </label>
+                  <div className="sm:col-span-9">
+                    <textarea
+                      required
+                      rows={3}
+                      value={editingTask.taskDetails}
+                      onChange={(e) => setEditingTask({ ...editingTask, taskDetails: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 resize-y shadow-2xs leading-relaxed"
+                    />
+                  </div>
+                </div>
+
+                {/* Due Date */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Due Date
+                  </label>
+                  <div className="sm:col-span-9 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* Date input with clear & calendar */}
+                    <div className="relative flex items-center">
+                      <input
+                        type="date"
+                        value={editingTask.dueDate || ''}
+                        onChange={(e) => setEditingTask({ ...editingTask, dueDate: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs pr-7"
+                      />
+                      {editingTask.dueDate && (
+                        <button
+                          type="button"
+                          onClick={() => setEditingTask({ ...editingTask, dueDate: '' })}
+                          className="absolute right-7 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Time input with clear & clock */}
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        value={editingTask.dueTime || '06:00 PM'}
+                        onChange={(e) => setEditingTask({ ...editingTask, dueTime: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs pr-8"
+                      />
+                      <Clock className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Location */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-[#0284C7] flex-shrink-0" />
+                    <span>Location</span>
+                  </label>
+                  <div className="sm:col-span-9 relative">
+                    <input
+                      type="text"
+                      placeholder="Search location"
+                      value={editingTask.department || ''}
+                      onChange={(e) => setEditingTask({ ...editingTask, department: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs pr-7"
+                    />
+                    {editingTask.department && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingTask({ ...editingTask, department: '' })}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="space-y-4">
+                {/* Participants */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Participants
+                  </label>
+                  <div className="sm:col-span-9 relative">
+                    <select
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-600 focus:outline-none focus:border-blue-500 appearance-none cursor-pointer pr-8 shadow-2xs"
+                    >
+                      <option value="">None selected</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name} ({u.role})
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Priority */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Priority
+                  </label>
+                  <div className="sm:col-span-9">
+                    <div className="inline-flex rounded border border-slate-300 overflow-hidden text-xs font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setEditingTask({ ...editingTask, priority: 'Low' })}
+                        className={cn(
+                          'px-3.5 py-1 transition-colors cursor-pointer border-r border-slate-300',
+                          editingTask.priority === 'Low'
+                            ? 'bg-[#F5A623] text-white font-bold'
+                            : 'bg-white text-slate-700 hover:bg-slate-50'
+                        )}
+                      >
+                        Low
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingTask({ ...editingTask, priority: 'High' })}
+                        className={cn(
+                          'px-3.5 py-1 transition-colors cursor-pointer border-r border-slate-300',
+                          editingTask.priority === 'High' || editingTask.priority === 'Medium'
+                            ? 'bg-[#F5A623] text-white font-bold'
+                            : 'bg-white text-slate-700 hover:bg-slate-50'
+                        )}
+                      >
+                        Mid
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingTask({ ...editingTask, priority: 'Urgent' })}
+                        className={cn(
+                          'px-3.5 py-1 transition-colors cursor-pointer',
+                          editingTask.priority === 'Urgent'
+                            ? 'bg-[#F5A623] text-white font-bold'
+                            : 'bg-white text-slate-700 hover:bg-slate-50'
+                        )}
+                      >
+                        High
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Status
+                  </label>
+                  <div className="sm:col-span-9 relative">
+                    <select
+                      value={editingTask.status}
+                      onChange={(e) => setEditingTask({ ...editingTask, status: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:border-blue-500 appearance-none cursor-pointer pr-8 shadow-2xs"
+                    >
+                      <option value="Pending">Pending</option>
+                      <option value="In Progress">In Progress</option>
+                      <option value="Completed">Completed</option>
+                      <option value="Overdue">Overdue</option>
+                      <option value="Upcoming">Upcoming</option>
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Comments */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-start">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 pt-1.5">
+                    Comments
+                  </label>
+                  <div className="sm:col-span-9">
+                    <textarea
+                      rows={3}
+                      value={editingTask.description || ''}
+                      onChange={(e) => setEditingTask({ ...editingTask, description: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 resize-y shadow-2xs leading-relaxed"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Action Footer */}
+          <div className="border-t border-slate-200 px-6 py-3 bg-[#FAFBFD] flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditingTask(null)}
+              className="px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+            >
+              Close
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-1.5 rounded bg-[#002B49] hover:bg-[#001E33] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+            >
+              Update
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
+  // ── FULL PAGE TASK DETAIL VIEW ──────────────────────────────────────────
+  if (viewingTaskInfo) {
+    return (
+      <div className="space-y-3.5 pb-28 sm:pb-32 w-full animate-in fade-in duration-150">
+        {/* Full Page Cezcon-Style Task Detail Workbench */}
+        <div className="bg-white rounded-lg border border-slate-300 shadow-sm flex flex-col text-xs overflow-hidden">
+          {/* Top Notice Header Strip */}
+          <div className="bg-[#EAEFF5] border-b border-slate-300 px-4 py-2.5 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wide truncate">
+              <Edit2 className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
+              <span className="truncate">
+                TASK CREATED BY {viewingTaskInfo.createdBy || viewingTaskInfo.assignedBy || 'MUHAMMED SHIBIL'} ON{' '}
+                {viewingTaskInfo.createdAt
+                  ? new Date(viewingTaskInfo.createdAt).toLocaleString('en-GB', {
+                      weekday: 'short',
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    }).toUpperCase()
+                  : 'MON, 28/09/2026, 15:51:30'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setViewingTaskInfo(null)}
+              className="w-5 h-5 rounded bg-[#E11D48] text-white flex items-center justify-center hover:bg-[#BE123C] transition-colors cursor-pointer font-black text-xs shadow-2xs flex-shrink-0"
+              title="Close and return to task list"
+            >
+              <X className="w-3.5 h-3.5 stroke-[3]" />
+            </button>
+          </div>
+
+          {/* Sub-Tabs */}
+          <div className="border-b border-slate-200 px-5 pt-3 bg-white flex items-center gap-6 text-xs font-bold">
+            <button
+              type="button"
+              className="flex items-center gap-1.5 pb-2.5 text-slate-900 border-b-2 border-[#D91E5B] cursor-pointer"
+            >
+              <Menu className="w-3.5 h-3.5 text-slate-700" />
+              <span>Task Details</span>
+            </button>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 pb-2.5 text-slate-500 hover:text-slate-800 cursor-pointer font-semibold transition-colors"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Task History Details</span>
+            </button>
+          </div>
+
+          {/* Body: 2-Column Layout */}
+          <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 bg-white">
+            {/* Left Column: Task Details Table (7 cols) */}
+            <div className="lg:col-span-7 space-y-4">
+              <div className="border border-slate-200 rounded-md overflow-hidden bg-white shadow-2xs">
+                <div className="bg-[#FAFBFD] border-b border-slate-200 px-3.5 py-2 flex items-center gap-1.5 font-bold text-slate-700 text-xs">
+                  <Menu className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Task Details</span>
+                </div>
+
+                <table className="w-full text-left text-xs border-collapse">
+                  <tbody className="divide-y divide-slate-100">
+                    {/* Assignee */}
+                    <tr>
+                      <td className="w-32 sm:w-36 bg-[#FAFBFD] py-2.5 px-3.5 font-bold text-slate-700 border-r border-slate-200">
+                        Assignee
+                      </td>
+                      <td className="py-2.5 px-3.5">
+                        <div className="flex items-center gap-2">
+                          {viewingTaskInfo.assignee.avatar ? (
+                            <img
+                              src={viewingTaskInfo.assignee.avatar}
+                              alt={viewingTaskInfo.assignee.name}
+                              className="w-6 h-6 rounded-full object-cover border border-slate-200 shadow-2xs"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 rounded-full bg-[#002B49] text-white font-bold text-[9px] flex items-center justify-center shadow-2xs">
+                              {viewingTaskInfo.assignee.name[0]}
+                            </div>
+                          )}
+                          <span className="font-bold text-slate-900 uppercase">
+                            {viewingTaskInfo.assignee.name}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* Task */}
+                    <tr>
+                      <td className="bg-[#FAFBFD] py-2.5 px-3.5 font-bold text-slate-700 border-r border-slate-200">
+                        Task
+                      </td>
+                      <td className="py-2.5 px-3.5 font-bold text-slate-900 leading-relaxed">
+                        {viewingTaskInfo.taskDetails}
+                      </td>
+                    </tr>
+
+                    {/* Due Date */}
+                    <tr>
+                      <td className="bg-[#FAFBFD] py-2.5 px-3.5 font-bold text-slate-700 border-r border-slate-200">
+                        Due Date
+                      </td>
+                      <td className="py-2.5 px-3.5 font-bold text-slate-900">
+                        {viewingTaskInfo.dueDate}
+                      </td>
+                    </tr>
+
+                    {/* Time */}
+                    <tr>
+                      <td className="bg-[#FAFBFD] py-2.5 px-3.5 font-bold text-slate-700 border-r border-slate-200">
+                        Time
+                      </td>
+                      <td className="py-2.5 px-3.5 font-bold text-slate-900">
+                        {viewingTaskInfo.dueTime || '06:00 PM'}
+                      </td>
+                    </tr>
+
+                    {/* Status */}
+                    <tr>
+                      <td className="bg-[#FAFBFD] py-2.5 px-3.5 font-bold text-slate-700 border-r border-slate-200">
+                        Status
+                      </td>
+                      <td className="py-2.5 px-3.5">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold bg-[#F5A623] text-white shadow-2xs">
+                          <Edit2 className="w-2.5 h-2.5" />
+                          <span>{viewingTaskInfo.status}</span>
+                        </span>
+                      </td>
+                    </tr>
+
+                    {/* Task Under */}
+                    <tr>
+                      <td className="bg-[#FAFBFD] py-2.5 px-3.5 font-bold text-slate-700 border-r border-slate-200 align-top">
+                        Task Under
+                      </td>
+                      <td className="py-2.5 px-3.5 space-y-1">
+                        {/* Opportunity / Deal Ref */}
+                        <div className="flex items-center gap-1.5 text-[#0284C7] font-semibold text-xs">
+                          <Key className="w-3.5 h-3.5 text-[#EF4444] flex-shrink-0" />
+                          <span className="hover:underline cursor-pointer">
+                            {viewingTaskInfo.taskUnder?.split(' / ')[0] || viewingTaskInfo.taskUnder || 'lcc'}
+                          </span>
+                          <Info className="w-3.5 h-3.5 text-[#0284C7]" />
+                        </div>
+
+                        {/* Customer */}
+                        {(viewingTaskInfo.customer || viewingTaskInfo.taskUnder?.includes(' / ') || viewingTaskInfo.taskUnder?.toLowerCase().includes('lcc')) && (
+                          <div className="flex items-center gap-1.5 text-[#0284C7] font-semibold text-xs">
+                            <Shield className="w-3.5 h-3.5 text-[#EF4444] flex-shrink-0" />
+                            <span className="uppercase hover:underline cursor-pointer">
+                              {viewingTaskInfo.customer || viewingTaskInfo.taskUnder?.split(' / ')[1] || 'LCC'}
+                            </span>
+                            <Info className="w-3.5 h-3.5 text-[#0284C7]" />
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* Task Type */}
+                    <tr>
+                      <td className="bg-[#FAFBFD] py-2.5 px-3.5 font-bold text-slate-700 border-r border-slate-200">
+                        Task Type
+                      </td>
+                      <td className="py-2.5 px-3.5 font-medium text-slate-800">
+                        {viewingTaskInfo.taskType === 'Follow-up' ? 'Followup' : viewingTaskInfo.taskType}
+                      </td>
+                    </tr>
+
+                    {/* Priority */}
+                    <tr>
+                      <td className="bg-[#FAFBFD] py-2.5 px-3.5 font-bold text-slate-700 border-r border-slate-200">
+                        Priority
+                      </td>
+                      <td className="py-2.5 px-3.5">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-bold bg-[#F5A623] text-white shadow-2xs">
+                          <Edit2 className="w-2.5 h-2.5" />
+                          <span>{viewingTaskInfo.priority === 'High' ? 'Mid' : viewingTaskInfo.priority}</span>
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Bottom Action Buttons: Postpone, Mark as Completed, Edit, Delete */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleOpenPostpone(viewingTaskInfo)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded bg-[#0F2844] hover:bg-[#0A1D33] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Postpone</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateTask(viewingTaskInfo.id, { status: 'Completed', progress: 100 });
+                    setViewingTaskInfo({ ...viewingTaskInfo, status: 'Completed', progress: 100 });
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded bg-[#475569] hover:bg-[#334155] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Mark as Completed</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingTask(viewingTaskInfo);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded bg-[#0284C7] hover:bg-[#0369A1] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Edit</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`Delete Task #${viewingTaskInfo.slNo}?`)) {
+                      deleteTask(viewingTaskInfo.id);
+                      setViewingTaskInfo(null);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded bg-[#E11D48] hover:bg-[#BE123C] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Right Column: ATTACHMENTS (5 cols) */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="border border-slate-200 rounded-md overflow-hidden shadow-2xs flex flex-col h-full bg-white">
+                {/* Attachments Header */}
+                <div className="bg-[#FAFBFD] border-b border-slate-200 px-3.5 py-2 flex items-center justify-between flex-shrink-0">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-700 text-xs uppercase">
+                    <span>📎</span>
+                    <span>ATTACHMENTS</span>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="px-2.5 py-0.5 rounded bg-[#2563EB] text-white font-bold text-[10px] shadow-2xs"
+                    >
+                      ≡ List
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2.5 py-0.5 rounded bg-white text-slate-600 border border-slate-200 font-semibold text-[10px]"
+                    >
+                      🖼 Slider
+                    </button>
+                  </div>
+                </div>
+
+                {/* Empty State / Body */}
+                <div className="p-8 text-center text-slate-400 space-y-2 my-auto">
+                  <div className="w-12 h-12 mx-auto rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-300 text-xl">
+                    📁
+                  </div>
+                  <p className="text-xs font-semibold text-slate-400">No attachments yet</p>
+                </div>
+
+                {/* Add More Attachments Section */}
+                <div className="p-3.5 border-t border-slate-100 bg-[#FAFBFD] space-y-2 flex-shrink-0">
+                  <div className="text-[11px] font-bold text-[#0284C7] flex items-center gap-1">
+                    <Plus className="w-3 h-3" />
+                    <span>ADD MORE ATTACHMENTS</span>
+                  </div>
+
+                  <label className="border-2 border-dashed border-slate-300 rounded-lg p-4 text-center block hover:border-blue-400 transition-colors cursor-pointer bg-white">
+                    <input type="file" multiple className="hidden" />
+                    <div className="w-8 h-8 rounded-full bg-blue-50 text-[#0284C7] flex items-center justify-center mx-auto mb-1">
+                      ☁️
+                    </div>
+                    <p className="text-xs text-slate-600 font-medium">
+                      Drop files here or <span className="text-[#0284C7] underline font-bold">click to browse</span>
+                    </p>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Multiple files supported</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Footer with Back button */}
+          <div className="border-t border-slate-200 px-5 py-3 bg-[#FAFBFD] flex items-center justify-end">
+            <button
+              type="button"
+              onClick={() => setViewingTaskInfo(null)}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+            >
+              <span>←</span>
+              <span>Back</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Postpone Task Modal inside viewingTaskInfo */}
+        {renderPostponeModal()}
+
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3 pb-28 sm:pb-32 w-full">
@@ -347,7 +1182,7 @@ function TasksContent() {
           <Clock className="w-3.5 h-3.5 text-[#EA580C]" />
           <span>Pending</span>
           <span className="px-2 py-0.2 rounded text-[11px] font-bold bg-[#F97316] text-white">
-            446
+            {counts.pending}
           </span>
         </button>
 
@@ -367,7 +1202,7 @@ function TasksContent() {
           <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
           <span>Progress</span>
           <span className="px-2 py-0.2 rounded text-[11px] font-bold bg-[#22C55E] text-white">
-            14
+            {counts.progress}
           </span>
         </button>
 
@@ -387,7 +1222,7 @@ function TasksContent() {
           <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
           <span>Overdue</span>
           <span className="px-2 py-0.2 rounded text-[11px] font-bold bg-[#EF4444] text-white">
-            460
+            {counts.overdue}
           </span>
         </button>
 
@@ -1012,7 +1847,7 @@ function TasksContent() {
                   : 'text-[#F97316]/80 hover:text-[#F97316]'
                   }`}
               >
-                Followup <span className="text-[#F97316] font-bold">(269)</span>
+                Followup <span className="text-[#F97316] font-bold">({subtypeCounts.followup})</span>
               </button>
 
               <button
@@ -1023,7 +1858,7 @@ function TasksContent() {
                   : 'text-[#0284C7]/80 hover:text-[#0284C7]'
                   }`}
               >
-                Call <span className="text-[#0284C7] font-bold">(177)</span>
+                Call <span className="text-[#0284C7] font-bold">({subtypeCounts.call})</span>
               </button>
 
               {activeSubtype !== 'ALL' && (
@@ -1047,9 +1882,9 @@ function TasksContent() {
                 paginatedTasks.map((task, idx) => {
                   const slNo = (currentPage - 1) * pageSize + idx + 1;
                   const isCompleted = task.status === 'Completed';
-                  const parts = task.taskUnder.split(' / ');
-                  const oppRef = parts[0] || task.taskUnder;
-                  const customerName = parts[1] || 'FOCUS EMC KITCHENS LLC';
+                  const parts = (task.taskUnder || '').split(' / ');
+                  const oppRef = parts[0] || task.equipmentTag || task.taskUnder || 'Client Account';
+                  const customerName = task.customer || (parts.length > 1 ? parts[1] : '');
 
                   return (
                     <div
@@ -1083,7 +1918,7 @@ function TasksContent() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0 relative">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#F5A623] text-white">
                             <Edit2 className="w-2.5 h-2.5" />
                             <span>{task.priority === 'High' ? 'Mid' : task.priority}</span>
@@ -1094,11 +1929,84 @@ function TasksContent() {
                             onClick={() =>
                               setActionMenuTaskId(actionMenuTaskId === task.id ? null : task.id)
                             }
-                            className="flex items-center gap-1 px-2 py-1 rounded bg-[#006f8e] text-white text-[10px] font-medium"
+                            className="flex items-center gap-1 px-2 py-1 rounded bg-[#006f8e] text-white text-[10px] font-medium cursor-pointer shadow-xs"
                           >
                             <Settings className="w-3 h-3" />
                             <ChevronDown className="w-2.5 h-2.5" />
                           </button>
+
+                          {/* Mobile Dropdown Menu */}
+                          {actionMenuTaskId === task.id && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-40"
+                                onClick={() => setActionMenuTaskId(null)}
+                              />
+                              <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-slate-200 rounded-[4px] shadow-lg z-50 py-1 text-left text-xs text-[#212529]">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setViewingTaskInfo(task);
+                                    setActionMenuTaskId(null);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                >
+                                  <Book className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
+                                  <span>View</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingTask(task);
+                                    setActionMenuTaskId(null);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
+                                  <span>Edit</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleOpenPostpone(task);
+                                    setActionMenuTaskId(null);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                >
+                                  <Calendar className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
+                                  <span>Postpone</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    updateTask(task.id, { status: 'Completed', progress: 100 });
+                                    setActionMenuTaskId(null);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
+                                  <span>Mark as Completed</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm(`Are you sure you want to delete this task?`)) {
+                                      deleteTask(task.id);
+                                    }
+                                    setActionMenuTaskId(null);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
 
@@ -1132,12 +2040,14 @@ function TasksContent() {
                             {oppRef}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 text-[#0284C7] font-medium text-[11px]">
-                          <Shield className="w-3.5 h-3.5 text-[#EF4444] shrink-0" />
-                          <span className="truncate uppercase hover:underline cursor-pointer" onClick={() => setViewingTaskInfo(task)}>
-                            {customerName}
-                          </span>
-                        </div>
+                        {customerName && customerName !== oppRef && (
+                          <div className="flex items-center gap-1.5 text-[#0284C7] font-medium text-[11px]">
+                            <Shield className="w-3.5 h-3.5 text-[#EF4444] shrink-0" />
+                            <span className="truncate uppercase hover:underline cursor-pointer" onClick={() => setViewingTaskInfo(task)}>
+                              {customerName}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Footer: Due Date & Task Type */}
@@ -1184,9 +2094,9 @@ function TasksContent() {
                       const isCompleted = task.status === 'Completed';
 
                       // Parse Task Under for Opportunity & Customer
-                      const parts = task.taskUnder.split(' / ');
-                      const oppRef = parts[0] || task.taskUnder;
-                      const customerName = parts[1] || 'FOCUS EMC KITCHENS LLC';
+                      const parts = (task.taskUnder || '').split(' / ');
+                      const oppRef = parts[0] || task.equipmentTag || task.taskUnder || 'Client Account';
+                      const customerName = task.customer || (parts.length > 1 ? parts[1] : '');
 
                       return (
                         <tr
@@ -1254,21 +2164,23 @@ function TasksContent() {
                                 </button>
                               </div>
 
-                              {/* Customer with Shield icon */}
-                              <div className="flex items-center gap-1.5 text-[#0284C7] font-medium text-[11px]">
-                                <Shield className="w-3.5 h-3.5 text-[#EF4444] flex-shrink-0" />
-                                <span className="truncate uppercase hover:underline cursor-pointer max-w-[200px]" onClick={() => setViewingTaskInfo(task)}>
-                                  {customerName}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setViewingTaskInfo(task)}
-                                  className="text-[#0284C7] hover:text-[#0369A1] p-0.5 flex-shrink-0"
-                                  title="Customer Details"
-                                >
-                                  <Info className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                              {/* Customer with Shield icon (only if different & present) */}
+                              {customerName && customerName !== oppRef && (
+                                <div className="flex items-center gap-1.5 text-[#0284C7] font-medium text-[11px]">
+                                  <Shield className="w-3.5 h-3.5 text-[#EF4444] flex-shrink-0" />
+                                  <span className="truncate uppercase hover:underline cursor-pointer max-w-[200px]" onClick={() => setViewingTaskInfo(task)}>
+                                    {customerName}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewingTaskInfo(task)}
+                                    className="text-[#0284C7] hover:text-[#0369A1] p-0.5 flex-shrink-0"
+                                    title="Customer Details"
+                                  >
+                                    <Info className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </td>
 
@@ -1308,7 +2220,7 @@ function TasksContent() {
                                 <ChevronDown className="w-3 h-3" />
                               </button>
 
-                              {/* Dropdown Menu matching Cezcon CRM */}
+                              {/* Dropdown Menu matching Cezcon CRM Screenshot */}
                               {actionMenuTaskId === task.id && (
                                 <>
                                   <div
@@ -1316,42 +2228,59 @@ function TasksContent() {
                                     onClick={() => setActionMenuTaskId(null)}
                                   />
                                   <div className="absolute right-0 top-full mt-1.5 w-44 bg-white border border-slate-200 rounded-[4px] shadow-lg z-50 py-1 text-left text-[13px] text-[#212529]">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        window.open(`/tasks?id=${task.id}`, '_blank');
-                                        setActionMenuTaskId(null);
-                                      }}
-                                      className="w-full flex items-center gap-2.5 px-3.5 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
-                                    >
-                                      <Book className="w-4 h-4 text-slate-700 flex-shrink-0 stroke-[1.75]" />
-                                      <span>Open in new tab</span>
-                                    </button>
-
+                                    {/* 1. View */}
                                     <button
                                       type="button"
                                       onClick={() => {
                                         setViewingTaskInfo(task);
                                         setActionMenuTaskId(null);
                                       }}
-                                      className="w-full flex items-center gap-2.5 px-3.5 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                      className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
                                     >
-                                      <Book className="w-4 h-4 text-slate-700 flex-shrink-0 stroke-[1.75]" />
+                                      <Book className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
                                       <span>View</span>
                                     </button>
 
+                                    {/* 2. Edit */}
                                     <button
                                       type="button"
                                       onClick={() => {
                                         setEditingTask(task);
                                         setActionMenuTaskId(null);
                                       }}
-                                      className="w-full flex items-center gap-2.5 px-3.5 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                      className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
                                     >
-                                      <Edit className="w-4 h-4 text-slate-700 flex-shrink-0 stroke-[1.75]" />
+                                      <Edit2 className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
                                       <span>Edit</span>
                                     </button>
 
+                                    {/* 3. Postpone */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleOpenPostpone(task);
+                                        setActionMenuTaskId(null);
+                                      }}
+                                      className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                    >
+                                      <Calendar className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
+                                      <span>Postpone</span>
+                                    </button>
+
+                                    {/* 4. Mark as Completed */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        updateTask(task.id, { status: 'Completed', progress: 100 });
+                                        setActionMenuTaskId(null);
+                                      }}
+                                      className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
+                                      <span>Mark as Completed</span>
+                                    </button>
+
+                                    {/* 5. Delete */}
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -1360,9 +2289,9 @@ function TasksContent() {
                                         }
                                         setActionMenuTaskId(null);
                                       }}
-                                      className="w-full flex items-center gap-2.5 px-3.5 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                      className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
                                     >
-                                      <Trash2 className="w-4 h-4 text-slate-700 flex-shrink-0 stroke-[1.75]" />
+                                      <Trash2 className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
                                       <span>Delete</span>
                                     </button>
                                   </div>
@@ -1600,203 +2529,9 @@ function TasksContent() {
         </Modal>
       )}
 
-      {/* ── MODAL 3: Edit Task Modal ─────────────────────────────────── */}
-      {editingTask && (
-        <Modal
-          isOpen={!!editingTask}
-          onClose={() => setEditingTask(null)}
-          title="Edit Operational Task"
-          description={`Update details and workflow status for Task #${editingTask.slNo}`}
-          icon={<Edit2 className="w-5 h-5 text-blue-600" />}
-          maxWidth="lg"
-        >
-          <form onSubmit={handleUpdateTask} className="space-y-4 text-xs">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-800">
-                Task Description <span className="text-rose-500">*</span>
-              </label>
-              <textarea
-                required
-                rows={2}
-                value={editingTask.taskDetails}
-                onChange={(e) => setEditingTask({ ...editingTask, taskDetails: e.target.value })}
-                className="w-full bg-slate-50/70 hover:bg-slate-50 focus:bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 transition-all shadow-2xs resize-none"
-              />
-            </div>
+      {/* ── MODAL: Postpone Task Modal matching Cezcon CRM Screenshot ── */}
+      {renderPostponeModal()}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              <Input
-                label="Task Under / Opportunity"
-                value={editingTask.taskUnder}
-                onChange={(e) => setEditingTask({ ...editingTask, taskUnder: e.target.value })}
-              />
-              <Select
-                label="Assignee"
-                value={editingTask.assignee.name}
-                options={users.map((u) => ({ label: `${u.name} (${u.role})`, value: u.name }))}
-                onChange={(e) =>
-                  setEditingTask({ ...editingTask, assignee: { name: e.target.value } })
-                }
-              />
-            </div>
-
-            {/* Priority Selector */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-800">Priority Level</label>
-              <div className="grid grid-cols-4 gap-2">
-                {[
-                  { value: 'Urgent', label: 'Urgent', dot: 'bg-rose-500', active: 'bg-rose-50 border-rose-400 text-rose-800 ring-2 ring-rose-500/20' },
-                  { value: 'High', label: 'High', dot: 'bg-amber-500', active: 'bg-amber-50 border-amber-400 text-amber-800 ring-2 ring-amber-500/20' },
-                  { value: 'Medium', label: 'Medium', dot: 'bg-blue-500', active: 'bg-blue-50 border-blue-400 text-blue-800 ring-2 ring-blue-500/20' },
-                  { value: 'Low', label: 'Low', dot: 'bg-slate-400', active: 'bg-slate-100 border-slate-400 text-slate-800 ring-2 ring-slate-500/20' },
-                ].map((pri) => {
-                  const isSelected = editingTask.priority === pri.value;
-                  return (
-                    <button
-                      key={pri.value}
-                      type="button"
-                      onClick={() => setEditingTask({ ...editingTask, priority: pri.value as TaskPriority })}
-                      className={cn(
-                        'flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-bold transition-all duration-150 cursor-pointer',
-                        isSelected
-                          ? pri.active
-                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                      )}
-                    >
-                      <span className={cn('w-2 h-2 rounded-full', pri.dot)} />
-                      <span>{pri.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Select
-                label="Task Type"
-                value={editingTask.taskType}
-                options={[
-                  { label: 'Follow-up', value: 'Follow-up' },
-                  { label: 'Call', value: 'Call' },
-                  { label: 'Meeting', value: 'Meeting' },
-                  { label: 'Demo', value: 'Demo' },
-                  { label: 'Email', value: 'Email' },
-                  { label: 'Review', value: 'Review' },
-                  { label: 'Document', value: 'Document' },
-                ]}
-                onChange={(e: any) => setEditingTask({ ...editingTask, taskType: e.target.value })}
-              />
-              <Select
-                label="Status"
-                value={editingTask.status}
-                options={[
-                  { label: 'Pending', value: 'Pending' },
-                  { label: 'In Progress', value: 'In Progress' },
-                  { label: 'Completed', value: 'Completed' },
-                  { label: 'Overdue', value: 'Overdue' },
-                  { label: 'Upcoming', value: 'Upcoming' },
-                ]}
-                onChange={(e: any) => setEditingTask({ ...editingTask, status: e.target.value })}
-              />
-              <Input
-                label="Due Date"
-                type="date"
-                value={editingTask.dueDate}
-                onChange={(e) => setEditingTask({ ...editingTask, dueDate: e.target.value })}
-              />
-            </div>
-
-            <div className="flex justify-end gap-2.5 pt-4 border-t border-slate-100">
-              <Button type="button" variant="outline" size="sm" onClick={() => setEditingTask(null)}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" size="sm" icon={<Check className="w-4 h-4" />}>
-                Save Changes
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* ── MODAL 4: View Task Info Popover ──────────────────────────── */}
-      {viewingTaskInfo && (
-        <Modal
-          isOpen={!!viewingTaskInfo}
-          onClose={() => setViewingTaskInfo(null)}
-          title="Task & Commercial Milestone Details"
-          description={`Overview of record #${viewingTaskInfo.slNo}`}
-        >
-          <div className="space-y-3.5 text-xs">
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
-              <div>
-                <span className="text-[10px] uppercase font-bold text-slate-400">Task Subject:</span>
-                <p className="text-slate-900 font-semibold text-sm mt-0.5">{viewingTaskInfo.taskDetails}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Related Deal / Client:</span>
-                  <p className="text-blue-600 font-bold flex items-center gap-1 mt-0.5">
-                    <Key className="w-3 h-3 text-rose-500 flex-shrink-0" />
-                    <span>{viewingTaskInfo.taskUnder}</span>
-                  </p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Assigned Tech / Worker:</span>
-                  <p className="text-slate-800 font-bold mt-0.5">{viewingTaskInfo.assignee.name} {viewingTaskInfo.workerContact ? `(${viewingTaskInfo.workerContact})` : ''}</p>
-                </div>
-              </div>
-
-              {(viewingTaskInfo.department || viewingTaskInfo.location || viewingTaskInfo.siteLocation || viewingTaskInfo.equipmentTag) && (
-                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200 bg-blue-50/50 p-2 rounded-md">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-500">Department:</span>
-                    <p className="text-slate-800 font-semibold mt-0.5 truncate">{viewingTaskInfo.department || 'Operations'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-500">Site Location:</span>
-                    <p className="text-slate-800 font-semibold mt-0.5 truncate">{viewingTaskInfo.location || viewingTaskInfo.siteLocation || 'Main Plant'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-500">Equipment Tag:</span>
-                    <p className="text-slate-800 font-mono font-semibold mt-0.5">{viewingTaskInfo.equipmentTag || 'N/A'}</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Due Date & SLA:</span>
-                  <p className="text-slate-800 font-medium mt-0.5">{viewingTaskInfo.dueDate} • {viewingTaskInfo.dueTime || 'EOD'}</p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Priority:</span>
-                  <div className="mt-0.5">
-                    <StatusBadge status={viewingTaskInfo.priority} />
-                  </div>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Status:</span>
-                  <div className="mt-0.5">
-                    <StatusBadge status={viewingTaskInfo.status} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setViewingTaskInfo(null)}
-                className="bg-blue-600 text-white"
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }

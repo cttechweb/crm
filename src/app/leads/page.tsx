@@ -40,7 +40,7 @@ import { Button } from '@/components/ui/Button';
 import { CrmLead, LeadRating, LeadStatus } from '@/types/enterprise-crm';
 import { cn } from '@/lib/utils';
 
-function LeadsContent() {
+export function LeadsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 

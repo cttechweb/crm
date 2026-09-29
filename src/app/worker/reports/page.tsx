@@ -17,17 +17,22 @@ import {
 } from 'lucide-react';
 import { WorkerShell } from '@/components/layout/WorkerShell';
 import { workerMockService } from '@/services/workerMockService';
+import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { WorkerTask } from '@/types/worker';
 
 function WorkerReportsContent() {
   const searchParams = useSearchParams();
   const highlightedId = searchParams.get('id');
 
+  const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
   const [tasks, setTasks] = useState<WorkerTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<WorkerTask | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
+    const user = authMockService.getCurrentUser();
+    if (user) setCurrentUser(user);
+
     const list = workerMockService.getTasks();
     const completed = list.filter((t) => t.status === 'Completed');
     setTasks(completed);
@@ -160,7 +165,7 @@ function WorkerReportsContent() {
 
                 <div className="space-y-1 sm:text-right">
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">Execution Record</span>
-                  <div className="font-bold text-slate-900">Lead Tech: Jordan Hayes (WRK-2049)</div>
+                  <div className="font-bold text-slate-900">Lead Tech: {currentUser?.name || 'Technician'} ({currentUser?.id ? `EMP-${currentUser.id.slice(-4)}` : 'EMP-1049'})</div>
                   <div className="text-slate-600">Date Completed: {selectedTask.signedAt || '2026-09-24'}</div>
                   <div className="text-slate-600">Labor Hours: {selectedTask.actualHoursSpent || selectedTask.estimatedHours} hrs</div>
                 </div>
@@ -238,8 +243,8 @@ function WorkerReportsContent() {
                   <span className="text-[10px] font-bold text-slate-400 block uppercase">
                     Service Specialist Handover
                   </span>
-                  <div className="font-serif italic font-bold text-slate-900 text-base">Jordan Hayes</div>
-                  <div className="text-[11px] text-slate-500">Certified Senior HVAC Tech</div>
+                  <div className="font-serif italic font-bold text-slate-900 text-base">{currentUser?.name || 'Field Technician'}</div>
+                  <div className="text-[11px] text-slate-500">{currentUser?.designation || 'Certified HVAC Specialist'}</div>
                   <div className="text-[10px] text-emerald-700 font-bold mt-1">Verified on site ✓</div>
                 </div>
 

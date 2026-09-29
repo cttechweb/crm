@@ -197,9 +197,9 @@ export function NavDropdown({ items, isOpen, onClose }: NavDropdownProps) {
   return (
     <div
       ref={dropdownRef}
-      className="absolute left-0 top-full mt-0.5 w-[220px] bg-white border border-[#E2E8F0] rounded-sm shadow-xl p-1 z-[1100] animate-in fade-in duration-100"
+      className="absolute left-0 top-full mt-0 w-[220px] bg-white border border-[#CBD5E1] shadow-2xl p-1 z-[3000] animate-in fade-in duration-100 rounded-b-sm"
       style={{
-        boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.15), 0 8px 10px -6px rgba(15, 23, 42, 0.08)',
+        boxShadow: '0 12px 28px -4px rgba(15, 23, 42, 0.2), 0 8px 10px -6px rgba(15, 23, 42, 0.1)',
       }}
     >
       <div className="space-y-0.5">
@@ -225,7 +225,7 @@ export function NavDropdown({ items, isOpen, onClose }: NavDropdownProps) {
                     }
                   }}
                   className={cn(
-                    'w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-semibold rounded-sm transition-colors select-none cursor-pointer',
+                    'w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-semibold rounded-xs transition-colors select-none cursor-pointer',
                     isHighlighted
                       ? 'bg-[#2563EB] text-white shadow-xs'
                       : 'text-slate-800 hover:bg-[#2563EB] hover:text-white'
@@ -254,7 +254,7 @@ export function NavDropdown({ items, isOpen, onClose }: NavDropdownProps) {
                     onClose();
                   }}
                   className={cn(
-                    'flex items-center justify-between px-2.5 py-1.5 text-xs font-semibold rounded-sm transition-colors select-none',
+                    'flex items-center justify-between px-2.5 py-1.5 text-xs font-semibold rounded-xs transition-colors select-none',
                     isHighlighted
                       ? 'bg-[#2563EB] text-white shadow-xs'
                       : 'text-slate-800 hover:bg-[#2563EB] hover:text-white'
@@ -280,9 +280,9 @@ export function NavDropdown({ items, isOpen, onClose }: NavDropdownProps) {
               {/* Nested Flyout Submenu to the Right */}
               {hasChildren && hoveredIndex === idx && item.children && (
                 <div
-                  className="absolute left-[calc(100%+2px)] top-0 w-[210px] bg-white border border-[#E2E8F0] rounded-sm shadow-xl p-1 z-[1200] animate-in fade-in duration-100"
+                  className="absolute left-[calc(100%+1px)] top-0 w-[210px] bg-white border border-[#CBD5E1] shadow-2xl p-1 z-[3100] animate-in fade-in duration-100 rounded-sm"
                   style={{
-                    boxShadow: '0 12px 28px -4px rgba(15, 23, 42, 0.18), 0 8px 12px -6px rgba(15, 23, 42, 0.1)',
+                    boxShadow: '0 14px 30px -4px rgba(15, 23, 42, 0.22), 0 8px 12px -6px rgba(15, 23, 42, 0.12)',
                   }}
                   onMouseEnter={() => handleMouseEnterItem(idx)}
                   onMouseLeave={handleMouseLeaveItem}
@@ -305,7 +305,7 @@ export function NavDropdown({ items, isOpen, onClose }: NavDropdownProps) {
                           onMouseEnter={() => setHoveredSubIndex(subIdx)}
                           onMouseLeave={() => setHoveredSubIndex(null)}
                           className={cn(
-                            'flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold rounded-sm transition-colors select-none',
+                            'flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold rounded-xs transition-colors select-none',
                             isSubHighlighted
                               ? 'bg-[#2563EB] text-white shadow-xs'
                               : 'text-slate-800 hover:bg-[#2563EB] hover:text-white'
