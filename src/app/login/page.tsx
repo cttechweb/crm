@@ -83,11 +83,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="h-screen max-h-screen w-full flex flex-col lg:flex-row bg-[#F4FAFE] select-none font-sans overflow-hidden">
+    <div className="min-h-screen lg:h-screen lg:max-h-screen w-full flex flex-col lg:flex-row bg-[#F4FAFE] select-none font-sans overflow-y-auto lg:overflow-hidden">
       {/* ========================================================= */}
       {/* LEFT HALF: Executive Enterprise CRM Dashboard Console     */}
       {/* ========================================================= */}
-      <div className="relative w-full lg:w-[52%] xl:w-[50%] h-full max-h-screen bg-gradient-to-br from-[#0284C7] via-[#0369A1] to-[#0A2540] text-white p-5 sm:p-7 xl:p-8 flex flex-col justify-between overflow-hidden shadow-2xl z-10">
+      <div className="hidden lg:flex relative w-full lg:w-[52%] xl:w-[50%] h-full max-h-screen bg-gradient-to-br from-[#0284C7] via-[#0369A1] to-[#0A2540] text-white p-5 sm:p-7 xl:p-8 flex-col justify-between overflow-hidden shadow-2xl z-10">
         {/* Ambient Background Rings */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
           <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-sky-300/20 blur-3xl" />
@@ -98,10 +98,10 @@ export default function LoginPage() {
 
         {/* 1. TOP BRAND HEADER */}
         <div className="relative z-10 flex-shrink-0 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             {/* Vector Cool Technologies C-wave Emblem */}
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white/95 p-1 shadow-md flex items-center justify-center backdrop-blur-sm flex-shrink-0">
-              <svg viewBox="0 0 80 80" className="w-8 h-8 sm:w-9 sm:h-9" xmlns="http://www.w3.org/2000/svg">
+            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-white/95 p-1 shadow-md flex items-center justify-center backdrop-blur-sm flex-shrink-0">
+              <svg viewBox="0 0 80 80" className="w-7 h-7 sm:w-9 sm:h-9" xmlns="http://www.w3.org/2000/svg">
                 <path d="M58 12 A32 32 0 0 0 18 40" fill="none" stroke="#00AEEF" strokeWidth="6.5" strokeLinecap="round" />
                 <path d="M53 19 A24 24 0 0 0 22 40" fill="none" stroke="#00AEEF" strokeWidth="6" strokeLinecap="round" />
                 <path d="M48 26 A16 16 0 0 0 26 40" fill="none" stroke="#00AEEF" strokeWidth="5" strokeLinecap="round" />
@@ -113,10 +113,10 @@ export default function LoginPage() {
 
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5 leading-none">
-                <span className="text-xl font-black tracking-tight text-white drop-shadow-sm">
+                <span className="text-lg sm:text-xl font-black tracking-tight text-white drop-shadow-sm">
                   COOL
                 </span>
-                <span className="text-xs font-bold tracking-widest uppercase text-sky-200">
+                <span className="text-[10px] sm:text-xs font-bold tracking-widest uppercase text-sky-200">
                   TECHNOLOGIES
                 </span>
               </div>
@@ -126,26 +126,26 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <div className="hidden sm:flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/15 px-3 py-1.5 rounded-full text-[11px] text-sky-100">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="flex items-center gap-1.5 sm:gap-2 bg-white/10 backdrop-blur-md border border-white/15 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-[11px] text-sky-100">
+            <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="font-semibold">Enterprise ERP v4.8</span>
           </div>
         </div>
 
         {/* 2. HEADLINE & VALUE PROP */}
-        <div className="relative z-10 my-2 max-w-xl">
-          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight drop-shadow-sm">
+        <div className="relative z-10 my-3 sm:my-3.5 max-w-xl">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight leading-tight drop-shadow-sm">
             Smart CRM for Smarter Business
           </h1>
-          <p className="mt-1 text-xs text-sky-100/90 font-normal leading-relaxed">
+          <p className="mt-1 text-xs sm:text-sm text-sky-100/90 font-normal leading-relaxed">
             Enterprise command center for Leads, Sales, Commercial HVAC Service Operations &amp; Analytics.
           </p>
         </div>
 
         {/* 3. EXECUTIVE CRM DASHBOARD PREVIEW */}
-        <div className="relative z-10 w-full bg-white rounded-2xl sm:rounded-3xl border border-white/80 p-3.5 sm:p-4 shadow-2xl shadow-blue-950/25 text-slate-800 font-sans my-auto">
+        <div className="relative z-10 w-full bg-white rounded-2xl sm:rounded-3xl border border-white/80 p-3 sm:p-4 shadow-xl shadow-blue-950/25 text-slate-800 font-sans my-2 lg:my-auto">
           {/* Dashboard Model Header Bar */}
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 sm:pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <div className="flex gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block" />
@@ -158,7 +158,7 @@ export default function LoginPage() {
             </div>
 
             {/* Interactive Preview Tabs */}
-            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[10px] font-semibold">
+            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[9px] sm:text-[10px] font-semibold overflow-x-auto max-w-full">
               <button
                 type="button"
                 onClick={() => setActivePreviewTab('overview')}
@@ -338,7 +338,7 @@ export default function LoginPage() {
       {/* ========================================================= */}
       {/* RIGHT HALF: Elevated Floating Sign-in Card                */}
       {/* ========================================================= */}
-      <div className="relative w-full lg:w-[48%] xl:w-[50%] h-full max-h-screen bg-[#F4FAFE] flex flex-col justify-between items-center px-4 sm:px-8 xl:px-12 py-5 sm:py-7 overflow-hidden">
+      <div className="relative w-full lg:w-[48%] xl:w-[50%] min-h-screen lg:h-full lg:max-h-screen bg-[#F4FAFE] flex flex-col justify-between items-center px-4 sm:px-8 xl:px-12 py-6 sm:py-8 lg:py-7 overflow-y-auto lg:overflow-hidden">
         {/* Subtle wavy background curves watermark */}
         <div className="absolute inset-0 pointer-events-none opacity-25 overflow-hidden">
           <svg className="w-full h-full" viewBox="0 0 700 700" xmlns="http://www.w3.org/2000/svg">
@@ -386,7 +386,7 @@ export default function LoginPage() {
             <h2 className="text-xl sm:text-2xl font-bold text-[#0F172A] tracking-tight mt-4">
               Sign In to CRM
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
               Enter your credentials to access your dashboard
             </p>
           </div>
@@ -408,7 +408,7 @@ export default function LoginPage() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-3.5 mt-4">
+          <form onSubmit={handleLogin} className="space-y-4 mt-4">
             {/* Email Address */}
             <div>
               <label
@@ -428,7 +428,7 @@ export default function LoginPage() {
                   placeholder="Enter your email or username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1677FF]/20 focus:border-[#1677FF] transition-all"
+                  className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1677FF]/20 focus:border-[#1677FF] transition-all"
                 />
               </div>
             </div>
@@ -452,7 +452,7 @@ export default function LoginPage() {
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-9 pr-9 py-2 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1677FF]/20 focus:border-[#1677FF] transition-all"
+                  className="w-full pl-9 pr-9 py-2.5 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1677FF]/20 focus:border-[#1677FF] transition-all"
                 />
                 <button
                   type="button"
@@ -512,7 +512,7 @@ export default function LoginPage() {
         </div>
 
         {/* Footer */}
-        <div className="relative z-10 w-full text-center text-[10px] sm:text-xs text-slate-400 pt-2">
+        <div className="relative z-10 w-full text-center text-[10px] sm:text-xs text-slate-400 pt-3 pb-1">
           <p>© 2026 Cool Technologies LLC. All rights reserved.</p>
           <p className="text-[10px] text-slate-400/80 mt-0.5">
             The Science of Cooling | Enterprise CRM Suite
