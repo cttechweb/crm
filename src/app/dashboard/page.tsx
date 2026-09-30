@@ -258,7 +258,7 @@ export default function DashboardPage() {
             </Button>
           </Link>
 
-          <Link href="/sales/opportunities">
+          <Link href="/sales?tab=opportunities">
             <Button
               variant="outline"
               size="sm"
@@ -399,7 +399,7 @@ export default function DashboardPage() {
             </p>
           </div>
           <Link
-            href="/sales/opportunities"
+            href="/sales?tab=opportunities"
             className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1"
           >
             View Full Pipeline <ChevronRight className="w-3.5 h-3.5" />
@@ -448,7 +448,7 @@ export default function DashboardPage() {
               </span>
             </div>
             <Link
-              href="/sales/opportunities"
+              href="/sales?tab=opportunities"
               className="text-xs font-semibold text-blue-600 hover:underline flex items-center gap-1"
             >
               All Inquiries <ArrowRight className="w-3 h-3" />
@@ -461,7 +461,7 @@ export default function DashboardPage() {
                 <Briefcase className="w-8 h-8 text-slate-300 mx-auto" />
                 <p className="font-semibold text-slate-600">No active commercial deals yet.</p>
                 <Link
-                  href="/sales/opportunities"
+                  href="/sales?tab=opportunities"
                   className="inline-flex items-center gap-1 text-blue-600 hover:underline font-semibold"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -501,7 +501,7 @@ export default function DashboardPage() {
                       </td>
                       <td className="py-2.5 px-3 text-center whitespace-nowrap">
                         <Link
-                          href="/sales/opportunities"
+                          href="/sales?tab=opportunities"
                           className="inline-block px-2 py-1 rounded border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:text-blue-600 hover:border-blue-200 transition-colors"
                         >
                           Manage
