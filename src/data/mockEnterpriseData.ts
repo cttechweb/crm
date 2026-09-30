@@ -20,11 +20,73 @@ import {
 // Empty datasets for clean manual data entry across all CRM modules
 export const mockTasks: CrmTask[] = [];
 
-export const mockLeads: CrmLead[] = [];
+export const mockLeads: CrmLead[] = [
+  {
+    id: 'LD-2026-001',
+    slNo: 1,
+    leadDate: '2026-09-28',
+    assignedDate: '2026-09-28',
+    leadAssigned: {
+      name: 'Manager',
+    },
+    contactDetails: {
+      name: 'Eng. Tariq Mansoor',
+      company: 'Al Futtaim Engineering LLC',
+      phone: '+971 50 889 1234',
+      email: 'tariq.mansoor@alfuttaim.ae',
+      whatsapp: '+971 50 889 1234',
+    },
+    leadSpecification: 'Central Chiller Overhaul & 3-Year Commercial AMC Contract',
+    owner: 'Manager',
+    createdBy: 'Manager',
+    assignedEmployee: 'Manager',
+    rating: 'Hot',
+    status: 'Converted',
+    lastActivity: 'Lead converted to Customer & Deal',
+    source: 'Direct Website Inquiry',
+    campaign: 'Commercial HVAC 2026',
+    businessOpportunity: 'HVAC Installation & AMC',
+    value: 85000,
+    tags: ['VIP Client', 'Commercial', 'Converted'],
+    comments: 'Lead successfully converted to Active Customer and Sales Opportunity by Manager.',
+  },
+];
 
-export const mockCustomers: CrmCustomer[] = [];
+export const mockCustomers: CrmCustomer[] = [
+  {
+    id: 'CUST-001',
+    slNo: 1,
+    customerName: 'Al Futtaim Engineering LLC',
+    contactPerson: 'Eng. Tariq Mansoor',
+    phone: '+971 50 889 1234',
+    email: 'tariq.mansoor@alfuttaim.ae',
+    owner: 'Manager',
+    category: 'Corporate Client',
+    status: 'Active',
+    companyGroup: 'Commercial Engineering',
+    totalDeals: 1,
+    totalSpend: 85000,
+    lastActivity: 'Converted from Lead by Manager',
+    createdFromLeadId: 'LD-2026-001',
+    city: 'Dubai',
+  },
+];
 
-export const mockSalesOpportunities: CrmSalesOpportunity[] = [];
+export const mockSalesOpportunities: CrmSalesOpportunity[] = [
+  {
+    id: 'OPP-001',
+    title: 'Al Futtaim Central Chiller Overhaul & 3-Year AMC Contract',
+    customer: 'Al Futtaim Engineering LLC',
+    amount: 85000,
+    stage: 'Quotation',
+    owner: 'Manager',
+    expectedClose: '2026-10-15',
+    probability: 90,
+    source: 'Direct Website Inquiry',
+    createdFromLeadId: 'LD-2026-001',
+    createdAt: '2026-09-28',
+  },
+];
 
 export const mockQuotations: CrmQuotation[] = [];
 

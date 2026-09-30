@@ -49,6 +49,7 @@ interface LeadFollowupItem {
 const INITIAL_FOLLOWUPS: LeadFollowupItem[] = [];
 
 function FollowupsContent() {
+  const { users, leads } = useEnterpriseCrm();
   const [followups, setFollowups] = useState<LeadFollowupItem[]>(INITIAL_FOLLOWUPS);
   const [filterTab, setFilterTab] = useState<'All' | 'Overdue' | 'Today' | 'Upcoming' | 'Completed'>('All');
   const [search, setSearch] = useState('');
@@ -62,10 +63,10 @@ function FollowupsContent() {
     company: '',
     phone: '+971 50 ',
     type: 'Phone Call' as const,
-    dueDate: '2026-09-26',
+    dueDate: '2026-09-29',
     dueTime: '10:00 AM',
     priority: 'High' as const,
-    assignedRep: 'Mohammed Rashid',
+    assignedRep: 'Manager',
     notes: '',
   });
 
@@ -247,10 +248,13 @@ function FollowupsContent() {
             onChange={(e) => setRepFilter(e.target.value)}
             className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none shadow-2xs cursor-pointer"
           >
-            <option value="All">All Sales Reps</option>
-            <option value="Mohammed Rashid">Mohammed Rashid</option>
-            <option value="Alex Rivera">Alex Rivera</option>
-            <option value="Sarah Al-Mansoor">Sarah Al-Mansoor</option>
+            <option value="All">All Representatives</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.name}>
+                {u.name} ({u.role})
+              </option>
+            ))}
+            <option value="Manager">Manager</option>
           </select>
 
           <div className="relative w-full sm:w-64">
@@ -464,6 +468,22 @@ function FollowupsContent() {
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Assigned Representative *</label>
+                <select
+                  value={formData.assignedRep}
+                  onChange={(e) => setFormData({ ...formData, assignedRep: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none"
+                >
+                  <option value="Manager">Manager (Sales Manager)</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.name}>
+                      {u.name} ({u.role})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

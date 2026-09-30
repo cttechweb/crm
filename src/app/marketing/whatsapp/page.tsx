@@ -41,7 +41,7 @@ interface WhatsAppBroadcastItem {
 
 const INITIAL_WHATSAPP_BROADCASTS: WhatsAppBroadcastItem[] = [];
 
-function WhatsAppContent() {
+export function WhatsAppContent() {
   const [broadcasts, setBroadcasts] = useState<WhatsAppBroadcastItem[]>(INITIAL_WHATSAPP_BROADCASTS);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');

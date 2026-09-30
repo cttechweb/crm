@@ -189,61 +189,197 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     }
   };
 
-  // Load persisted data on mount (filtering out any old seed mock entries)
-  useEffect(() => {
-    try {
-      const isPurged = localStorage.getItem('crm_clean_state_purged_v4');
-      if (!isPurged) {
-        clearAllData();
-        localStorage.setItem('crm_clean_state_purged_v4', 'true');
-        return;
-      }
-
-      const storedLeads = localStorage.getItem('crm_leads_data');
-      if (storedLeads) setLeads(JSON.parse(storedLeads));
-
-      const storedCustomers = localStorage.getItem('crm_customers_data');
-      if (storedCustomers) setCustomers(JSON.parse(storedCustomers));
-
-      const storedOpps = localStorage.getItem('crm_opportunities_data');
-      if (storedOpps) setSalesOpportunities(JSON.parse(storedOpps));
-
-      const storedTasks = localStorage.getItem('crm_tasks_data');
-      if (storedTasks) setTasks(JSON.parse(storedTasks));
-
-      const storedQuotes = localStorage.getItem('crm_quotations_data');
-      if (storedQuotes) setQuotations(JSON.parse(storedQuotes));
-
-      const storedOrders = localStorage.getItem('crm_orders_data');
-      if (storedOrders) setSalesOrders(JSON.parse(storedOrders));
-
-      const storedInvoices = localStorage.getItem('crm_invoices_data');
-      if (storedInvoices) setInvoices(JSON.parse(storedInvoices));
-
-      const storedReceipts = localStorage.getItem('crm_receipts_data');
-      if (storedReceipts) setReceipts(JSON.parse(storedReceipts));
-
-      const storedDeliveryNotes = localStorage.getItem('crm_delivery_notes_data');
-      if (storedDeliveryNotes) setDeliveryNotes(JSON.parse(storedDeliveryNotes));
-
-      const storedCampaigns = localStorage.getItem('crm_campaigns_data');
-      if (storedCampaigns) setCampaigns(JSON.parse(storedCampaigns));
-
-      const storedStocks = localStorage.getItem('crm_stocks_data');
-      if (storedStocks) setPurchaseStocks(JSON.parse(storedStocks));
-    } catch (e) {
-      console.error(e);
-    }
-  }, []);
-
-  // Helper to persist state
-  const persist = (key: string, data: any) => {
+  // Helper to persist state and dispatch live sync events
+  const persist = (key: string, data: any, eventName?: string) => {
+    if (typeof window === 'undefined') return;
     try {
       localStorage.setItem(key, JSON.stringify(data));
+      const derivedEvent =
+        eventName ||
+        (key === 'crm_tasks_data'
+          ? 'crm_tasks_updated'
+          : key === 'crm_leads_data'
+          ? 'crm_leads_updated'
+          : key === 'crm_customers_data'
+          ? 'crm_customers_updated'
+          : key === 'crm_opportunities_data'
+          ? 'crm_opportunities_updated'
+          : key === 'crm_quotations_data'
+          ? 'crm_quotations_updated'
+          : key === 'crm_orders_data'
+          ? 'crm_orders_updated'
+          : key === 'crm_invoices_data'
+          ? 'crm_invoices_updated'
+          : key === 'crm_receipts_data'
+          ? 'crm_receipts_updated'
+          : key === 'crm_delivery_notes_data'
+          ? 'crm_delivery_notes_updated'
+          : key === 'crm_campaigns_data'
+          ? 'crm_campaigns_updated'
+          : key === 'crm_stocks_data'
+          ? 'crm_stocks_updated'
+          : key === 'cezcon_crm_users_list'
+          ? 'crm_users_updated'
+          : undefined);
+
+      if (derivedEvent) {
+        window.dispatchEvent(new Event(derivedEvent));
+      }
+      window.dispatchEvent(new Event('crm_data_updated'));
     } catch (e) {
       console.error(e);
     }
   };
+
+  // Load persisted data on mount & subscribe to live mutations across modules
+  useEffect(() => {
+    const loadAllData = () => {
+      try {
+        const isPurged = localStorage.getItem('crm_clean_state_purged_v4');
+        if (!isPurged) {
+          clearAllData();
+          localStorage.setItem('crm_clean_state_purged_v4', 'true');
+          return;
+        }
+
+        const storedLeads = localStorage.getItem('crm_leads_data');
+        if (storedLeads) {
+          const parsed = JSON.parse(storedLeads);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setLeads(parsed);
+          } else {
+            setLeads(mockLeads);
+            localStorage.setItem('crm_leads_data', JSON.stringify(mockLeads));
+          }
+        } else {
+          setLeads(mockLeads);
+          localStorage.setItem('crm_leads_data', JSON.stringify(mockLeads));
+        }
+
+        const storedCustomers = localStorage.getItem('crm_customers_data');
+        if (storedCustomers) {
+          const parsed = JSON.parse(storedCustomers);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCustomers(parsed);
+          } else {
+            setCustomers(mockCustomers);
+            localStorage.setItem('crm_customers_data', JSON.stringify(mockCustomers));
+          }
+        } else {
+          setCustomers(mockCustomers);
+          localStorage.setItem('crm_customers_data', JSON.stringify(mockCustomers));
+        }
+
+        const storedOpps = localStorage.getItem('crm_opportunities_data');
+        if (storedOpps) {
+          const parsed = JSON.parse(storedOpps);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSalesOpportunities(parsed);
+          } else {
+            setSalesOpportunities(mockSalesOpportunities);
+            localStorage.setItem('crm_opportunities_data', JSON.stringify(mockSalesOpportunities));
+          }
+        } else {
+          setSalesOpportunities(mockSalesOpportunities);
+          localStorage.setItem('crm_opportunities_data', JSON.stringify(mockSalesOpportunities));
+        }
+
+        const storedTasks = localStorage.getItem('crm_tasks_data');
+        if (storedTasks) setTasks(JSON.parse(storedTasks));
+
+        const storedQuotes = localStorage.getItem('crm_quotations_data');
+        if (storedQuotes) setQuotations(JSON.parse(storedQuotes));
+
+        const storedOrders = localStorage.getItem('crm_orders_data');
+        if (storedOrders) setSalesOrders(JSON.parse(storedOrders));
+
+        const storedInvoices = localStorage.getItem('crm_invoices_data');
+        if (storedInvoices) setInvoices(JSON.parse(storedInvoices));
+
+        const storedReceipts = localStorage.getItem('crm_receipts_data');
+        if (storedReceipts) setReceipts(JSON.parse(storedReceipts));
+
+        const storedDeliveryNotes = localStorage.getItem('crm_delivery_notes_data');
+        if (storedDeliveryNotes) setDeliveryNotes(JSON.parse(storedDeliveryNotes));
+
+        const storedCampaigns = localStorage.getItem('crm_campaigns_data');
+        if (storedCampaigns) setCampaigns(JSON.parse(storedCampaigns));
+
+        const storedStocks = localStorage.getItem('crm_stocks_data');
+        if (storedStocks) setPurchaseStocks(JSON.parse(storedStocks));
+
+        // Load dynamic shared users
+        const cezconRaw = localStorage.getItem('cezcon_crm_users_list');
+        const adminRaw = localStorage.getItem('crm_admin_accounts_list');
+        const loadedUsers: CrmUser[] = [];
+        if (cezconRaw) {
+          const parsed = JSON.parse(cezconRaw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((u: any) => {
+              loadedUsers.push({
+                id: String(u.id).startsWith('usr_') || String(u.id).startsWith('mgr_') || String(u.id).startsWith('emp_') ? String(u.id) : `usr_${u.id}`,
+                name: u.name,
+                email: u.email || `${u.username}@cooltechuae.com`,
+                role: (u.isAdmin ? 'Admin' : u.profileType?.toLowerCase().includes('manager') ? 'Manager' : 'Employee') as UserRole,
+                phone: u.phone || '+971 50 123 4567',
+                department: u.department || u.profileType || 'Sales',
+                status: u.status === 'Inactive' ? 'Inactive' : 'Active',
+                lastLogin: u.lastLogin || 'Recent',
+              });
+            });
+          }
+        }
+        if (adminRaw) {
+          const parsedAdmins = JSON.parse(adminRaw);
+          if (Array.isArray(parsedAdmins)) {
+            parsedAdmins.forEach((a: any) => {
+              if (!loadedUsers.some((u) => u.email.toLowerCase() === (a.email || '').toLowerCase())) {
+                loadedUsers.push({
+                  id: a.id || `adm_${Date.now()}`,
+                  name: a.name,
+                  email: a.email,
+                  role: 'Admin',
+                  phone: a.phone || '+971 55 485 3829',
+                  department: a.department || 'Management',
+                  status: a.status || 'Active',
+                  lastLogin: a.lastLogin || 'Recent',
+                });
+              }
+            });
+          }
+        }
+        if (loadedUsers.length > 0) {
+          setUsers(loadedUsers);
+        }
+      } catch (e) {
+        console.error('EnterpriseCrmContext loadAllData error:', e);
+      }
+    };
+
+    loadAllData();
+
+    const eventNames = [
+      'storage',
+      'crm_tasks_updated',
+      'crm_leads_updated',
+      'crm_customers_updated',
+      'crm_opportunities_updated',
+      'crm_quotations_updated',
+      'crm_orders_updated',
+      'crm_invoices_updated',
+      'crm_receipts_updated',
+      'crm_delivery_notes_updated',
+      'crm_stocks_updated',
+      'crm_campaigns_updated',
+      'crm_users_updated',
+      'crm_data_updated',
+    ];
+
+    eventNames.forEach((evt) => window.addEventListener(evt, loadAllData));
+    return () => {
+      eventNames.forEach((evt) => window.removeEventListener(evt, loadAllData));
+    };
+  }, []);
 
   // Task Handlers
   const addTask = (taskData: Omit<CrmTask, 'id' | 'slNo'>) => {

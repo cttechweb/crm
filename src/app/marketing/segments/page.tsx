@@ -38,7 +38,7 @@ interface CustomerSegmentItem {
 
 const INITIAL_SEGMENTS: CustomerSegmentItem[] = [];
 
-function CustomerSegmentsContent() {
+export function CustomerSegmentsContent() {
   const [segments, setSegments] = useState<CustomerSegmentItem[]>(INITIAL_SEGMENTS);
   const [search, setSearch] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);

@@ -98,7 +98,7 @@ const INITIAL_REPORTS: CampaignRoiReport[] = [
   },
 ];
 
-function CampaignReportsContent() {
+export function CampaignReportsContent() {
   const [reports, setReports] = useState<CampaignRoiReport[]>(INITIAL_REPORTS);
   const [channelFilter, setChannelFilter] = useState('All');
   const [search, setSearch] = useState('');

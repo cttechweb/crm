@@ -26,8 +26,22 @@ body {
 /* Responsive Table Scroll Helper */
 .table-responsive {
   width: 100%;
+  max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile Screen Utilities (<= 767px) - Desktop styles remain untouched */
+@media (max-width: 767px) {
+  html, body {
+    overflow-x: hidden;
+  }
+  
+  /* Prevent modals from exceeding mobile viewport */
+  .modal-container {
+    max-width: calc(100vw - 1.5rem) !important;
+    max-height: calc(100vh - 2rem) !important;
+  }
 }
 
 /* Hide Next.js Development Indicator & Floating Overlay */

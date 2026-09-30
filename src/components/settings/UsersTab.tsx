@@ -243,6 +243,30 @@ export function UsersTab({
   const isAdminSession = loggedInUser?.role === 'admin';
   const isManagerSession = loggedInUser?.role === 'manager';
 
+  // Derive which employee type this manager's department maps to
+  const managerDeptType = useMemo(() => {
+    if (!isManagerSession) return null;
+    // Read from all possible session fields where manager type might be stored
+    const mgrType = (
+      loggedInUser?.managerType ||
+      loggedInUser?.department ||
+      loggedInUser?.designation ||
+      loggedInUser?.profileType ||
+      ''
+    ).toLowerCase();
+    if (mgrType.includes('sales')) return 'Sales Employee';
+    if (mgrType.includes('marketing') || mgrType.includes('market')) return 'Marketing Employee';
+    if (mgrType.includes('purchase')) return 'Purchase Employee';
+    if (mgrType.includes('operation')) return 'Operations Employee';
+    return 'Sales Employee'; // default fallback
+  }, [isManagerSession, loggedInUser]);
+
+  // For manager sessions: only their department employee type is available
+  const allowedEmployeeTypes = useMemo(() => {
+    if (isManagerSession && managerDeptType) return [managerDeptType];
+    return EMPLOYEE_TYPE_OPTIONS;
+  }, [isManagerSession, managerDeptType]);
+
   const [profilesList, setProfilesList] = useState(CEZCON_PROFILES_DATA);
 
   const availableManagers = useMemo(() => {
@@ -554,8 +578,27 @@ export function UsersTab({
     if (isSuperAdminSession) {
       return combined;
     }
-    return combined.filter((p) => p.toLowerCase() !== 'admin');
-  }, [isSuperAdminSession, profilesList]);
+    if (isAdminSession) {
+      return combined.filter(
+        (p) => {
+          const l = p.toLowerCase();
+          return !l.includes('super admin') && !l.includes('superadmin') && !l.includes('super_admin');
+        }
+      );
+    }
+    if (isManagerSession) {
+      return combined.filter(
+        (p) => {
+          const l = p.toLowerCase();
+          return !l.includes('admin') && !l.includes('manager') && !l.includes('super');
+        }
+      );
+    }
+    return combined.filter((p) => {
+      const l = p.toLowerCase();
+      return !l.includes('admin') && !l.includes('manager') && !l.includes('super');
+    });
+  }, [isSuperAdminSession, isAdminSession, isManagerSession, profilesList]);
 
   const filteredProfileOptions = useMemo(() => {
     if (!profileSearchQuery.trim()) return availableProfileOptions;
@@ -584,6 +627,17 @@ export function UsersTab({
         u.profileType?.toLowerCase().includes('worker') ||
         u.profileType?.toLowerCase().includes('service');
       if (!isTeam) return false;
+
+      // STRICT: Only show employees whose department matches this manager's department
+      // Sales Manager → Sales Employees ONLY
+      // Marketing Manager → Marketing Employees ONLY
+      // Purchase Manager → Purchase Employees ONLY
+      // Operations Manager → Operations Employees ONLY
+      if (managerDeptType) {
+        const uType = (u.employeeType || u.profileType || '').toLowerCase();
+        const deptKey = managerDeptType.toLowerCase().replace(' employee', '');
+        if (!uType.includes(deptKey)) return false;
+      }
     }
 
     const matchesSearch =
@@ -795,9 +849,35 @@ export function UsersTab({
       : `${rawUsername}@cooltechuae.com`;
     const userEmail = enteredEmail || fullUsername;
     const profileName = userFormData.profile && userFormData.profile !== 'Select Profile' ? userFormData.profile : 'Sales';
+    const isEmployeeSession = loggedInUser?.role === 'employee' || loggedInUser?.role === 'worker';
+    if (isEmployeeSession) {
+      alert('Authority Restriction: Employees do not have permission to create or modify user accounts.');
+      return;
+    }
+
+    const isSuperAdminAttempt = profileName.toLowerCase().includes('super');
+    if (isSuperAdminAttempt && !isSuperAdminSession) {
+      alert('Authority Restriction: Only Super Admin can create or manage Super Admin accounts.');
+      return;
+    }
+
     const isAdminUser = profileName.toLowerCase().includes('admin');
     const isManager = profileName.toLowerCase().includes('manager') || profileName.toLowerCase().includes('operation');
+    if (isManagerSession && (isAdminUser || isManager)) {
+      alert('Authority Restriction: Managers can only create and manage Employee / Team accounts.');
+      return;
+    }
     const isEmployee = !isAdminUser && !isManager;
+
+    // For manager sessions: force the employee type to match the manager's own department
+    const resolvedEmployeeType = isManagerSession && managerDeptType && isEmployee
+      ? managerDeptType
+      : userFormData.employeeType;
+
+    // For manager sessions: always assign to the logged-in manager
+    const effectiveManagerId = isEmployee
+      ? (isManagerSession ? (loggedInUser?.id || loggedInUser?.email || 'mgr_1') : (userFormData.assignedManagerId || null))
+      : null;
 
     if (editingUserId) {
       const updated = cezconUsersList.map((u) => {
@@ -810,9 +890,9 @@ export function UsersTab({
             password: userFormData.password.trim(),
             profileType: profileName,
             managerType: isManager ? userFormData.managerType : undefined,
-            employeeType: isEmployee ? userFormData.employeeType : undefined,
-            managerId: isEmployee ? (userFormData.assignedManagerId || null) : null,
-            reportingManagerId: isEmployee ? (userFormData.assignedManagerId || null) : null,
+            employeeType: isEmployee ? resolvedEmployeeType : undefined,
+            managerId: effectiveManagerId,
+            reportingManagerId: effectiveManagerId,
             dataScope: userFormData.dataScope,
             modulePermissions: userFormData.modulePermissions,
             actionPermissions: userFormData.actionPermissions,
@@ -820,7 +900,7 @@ export function UsersTab({
             hasTarget: userFormData.monthlyTargets,
             designation:
               userFormData.designation ||
-              (isManager ? userFormData.managerType : isEmployee ? userFormData.employeeType : profileName),
+              (isManager ? userFormData.managerType : isEmployee ? resolvedEmployeeType : profileName),
             phone: userFormData.mobileNumber ? `${userFormData.mobileCountry} ${userFormData.mobileNumber}` : u.phone,
             dob: userFormData.dob || u.dob,
             avatarImage: userFormData.avatarImage || u.avatarImage,
@@ -847,9 +927,9 @@ export function UsersTab({
         password: userFormData.password.trim(),
         profileType: profileName,
         managerType: isManager ? userFormData.managerType : undefined,
-        employeeType: isEmployee ? userFormData.employeeType : undefined,
-        managerId: isEmployee ? (userFormData.assignedManagerId || null) : null,
-        reportingManagerId: isEmployee ? (userFormData.assignedManagerId || null) : null,
+        employeeType: isEmployee ? resolvedEmployeeType : undefined,
+        managerId: effectiveManagerId,
+        reportingManagerId: effectiveManagerId,
         dataScope: userFormData.dataScope,
         modulePermissions: userFormData.modulePermissions,
         actionPermissions: userFormData.actionPermissions,
@@ -863,7 +943,7 @@ export function UsersTab({
         dob: userFormData.dob || '20-05-1968',
         designation:
           userFormData.designation ||
-          (isManager ? userFormData.managerType : isEmployee ? userFormData.employeeType : profileName),
+          (isManager ? userFormData.managerType : isEmployee ? resolvedEmployeeType : profileName),
         businessOpportunity: userFormData.businessOpportunity || 'All Works',
         salesVisitPermission: userFormData.salesVisitPermission ?? true,
         store: userFormData.store || 'All Stores',
@@ -1067,12 +1147,12 @@ export function UsersTab({
                       <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden max-w-[120px]">
                         <div
                           className={`h-full ${userFormData.password.length >= 8
-                              ? 'bg-emerald-500 w-full'
-                              : userFormData.password.length >= 4
-                                ? 'bg-amber-500 w-1/2'
-                                : userFormData.password.length > 0
-                                  ? 'bg-rose-400 w-1/4'
-                                  : 'w-0'
+                            ? 'bg-emerald-500 w-full'
+                            : userFormData.password.length >= 4
+                              ? 'bg-amber-500 w-1/2'
+                              : userFormData.password.length > 0
+                                ? 'bg-rose-400 w-1/4'
+                                : 'w-0'
                             }`}
                         />
                       </div>
@@ -1246,8 +1326,8 @@ export function UsersTab({
                                     designation: isMgr
                                       ? userFormData.managerType
                                       : isEmp
-                                      ? userFormData.employeeType
-                                      : opt,
+                                        ? userFormData.employeeType
+                                        : opt,
                                     dataScope: defaults.dataScope,
                                     modulePermissions: defaults.modulePermissions,
                                     actionPermissions: defaults.actionPermissions,
@@ -1255,8 +1335,8 @@ export function UsersTab({
                                   setIsProfileDropdownOpen(false);
                                 }}
                                 className={`w-full text-left px-3 py-1.5 text-xs cursor-pointer transition-colors block ${isSelected
-                                    ? 'bg-[#337AB7] text-white font-medium'
-                                    : 'text-slate-800 hover:bg-[#F1F5F9]'
+                                  ? 'bg-[#337AB7] text-white font-medium'
+                                  : 'text-slate-800 hover:bg-[#F1F5F9]'
                                   }`}
                               >
                                 {opt}
@@ -1307,10 +1387,14 @@ export function UsersTab({
                     <div>
                       <label className="block text-xs font-semibold text-emerald-900 mb-1">
                         Employee Type <span className="text-red-500">*</span>
+                        {isManagerSession && managerDeptType && (
+                          <span className="ml-2 text-[10px] text-emerald-600 font-normal">(restricted to your department)</span>
+                        )}
                       </label>
                       <select
-                        value={userFormData.employeeType}
+                        value={isManagerSession && managerDeptType ? managerDeptType : userFormData.employeeType}
                         onChange={(e) => {
+                          if (isManagerSession && managerDeptType) return; // locked for managers
                           const selectedType = e.target.value;
                           const defaults = resolveDefaultPermissions('Employee', 'employee', selectedType);
                           setUserFormData({
@@ -1322,9 +1406,14 @@ export function UsersTab({
                             actionPermissions: defaults.actionPermissions,
                           });
                         }}
-                        className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 cursor-pointer"
+                        disabled={isManagerSession && !!managerDeptType}
+                        className={`w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 ${
+                          isManagerSession && managerDeptType
+                            ? 'cursor-not-allowed opacity-75 bg-slate-50'
+                            : 'cursor-pointer'
+                        }`}
                       >
-                        {EMPLOYEE_TYPE_OPTIONS.map((eType) => (
+                        {allowedEmployeeTypes.map((eType) => (
                           <option key={eType} value={eType}>
                             {eType}
                           </option>
@@ -1335,19 +1424,29 @@ export function UsersTab({
                     <div>
                       <label className="block text-xs font-semibold text-emerald-900 mb-1">
                         Reporting Manager <span className="text-red-500">*</span>
+                        {isManagerSession && (
+                          <span className="ml-2 text-[10px] text-emerald-600 font-normal">(auto-assigned to you)</span>
+                        )}
                       </label>
-                      <select
-                        value={userFormData.assignedManagerId}
-                        onChange={(e) => setUserFormData({ ...userFormData, assignedManagerId: e.target.value })}
-                        className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 cursor-pointer"
-                      >
-                        <option value="">Select Manager</option>
-                        {availableManagers.map((mgr) => (
-                          <option key={mgr.id} value={mgr.id}>
-                            {mgr.name} ({mgr.managerType}) — {mgr.email}
-                          </option>
-                        ))}
-                      </select>
+                      {isManagerSession ? (
+                        // Manager sees a locked read-only field — employee reports to them
+                        <div className="w-full bg-slate-50 border border-slate-200 rounded px-3 py-1.5 text-xs text-slate-700 cursor-not-allowed select-none">
+                          {loggedInUser?.name || 'You'} ({loggedInUser?.designation || loggedInUser?.managerType || 'Manager'})
+                        </div>
+                      ) : (
+                        <select
+                          value={userFormData.assignedManagerId}
+                          onChange={(e) => setUserFormData({ ...userFormData, assignedManagerId: e.target.value })}
+                          className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 cursor-pointer"
+                        >
+                          <option value="">Select Manager</option>
+                          {availableManagers.map((mgr) => (
+                            <option key={mgr.id} value={mgr.id}>
+                              {mgr.name} ({mgr.managerType}) — {mgr.email}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       <p className="text-[10px] text-emerald-700 mt-1">Assigns this employee dynamically to the manager&apos;s team roster.</p>
                     </div>
                   </div>
@@ -1486,8 +1585,8 @@ export function UsersTab({
                                   setIsDesignationDropdownOpen(false);
                                 }}
                                 className={`w-full text-left px-3 py-1.5 text-xs cursor-pointer transition-colors block ${isSelected
-                                    ? 'bg-[#337AB7] text-white font-medium'
-                                    : 'text-slate-800 hover:bg-[#F1F5F9]'
+                                  ? 'bg-[#337AB7] text-white font-medium'
+                                  : 'text-slate-800 hover:bg-[#F1F5F9]'
                                   }`}
                               >
                                 {opt}
@@ -2354,8 +2453,8 @@ export function UsersTab({
                   type="button"
                   onClick={() => setAssignWorkerTab('NEW')}
                   className={`px-6 py-1.5 font-bold transition-colors cursor-pointer ${assignWorkerTab === 'NEW'
-                      ? 'bg-[#16A34A] text-white'
-                      : 'bg-white text-slate-700 hover:bg-slate-50'
+                    ? 'bg-[#16A34A] text-white'
+                    : 'bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                 >
                   NEW
@@ -2364,8 +2463,8 @@ export function UsersTab({
                   type="button"
                   onClick={() => setAssignWorkerTab('EXISTING')}
                   className={`px-6 py-1.5 font-bold transition-colors cursor-pointer border-l border-slate-200 ${assignWorkerTab === 'EXISTING'
-                      ? 'bg-[#16A34A] text-white'
-                      : 'bg-white text-slate-700 hover:bg-slate-50'
+                    ? 'bg-[#16A34A] text-white'
+                    : 'bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                 >
                   EXISTING

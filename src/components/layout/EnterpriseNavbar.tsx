@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -121,24 +121,75 @@ export function EnterpriseNavbar() {
   const pathname = usePathname();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [userRole, setUserRole] = useState<string>('');
-  const navContainerRef = useRef<HTMLDivElement>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const navContainerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const user = authMockService.getCurrentUser();
-    if (user?.role) {
-      setUserRole(user.role.toLowerCase());
+    if (user) {
+      setCurrentUser(user);
+      if (user.role) {
+        setUserRole(user.role.toLowerCase());
+      }
     }
   }, []);
 
   const isWorkerPath = pathname.startsWith('/worker');
   const isManagerPath = pathname.startsWith('/manager');
 
-  const activeNavItems = isWorkerPath || userRole === 'employee' || userRole === 'worker'
-    ? WORKER_NAV_ITEMS
-    : isManagerPath || userRole === 'manager'
-      ? MANAGER_NAV_ITEMS
-      : ENTERPRISE_NAV_ITEMS;
+  const activeNavItems = useMemo(() => {
+    const role = userRole || currentUser?.role?.toLowerCase() || '';
+    const isSuper = role === 'super_admin';
+    const isAdmin = role === 'admin';
+    const isMgr = role === 'manager' || isManagerPath;
+    const isWorker = role === 'employee' || role === 'worker' || isWorkerPath;
+
+    if (isSuper || isAdmin) {
+      return ENTERPRISE_NAV_ITEMS;
+    }
+
+    if (isMgr) {
+      const perms = currentUser?.modulePermissions;
+      const mgrType = (currentUser?.managerType || currentUser?.profileType || currentUser?.department || '').toLowerCase();
+
+      return MANAGER_NAV_ITEMS.filter((item) => {
+        if (item.id === 'manager-dashboard') return true;
+        if (item.id === 'manager-tasks') return perms ? perms.tasks !== false : true;
+        if (item.id === 'manager-leads') return perms ? perms.leads !== false : true;
+        if (item.id === 'manager-customers') return perms ? perms.customers !== false : true;
+        if (item.id === 'manager-reports') return perms ? perms.reports !== false : true;
+
+        if (item.id === 'manager-marketing') {
+          if (perms && perms.marketing !== undefined) return perms.marketing;
+          return mgrType.includes('marketing') || mgrType.includes('market');
+        }
+
+        if (item.id === 'manager-sales') {
+          if (perms && perms.sales !== undefined) return perms.sales;
+          return mgrType.includes('sales') || mgrType.includes('operation') || !mgrType.includes('marketing');
+        }
+
+        if (item.id === 'manager-purchase') {
+          if (perms && perms.purchase !== undefined) return perms.purchase;
+          return mgrType.includes('purchase') || mgrType.includes('operation');
+        }
+
+        if (item.id === 'settings') {
+          // Settings is always visible to all managers
+          return true;
+        }
+
+        return true;
+      });
+    }
+
+    if (isWorker) {
+      return WORKER_NAV_ITEMS;
+    }
+
+    return ENTERPRISE_NAV_ITEMS;
+  }, [userRole, currentUser, isManagerPath, isWorkerPath]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

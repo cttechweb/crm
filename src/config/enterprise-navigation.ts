@@ -34,13 +34,13 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
     path: '/marketing',
     iconName: 'Radio',
     children: [
-      { label: 'Campaigns', href: '/marketing', iconName: 'Megaphone' },
-      { label: 'Email Marketing', href: '/marketing?tab=email', iconName: 'Radio' },
+      { label: 'Campaigns', href: '/marketing?tab=campaigns', iconName: 'Megaphone' },
+      { label: 'Email Marketing', href: '/marketing?tab=email', iconName: 'Mail' },
       { label: 'WhatsApp Campaigns', href: '/marketing?tab=whatsapp', iconName: 'MessageSquare' },
       { label: 'SMS Campaigns', href: '/marketing?tab=sms', iconName: 'Smartphone' },
       { label: 'Customer Segments', href: '/marketing?tab=segments', iconName: 'Users' },
       { label: 'Templates', href: '/marketing?tab=templates', iconName: 'Copy' },
-      { label: 'Campaign Reports', href: '/reports?tab=campaign', iconName: 'FileText' },
+      { label: 'Campaign Reports', href: '/marketing?tab=reports', iconName: 'FileText' },
     ],
   },
   {
@@ -65,10 +65,6 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
     children: [
       { label: 'Customer', href: '/customers', iconName: 'Shield' },
       { label: 'Contact', href: '/customers/contacts', iconName: 'Contact' },
-      { label: 'Customer Groups', href: '/customers/groups', iconName: 'FolderTree' },
-      { label: 'Customer Activities', href: '/customers/activities', iconName: 'Activity' },
-      { label: 'Follow-ups', href: '/customers/followups', iconName: 'Clock' },
-      { label: 'Customer Reports', href: '/customers/reports', iconName: 'FileText' },
     ],
   },
   {
@@ -78,14 +74,12 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
     iconName: 'Hourglass',
     children: [
       { label: 'Opportunity', href: '/sales?tab=opportunities', iconName: 'Key' },
-      { label: 'Sales Pipeline', href: '/sales?tab=pipeline', iconName: 'TrendingUp' },
       { label: 'Quotation', href: '/sales?tab=quotations', iconName: 'FileText' },
       { label: 'Order', href: '/sales?tab=orders', iconName: 'ThumbsUp' },
       { label: 'Proforma Invoice', href: '/sales?tab=proforma', iconName: 'CreditCard' },
       { label: 'Invoice', href: '/sales?tab=invoice', iconName: 'FileSpreadsheet' },
       { label: 'Receipt', href: '/sales?tab=receipt', iconName: 'Receipt' },
       { label: 'Delivery Note', href: '/sales?tab=delivery', iconName: 'Table' },
-      { label: 'Sales Reports', href: '/reports?tab=sales', iconName: 'BarChart3' },
     ],
   },
   {
@@ -99,13 +93,10 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Purchase Invoice', href: '/purchase?tab=invoice', iconName: 'FileCheck' },
       { label: 'Purchase Payment', href: '/purchase?tab=payment', iconName: 'DollarSign' },
       { label: 'Stock In', href: '/purchase?tab=stock-in', iconName: 'ArrowDownToLine' },
-      { label: 'Stock In / Out', href: '/purchase?tab=stock-in-out', iconName: 'ArrowDownToLine' },
       { label: 'Supplier', href: '/purchase?tab=supplier', iconName: 'Truck' },
       { label: 'Products', href: '/purchase?tab=products', iconName: 'Tag' },
       { label: 'Store', href: '/purchase?tab=store', iconName: 'Store' },
       { label: 'Manufacturing', href: '/purchase?tab=manufacturing', iconName: 'Factory' },
-      { label: 'Request Material', href: '/purchase?tab=request-material', iconName: 'Package' },
-      { label: 'Purchase Reports', href: '/reports?tab=purchase', iconName: 'FileText' },
     ],
   },
   {
@@ -236,7 +227,7 @@ export const MANAGER_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'SMS Campaigns', href: '/manager/marketing?tab=sms', iconName: 'Smartphone' },
       { label: 'Customer Segments', href: '/manager/marketing?tab=segments', iconName: 'Users' },
       { label: 'Templates', href: '/manager/marketing?tab=templates', iconName: 'Copy' },
-      { label: 'Campaign Reports', href: '/manager/reports?type=campaign', iconName: 'FileText' },
+      { label: 'Campaign Reports', href: '/manager/marketing?tab=reports', iconName: 'FileText' },
     ],
   },
   {

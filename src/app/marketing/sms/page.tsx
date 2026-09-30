@@ -38,7 +38,7 @@ interface SmsCampaignItem {
 
 const INITIAL_SMS_CAMPAIGNS: SmsCampaignItem[] = [];
 
-function SmsContent() {
+export function SmsContent() {
   const [campaigns, setCampaigns] = useState<SmsCampaignItem[]>(INITIAL_SMS_CAMPAIGNS);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');

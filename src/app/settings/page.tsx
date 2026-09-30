@@ -57,7 +57,7 @@ function SettingsModuleRouter() {
       return <CampaignSettingsTab />;
     case 'order':
     case 'orders':
-      return <OrderSettingsTab />;
+      return <OrderSettingsTab initialSubTab={sub} />;
     case 'task':
     case 'tasks':
     case 'task-settings':

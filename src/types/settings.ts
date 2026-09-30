@@ -247,27 +247,77 @@ export interface CampaignSettingItem {
 export interface CostJobTypeItem {
   id: number | string;
   name: string;
-  costPerHour: number;
-  estimatedHours: number;
+  manpower?: boolean;
+  costPerHour?: number;
+  estimatedHours?: number;
+}
+
+export interface OrderTypeItem {
+  id: number | string;
+  name: string;
+  active?: boolean;
+  description?: string;
+  createdDate?: string;
 }
 
 export interface OrderStatusItem {
   id: number | string;
   name: string;
   color: string;
+  active?: boolean;
+  description?: string;
+  stageOrder?: number;
+  isSystem?: boolean;
 }
 
 export interface ProductSettingItem {
   id: number | string;
   sku: string;
+  code?: string;
+  serialNo?: string;
   name: string;
+  image?: string;
+  thumbnailImage?: string;
+  images?: string[];
+  unit?: string;
+  brand?: string;
   category: string;
-  basePrice: number;
+  type?: 'Product' | 'Service' | 'Raw Material' | 'Asset';
+  purchaseRate?: number;
+  sellingPrice?: number;
+  basePrice?: number;
+  status?: boolean;
+  store?: string;
+  currentStock?: number;
+  minStock?: number;
+  additionalDescription?: string;
+}
+
+export interface ProductUnitItem {
+  id: number | string;
+  name: string;
+  abbreviation: string;
+  active?: boolean;
+}
+
+export interface ProductBrandItem {
+  id: number | string;
+  name: string;
+  code?: string;
+  active?: boolean;
+}
+
+export interface ProductCategoryItem {
+  id: number | string;
+  name: string;
+  code?: string;
+  active?: boolean;
 }
 
 export interface TaskTypeItem {
   id: number | string;
   name: string;
-  icon: string;
+  amount?: number;
   color: string;
+  icon?: string;
 }

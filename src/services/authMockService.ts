@@ -179,7 +179,7 @@ export function resolveDefaultPermissions(
           whatsapp: false,
           financials: false,
           users: false,
-          settings: false,
+          settings: true,
         },
         actionPermissions: { canCreate: true, canEdit: true, canDelete: false, canExport: true, canView: true, canPrint: true, canApprove: true },
         dataScope: 'team' as const,
@@ -206,9 +206,9 @@ export function resolveDefaultPermissions(
           timesheet: false,
           financials: false,
           users: false,
-          settings: false,
+          settings: true,
         },
-        actionPermissions: { canCreate: true, canEdit: true, canDelete: false, canExport: true, canView: true, canPrint: true },
+        actionPermissions: { canCreate: true, canEdit: true, canDelete: false, canExport: true, canView: true, canPrint: true, canApprove: true },
         dataScope: 'team' as const,
       };
     }
@@ -233,7 +233,7 @@ export function resolveDefaultPermissions(
           whatsapp: false,
           financials: false,
           users: false,
-          settings: false,
+          settings: true,
         },
         actionPermissions: { canCreate: true, canEdit: true, canDelete: false, canExport: true, canView: true, canPrint: true, canApprove: true },
         dataScope: 'team' as const,
@@ -260,7 +260,7 @@ export function resolveDefaultPermissions(
         whatsapp: false,
         financials: false,
         users: false,
-        settings: false,
+        settings: true,
       },
       actionPermissions: { canCreate: true, canEdit: true, canDelete: false, canExport: true, canView: true, canPrint: true },
       dataScope: 'team' as const,
@@ -1046,16 +1046,23 @@ export const authMockService = {
                   error: 'Invalid password. Please verify your credentials.',
                 };
               }
-              const isAdm =
-                userByIdentifier.isAdmin ||
-                (userByIdentifier.profileType &&
-                  userByIdentifier.profileType.toLowerCase().includes('admin'));
-              const isMgr =
+              const isSuper =
                 userByIdentifier.profileType &&
-                (userByIdentifier.profileType.toLowerCase().includes('manager') ||
-                  userByIdentifier.profileType.toLowerCase().includes('operation') ||
-                  !!userByIdentifier.managerType);
-              const userRole: UserRole = isAdm ? 'admin' : isMgr ? 'manager' : 'employee';
+                (userByIdentifier.profileType.toLowerCase().includes('super') ||
+                  userByIdentifier.role === 'super_admin');
+              const isAdm =
+                !isSuper &&
+                (userByIdentifier.isAdmin ||
+                  (userByIdentifier.profileType &&
+                    userByIdentifier.profileType.toLowerCase().includes('admin')));
+              const isMgr =
+                !isSuper &&
+                !isAdm &&
+                (userByIdentifier.profileType &&
+                  (userByIdentifier.profileType.toLowerCase().includes('manager') ||
+                    userByIdentifier.profileType.toLowerCase().includes('operation') ||
+                    !!userByIdentifier.managerType));
+              const userRole: UserRole = isSuper ? 'super_admin' : isAdm ? 'admin' : isMgr ? 'manager' : 'employee';
               const defaults = resolveDefaultPermissions(
                 userByIdentifier.profileType || 'Sales',
                 userRole,
@@ -1085,7 +1092,7 @@ export const authMockService = {
                 profileType: userByIdentifier.profileType || 'Sales',
                 managerType: userByIdentifier.managerType,
                 employeeType: userByIdentifier.employeeType,
-                managerId: userByIdentifier.managerId || userByIdentifier.assignedManagerId || null,
+                managerId: userByIdentifier.managerId || userByIdentifier.assignedManagerId || userByIdentifier.reportingManagerId || null,
                 dataScope: userByIdentifier.dataScope || defaults.dataScope,
                 modulePermissions: userByIdentifier.modulePermissions || defaults.modulePermissions,
                 actionPermissions: userByIdentifier.actionPermissions || defaults.actionPermissions,
@@ -1104,7 +1111,9 @@ export const authMockService = {
               return {
                 success: true,
                 user: mockUser,
-                redirectUrl: isAdm
+                redirectUrl: isSuper
+                  ? '/dashboard'
+                  : isAdm
                   ? '/admin/dashboard'
                   : isMgr
                   ? '/manager/dashboard'

@@ -41,7 +41,7 @@ interface EmailCampaignItem {
 
 const INITIAL_EMAIL_CAMPAIGNS: EmailCampaignItem[] = [];
 
-function EmailMarketingContent() {
+export function EmailMarketingContent() {
   const [campaigns, setCampaigns] = useState<EmailCampaignItem[]>(INITIAL_EMAIL_CAMPAIGNS);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');

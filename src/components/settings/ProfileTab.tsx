@@ -73,7 +73,7 @@ function formatProfileDate(dateStr?: string | number) {
     if (!isNaN(d.getTime())) {
       return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
     }
-  } catch (e) {}
+  } catch (e) { }
   return str;
 }
 
@@ -302,50 +302,31 @@ export function ProfileTab() {
       if (savedProfiles) {
         const parsed = JSON.parse(savedProfiles);
         if (Array.isArray(parsed)) {
-          existingProfiles = parsed;
+          // Exclude any unwanted technician entries
+          existingProfiles = parsed.filter(
+            (p) => !p.name.toLowerCase().includes('technician') && !p.name.toLowerCase().includes('tecnition')
+          );
         }
       }
 
-      // Collect all distinct profiles needed by existing users in currentUsers
-      const userProfileNames = new Set<string>();
-      currentUsers.forEach((u) => {
-        const prof = u.profileType?.trim();
-        const pLower = (prof || '').toLowerCase();
-        if (prof && prof !== 'Select Profile' && pLower !== 'admin' && pLower !== 'super admin') {
-          userProfileNames.add(prof);
-        } else if (u.managerType && !u.managerType.toLowerCase().includes('admin')) {
-          userProfileNames.add(u.managerType);
-        } else if (u.employeeType && !u.employeeType.toLowerCase().includes('admin')) {
-          userProfileNames.add(u.employeeType);
-        }
-      });
-
       const profileMap = new Map<string, CezconProfileItem>();
 
-      // 1. Add user-based profiles to make sure every created user's profile is present
-      Array.from(userProfileNames).forEach((name, idx) => {
-        const existing = existingProfiles.find((p) => p.name.toLowerCase().trim() === name.toLowerCase().trim());
-        if (existing) {
-          profileMap.set(name.toLowerCase().trim(), existing);
-        } else {
-          profileMap.set(name.toLowerCase().trim(), {
-            id: Date.now() + idx,
-            name: name,
-            date: '28-09-2026',
-            sales: true,
-            project: true,
-            description: `Role profile for ${name}`,
-            superAdminOnly: false,
-          });
-        }
+      // 1. Add standard Cezcon profiles: Employee, Manager, Worker
+      CEZCON_PROFILES_DATA.forEach((p) => {
+        profileMap.set(p.name.toLowerCase().trim(), p);
       });
 
-      // 2. Add custom-created profiles from existingProfiles
+      // 2. Add custom-created profiles from existingProfiles (excluding admin / super admin / technician)
       existingProfiles.forEach((p) => {
         const key = p.name.toLowerCase().trim();
-        if (key !== 'admin' && key !== 'super admin' && !p.superAdminOnly) {
+        if (
+          key !== 'admin' &&
+          key !== 'super admin' &&
+          !key.includes('technician') &&
+          !key.includes('tecnition') &&
+          !p.superAdminOnly
+        ) {
           if (!profileMap.has(key)) {
-            // If currentUsers has users, only keep custom profiles or non-seed profiles
             if (currentUsers.length === 0 || Number(p.id) > 10) {
               profileMap.set(key, p);
             }
@@ -353,15 +334,13 @@ export function ProfileTab() {
         }
       });
 
-      // Fallback if no users or profiles
-      let mergedProfiles = Array.from(profileMap.values()).filter(
-        (p) => p.name.toLowerCase().trim() !== 'admin' && p.name.toLowerCase().trim() !== 'super admin'
+      const mergedProfiles = Array.from(profileMap.values()).filter(
+        (p) =>
+          p.name.toLowerCase().trim() !== 'admin' &&
+          p.name.toLowerCase().trim() !== 'super admin' &&
+          !p.name.toLowerCase().includes('technician') &&
+          !p.name.toLowerCase().includes('tecnition')
       );
-      if (mergedProfiles.length === 0) {
-        mergedProfiles = CEZCON_PROFILES_DATA.filter(
-          (p) => p.name.toLowerCase().trim() !== 'admin' && p.name.toLowerCase().trim() !== 'super admin'
-        );
-      }
 
       setProfilesList(mergedProfiles);
       localStorage.setItem('cezcon_crm_profiles_list', JSON.stringify(mergedProfiles));
@@ -525,13 +504,13 @@ export function ProfileTab() {
     const updated = profilesList.map((p) =>
       p.id === editingProfile.id
         ? {
-            ...p,
-            name: editProfileName.trim(),
-            sales: Boolean(editProfileModules.sales),
-            project: Boolean(editProfileModules.project),
-            description: editProfileDescription.trim() || p.description,
-            avatarImage: editProfileAvatar,
-          }
+          ...p,
+          name: editProfileName.trim(),
+          sales: Boolean(editProfileModules.sales),
+          project: Boolean(editProfileModules.project),
+          description: editProfileDescription.trim() || p.description,
+          avatarImage: editProfileAvatar,
+        }
         : p
     );
 
@@ -669,7 +648,7 @@ export function ProfileTab() {
         </div>
 
         {/* Profiles Table */}
-        <div className="overflow-x-auto min-h-[300px]">
+        <div className="overflow-x-auto min-h-[360px] pb-24">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-600 font-semibold text-[12px]">
               <tr>
@@ -843,11 +822,10 @@ export function ProfileTab() {
                 key={i + 1}
                 type="button"
                 onClick={() => setCurrentPage(i + 1)}
-                className={`w-7 h-7 rounded text-xs font-semibold cursor-pointer transition-colors ${
-                  currentPage === i + 1
+                className={`w-7 h-7 rounded text-xs font-semibold cursor-pointer transition-colors ${currentPage === i + 1
                     ? 'bg-blue-600 text-white'
                     : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-                }`}
+                  }`}
               >
                 {i + 1}
               </button>
@@ -893,414 +871,414 @@ export function ProfileTab() {
 
             {/* ===================== SECTION 1: SALES ===================== */}
             <div className="space-y-6 pt-2">
-                <div className="text-center">
-                  <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest pb-1.5 border-b-2 border-slate-300 inline-block px-8">
-                    SALES
-                  </h3>
-                </div>
+              <div className="text-center">
+                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest pb-1.5 border-b-2 border-slate-300 inline-block px-8">
+                  SALES
+                </h3>
+              </div>
 
-                {/* Module Privileges Table */}
-                <div className="space-y-2">
-                  <h4 className="font-bold text-slate-800 text-center text-xs">Module Privileges</h4>
-                  <div className="overflow-x-auto border border-slate-200 rounded">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-bold">
-                        <tr>
-                          <th className="py-2.5 px-4 w-72">
-                            <label className="inline-flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  const keys = [
-                                    'dashboard', 'task', 'campaign', 'lead', 'customer',
-                                    'contact', 'receipt', 'delivery', 'stock', 'purchase_order',
-                                    'purchase_invoice', 'supplier_payment', 'opp_settings',
-                                    'init_settings', 'camp_settings', 'order_settings',
-                                    'task_settings', 'biz_opp', 'target', 'cost_job',
-                                    'tags', 'products'
-                                  ];
-                                  const updated: any = { ...newProfileActionPermissions };
-                                  keys.forEach((k) => {
-                                    updated[`${k}_view`] = checked;
-                                    updated[`${k}_create`] = checked;
-                                    updated[`${k}_edit`] = checked;
-                                    updated[`${k}_delete`] = checked;
-                                  });
-                                  setNewProfileActionPermissions(updated);
-                                }}
-                                className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
-                              />
-                              <span>Module Name</span>
-                            </label>
-                          </th>
-                          {['View All', 'Create All', 'Edit All', 'Delete All'].map((header, hIdx) => {
-                            const actionKey = ['view', 'create', 'edit', 'delete'][hIdx];
-                            return (
-                              <th key={header} className="py-2.5 px-4 text-center w-32">
-                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    onChange={(e) => {
-                                      const checked = e.target.checked;
-                                      const keys = [
-                                        'dashboard', 'task', 'campaign', 'lead', 'customer',
-                                        'contact', 'receipt', 'delivery', 'stock', 'purchase_order',
-                                        'purchase_invoice', 'supplier_payment', 'opp_settings',
-                                        'init_settings', 'camp_settings', 'order_settings',
-                                        'task_settings', 'biz_opp', 'target', 'cost_job',
-                                        'tags', 'products'
-                                      ];
-                                      const updated: any = { ...newProfileActionPermissions };
-                                      keys.forEach((k) => {
-                                        updated[`${k}_${actionKey}`] = checked;
-                                      });
-                                      setNewProfileActionPermissions(updated);
-                                    }}
-                                    className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
-                                  />
-                                  <span>{header}</span>
-                                </label>
-                              </th>
-                            );
-                          })}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white">
-                        {[
-                          { key: 'dashboard', name: 'Dashboard / Calendar', view: true, create: true, edit: true, delete: true },
-                          { key: 'task', name: 'Task', view: true, create: true, edit: true, delete: true },
-                          { key: 'marketing_header', name: 'Marketing', isHeader: true },
-                          { key: 'campaign', name: 'Campaign', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'lead', name: 'Lead', view: true, create: true, edit: true, delete: true },
-                          { key: 'customer_header', name: 'Customer', isHeader: true },
-                          { key: 'customer', name: 'Customer', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'contact', name: 'Contact', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'receipt', name: 'Set Receipt', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'delivery', name: 'Delivery Note', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'purchase_header', name: 'Purchase', isHeader: true },
-                          { key: 'stock', name: 'Stock', indent: true, view: true, create: false, edit: true, delete: false },
-                          { key: 'purchase_order', name: 'Purchase Order', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'purchase_invoice', name: 'Purchase Invoice', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'supplier_payment', name: 'Supplier Bill Payment', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'settings_header', name: 'Settings', isHeader: true },
-                          { key: 'opp_settings', name: 'Opportunity Settings', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'init_settings', name: 'Initial Settings', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'camp_settings', name: 'Campaign Settings', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'order_settings', name: 'Order Settings', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'task_settings', name: 'Task Settings', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'biz_opp', name: 'Business Opportunity', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'target', name: 'Company Target', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'cost_job', name: 'Cost/Job Type', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'tags', name: 'Customers Tags', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'products', name: 'Products', indent: true, view: true, create: true, edit: true, delete: true },
-                        ].map((row) => {
-                          if (row.isHeader) {
-                            return (
-                              <tr key={row.key} className="bg-slate-50/70">
-                                <td colSpan={5} className="py-2 px-4 font-bold text-slate-800">
-                                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300"
-                                    />
-                                    <span>{row.name}</span>
-                                  </label>
-                                </td>
-                              </tr>
-                            );
-                          }
-
+              {/* Module Privileges Table */}
+              <div className="space-y-2">
+                <h4 className="font-bold text-slate-800 text-center text-xs">Module Privileges</h4>
+                <div className="overflow-x-auto border border-slate-200 rounded">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-bold">
+                      <tr>
+                        <th className="py-2.5 px-4 w-72">
+                          <label className="inline-flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                const keys = [
+                                  'dashboard', 'task', 'campaign', 'lead', 'customer',
+                                  'contact', 'receipt', 'delivery', 'stock', 'purchase_order',
+                                  'purchase_invoice', 'supplier_payment', 'opp_settings',
+                                  'init_settings', 'camp_settings', 'order_settings',
+                                  'task_settings', 'biz_opp', 'target', 'cost_job',
+                                  'tags', 'products'
+                                ];
+                                const updated: any = { ...newProfileActionPermissions };
+                                keys.forEach((k) => {
+                                  updated[`${k}_view`] = checked;
+                                  updated[`${k}_create`] = checked;
+                                  updated[`${k}_edit`] = checked;
+                                  updated[`${k}_delete`] = checked;
+                                });
+                                setNewProfileActionPermissions(updated);
+                              }}
+                              className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
+                            />
+                            <span>Module Name</span>
+                          </label>
+                        </th>
+                        {['View All', 'Create All', 'Edit All', 'Delete All'].map((header, hIdx) => {
+                          const actionKey = ['view', 'create', 'edit', 'delete'][hIdx];
                           return (
-                            <tr key={row.key} className="hover:bg-slate-50/50">
-                              <td className="py-2 px-4">
-                                <label className={`inline-flex items-center gap-2 cursor-pointer ${row.indent ? 'pl-5' : ''}`}>
+                            <th key={header} className="py-2.5 px-4 text-center w-32">
+                              <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    const keys = [
+                                      'dashboard', 'task', 'campaign', 'lead', 'customer',
+                                      'contact', 'receipt', 'delivery', 'stock', 'purchase_order',
+                                      'purchase_invoice', 'supplier_payment', 'opp_settings',
+                                      'init_settings', 'camp_settings', 'order_settings',
+                                      'task_settings', 'biz_opp', 'target', 'cost_job',
+                                      'tags', 'products'
+                                    ];
+                                    const updated: any = { ...newProfileActionPermissions };
+                                    keys.forEach((k) => {
+                                      updated[`${k}_${actionKey}`] = checked;
+                                    });
+                                    setNewProfileActionPermissions(updated);
+                                  }}
+                                  className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
+                                />
+                                <span>{header}</span>
+                              </label>
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {[
+                        { key: 'dashboard', name: 'Dashboard / Calendar', view: true, create: true, edit: true, delete: true },
+                        { key: 'task', name: 'Task', view: true, create: true, edit: true, delete: true },
+                        { key: 'marketing_header', name: 'Marketing', isHeader: true },
+                        { key: 'campaign', name: 'Campaign', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'lead', name: 'Lead', view: true, create: true, edit: true, delete: true },
+                        { key: 'customer_header', name: 'Customer', isHeader: true },
+                        { key: 'customer', name: 'Customer', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'contact', name: 'Contact', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'receipt', name: 'Set Receipt', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'delivery', name: 'Delivery Note', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'purchase_header', name: 'Purchase', isHeader: true },
+                        { key: 'stock', name: 'Stock', indent: true, view: true, create: false, edit: true, delete: false },
+                        { key: 'purchase_order', name: 'Purchase Order', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'purchase_invoice', name: 'Purchase Invoice', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'supplier_payment', name: 'Supplier Bill Payment', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'settings_header', name: 'Settings', isHeader: true },
+                        { key: 'opp_settings', name: 'Opportunity Settings', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'init_settings', name: 'Initial Settings', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'camp_settings', name: 'Campaign Settings', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'order_settings', name: 'Order Settings', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'task_settings', name: 'Task Settings', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'biz_opp', name: 'Business Opportunity', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'target', name: 'Company Target', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'cost_job', name: 'Cost/Job Type', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'tags', name: 'Customers Tags', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'products', name: 'Products', indent: true, view: true, create: true, edit: true, delete: true },
+                      ].map((row) => {
+                        if (row.isHeader) {
+                          return (
+                            <tr key={row.key} className="bg-slate-50/70">
+                              <td colSpan={5} className="py-2 px-4 font-bold text-slate-800">
+                                <label className="inline-flex items-center gap-2 cursor-pointer">
                                   <input
                                     type="checkbox"
-                                    className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
+                                    className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300"
                                   />
-                                  <span className="text-slate-700">{row.name}</span>
+                                  <span>{row.name}</span>
                                 </label>
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.view && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      defaultChecked
-                                      className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
-                                    />
-                                    <span>View</span>
-                                  </label>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.create && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
-                                    />
-                                    <span>Create</span>
-                                  </label>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.edit && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
-                                    />
-                                    <span>Edit</span>
-                                  </label>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.delete && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
-                                    />
-                                    <span>Delete</span>
-                                  </label>
-                                )}
                               </td>
                             </tr>
                           );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                        }
 
-                {/* Chart Permissions Grid */}
-                <div className="space-y-2 pt-2">
-                  <h4 className="font-bold text-slate-800 text-center text-xs">Chart</h4>
-                  <div className="border border-slate-200 rounded p-3 bg-white space-y-2.5">
-                    <div className="text-left">
-                      <button
-                        type="button"
-                        className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer"
-                      >
-                        Check All / Uncheck All
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
-                      {[
-                        'Company Overview', 'User Overview', 'Company Sales', 'User Sales',
-                        'Opportunity Closed Lost (Company)', 'Opportunity Closed Lost (User)',
-                        'Company Opportunity Stages', 'User Opportunity Stages',
-                        'Opportunity Closing This Month (Company)', 'Opportunity Closing This Month (User)',
-                        'Opportunity This Month (Company)', 'Opportunity This Month (User)',
-                        'Lead This Month (Company)', 'Lead This Month (User)'
-                      ].map((item) => (
-                        <label key={item} className="flex items-center gap-2 cursor-pointer text-slate-700">
-                          <input
-                            type="checkbox"
-                            className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
-                          />
-                          <span className="truncate">{item}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Additional Privileges Grid */}
-                <div className="space-y-2 pt-2">
-                  <h4 className="font-bold text-slate-800 text-center text-xs">Additional Privileges</h4>
-                  <div className="border border-slate-200 rounded p-3 bg-white space-y-2.5">
-                    <div className="text-left">
-                      <button
-                        type="button"
-                        className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer"
-                      >
-                        Check All / Uncheck All
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
-                      {[
-                        'Campaign Expense', 'Opportunity Closing Permission', 'Profit View',
-                        'Report Export Privilege', 'Customer Overview Privilege', 'Customer Statement View Privilege',
-                        'Purchase Rate', 'Sales Visit Settings', 'Staff Visit View',
-                        'Staff Activity Summary', 'Staff Performance', 'Sales Report by Category',
-                        'Credit Limit', 'Stock Requirement', 'Quotation Approval',
-                        'Sales Cost', 'Raw Materials', 'Order Cancellation'
-                      ].map((item) => (
-                        <label key={item} className="flex items-center gap-2 cursor-pointer text-slate-700">
-                          <input
-                            type="checkbox"
-                            className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
-                          />
-                          <span className="truncate">{item}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Activities Table */}
-                <div className="space-y-2 pt-2">
-                  <h4 className="font-bold text-slate-800 text-center text-xs">Activities</h4>
-                  <div className="overflow-x-auto border border-slate-200 rounded">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <tbody className="divide-y divide-slate-100 bg-white">
-                        {[
-                          { key: 'note', name: 'Note' },
-                          { key: 'file', name: 'File' },
-                          { key: 'order_expense', name: 'Order Expense' },
-                        ].map((row) => (
+                        return (
                           <tr key={row.key} className="hover:bg-slate-50/50">
-                            <td className="py-2 px-4 w-72">
-                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                            <td className="py-2 px-4">
+                              <label className={`inline-flex items-center gap-2 cursor-pointer ${row.indent ? 'pl-5' : ''}`}>
                                 <input
                                   type="checkbox"
-                                  className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300"
+                                  className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
                                 />
                                 <span className="text-slate-700">{row.name}</span>
                               </label>
                             </td>
-                            <td className="py-2 px-4 text-center w-32">
-                              <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                <span>View</span>
-                              </label>
+                            <td className="py-2 px-4 text-center">
+                              {row.view && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    defaultChecked
+                                    className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
+                                  />
+                                  <span>View</span>
+                                </label>
+                              )}
                             </td>
-                            <td className="py-2 px-4 text-center w-32">
-                              <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                <span>Create</span>
-                              </label>
+                            <td className="py-2 px-4 text-center">
+                              {row.create && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
+                                  />
+                                  <span>Create</span>
+                                </label>
+                              )}
                             </td>
-                            <td className="py-2 px-4 text-center w-32">
-                              <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                <span>Edit</span>
-                              </label>
+                            <td className="py-2 px-4 text-center">
+                              {row.edit && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
+                                  />
+                                  <span>Edit</span>
+                                </label>
+                              )}
                             </td>
-                            <td className="py-2 px-4 text-center w-32">
-                              <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                <span>Delete</span>
-                              </label>
+                            <td className="py-2 px-4 text-center">
+                              {row.delete && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
+                                  />
+                                  <span>Delete</span>
+                                </label>
+                              )}
                             </td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Chart Permissions Grid */}
+              <div className="space-y-2 pt-2">
+                <h4 className="font-bold text-slate-800 text-center text-xs">Chart</h4>
+                <div className="border border-slate-200 rounded p-3 bg-white space-y-2.5">
+                  <div className="text-left">
+                    <button
+                      type="button"
+                      className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer"
+                    >
+                      Check All / Uncheck All
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+                    {[
+                      'Company Overview', 'User Overview', 'Company Sales', 'User Sales',
+                      'Opportunity Closed Lost (Company)', 'Opportunity Closed Lost (User)',
+                      'Company Opportunity Stages', 'User Opportunity Stages',
+                      'Opportunity Closing This Month (Company)', 'Opportunity Closing This Month (User)',
+                      'Opportunity This Month (Company)', 'Opportunity This Month (User)',
+                      'Lead This Month (Company)', 'Lead This Month (User)'
+                    ].map((item) => (
+                      <label key={item} className="flex items-center gap-2 cursor-pointer text-slate-700">
+                        <input
+                          type="checkbox"
+                          className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
+                        />
+                        <span className="truncate">{item}</span>
+                      </label>
+                    ))}
                   </div>
                 </div>
               </div>
 
-              {/* ===================== SECTION 2: PROJECT ===================== */}
-              <div className="space-y-6 pt-4 border-t border-slate-200">
-                <div className="text-center">
-                  <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest pb-1.5 border-b-2 border-slate-300 inline-block px-8">
-                    PROJECT
-                  </h3>
+              {/* Additional Privileges Grid */}
+              <div className="space-y-2 pt-2">
+                <h4 className="font-bold text-slate-800 text-center text-xs">Additional Privileges</h4>
+                <div className="border border-slate-200 rounded p-3 bg-white space-y-2.5">
+                  <div className="text-left">
+                    <button
+                      type="button"
+                      className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer"
+                    >
+                      Check All / Uncheck All
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+                    {[
+                      'Campaign Expense', 'Opportunity Closing Permission', 'Profit View',
+                      'Report Export Privilege', 'Customer Overview Privilege', 'Customer Statement View Privilege',
+                      'Purchase Rate', 'Sales Visit Settings', 'Staff Visit View',
+                      'Staff Activity Summary', 'Staff Performance', 'Sales Report by Category',
+                      'Credit Limit', 'Stock Requirement', 'Quotation Approval',
+                      'Sales Cost', 'Raw Materials', 'Order Cancellation'
+                    ].map((item) => (
+                      <label key={item} className="flex items-center gap-2 cursor-pointer text-slate-700">
+                        <input
+                          type="checkbox"
+                          className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer"
+                        />
+                        <span className="truncate">{item}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <h4 className="font-bold text-slate-800 text-center text-xs">Module Privileges</h4>
-                  <div className="overflow-x-auto border border-slate-200 rounded">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-bold">
-                        <tr>
-                          <th className="py-2.5 px-4 w-72">
+              {/* Activities Table */}
+              <div className="space-y-2 pt-2">
+                <h4 className="font-bold text-slate-800 text-center text-xs">Activities</h4>
+                <div className="overflow-x-auto border border-slate-200 rounded">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {[
+                        { key: 'note', name: 'Note' },
+                        { key: 'file', name: 'File' },
+                        { key: 'order_expense', name: 'Order Expense' },
+                      ].map((row) => (
+                        <tr key={row.key} className="hover:bg-slate-50/50">
+                          <td className="py-2 px-4 w-72">
                             <label className="inline-flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300"
+                              />
+                              <span className="text-slate-700">{row.name}</span>
+                            </label>
+                          </td>
+                          <td className="py-2 px-4 text-center w-32">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer">
                               <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                              <span>Module Name</span>
+                              <span>View</span>
+                            </label>
+                          </td>
+                          <td className="py-2 px-4 text-center w-32">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                              <span>Create</span>
+                            </label>
+                          </td>
+                          <td className="py-2 px-4 text-center w-32">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                              <span>Edit</span>
+                            </label>
+                          </td>
+                          <td className="py-2 px-4 text-center w-32">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                              <span>Delete</span>
+                            </label>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* ===================== SECTION 2: PROJECT ===================== */}
+            <div className="space-y-6 pt-4 border-t border-slate-200">
+              <div className="text-center">
+                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest pb-1.5 border-b-2 border-slate-300 inline-block px-8">
+                  PROJECT
+                </h3>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-slate-800 text-center text-xs">Module Privileges</h4>
+                <div className="overflow-x-auto border border-slate-200 rounded">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-bold">
+                      <tr>
+                        <th className="py-2.5 px-4 w-72">
+                          <label className="inline-flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                            <span>Module Name</span>
+                          </label>
+                        </th>
+                        {['View All', 'Create All', 'Edit All', 'Delete All'].map((header) => (
+                          <th key={header} className="py-2.5 px-4 text-center w-32">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                              <span>{header}</span>
                             </label>
                           </th>
-                          {['View All', 'Create All', 'Edit All', 'Delete All'].map((header) => (
-                            <th key={header} className="py-2.5 px-4 text-center w-32">
-                              <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                <span>{header}</span>
-                              </label>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white">
-                        {[
-                          { key: 'pm_dashboard', name: 'Dashboard', view: true, create: true, edit: true, delete: true },
-                          { key: 'pm_task', name: 'Task', view: true, create: true, edit: true, delete: true },
-                          { key: 'pm_project_header', name: 'Project', isHeader: true },
-                          { key: 'pm_orders', name: 'Orders', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'pm_report_header', name: 'Report', isHeader: true },
-                          { key: 'pm_proj_rep', name: 'Project Report', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'pm_time_rep', name: 'Timesheet Report', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'pm_daily_rep', name: 'Daily Report', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'pm_task_rep', name: 'Task Report', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'pm_settings_header', name: 'Settings', isHeader: true },
-                          { key: 'pm_grade', name: 'Grade', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'pm_type', name: 'Project Type', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'pm_status', name: 'Project Status', indent: true, view: true, create: true, edit: true, delete: true },
-                        ].map((row) => {
-                          if (row.isHeader) {
-                            return (
-                              <tr key={row.key} className="bg-slate-50/70">
-                                <td colSpan={5} className="py-2 px-4 font-bold text-slate-800">
-                                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                    <span>{row.name}</span>
-                                  </label>
-                                </td>
-                              </tr>
-                            );
-                          }
-
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {[
+                        { key: 'pm_dashboard', name: 'Dashboard', view: true, create: true, edit: true, delete: true },
+                        { key: 'pm_task', name: 'Task', view: true, create: true, edit: true, delete: true },
+                        { key: 'pm_project_header', name: 'Project', isHeader: true },
+                        { key: 'pm_orders', name: 'Orders', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'pm_report_header', name: 'Report', isHeader: true },
+                        { key: 'pm_proj_rep', name: 'Project Report', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'pm_time_rep', name: 'Timesheet Report', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'pm_daily_rep', name: 'Daily Report', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'pm_task_rep', name: 'Task Report', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'pm_settings_header', name: 'Settings', isHeader: true },
+                        { key: 'pm_grade', name: 'Grade', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'pm_type', name: 'Project Type', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'pm_status', name: 'Project Status', indent: true, view: true, create: true, edit: true, delete: true },
+                      ].map((row) => {
+                        if (row.isHeader) {
                           return (
-                            <tr key={row.key} className="hover:bg-slate-50/50">
-                              <td className="py-2 px-4">
-                                <label className={`inline-flex items-center gap-2 cursor-pointer ${row.indent ? 'pl-5' : ''}`}>
-                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                  <span className="text-slate-700">{row.name}</span>
+                            <tr key={row.key} className="bg-slate-50/70">
+                              <td colSpan={5} className="py-2 px-4 font-bold text-slate-800">
+                                <label className="inline-flex items-center gap-2 cursor-pointer">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                                  <span>{row.name}</span>
                                 </label>
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.view && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" defaultChecked className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                    <span>View</span>
-                                  </label>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.create && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                    <span>Create</span>
-                                  </label>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.edit && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                    <span>Edit</span>
-                                  </label>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.delete && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                    <span>Delete</span>
-                                  </label>
-                                )}
                               </td>
                             </tr>
                           );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                        }
+
+                        return (
+                          <tr key={row.key} className="hover:bg-slate-50/50">
+                            <td className="py-2 px-4">
+                              <label className={`inline-flex items-center gap-2 cursor-pointer ${row.indent ? 'pl-5' : ''}`}>
+                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                <span className="text-slate-700">{row.name}</span>
+                              </label>
+                            </td>
+                            <td className="py-2 px-4 text-center">
+                              {row.view && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" defaultChecked className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                  <span>View</span>
+                                </label>
+                              )}
+                            </td>
+                            <td className="py-2 px-4 text-center">
+                              {row.create && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                  <span>Create</span>
+                                </label>
+                              )}
+                            </td>
+                            <td className="py-2 px-4 text-center">
+                              {row.edit && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                  <span>Edit</span>
+                                </label>
+                              )}
+                            </td>
+                            <td className="py-2 px-4 text-center">
+                              {row.delete && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                  <span>Delete</span>
+                                </label>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
+            </div>
 
             {/* Footer Buttons */}
             <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-200">
@@ -1351,336 +1329,336 @@ export function ProfileTab() {
 
             {/* ===================== SECTION 1: SALES ===================== */}
             <div className="space-y-6 pt-2">
-                <div className="text-center">
-                  <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest pb-1.5 border-b-2 border-slate-300 inline-block px-8">
-                    SALES
-                  </h3>
-                </div>
+              <div className="text-center">
+                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest pb-1.5 border-b-2 border-slate-300 inline-block px-8">
+                  SALES
+                </h3>
+              </div>
 
-                {/* Module Privileges Table */}
-                <div className="space-y-2">
-                  <h4 className="font-bold text-slate-800 text-center text-xs">Module Privileges</h4>
-                  <div className="overflow-x-auto border border-slate-200 rounded">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-bold">
-                        <tr>
-                          <th className="py-2.5 px-4 w-72">
-                            <label className="inline-flex items-center gap-2 cursor-pointer">
+              {/* Module Privileges Table */}
+              <div className="space-y-2">
+                <h4 className="font-bold text-slate-800 text-center text-xs">Module Privileges</h4>
+                <div className="overflow-x-auto border border-slate-200 rounded">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-bold">
+                      <tr>
+                        <th className="py-2.5 px-4 w-72">
+                          <label className="inline-flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                            <span>Module Name</span>
+                          </label>
+                        </th>
+                        {['View All', 'Create All', 'Edit All', 'Delete All'].map((header) => (
+                          <th key={header} className="py-2.5 px-4 text-center w-32">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer">
                               <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                              <span>Module Name</span>
+                              <span>{header}</span>
                             </label>
                           </th>
-                          {['View All', 'Create All', 'Edit All', 'Delete All'].map((header) => (
-                            <th key={header} className="py-2.5 px-4 text-center w-32">
-                              <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                <span>{header}</span>
-                              </label>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white">
-                        {[
-                          { key: 'dashboard', name: 'Dashboard / Calendar', view: true, create: true, edit: true, delete: true },
-                          { key: 'task', name: 'Task', view: true, create: true, edit: true, delete: true },
-                          { key: 'marketing_header', name: 'Marketing', isHeader: true },
-                          { key: 'campaign', name: 'Campaign', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'lead', name: 'Lead', view: true, create: true, edit: true, delete: true },
-                          { key: 'customer_header', name: 'Customer', isHeader: true },
-                          { key: 'customer', name: 'Customer', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'contact', name: 'Contact', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'receipt', name: 'Set Receipt', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'delivery', name: 'Delivery Note', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'purchase_header', name: 'Purchase', isHeader: true },
-                          { key: 'stock', name: 'Stock', indent: true, view: true, create: false, edit: true, delete: false },
-                          { key: 'purchase_order', name: 'Purchase Order', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'purchase_invoice', name: 'Purchase Invoice', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'supplier_payment', name: 'Supplier Bill Payment', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'settings_header', name: 'Settings', isHeader: true },
-                          { key: 'opp_settings', name: 'Opportunity Settings', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'init_settings', name: 'Initial Settings', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'camp_settings', name: 'Campaign Settings', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'order_settings', name: 'Order Settings', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'task_settings', name: 'Task Settings', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'biz_opp', name: 'Business Opportunity', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'target', name: 'Company Target', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'cost_job', name: 'Cost/Job Type', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'tags', name: 'Customers Tags', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'products', name: 'Products', indent: true, view: true, create: true, edit: true, delete: true },
-                        ].map((row) => {
-                          if (row.isHeader) {
-                            return (
-                              <tr key={row.key} className="bg-slate-50/70">
-                                <td colSpan={5} className="py-2 px-4 font-bold text-slate-800">
-                                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                    <span>{row.name}</span>
-                                  </label>
-                                </td>
-                              </tr>
-                            );
-                          }
-
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {[
+                        { key: 'dashboard', name: 'Dashboard / Calendar', view: true, create: true, edit: true, delete: true },
+                        { key: 'task', name: 'Task', view: true, create: true, edit: true, delete: true },
+                        { key: 'marketing_header', name: 'Marketing', isHeader: true },
+                        { key: 'campaign', name: 'Campaign', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'lead', name: 'Lead', view: true, create: true, edit: true, delete: true },
+                        { key: 'customer_header', name: 'Customer', isHeader: true },
+                        { key: 'customer', name: 'Customer', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'contact', name: 'Contact', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'receipt', name: 'Set Receipt', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'delivery', name: 'Delivery Note', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'purchase_header', name: 'Purchase', isHeader: true },
+                        { key: 'stock', name: 'Stock', indent: true, view: true, create: false, edit: true, delete: false },
+                        { key: 'purchase_order', name: 'Purchase Order', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'purchase_invoice', name: 'Purchase Invoice', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'supplier_payment', name: 'Supplier Bill Payment', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'settings_header', name: 'Settings', isHeader: true },
+                        { key: 'opp_settings', name: 'Opportunity Settings', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'init_settings', name: 'Initial Settings', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'camp_settings', name: 'Campaign Settings', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'order_settings', name: 'Order Settings', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'task_settings', name: 'Task Settings', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'biz_opp', name: 'Business Opportunity', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'target', name: 'Company Target', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'cost_job', name: 'Cost/Job Type', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'tags', name: 'Customers Tags', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'products', name: 'Products', indent: true, view: true, create: true, edit: true, delete: true },
+                      ].map((row) => {
+                        if (row.isHeader) {
                           return (
-                            <tr key={row.key} className="hover:bg-slate-50/50">
-                              <td className="py-2 px-4">
-                                <label className={`inline-flex items-center gap-2 cursor-pointer ${row.indent ? 'pl-5' : ''}`}>
-                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                  <span className="text-slate-700">{row.name}</span>
+                            <tr key={row.key} className="bg-slate-50/70">
+                              <td colSpan={5} className="py-2 px-4 font-bold text-slate-800">
+                                <label className="inline-flex items-center gap-2 cursor-pointer">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                                  <span>{row.name}</span>
                                 </label>
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.view && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" defaultChecked className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                    <span>View</span>
-                                  </label>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.create && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                    <span>Create</span>
-                                  </label>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.edit && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                    <span>Edit</span>
-                                  </label>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.delete && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                    <span>Delete</span>
-                                  </label>
-                                )}
                               </td>
                             </tr>
                           );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                        }
 
-                {/* Chart Permissions Grid */}
-                <div className="space-y-2 pt-2">
-                  <h4 className="font-bold text-slate-800 text-center text-xs">Chart</h4>
-                  <div className="border border-slate-200 rounded p-3 bg-white space-y-2.5">
-                    <div className="text-left">
-                      <button type="button" className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer">
-                        Check All / Uncheck All
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
-                      {[
-                        'Company Overview', 'User Overview', 'Company Sales', 'User Sales',
-                        'Opportunity Closed Lost (Company)', 'Opportunity Closed Lost (User)',
-                        'Company Opportunity Stages', 'User Opportunity Stages',
-                        'Opportunity Closing This Month (Company)', 'Opportunity Closing This Month (User)',
-                        'Opportunity This Month (Company)', 'Opportunity This Month (User)',
-                        'Lead This Month (Company)', 'Lead This Month (User)'
-                      ].map((item) => (
-                        <label key={item} className="flex items-center gap-2 cursor-pointer text-slate-700">
-                          <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                          <span className="truncate">{item}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Additional Privileges Grid */}
-                <div className="space-y-2 pt-2">
-                  <h4 className="font-bold text-slate-800 text-center text-xs">Additional Privileges</h4>
-                  <div className="border border-slate-200 rounded p-3 bg-white space-y-2.5">
-                    <div className="text-left">
-                      <button type="button" className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer">
-                        Check All / Uncheck All
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
-                      {[
-                        'Campaign Expense', 'Opportunity Closing Permission', 'Profit View',
-                        'Report Export Privilege', 'Customer Overview Privilege', 'Customer Statement View Privilege',
-                        'Purchase Rate', 'Sales Visit Settings', 'Staff Visit View',
-                        'Staff Activity Summary', 'Staff Performance', 'Sales Report by Category',
-                        'Credit Limit', 'Stock Requirement', 'Quotation Approval',
-                        'Sales Cost', 'Raw Materials', 'Order Cancellation'
-                      ].map((item) => (
-                        <label key={item} className="flex items-center gap-2 cursor-pointer text-slate-700">
-                          <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                          <span className="truncate">{item}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Activities Table */}
-                <div className="space-y-2 pt-2">
-                  <h4 className="font-bold text-slate-800 text-center text-xs">Activities</h4>
-                  <div className="overflow-x-auto border border-slate-200 rounded">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <tbody className="divide-y divide-slate-100 bg-white">
-                        {[
-                          { key: 'note', name: 'Note' },
-                          { key: 'file', name: 'File' },
-                          { key: 'order_expense', name: 'Order Expense' },
-                        ].map((row) => (
+                        return (
                           <tr key={row.key} className="hover:bg-slate-50/50">
-                            <td className="py-2 px-4 w-72">
-                              <label className="inline-flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                            <td className="py-2 px-4">
+                              <label className={`inline-flex items-center gap-2 cursor-pointer ${row.indent ? 'pl-5' : ''}`}>
+                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
                                 <span className="text-slate-700">{row.name}</span>
                               </label>
                             </td>
-                            <td className="py-2 px-4 text-center w-32">
-                              <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                <span>View</span>
-                              </label>
+                            <td className="py-2 px-4 text-center">
+                              {row.view && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" defaultChecked className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                  <span>View</span>
+                                </label>
+                              )}
                             </td>
-                            <td className="py-2 px-4 text-center w-32">
-                              <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                <span>Create</span>
-                              </label>
+                            <td className="py-2 px-4 text-center">
+                              {row.create && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                  <span>Create</span>
+                                </label>
+                              )}
                             </td>
-                            <td className="py-2 px-4 text-center w-32">
-                              <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                <span>Edit</span>
-                              </label>
+                            <td className="py-2 px-4 text-center">
+                              {row.edit && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                  <span>Edit</span>
+                                </label>
+                              )}
                             </td>
-                            <td className="py-2 px-4 text-center w-32">
-                              <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                <span>Delete</span>
-                              </label>
+                            <td className="py-2 px-4 text-center">
+                              {row.delete && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                  <span>Delete</span>
+                                </label>
+                              )}
                             </td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Chart Permissions Grid */}
+              <div className="space-y-2 pt-2">
+                <h4 className="font-bold text-slate-800 text-center text-xs">Chart</h4>
+                <div className="border border-slate-200 rounded p-3 bg-white space-y-2.5">
+                  <div className="text-left">
+                    <button type="button" className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer">
+                      Check All / Uncheck All
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+                    {[
+                      'Company Overview', 'User Overview', 'Company Sales', 'User Sales',
+                      'Opportunity Closed Lost (Company)', 'Opportunity Closed Lost (User)',
+                      'Company Opportunity Stages', 'User Opportunity Stages',
+                      'Opportunity Closing This Month (Company)', 'Opportunity Closing This Month (User)',
+                      'Opportunity This Month (Company)', 'Opportunity This Month (User)',
+                      'Lead This Month (Company)', 'Lead This Month (User)'
+                    ].map((item) => (
+                      <label key={item} className="flex items-center gap-2 cursor-pointer text-slate-700">
+                        <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                        <span className="truncate">{item}</span>
+                      </label>
+                    ))}
                   </div>
                 </div>
               </div>
 
-              {/* ===================== SECTION 2: PROJECT ===================== */}
-              <div className="space-y-6 pt-4 border-t border-slate-200">
-                <div className="text-center">
-                  <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest pb-1.5 border-b-2 border-slate-300 inline-block px-8">
-                    PROJECT
-                  </h3>
+              {/* Additional Privileges Grid */}
+              <div className="space-y-2 pt-2">
+                <h4 className="font-bold text-slate-800 text-center text-xs">Additional Privileges</h4>
+                <div className="border border-slate-200 rounded p-3 bg-white space-y-2.5">
+                  <div className="text-left">
+                    <button type="button" className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer">
+                      Check All / Uncheck All
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+                    {[
+                      'Campaign Expense', 'Opportunity Closing Permission', 'Profit View',
+                      'Report Export Privilege', 'Customer Overview Privilege', 'Customer Statement View Privilege',
+                      'Purchase Rate', 'Sales Visit Settings', 'Staff Visit View',
+                      'Staff Activity Summary', 'Staff Performance', 'Sales Report by Category',
+                      'Credit Limit', 'Stock Requirement', 'Quotation Approval',
+                      'Sales Cost', 'Raw Materials', 'Order Cancellation'
+                    ].map((item) => (
+                      <label key={item} className="flex items-center gap-2 cursor-pointer text-slate-700">
+                        <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                        <span className="truncate">{item}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <h4 className="font-bold text-slate-800 text-center text-xs">Module Privileges</h4>
-                  <div className="overflow-x-auto border border-slate-200 rounded">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-bold">
-                        <tr>
-                          <th className="py-2.5 px-4 w-72">
+              {/* Activities Table */}
+              <div className="space-y-2 pt-2">
+                <h4 className="font-bold text-slate-800 text-center text-xs">Activities</h4>
+                <div className="overflow-x-auto border border-slate-200 rounded">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {[
+                        { key: 'note', name: 'Note' },
+                        { key: 'file', name: 'File' },
+                        { key: 'order_expense', name: 'Order Expense' },
+                      ].map((row) => (
+                        <tr key={row.key} className="hover:bg-slate-50/50">
+                          <td className="py-2 px-4 w-72">
                             <label className="inline-flex items-center gap-2 cursor-pointer">
                               <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                              <span>Module Name</span>
+                              <span className="text-slate-700">{row.name}</span>
+                            </label>
+                          </td>
+                          <td className="py-2 px-4 text-center w-32">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                              <span>View</span>
+                            </label>
+                          </td>
+                          <td className="py-2 px-4 text-center w-32">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                              <span>Create</span>
+                            </label>
+                          </td>
+                          <td className="py-2 px-4 text-center w-32">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                              <span>Edit</span>
+                            </label>
+                          </td>
+                          <td className="py-2 px-4 text-center w-32">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                              <span>Delete</span>
+                            </label>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* ===================== SECTION 2: PROJECT ===================== */}
+            <div className="space-y-6 pt-4 border-t border-slate-200">
+              <div className="text-center">
+                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-widest pb-1.5 border-b-2 border-slate-300 inline-block px-8">
+                  PROJECT
+                </h3>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="font-bold text-slate-800 text-center text-xs">Module Privileges</h4>
+                <div className="overflow-x-auto border border-slate-200 rounded">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-bold">
+                      <tr>
+                        <th className="py-2.5 px-4 w-72">
+                          <label className="inline-flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                            <span>Module Name</span>
+                          </label>
+                        </th>
+                        {['View All', 'Create All', 'Edit All', 'Delete All'].map((header) => (
+                          <th key={header} className="py-2.5 px-4 text-center w-32">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                              <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                              <span>{header}</span>
                             </label>
                           </th>
-                          {['View All', 'Create All', 'Edit All', 'Delete All'].map((header) => (
-                            <th key={header} className="py-2.5 px-4 text-center w-32">
-                              <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                <span>{header}</span>
-                              </label>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white">
-                        {[
-                          { key: 'pm_dashboard', name: 'Dashboard', view: true, create: true, edit: true, delete: true },
-                          { key: 'pm_task', name: 'Task', view: true, create: true, edit: true, delete: true },
-                          { key: 'pm_project_header', name: 'Project', isHeader: true },
-                          { key: 'pm_orders', name: 'Orders', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'pm_report_header', name: 'Report', isHeader: true },
-                          { key: 'pm_proj_rep', name: 'Project Report', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'pm_time_rep', name: 'Timesheet Report', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'pm_daily_rep', name: 'Daily Report', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'pm_task_rep', name: 'Task Report', indent: true, view: true, create: false, edit: false, delete: false },
-                          { key: 'pm_settings_header', name: 'Settings', isHeader: true },
-                          { key: 'pm_grade', name: 'Grade', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'pm_type', name: 'Project Type', indent: true, view: true, create: true, edit: true, delete: true },
-                          { key: 'pm_status', name: 'Project Status', indent: true, view: true, create: true, edit: true, delete: true },
-                        ].map((row) => {
-                          if (row.isHeader) {
-                            return (
-                              <tr key={row.key} className="bg-slate-50/70">
-                                <td colSpan={5} className="py-2 px-4 font-bold text-slate-800">
-                                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
-                                    <span>{row.name}</span>
-                                  </label>
-                                </td>
-                              </tr>
-                            );
-                          }
-
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {[
+                        { key: 'pm_dashboard', name: 'Dashboard', view: true, create: true, edit: true, delete: true },
+                        { key: 'pm_task', name: 'Task', view: true, create: true, edit: true, delete: true },
+                        { key: 'pm_project_header', name: 'Project', isHeader: true },
+                        { key: 'pm_orders', name: 'Orders', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'pm_report_header', name: 'Report', isHeader: true },
+                        { key: 'pm_proj_rep', name: 'Project Report', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'pm_time_rep', name: 'Timesheet Report', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'pm_daily_rep', name: 'Daily Report', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'pm_task_rep', name: 'Task Report', indent: true, view: true, create: false, edit: false, delete: false },
+                        { key: 'pm_settings_header', name: 'Settings', isHeader: true },
+                        { key: 'pm_grade', name: 'Grade', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'pm_type', name: 'Project Type', indent: true, view: true, create: true, edit: true, delete: true },
+                        { key: 'pm_status', name: 'Project Status', indent: true, view: true, create: true, edit: true, delete: true },
+                      ].map((row) => {
+                        if (row.isHeader) {
                           return (
-                            <tr key={row.key} className="hover:bg-slate-50/50">
-                              <td className="py-2 px-4">
-                                <label className={`inline-flex items-center gap-2 cursor-pointer ${row.indent ? 'pl-5' : ''}`}>
-                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                  <span className="text-slate-700">{row.name}</span>
+                            <tr key={row.key} className="bg-slate-50/70">
+                              <td colSpan={5} className="py-2 px-4 font-bold text-slate-800">
+                                <label className="inline-flex items-center gap-2 cursor-pointer">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300" />
+                                  <span>{row.name}</span>
                                 </label>
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.view && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" defaultChecked className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                    <span>View</span>
-                                  </label>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.create && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                    <span>Create</span>
-                                  </label>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.edit && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                    <span>Edit</span>
-                                  </label>
-                                )}
-                              </td>
-                              <td className="py-2 px-4 text-center">
-                                {row.delete && (
-                                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
-                                    <span>Delete</span>
-                                  </label>
-                                )}
                               </td>
                             </tr>
                           );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                        }
+
+                        return (
+                          <tr key={row.key} className="hover:bg-slate-50/50">
+                            <td className="py-2 px-4">
+                              <label className={`inline-flex items-center gap-2 cursor-pointer ${row.indent ? 'pl-5' : ''}`}>
+                                <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                <span className="text-slate-700">{row.name}</span>
+                              </label>
+                            </td>
+                            <td className="py-2 px-4 text-center">
+                              {row.view && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" defaultChecked className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                  <span>View</span>
+                                </label>
+                              )}
+                            </td>
+                            <td className="py-2 px-4 text-center">
+                              {row.create && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                  <span>Create</span>
+                                </label>
+                              )}
+                            </td>
+                            <td className="py-2 px-4 text-center">
+                              {row.edit && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                  <span>Edit</span>
+                                </label>
+                              )}
+                            </td>
+                            <td className="py-2 px-4 text-center">
+                              {row.delete && (
+                                <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                  <input type="checkbox" className="w-3.5 h-3.5 rounded text-blue-600 border-slate-300 cursor-pointer" />
+                                  <span>Delete</span>
+                                </label>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
+            </div>
 
             {/* Footer Buttons */}
             <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-200">

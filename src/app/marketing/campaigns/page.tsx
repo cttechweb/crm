@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import {
   Megaphone,
@@ -30,6 +30,9 @@ import {
   Check,
   RefreshCw,
   ExternalLink,
+  Mail,
+  Users,
+  FileText,
 } from 'lucide-react';
 import { BackButton } from '@/components/ui/BackButton';
 import { cn } from '@/lib/utils';
@@ -46,8 +49,8 @@ export interface ExtendedCampaign extends CrmCampaign {
   description?: string;
 }
 
-function CampaignsContent() {
-  const { campaigns, addCampaign, updateCampaign } = useEnterpriseCrm();
+export function CampaignsContent() {
+  const { campaigns, addCampaign, updateCampaign, deleteCampaign: ctxDeleteCampaign, toggleCampaignListing } = useEnterpriseCrm();
 
   const [localCampaigns, setLocalCampaigns] = useState<ExtendedCampaign[]>(() => {
     return campaigns.map((c) => ({
@@ -55,6 +58,17 @@ function CampaignsContent() {
       description: `Optimized multi-channel campaign targeting ${c.channel || 'UAE Enterprise Sector'}.`,
     }));
   });
+
+  useEffect(() => {
+    if (campaigns) {
+      setLocalCampaigns(
+        campaigns.map((c) => ({
+          ...c,
+          description: `Optimized multi-channel campaign targeting ${c.channel || 'UAE Enterprise Sector'}.`,
+        }))
+      );
+    }
+  }, [campaigns]);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -99,7 +113,7 @@ function CampaignsContent() {
 
     const newCmp: ExtendedCampaign = {
       id: `cmp-${Date.now()}`,
-      slNo: localCampaigns.length + 1,
+      slNo: campaigns.length + 1,
       name: formData.name,
       owner: {
         name: formData.ownerName,
@@ -117,7 +131,7 @@ function CampaignsContent() {
       description: 'Standard UAE HVAC Enterprise Promotion',
     };
 
-    setLocalCampaigns([newCmp, ...localCampaigns]);
+    addCampaign(newCmp);
     setIsCreateModalOpen(false);
     setFormData({
       name: '',
@@ -134,29 +148,17 @@ function CampaignsContent() {
   };
 
   const toggleListing = (id: string) => {
-    setLocalCampaigns((prev) =>
-      prev.map((c) => {
-        if (c.id === id) {
-          const updated = !c.listing;
-          showToast(`Campaign listing ${updated ? 'activated' : 'paused'}`);
-          return { ...c, listing: updated };
-        }
-        return c;
-      })
-    );
+    toggleCampaignListing(id);
+    showToast('Campaign listing updated');
   };
 
   const toggleStatus = (id: string) => {
-    setLocalCampaigns((prev) =>
-      prev.map((c) => {
-        if (c.id === id) {
-          const nextStatus = c.status === 'Active' ? 'Paused' : 'Active';
-          showToast(`Campaign ${c.name} is now ${nextStatus}`);
-          return { ...c, status: nextStatus };
-        }
-        return c;
-      })
-    );
+    const item = campaigns.find((c) => c.id === id);
+    if (item) {
+      const nextStatus = item.status === 'Active' ? 'Paused' : 'Active';
+      updateCampaign(id, { status: nextStatus });
+      showToast(`Campaign ${item.name} is now ${nextStatus}`);
+    }
     setActiveGearMenuId(null);
   };
 
@@ -164,18 +166,18 @@ function CampaignsContent() {
     const copy: ExtendedCampaign = {
       ...item,
       id: `cmp-${Date.now()}`,
-      slNo: localCampaigns.length + 1,
+      slNo: campaigns.length + 1,
       name: `${item.name} (Copy)`,
       status: 'Active',
       leadsGenerated: 0,
     };
-    setLocalCampaigns([copy, ...localCampaigns]);
+    addCampaign(copy);
     showToast(`Duplicated campaign as "${copy.name}"`);
     setActiveGearMenuId(null);
   };
 
   const deleteCampaign = (id: string) => {
-    setLocalCampaigns((prev) => prev.filter((c) => c.id !== id));
+    ctxDeleteCampaign(id);
     showToast('Campaign deleted successfully');
     setActiveGearMenuId(null);
   };
@@ -244,15 +246,55 @@ function CampaignsContent() {
             <span>Integrate With Facebook</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setIsCreateModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#10B981] hover:bg-emerald-600 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+          <Link
+            href="/marketing/campaigns/create"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#10B981] hover:bg-emerald-600 active:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>+ CAMPAIGN</span>
-          </button>
+          </Link>
         </div>
+      </div>
+
+      {/* Sub-Tabs Navigation */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-slate-200 bg-white/70 backdrop-blur-xs p-2 rounded-2xl border shadow-2xs">
+        {[
+          { id: 'campaigns', label: 'Campaigns', icon: Megaphone, count: totalCount > 0 ? String(totalCount) : undefined, href: '/marketing?tab=campaigns' },
+          { id: 'email', label: 'Email Marketing', icon: Mail, href: '/marketing?tab=email' },
+          { id: 'whatsapp', label: 'WhatsApp Campaigns', icon: MessageSquare, href: '/marketing?tab=whatsapp' },
+          { id: 'sms', label: 'SMS Campaigns', icon: Smartphone, href: '/marketing?tab=sms' },
+          { id: 'segments', label: 'Customer Segments', icon: Users, href: '/marketing?tab=segments' },
+          { id: 'templates', label: 'Templates', icon: Copy, href: '/marketing?tab=templates' },
+          { id: 'reports', label: 'Campaign Reports', icon: FileText, href: '/marketing?tab=reports' },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = tab.id === 'campaigns';
+          return (
+            <Link
+              key={tab.id}
+              href={tab.href}
+              className={cn(
+                'flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl whitespace-nowrap transition-all cursor-pointer',
+                isActive
+                  ? 'bg-[#002B49] text-white shadow-xs'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80'
+              )}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{tab.label}</span>
+              {tab.count !== undefined && (
+                <span
+                  className={cn(
+                    'px-1.5 py-0.5 rounded-full text-[10px] font-extrabold',
+                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+                  )}
+                >
+                  {tab.count}
+                </span>
+              )}
+            </Link>
+          );
+        })}
       </div>
 
       {/* KPI Stat Cards */}
@@ -366,7 +408,7 @@ function CampaignsContent() {
           <span className="text-xs font-semibold text-slate-500">{filteredCampaigns.length} records found</span>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-h-[360px] pb-28">
           <table className="w-full text-left border-collapse min-w-[950px]">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-black text-slate-500 uppercase tracking-wider">
@@ -458,66 +500,75 @@ function CampaignsContent() {
                         />
                       </button>
                     </td>
-                    <td className="py-3 px-4 text-center relative">
-                      <div className="inline-block text-left">
+                    <td className="py-3 px-4 text-center">
+                      <div className="relative inline-block text-left">
                         <button
                           type="button"
-                          onClick={() => setActiveGearMenuId(activeGearMenuId === c.id ? null : c.id)}
-                          className="p-1.5 rounded-lg bg-sky-700 text-white hover:bg-sky-800 transition-colors shadow-2xs flex items-center gap-1 text-[11px] font-bold"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveGearMenuId(activeGearMenuId === c.id ? null : c.id);
+                          }}
+                          className="p-1.5 rounded-lg bg-sky-700 text-white hover:bg-sky-800 transition-colors shadow-2xs flex items-center gap-1 text-[11px] font-bold cursor-pointer"
                         >
                           <SettingsIcon className="w-3.5 h-3.5" />
                           <ChevronDown className="w-3 h-3" />
                         </button>
 
                         {activeGearMenuId === c.id && (
-                          <div className="absolute right-4 top-10 w-44 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-30 animate-in fade-in zoom-in-95 duration-100">
-                            <Link
-                              href={`/marketing/reports?campaign=${c.id}`}
+                          <>
+                            <div
+                              className="fixed inset-0 z-40"
                               onClick={() => setActiveGearMenuId(null)}
-                              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700"
-                            >
-                              <Eye className="w-3.5 h-3.5 text-blue-600" />
-                              <span>View Leads &amp; ROI</span>
-                            </Link>
+                            />
+                            <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-xl shadow-2xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100 text-left">
+                              <Link
+                                href={`/marketing/reports?campaign=${c.id}`}
+                                onClick={() => setActiveGearMenuId(null)}
+                                className="w-full flex items-center gap-2 px-3.5 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-blue-600" />
+                                <span>View Leads &amp; ROI</span>
+                              </Link>
 
-                            <button
-                              type="button"
-                              onClick={() => toggleStatus(c.id)}
-                              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 text-left"
-                            >
-                              {c.status === 'Active' ? (
-                                <>
-                                  <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
-                                  <span>Pause Campaign</span>
-                                </>
-                              ) : (
-                                <>
-                                  <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span>Resume Campaign</span>
-                                </>
-                              )}
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleStatus(c.id)}
+                                className="w-full flex items-center gap-2 px-3.5 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 text-left cursor-pointer transition-colors"
+                              >
+                                {c.status === 'Active' ? (
+                                  <>
+                                    <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
+                                    <span>Pause Campaign</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Resume Campaign</span>
+                                  </>
+                                )}
+                              </button>
 
-                            <button
-                              type="button"
-                              onClick={() => duplicateCampaign(c)}
-                              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 text-left"
-                            >
-                              <Copy className="w-3.5 h-3.5 text-slate-500" />
-                              <span>Duplicate Campaign</span>
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => duplicateCampaign(c)}
+                                className="w-full flex items-center gap-2 px-3.5 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 text-left cursor-pointer transition-colors"
+                              >
+                                <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                <span>Duplicate Campaign</span>
+                              </button>
 
-                            <div className="h-px bg-slate-100 my-1" />
+                              <div className="h-px bg-slate-100 my-1" />
 
-                            <button
-                              type="button"
-                              onClick={() => deleteCampaign(c.id)}
-                              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 text-left font-semibold"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Delete Campaign</span>
-                            </button>
-                          </div>
+                              <button
+                                type="button"
+                                onClick={() => deleteCampaign(c.id)}
+                                className="w-full flex items-center gap-2 px-3.5 py-2 text-xs text-rose-600 hover:bg-rose-50 text-left font-semibold cursor-pointer transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Delete Campaign</span>
+                              </button>
+                            </div>
+                          </>
                         )}
                       </div>
                     </td>

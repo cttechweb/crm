@@ -97,7 +97,18 @@ function WorkerTasksContent() {
         title.includes('qewrty') ||
         title.includes('efwregv') ||
         (t.assignedBy?.includes('Alex Rivera') && (title.includes('qewrty') || title.includes('efwregv')));
-      return !isGibberish;
+      if (isGibberish) return false;
+
+      // 🛡️ Strict Employee Task Isolation: Only tasks assigned to current employee
+      if (currentUser?.name) {
+        const uName = currentUser.name.trim().toLowerCase();
+        const assignedEmp = (t.assignedEmployee || t.assignee?.name || '').trim().toLowerCase();
+        if (assignedEmp && assignedEmp !== uName && !assignedEmp.includes(uName) && !uName.includes(assignedEmp)) {
+          return false;
+        }
+      }
+
+      return true;
     });
 
     return validRaw.map((t) => {
@@ -141,7 +152,7 @@ function WorkerTasksContent() {
         technicianNotes: t.comments?.[0]?.text || '',
       };
     });
-  }, [rawTasks]);
+  }, [rawTasks, currentUser]);
 
   useEffect(() => {
     if (initialSelectedId) {

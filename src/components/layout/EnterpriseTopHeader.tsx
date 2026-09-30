@@ -41,12 +41,33 @@ export function EnterpriseTopHeader() {
 
   const roles: UserRole[] = ['Super Admin', 'Admin', 'Manager', 'Employee'];
 
-  const getDisplayRole = (role?: string) => {
+  const getDisplayRole = (role?: string, user?: MockAuthUser | null) => {
     if (!role) return 'Admin';
     const r = role.toLowerCase();
-    if (r === 'worker' || r === 'employee') return 'Employee';
-    if (r === 'manager' || r.includes('manager')) return 'Manager';
-    if (r.includes('super')) return 'Super Admin';
+
+    if (r === 'super_admin' || r.includes('super')) return 'Super Admin';
+    if (r === 'admin') return 'Admin';
+
+    if (r === 'manager' || r.includes('manager')) {
+      // Return specific manager type: "Sales Manager", "Marketing Manager", etc.
+      const specific =
+        user?.managerType ||
+        user?.designation ||
+        user?.department;
+      if (specific && specific.toLowerCase() !== 'manager') return specific;
+      return 'Manager';
+    }
+
+    if (r === 'employee' || r === 'worker') {
+      // Return specific employee type: "Sales Employee", "Marketing Employee", etc.
+      const specific =
+        user?.employeeType ||
+        user?.designation ||
+        user?.department;
+      if (specific && specific.toLowerCase() !== 'employee') return specific;
+      return 'Employee';
+    }
+
     return 'Admin';
   };
 
@@ -216,7 +237,7 @@ export function EnterpriseTopHeader() {
                   {currentUser?.name || 'Cool Admin'}
                 </span>
                 <span className="text-[10px] text-[#2563EB] font-bold leading-tight capitalize">
-                  {getDisplayRole(currentUser?.role)}
+                  {getDisplayRole(currentUser?.role, currentUser)}
                 </span>
               </div>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -230,54 +251,35 @@ export function EnterpriseTopHeader() {
                     <p className="text-xs font-bold text-slate-900">{currentUser?.name || 'Cool Admin'}</p>
                     <p className="text-[11px] text-slate-500 truncate">{currentUser?.email || 'cooladmin@gmail.com'}</p>
                     <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase">
-                      {getDisplayRole(currentUser?.role)}
+                      {getDisplayRole(currentUser?.role, currentUser)}
                     </span>
                   </div>
 
-                  <div className="pt-1 space-y-0.5">
-                    {isEmployeeUser ? (
-                      <>
-                        <Link
-                          href="/worker/dashboard"
-                          onClick={() => setShowRoleDropdown(false)}
-                          className="block px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-md transition-colors font-medium"
-                        >
-                          Employee Dashboard
-                        </Link>
-                        <Link
-                          href="/worker/profile"
-                          onClick={() => setShowRoleDropdown(false)}
-                          className="block px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-md transition-colors font-medium"
-                        >
-                          Employee Profile & Van
-                        </Link>
-                        <Link
-                          href="/worker/tasks"
-                          onClick={() => setShowRoleDropdown(false)}
-                          className="block px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-md transition-colors font-medium"
-                        >
-                          My Tasks
-                        </Link>
-                      </>
-                    ) : (
-                      <>
-                        <Link
-                          href="/manager/dashboard"
-                          onClick={() => setShowRoleDropdown(false)}
-                          className="block px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-md transition-colors font-medium"
-                        >
-                          Operations Manager Dashboard
-                        </Link>
-                        <Link
-                          href="/settings"
-                          onClick={() => setShowRoleDropdown(false)}
-                          className="block px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-md transition-colors font-medium"
-                        >
-                          Organization Settings
-                        </Link>
-                      </>
-                    )}
-                  </div>
+                  {isEmployeeUser && (
+                    <div className="pt-1 space-y-0.5">
+                      <Link
+                        href="/worker/dashboard"
+                        onClick={() => setShowRoleDropdown(false)}
+                        className="block px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-md transition-colors font-medium"
+                      >
+                        Employee Dashboard
+                      </Link>
+                      <Link
+                        href="/worker/profile"
+                        onClick={() => setShowRoleDropdown(false)}
+                        className="block px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-md transition-colors font-medium"
+                      >
+                        Employee Profile & Van
+                      </Link>
+                      <Link
+                        href="/worker/tasks"
+                        onClick={() => setShowRoleDropdown(false)}
+                        className="block px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-md transition-colors font-medium"
+                      >
+                        My Tasks
+                      </Link>
+                    </div>
+                  )}
 
                   <div className="border-t border-slate-100 pt-1 mt-1">
                     <button

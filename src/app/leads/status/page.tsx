@@ -116,7 +116,8 @@ const INITIAL_STAGES: LeadStageItem[] = [
 ];
 
 function LeadStatusContent() {
-  const [stages, setStages] = useState<LeadStageItem[]>(INITIAL_STAGES);
+  const { leads: crmLeads } = useEnterpriseCrm();
+  const [stagesConfig, setStagesConfig] = useState<LeadStageItem[]>(INITIAL_STAGES);
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
   const [search, setSearch] = useState('');
   const [isAddStageModalOpen, setIsAddStageModalOpen] = useState(false);
@@ -139,7 +140,7 @@ function LeadStatusContent() {
     if (!formData.name) return;
 
     const newStage: LeadStageItem = {
-      id: `STG-0${stages.length + 1}`,
+      id: `STG-0${stagesConfig.length + 1}`,
       name: formData.name,
       badgeColor: formData.badgeColor,
       slaHours: Number(formData.slaHours),
@@ -149,15 +150,67 @@ function LeadStatusContent() {
       leads: [],
     };
 
-    setStages([...stages, newStage]);
+    setStagesConfig([...stagesConfig, newStage]);
     setIsAddStageModalOpen(false);
     setFormData({ name: '', slaHours: 24, badgeColor: 'bg-blue-500' });
     showToast(`Pipeline stage "${newStage.name}" added successfully!`);
   };
 
-  const totalPipelineLeads = stages.reduce((sum, s) => sum + s.leadsCount, 0);
-  const totalPipelineValue = stages.reduce((sum, s) => sum + s.totalValue, 0);
-  const hotDealsCount = stages.reduce((sum, s) => sum + s.leads.filter((l) => l.rating === 'HOT').length, 0);
+  // Dynamically map live CRM leads into stages
+  const stages = useMemo(() => {
+    return stagesConfig.map((stage) => {
+      const stageLeads = crmLeads.filter((l) => {
+        const sName = stage.name.toLowerCase();
+        const lStatus = (l.status || '').toLowerCase();
+        if (sName.includes('won') || sName.includes('converted')) {
+          return lStatus === 'converted' || lStatus === 'won';
+        }
+        if (sName.includes('proposal') || sName.includes('quotation')) {
+          return lStatus === 'proposal sent' || lStatus === 'proposal';
+        }
+        if (sName.includes('negotiation')) {
+          return lStatus === 'negotiation';
+        }
+        if (sName.includes('survey')) {
+          return lStatus === 'site survey';
+        }
+        if (sName.includes('contacted') || sName.includes('qualifying')) {
+          return lStatus === 'contacted' || lStatus === 'qualified';
+        }
+        if (sName.includes('new') || sName.includes('inquiry')) {
+          return lStatus === 'new' || lStatus === 'pending' || !l.status;
+        }
+        return false;
+      });
+
+      const totalValue = stageLeads.reduce((sum, l) => sum + (l.value || 0), 0);
+      const leadsCount = stageLeads.length;
+      const conversionRate = crmLeads.length > 0 ? `${((leadsCount / crmLeads.length) * 100).toFixed(0)}%` : '0%';
+
+      const mappedLeads = stageLeads.map((l) => ({
+        id: l.id,
+        contactName: l.contactDetails.name,
+        company: l.contactDetails.company,
+        phone: l.contactDetails.phone,
+        owner: l.owner || l.leadAssigned?.name || 'Manager',
+        value: l.value || 0,
+        rating: (l.rating?.toUpperCase() === 'HOT' ? 'HOT' : l.rating?.toUpperCase() === 'WARM' ? 'WARM' : 'COLD') as any,
+        daysInStage: 1,
+      }));
+
+      return {
+        ...stage,
+        leadsCount,
+        totalValue,
+        conversionRate,
+        leads: mappedLeads,
+      };
+    });
+  }, [stagesConfig, crmLeads]);
+
+  const totalPipelineLeads = crmLeads.length;
+  const totalPipelineValue = crmLeads.reduce((sum, l) => sum + (l.value || 0), 0);
+  const hotDealsCount = crmLeads.filter((l) => l.rating === 'Hot' || l.rating === 'HOT').length;
 
   return (
     <div className="w-full space-y-4 sm:space-y-6 pb-16">

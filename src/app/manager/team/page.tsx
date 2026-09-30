@@ -24,14 +24,26 @@ export default function ManagerTeamPage() {
   const searchParams = useSearchParams();
   const tabParam = searchParams.get('tab') || 'members';
   const [search, setSearch] = useState('');
+  const [usersVersion, setUsersVersion] = useState(0);
 
   const currentUser = authMockService.getCurrentUser();
   const currentManagerId = currentUser?.id || 'mgr_1';
+
+  React.useEffect(() => {
+    const handleUpdate = () => setUsersVersion((v) => v + 1);
+    window.addEventListener('crm_users_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('crm_users_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
 
   const teamMembers = React.useMemo(() => {
     let dynamicList: any[] = [];
     const curMgrId = String(currentManagerId || '').toLowerCase();
     const curMgrEmail = String(currentUser?.email || '').toLowerCase();
+    const curMgrName = String(currentUser?.name || '').toLowerCase();
 
     try {
       const stored = localStorage.getItem('cezcon_crm_users_list');
@@ -53,6 +65,7 @@ export default function ManagerTeamPage() {
                   `usr_${uMgrId}` === curMgrId ||
                   uMgrId === curMgrId.replace('usr_', '') ||
                   uMgrId === curMgrEmail ||
+                  uMgrId === curMgrName ||
                   (curMgrEmail.startsWith('manager') && uMgrId === curMgrId.replace('mgr_', '')));
 
               return isEmployeeOrWorker && matches;
@@ -77,14 +90,24 @@ export default function ManagerTeamPage() {
       console.error(e);
     }
 
-    if (dynamicList.length > 0) return dynamicList;
+    const mgrType = (currentUser?.managerType || currentUser?.profileType || '').toLowerCase();
+    const staticAssigned = ALL_EMPLOYEES.filter((e) => {
+      if (e.managerId === currentManagerId) return true;
+      if (currentManagerId.startsWith('usr_')) {
+        if (mgrType.includes('sales') && e.managerId === 'mgr_1') return true;
+        if (mgrType.includes('purchase') && e.managerId === 'mgr_2') return true;
+        if (mgrType.includes('marketing') && e.managerId === 'mgr_3') return true;
+        if (mgrType.includes('operation') && e.managerId === 'mgr_4') return true;
+      }
+      return false;
+    });
 
-    const staticAssigned = ALL_EMPLOYEES.filter(
-      (e) => e.managerId === currentManagerId || (!currentManagerId.startsWith('mgr_') && currentManagerId === 'mgr_1')
-    );
+    const mergedMap = new Map<string, any>();
+    staticAssigned.forEach((s) => mergedMap.set((s.email || s.id).toLowerCase(), s));
+    dynamicList.forEach((d) => mergedMap.set((d.email || d.id).toLowerCase(), d));
 
-    return staticAssigned;
-  }, [currentManagerId, currentUser]);
+    return Array.from(mergedMap.values());
+  }, [currentManagerId, currentUser, usersVersion]);
 
   const filtered = teamMembers.filter((m) =>
     m.name.toLowerCase().includes(search.toLowerCase()) ||

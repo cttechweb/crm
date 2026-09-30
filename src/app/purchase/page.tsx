@@ -82,342 +82,117 @@ function NoImageAvailable() {
   );
 }
 
-// Cezcon Real Purchase Order Mock Dataset
-const mockPurchaseOrders = [
+// Cezcon Standard Purchase Orders
+const mockPurchaseOrders: any[] = [
   {
-    id: 'po-1',
+    id: 1,
     slNo: 1,
     owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=64&h=64&fit=crop&crop=faces',
-    poNumber: 'CTPO#2502',
-    date: '23-09-2026',
-    supplier: 'Better Life',
-    order: '',
-    reference: '',
-    amount: 690.00,
-    vat: 34.50,
-    totalAmount: 724.50,
-    invoiceReceived: '',
-    approval: 'Waiting for Final Approval',
-    deliveryStatus: 'Pending',
-  },
-  {
-    id: 'po-2',
-    slNo: 2,
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=64&h=64&fit=crop&crop=faces',
-    poNumber: 'CTPO#2501',
-    date: '23-09-2026',
-    supplier: 'Better Life',
-    order: '',
-    reference: '',
-    amount: 7920.00,
-    vat: 396.00,
-    totalAmount: 8316.00,
-    invoiceReceived: '',
-    approval: 'Waiting for Final Approval',
-    deliveryStatus: 'Pending',
-  },
-  {
-    id: 'po-3',
-    slNo: 3,
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=64&h=64&fit=crop&crop=faces',
-    poNumber: 'CTPO#2500',
-    date: '23-09-2026',
-    supplier: 'CENTRAL TRADING COMPANY L.L.C.',
-    order: '',
-    reference: '',
-    amount: 34800.00,
-    vat: 1740.00,
-    totalAmount: 36540.00,
-    invoiceReceived: '',
-    approval: 'Waiting for Final Approval',
-    deliveryStatus: 'Pending',
-  },
-  {
-    id: 'po-4',
-    slNo: 4,
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=64&h=64&fit=crop&crop=faces',
-    poNumber: 'CTPO#2499',
-    date: '23-09-2026',
-    supplier: 'CENTRAL TRADING COMPANY L.L.C.',
-    order: '',
-    reference: '',
-    amount: 13300.00,
-    vat: 665.00,
-    totalAmount: 13965.00,
-    invoiceReceived: '',
-    approval: 'Waiting for Final Approval',
-    deliveryStatus: 'Pending',
-  },
-  {
-    id: 'po-5',
-    slNo: 5,
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=64&h=64&fit=crop&crop=faces',
-    poNumber: 'CTPO#2498',
-    date: '23-09-2026',
+    ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+    poNumber: 'CTPO#2508',
+    date: '25-09-2026',
     supplier: 'SUPER GENERAL COMPANY LLC',
     order: '',
     reference: '',
-    amount: 5750.00,
-    vat: 287.50,
-    totalAmount: 6037.50,
+    amount: 2050.00,
+    vat: 102.50,
+    totalAmount: 2152.50,
     invoiceReceived: '',
     approval: 'Waiting for Final Approval',
     deliveryStatus: 'Pending',
   },
   {
-    id: 'po-6',
-    slNo: 6,
+    id: 2,
+    slNo: 2,
     owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=64&h=64&fit=crop&crop=faces',
-    poNumber: 'CTPO#2497',
-    date: '23-09-2026',
+    ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+    poNumber: 'CTPO#2507',
+    date: '25-09-2026',
     supplier: 'SUPER GENERAL COMPANY LLC',
     order: '',
     reference: '',
-    amount: 46000.00,
-    vat: 2300.00,
-    totalAmount: 48300.00,
+    amount: 7800.00,
+    vat: 390.00,
+    totalAmount: 8190.00,
     invoiceReceived: '',
     approval: 'Waiting for Final Approval',
     deliveryStatus: 'Pending',
   },
-];
-
-const mockPurchaseInvoices = [
   {
-    id: 'inv-1',
-    slNo: 1,
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=64&h=64&fit=crop&crop=faces',
-    invoiceNumber: 'INVR292648',
-    pisn: 'PIR81',
-    date: '13-02-2026',
-    supplier: 'GULF ELECTRONICS COMPANY LLC',
-    order: '',
-    amount: 1699.95,
-    paid: 0.00,
-    balance: 1699.95,
-    status: 'Due',
-    deliveryStatus: 'Pending',
-  },
-  {
-    id: 'inv-2',
-    slNo: 2,
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=64&h=64&fit=crop&crop=faces',
-    invoiceNumber: '2026/0162',
-    pisn: 'PIR80',
-    date: '28-01-2026',
-    supplier: 'RAPID COOL TRADING CO. L.L.C',
-    order: '',
-    amount: 30272.81,
-    paid: 0.00,
-    balance: 30272.81,
-    status: 'Due',
-    deliveryStatus: 'Pending',
-  },
-  {
-    id: 'inv-3',
+    id: 3,
     slNo: 3,
     owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=64&h=64&fit=crop&crop=faces',
-    invoiceNumber: '101457325',
-    pisn: 'PIR79',
-    date: '16-12-2025',
-    supplier: 'GENERAL ENTERPRISES CO L.L.C',
+    ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+    poNumber: 'CTPO#2506',
+    date: '25-09-2026',
+    supplier: 'LUTFI TRADING LLC',
     order: '',
-    amount: 60060.00,
-    paid: 0.00,
-    balance: 60060.00,
-    status: 'Due',
+    reference: '',
+    amount: 850.00,
+    vat: 42.50,
+    totalAmount: 892.50,
+    invoiceReceived: '',
+    approval: 'Approved',
     deliveryStatus: 'Pending',
   },
   {
-    id: 'inv-4',
+    id: 4,
     slNo: 4,
     owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=64&h=64&fit=crop&crop=faces',
-    invoiceNumber: '30-20-10-158615',
-    pisn: 'PIR78',
-    date: '16-12-2025',
-    supplier: 'TAQEEF REFRIGERATION & AIR CONDITIONING TRADING LLC',
+    ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+    poNumber: 'CTPO#2505',
+    date: '25-09-2026',
+    supplier: 'DUBAI POLYMER INDUSTRIES LLC',
     order: '',
-    amount: 10762.50,
-    paid: 0.00,
-    balance: 10762.50,
-    status: 'Due',
+    reference: '',
+    amount: 1900.00,
+    vat: 95.00,
+    totalAmount: 1995.00,
+    invoiceReceived: '',
+    approval: 'Approved',
     deliveryStatus: 'Pending',
   },
   {
-    id: 'inv-5',
+    id: 5,
     slNo: 5,
     owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=64&h=64&fit=crop&crop=faces',
-    invoiceNumber: '30-20-10-158935',
-    pisn: 'PIR77',
-    date: '16-12-2025',
-    supplier: 'TAQEEF REFRIGERATION & AIR CONDITIONING TRADING LLC',
+    ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+    poNumber: 'CTPO#2504',
+    date: '25-09-2026',
+    supplier: 'CENTRAL TRADING COMPANY L.L.C.',
     order: '',
-    amount: 5145.00,
-    paid: 0.00,
-    balance: 5145.00,
-    status: 'Due',
+    reference: '',
+    amount: 20300.00,
+    vat: 1015.00,
+    totalAmount: 21315.00,
+    invoiceReceived: '',
+    approval: 'Approved',
     deliveryStatus: 'Pending',
   },
   {
-    id: 'inv-6',
+    id: 6,
     slNo: 6,
     owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=64&h=64&fit=crop&crop=faces',
-    invoiceNumber: '17457',
-    pisn: 'PIR76',
-    date: '06-12-2025',
-    supplier: 'EMIRATES JO TRADE CO',
+    ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+    poNumber: 'CTPO#2503',
+    date: '25-09-2026',
+    supplier: 'LUTFI TRADING LLC',
     order: '',
-    amount: 4035.00,
-    paid: 0.00,
-    balance: 4035.00,
-    status: 'Due',
+    reference: '',
+    amount: 2575.00,
+    vat: 128.75,
+    totalAmount: 2703.75,
+    invoiceReceived: '',
+    approval: 'Approved',
     deliveryStatus: 'Pending',
   },
 ];
-
-const mockPurchasePayments = [
-  { id: 'pay-1', slNo: 1, voucherNo: 'PAY-401', date: '12-07-2025', supplier: 'MITSUBISHI ELECTRIC CORP', paymentMode: 'Bank Transfer', amount: 45800.0, reference: 'TXN-992101', status: 'Cleared' },
-  { id: 'pay-2', slNo: 2, voucherNo: 'PAY-402', date: '17-07-2025', supplier: 'O GENERAL AIR CONDITIONING', paymentMode: 'Cheque', amount: 10000.0, reference: 'CHQ-772819', status: 'Cleared' },
-];
-
-const mockStockInList = [
-  { id: 'si-1', slNo: 1, stockInNo: 'STK-IN-001', date: '14-07-2025', source: 'MITSUBISHI ELECTRIC CORP', warehouse: 'Main Warehouse - Bay A', totalItems: '24 Units', status: 'Completed' },
-  { id: 'si-2', slNo: 2, stockInNo: 'STK-IN-002', date: '19-07-2025', source: 'CARRIER MIDDLE EAST LLC', warehouse: 'Hardware Depot - Austin', totalItems: '12 Units', status: 'Received' },
-];
-
-const mockSuppliersList = [
-  {
-    id: 'sup-1',
-    slNo: 1,
-    name: 'Creative Display Co.LLC',
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=64&h=64&fit=crop&crop=faces',
-    contact: '+97152 567 9146',
-    email: '',
-    trn: '100568119000003',
-    address: 'Showroom No 3, PO Box 31952, Salahuddin Street , Dubai, UAE',
-    outstanding: 0.00,
-  },
-  {
-    id: 'sup-2',
-    slNo: 2,
-    name: 'Better Life',
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=64&h=64&fit=crop&crop=faces',
-    contact: '+971559140030',
-    email: 'mussadik_a@betterlife.ae',
-    trn: '100008678300003',
-    address: 'PO Box 25441',
-    outstanding: 0.00,
-  },
-  {
-    id: 'sup-3',
-    slNo: 3,
-    name: 'Dolphin Oilfield Equipment Services Co.LLC',
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=64&h=64&fit=crop&crop=faces',
-    contact: '+97150 276 0216',
-    email: 'midhun.m@dolphin.ae',
-    trn: '100009744200003',
-    address: 'PO Box 8402, Abu Dhabi - UAE',
-    outstanding: 0.00,
-  },
-  {
-    id: 'sup-4',
-    slNo: 4,
-    name: 'Western International LLC',
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=64&h=64&fit=crop&crop=faces',
-    contact: '',
-    email: '',
-    trn: '100007922600003',
-    address: '',
-    outstanding: 0.00,
-  },
-  {
-    id: 'sup-5',
-    slNo: 5,
-    name: 'LEMINAR AIR CONDITIONING COMPANY LLC-BRANCH OF ABU DHABI',
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=64&h=64&fit=crop&crop=faces',
-    contact: '+97154 506 5638',
-    email: '',
-    trn: '100060237300003',
-    address: '',
-    outstanding: 0.00,
-  },
-  {
-    id: 'sup-6',
-    slNo: 6,
-    name: 'Essa Mohd Al Zubaidi General Trading Est.',
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=64&h=64&fit=crop&crop=faces',
-    contact: '',
-    email: '',
-    trn: '100355284900003',
-    address: 'PO Box 4044\nDubai\nUAE',
-    outstanding: 462.00,
-  },
-  {
-    id: 'sup-7',
-    slNo: 7,
-    name: 'ESSA AHMED AL HAMADI A / C. UNITS FIX. CONT.',
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=64&h=64&fit=crop&crop=faces',
-    contact: '+971501202559',
-    email: 'Mazayaldc@gmail.com',
-    trn: '100460983600001',
-    address: 'Butina, Al Sharq Street, Al Sharq Street, Butina, near Rolla, Sharah, 20017',
-    outstanding: 0.00,
-  },
-  {
-    id: 'sup-8',
-    slNo: 8,
-    name: 'TARGETLINK OILFIELD EQUIPMENTS TRADING LLC',
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=64&h=64&fit=crop&crop=faces',
-    contact: '',
-    email: '',
-    trn: '100443447600003',
-    address: 'PO BOX 92107 MUSAFFAH IND 3 10 ABUDHABI UAE',
-    outstanding: 0.00,
-  },
-  {
-    id: 'sup-9',
-    slNo: 9,
-    name: 'TEKNODOME TRADING LLC',
-    owner: 'Muhammad Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=64&h=64&fit=crop&crop=faces',
-    contact: '+971525098193',
-    email: 'hakimuddin@teknodome.com',
-    trn: '100035463700003',
-    address: 'Warehouse No 1\nAl Qusais\n233-153\ndubai',
-    outstanding: 16380.00,
-  },
-];
-
-const mockStoresList = [
-  { id: 'str-1', slNo: 1, name: 'Main Warehouse - Bay A', code: 'WH-01', manager: 'Rashid Al-Nuaimi', phone: '+971 50 123 4567', location: 'Al Quoz Industrial 3, Dubai', capacity: '15,000 Sq.Ft', status: 'Active' },
-  { id: 'str-2', slNo: 2, name: 'Hardware Depot - Austin', code: 'WH-02', manager: 'David Miller', phone: '+1 512 882 1920', location: 'Industrial Park, Austin, TX', capacity: '8,500 Sq.Ft', status: 'Active' },
-  { id: 'str-3', slNo: 3, name: 'Central Spares Hub', code: 'WH-03', manager: 'Ahmed Qasim', phone: '+971 55 987 6543', location: 'Mussafah M-42, Abu Dhabi', capacity: '12,000 Sq.Ft', status: 'Active' },
-];
-
-const mockManufacturingOrders = [
-  { id: 'mfr-1', slNo: 1, workOrderNo: 'WO-2025-010', product: 'CASSETTE AC 1.5 TR INVERTER R410', targetQty: 50, producedQty: 45, startDate: '01-07-2025', endDate: '15-07-2025', status: 'In Progress' },
-  { id: 'mfr-2', slNo: 2, workOrderNo: 'WO-2025-011', product: 'WATER COOLERS 100L INDUSTRIAL', targetQty: 20, producedQty: 20, startDate: '10-06-2025', endDate: '28-06-2025', status: 'Completed' },
-];
+const mockPurchaseInvoices: any[] = [];
+const mockPurchasePayments: any[] = [];
+const mockStockInList: any[] = [];
+const mockSuppliersList: any[] = [];
+const mockStoresList: any[] = [];
+const mockManufacturingOrders: any[] = [];
 
 function PurchasePageInner() {
   const searchParams = useSearchParams();
@@ -442,7 +217,7 @@ function PurchasePageInner() {
 
   // Filter States - Purchase Order
   const [poFilterOwner, setPoFilterOwner] = useState<string>('All Owners');
-  const [poDateRange, setPoDateRange] = useState<string>('25-08-2026 - 23-09-2026');
+  const [poDateRange, setPoDateRange] = useState<string>('31-08-2026 - 29-09-2026');
   const [poFilterSupplier, setPoFilterSupplier] = useState<string>('Select Supplier');
   const [poSearch, setPoSearch] = useState<string>('');
   const [poRowsPerPage, setPoRowsPerPage] = useState<number>(10);
@@ -773,9 +548,11 @@ function PurchasePageInner() {
                       className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                     >
                       <option value="Select Supplier">Select Supplier</option>
-                      <option value="Better Life">Better Life</option>
-                      <option value="CENTRAL TRADING COMPANY L.L.C.">CENTRAL TRADING COMPANY L.L.C.</option>
                       <option value="SUPER GENERAL COMPANY LLC">SUPER GENERAL COMPANY LLC</option>
+                      <option value="LUTFI TRADING LLC">LUTFI TRADING LLC</option>
+                      <option value="DUBAI POLYMER INDUSTRIES LLC">DUBAI POLYMER INDUSTRIES LLC</option>
+                      <option value="CENTRAL TRADING COMPANY L.L.C.">CENTRAL TRADING COMPANY L.L.C.</option>
+                      <option value="Better Life">Better Life</option>
                     </select>
                   </div>
 
@@ -935,34 +712,42 @@ function PurchasePageInner() {
                           <img src={po.ownerAvatar} alt={po.owner} className="w-6 h-6 rounded-full object-cover inline-block mx-auto border border-slate-200" />
                         </td>
                         <td className="p-2.5 border-r border-slate-100">
-                          <span className="inline-flex items-center gap-1 text-[#2563EB] hover:underline cursor-pointer font-medium">
-                            <span className="w-3 h-3 text-red-500 font-bold text-[9px] flex items-center justify-center">📄</span>
+                          <span className="inline-flex items-center gap-1 text-[#1976D2] hover:underline cursor-pointer font-bold">
+                            <span className="text-[10px]">📄</span>
                             {po.poNumber}
                           </span>
                         </td>
-                        <td className="p-2.5 text-slate-700 border-r border-slate-100">{po.date}</td>
-                        <td className="p-2.5 border-r border-slate-100">
-                          <span className="text-[#2563EB] hover:underline cursor-pointer font-medium">{po.supplier}</span>
+                        <td className="p-2.5 text-slate-700 border-r border-slate-100 whitespace-nowrap">{po.date}</td>
+                        <td className="p-2.5 border-r border-slate-100 font-bold">
+                          <span className="text-[#1976D2] hover:underline cursor-pointer">
+                            {po.supplier}
+                          </span>
                         </td>
                         <td className="p-2.5 text-slate-400 border-r border-slate-100">{po.order || ''}</td>
                         <td className="p-2.5 text-slate-400 border-r border-slate-100">{po.reference || ''}</td>
-                        <td className="p-2.5 text-right font-medium text-slate-900 border-r border-slate-100">
+                        <td className="p-2.5 text-right font-medium text-slate-900 border-r border-slate-100 font-mono">
                           {po.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="p-2.5 text-right font-medium text-slate-700 border-r border-slate-100">
+                        <td className="p-2.5 text-right font-medium text-slate-700 border-r border-slate-100 font-mono">
                           {po.vat.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="p-2.5 text-right font-bold text-slate-900 border-r border-slate-100">
+                        <td className="p-2.5 text-right font-bold text-slate-900 border-r border-slate-100 font-mono">
                           {po.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td className="p-2.5 text-center text-slate-400 border-r border-slate-100">{po.invoiceReceived || ''}</td>
                         <td className="p-2.5 text-center border-r border-slate-100">
-                          <span className="px-2.5 py-0.5 rounded text-[10px] font-semibold bg-[#16A34A] text-white whitespace-nowrap shadow-2xs">
+                          <span
+                            className={`px-2.5 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap shadow-2xs ${
+                              po.approval === 'Waiting for Final Approval'
+                                ? 'bg-[#1E5128]'
+                                : 'bg-[#2E7D32]'
+                            }`}
+                          >
                             {po.approval}
                           </span>
                         </td>
                         <td className="p-2.5 text-center border-r border-slate-100">
-                          <span className="px-2.5 py-0.5 rounded text-[10px] font-semibold bg-[#F97316] text-white inline-flex items-center gap-1 whitespace-nowrap shadow-2xs">
+                          <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-[#F59E0B] text-white inline-flex items-center gap-1 whitespace-nowrap shadow-2xs">
                             <Edit2 className="w-2.5 h-2.5" />
                             {po.deliveryStatus}
                           </span>

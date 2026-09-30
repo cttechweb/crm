@@ -193,6 +193,7 @@ export default function ConvertLeadPage({ params }: PageProps) {
       companyGroup: industryType || 'Enterprise Key Accounts',
       totalDeals: 1,
       totalSpend: Number(oppAmount) || lead.value || 50000,
+      createdFromLeadId: lead.id,
     });
 
     // 3. Add Opportunity if checked
@@ -208,6 +209,9 @@ export default function ConvertLeadPage({ params }: PageProps) {
         owner,
         probability: winProbability,
         expectedClose: oppCloseDate,
+        createdFromLeadId: lead.id,
+        campaign: custCampaign || lead.campaign,
+        source: oppSource || lead.source,
       });
     }
 

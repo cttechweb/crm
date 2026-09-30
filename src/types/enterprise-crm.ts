@@ -160,12 +160,14 @@ export interface CrmCustomer {
   assignedEquipmentCount?: number;
   activeJobsCount?: number;
   slaLevel?: string;
+  createdFromLeadId?: string;
 }
 
 export interface CrmSalesOpportunity {
   id: string;
   slNo?: number;
   opportunityCode?: string;
+  createdFromLeadId?: string;
   title: string;
   subtitle?: string;
   starred?: boolean;
@@ -190,6 +192,7 @@ export interface CrmSalesOpportunity {
   rating?: string;
   businessOpportunity?: string;
   campaign?: string;
+  source?: string;
   createdBy?: string;
   tags?: string[];
   createdAt: string;

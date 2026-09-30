@@ -37,6 +37,7 @@ import { BackButton } from '@/components/ui/BackButton';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { authMockService } from '@/services/authMockService';
 import { CrmLead, LeadRating, LeadStatus } from '@/types/enterprise-crm';
 import { cn } from '@/lib/utils';
 
@@ -116,9 +117,31 @@ export function LeadsContent() {
     value: 50000,
   });
 
+  const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
+  const isEmployee = currentUser?.role === 'employee' || currentUser?.role === 'worker';
+
   // Filtered Leads Calculation
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
+      // 🛡️ Strict Employee Data Isolation: Employees only see their own assigned/created leads
+      if (isEmployee && currentUser?.name) {
+        const userName = currentUser.name.trim().toLowerCase();
+        const leadOwner = (lead.owner || lead.leadAssigned?.name || '').trim().toLowerCase();
+        const leadCreatedBy = (lead.createdBy || '').trim().toLowerCase();
+        const leadAssignedEmp = (lead.assignedEmployee || '').trim().toLowerCase();
+
+        const isMatch =
+          leadOwner === userName ||
+          leadCreatedBy === userName ||
+          leadAssignedEmp === userName ||
+          leadOwner.includes(userName) ||
+          userName.includes(leadOwner);
+
+        if (!isMatch) {
+          return false;
+        }
+      }
+
       // Owner Filter
       if (ownerFilter !== 'All' && lead.owner !== ownerFilter) return false;
       // Created By Filter
@@ -154,6 +177,8 @@ export function LeadsContent() {
     });
   }, [
     leads,
+    isEmployee,
+    currentUser,
     ownerFilter,
     createdByFilter,
     statusFilter,
@@ -175,11 +200,16 @@ export function LeadsContent() {
     e.preventDefault();
     if (!newLead.name || !newLead.company) return;
 
+    const canAssignOthers = currentUser?.actionPermissions?.canReassign || !isEmployee;
+    const effectiveOwner = canAssignOthers ? newLead.owner : (currentUser?.name || newLead.owner);
+    const effectiveCreatedBy = currentUser?.name || newLead.createdBy;
+    const effectiveAssignedEmployee = isEmployee ? (currentUser?.name || newLead.owner) : newLead.owner;
+
     addLead({
-      leadDate: '23-09-2026',
-      assignedDate: '23-09-2026',
+      leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+      assignedDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
       leadAssigned: {
-        name: newLead.owner,
+        name: effectiveOwner,
         avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
       },
       contactDetails: {
@@ -190,14 +220,15 @@ export function LeadsContent() {
         whatsapp: newLead.whatsapp || newLead.phone,
       },
       leadSpecification: newLead.specification || 'New customer enterprise HVAC inquiry',
-      createdBy: newLead.createdBy,
+      createdBy: effectiveCreatedBy,
       createdByAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-      owner: newLead.owner,
+      owner: effectiveOwner,
       ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+      assignedEmployee: effectiveAssignedEmployee,
       rating: newLead.rating,
       status: newLead.status,
-      lastActivity: 'Just now',
-      lastActivityDate: '23-09-2026 03:20:00 PM',
+      lastActivity: 'Just created',
+      lastActivityDate: `${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       lastActivityTimeAgo: 'Just now',
       value: newLead.value,
       source: newLead.source,
@@ -214,8 +245,8 @@ export function LeadsContent() {
       email: '',
       whatsapp: '',
       specification: '',
-      owner: 'Alex Rivera',
-      createdBy: 'Alex Rivera',
+      owner: currentUser?.name || 'Alex Rivera',
+      createdBy: currentUser?.name || 'Alex Rivera',
       rating: 'Cold',
       status: 'Contacted',
       source: 'Website Inbound',
@@ -1718,6 +1749,7 @@ export function LeadsContent() {
                     companyGroup: 'Key Corporate Accounts',
                     totalDeals: 1,
                     totalSpend: convertingLead.value,
+                    createdFromLeadId: convertingLead.id,
                   });
                   addOpportunity({
                     title: `CTEQ#${Math.floor(1000 + Math.random() * 9000)} ${convertingLead.leadSpecification.toUpperCase()} / ${convertingLead.contactDetails.company.toUpperCase()}`,
@@ -1727,6 +1759,9 @@ export function LeadsContent() {
                     owner: convertingLead.owner,
                     probability: 75,
                     expectedClose: '2026-10-15',
+                    createdFromLeadId: convertingLead.id,
+                    campaign: convertingLead.campaign,
+                    source: convertingLead.source,
                   });
                   alert(`Lead "${convertingLead.contactDetails.name}" converted successfully into Customer & Sales Opportunity!`);
                   setConvertingLead(null);

@@ -36,7 +36,7 @@ interface TemplateItem {
 
 const INITIAL_TEMPLATES: TemplateItem[] = [];
 
-function TemplatesContent() {
+export function TemplatesContent() {
   const [templates, setTemplates] = useState<TemplateItem[]>(INITIAL_TEMPLATES);
   const [channelTab, setChannelTab] = useState<'All' | 'Email' | 'WhatsApp' | 'SMS'>('All');
   const [search, setSearch] = useState('');
