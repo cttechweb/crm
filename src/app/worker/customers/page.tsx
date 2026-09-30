@@ -17,14 +17,37 @@ import {
 } from 'lucide-react';
 import { WorkerShell } from '@/components/layout/WorkerShell';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
+import { authMockService } from '@/services/authMockService';
 
 export default function EmployeeCustomersPage() {
-  const { customers } = useEnterpriseCrm();
+  const { customers, leads } = useEnterpriseCrm();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
 
+  const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
+  const isEmployee = currentUser?.role === 'employee' || currentUser?.role === 'worker';
+
   const filteredCustomers = useMemo(() => {
     return customers.filter((cust) => {
+      // 🛡️ Strict Employee Data Isolation: Only show customers assigned to or created by this employee
+      if (isEmployee && currentUser?.name) {
+        const userName = currentUser.name.trim().toLowerCase();
+        const custOwner = (cust.owner || '').trim().toLowerCase();
+        
+        // Find if this customer originated from a lead assigned to this employee
+        const relatedLead = leads.find((l) => l.id === cust.createdFromLeadId || l.contactDetails?.company === cust.customerName || l.contactDetails?.company === cust.companyName);
+        const leadOwner = (relatedLead?.owner || relatedLead?.leadAssigned?.name || '').trim().toLowerCase();
+
+        const isMatch =
+          (custOwner && (custOwner === userName || custOwner.includes(userName) || userName.includes(custOwner))) ||
+          (leadOwner && (leadOwner === userName || leadOwner.includes(userName) || userName.includes(leadOwner)));
+
+        // If customer has an owner/assigned lead and it doesn't match this employee, isolate it
+        if ((cust.owner || relatedLead) && !isMatch) {
+          return false;
+        }
+      }
+
       const company = cust.companyName || cust.customerName || '';
       const matchesSearch =
         company.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -36,7 +59,7 @@ export default function EmployeeCustomersPage() {
 
       return matchesSearch && matchesCat;
     });
-  }, [customers, searchQuery, selectedCategory]);
+  }, [customers, leads, searchQuery, selectedCategory, currentUser, isEmployee]);
 
   return (
     <WorkerShell

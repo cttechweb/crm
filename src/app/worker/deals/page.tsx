@@ -13,37 +13,58 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { WorkerShell } from '@/components/layout/WorkerShell';
-
-interface DealItem {
-  id: string;
-  dealNumber: string;
-  title: string;
-  company: string;
-  stage: 'Quotation' | 'Offer Sent' | 'Order' | 'In Progress' | 'Invoiced' | 'Closed Won';
-  amount: string;
-  closingDate: string;
-  probability: string;
-}
-
-const INITIAL_DEALS: DealItem[] = [];
+import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
+import { authMockService } from '@/services/authMockService';
+import { CrmSalesOpportunity } from '@/types/enterprise-crm';
 
 export default function EmployeeDealsPage() {
-  const [deals, setDeals] = useState<DealItem[]>(INITIAL_DEALS);
+  const { salesOpportunities } = useEnterpriseCrm();
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState('All');
 
+  const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
+  const isEmployee = currentUser?.role === 'employee' || currentUser?.role === 'worker';
+
   const filteredDeals = useMemo(() => {
-    return deals.filter((deal) => {
-      const matchesSearch =
-        deal.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        deal.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        deal.dealNumber.toLowerCase().includes(searchQuery.toLowerCase());
+    return (salesOpportunities || [])
+      .filter((opp: CrmSalesOpportunity) => {
+        // 🛡️ Strict Employee Data Isolation: Only show deals assigned to this employee
+        if (isEmployee && currentUser?.name) {
+          const userName = currentUser.name.trim().toLowerCase();
+          const dealOwner = (opp.ownerBadge || opp.subtitle || '').trim().toLowerCase();
+          const dealContact = (opp.contactPerson || '').trim().toLowerCase();
 
-      const matchesStage = stageFilter === 'All' || deal.stage === stageFilter;
+          const isMatch =
+            dealOwner === userName ||
+            dealOwner.includes(userName) ||
+            userName.includes(dealOwner) ||
+            dealContact === userName;
 
-      return matchesSearch && matchesStage;
-    });
-  }, [deals, searchQuery, stageFilter]);
+          if ((opp.ownerBadge || opp.subtitle) && !isMatch) {
+            return false;
+          }
+        }
+
+        const matchesSearch =
+          opp.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          opp.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (opp.opportunityCode || '').toLowerCase().includes(searchQuery.toLowerCase());
+
+        const matchesStage = stageFilter === 'All' || opp.stage === stageFilter;
+
+        return matchesSearch && matchesStage;
+      })
+      .map((opp: CrmSalesOpportunity) => ({
+        id: opp.id,
+        dealNumber: opp.opportunityCode || `DEAL-${opp.id}`,
+        title: opp.title,
+        company: opp.customer,
+        stage: opp.stage as any,
+        amount: `AED ${Number(opp.amount || 0).toLocaleString()}`,
+        closingDate: opp.expectedClose || 'Open',
+        probability: `${opp.probability || 50}%`,
+      }));
+  }, [salesOpportunities, searchQuery, stageFilter, currentUser, isEmployee]);
 
   return (
     <WorkerShell
