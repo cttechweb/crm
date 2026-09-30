@@ -284,9 +284,9 @@ export function EnterpriseTopHeader() {
                   <div className="border-t border-slate-100 pt-1 mt-1">
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         setShowRoleDropdown(false);
-                        authMockService.logout();
+                        await authMockService.logout();
                         window.location.href = '/login';
                       }}
                       className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 rounded-md transition-colors font-semibold cursor-pointer"

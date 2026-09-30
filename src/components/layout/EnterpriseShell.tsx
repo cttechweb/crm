@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { EnterpriseCrmProvider } from '@/context/EnterpriseCrmContext';
 import { SuperAdminProvider } from '@/context/SuperAdminContext';
 import { EnterpriseTopHeader } from '@/components/layout/EnterpriseTopHeader';
@@ -11,13 +11,30 @@ import { authMockService, MockAuthUser } from '@/services/authMockService';
 
 export function EnterpriseShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     const user = authMockService.getCurrentUser();
     setCurrentUser(user);
-  }, [pathname]);
+
+    const isLoginPage = pathname === '/login';
+    if (!user && !isLoginPage) {
+      router.push('/login');
+    }
+
+    const unsubscribe = authMockService.onAuthStateChanged((resolvedUser) => {
+      setCurrentUser(resolvedUser);
+      if (!resolvedUser && pathname !== '/login') {
+        router.push('/login');
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [pathname, router]);
 
   const isLoginPage = pathname === '/login';
 

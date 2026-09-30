@@ -1,7 +1,16 @@
+import { auth } from '@/firebase/config';
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  User as FirebaseUser,
+  Unsubscribe,
+} from 'firebase/auth';
+
 /**
- * Mock Authentication Service for Frontend-Only Development Phase
- * Designed with standard async method signatures for seamless 1:1 replacement
- * with real backend APIs in Phase 2/3.
+ * Enterprise Authentication Service for Cool Tech CRM
+ * Integrated with Firebase Authentication (Project: cool-tech-crm)
+ * Connects Firebase User Identity to CRM Role-Based Permission Architecture.
  */
 
 export type UserRole = 'super_admin' | 'admin' | 'manager' | 'employee' | 'worker';
@@ -59,6 +68,7 @@ export interface MockAuthUser {
   dataScope?: string;
   modulePermissions?: UserModulePermissions;
   actionPermissions?: UserActionPermissions;
+  firebaseUid?: string;
 }
 
 export function resolveDefaultPermissions(
@@ -953,222 +963,352 @@ const MOCK_CREDENTIALS: Array<{
   },
 ];
 
-export const authMockService = {
-  /**
-   * Simulates async user authentication and determines destination based on verified role
-   */
-  async login(email: string, password: string, rememberMe = true): Promise<MockLoginResult> {
-    // Simulate brief network latency for realistic loading state
-    await new Promise((resolve) => setTimeout(resolve, 400));
+export function resolveCrmUserByEmail(
+  email: string,
+  firebaseUid?: string
+): { user: MockAuthUser; redirectUrl: string; isInactive?: boolean } {
+  const normalizedEmail = (email || '').trim().toLowerCase();
 
-    const normalizedEmail = email.trim().toLowerCase();
-
-    // 1. Check dynamically created Admins in localStorage
-    if (typeof window !== 'undefined') {
-      try {
-        const storedAdminsRaw = localStorage.getItem('crm_admin_accounts_list');
-        if (storedAdminsRaw) {
-          const storedAdmins = JSON.parse(storedAdminsRaw);
-          if (Array.isArray(storedAdmins)) {
-            const adminMatch = storedAdmins.find(
-              (a: any) =>
-                (a.email?.trim().toLowerCase() === normalizedEmail ||
-                  a.username?.trim().toLowerCase() === normalizedEmail) &&
-                (a.password === password || !a.password)
-            );
-            if (adminMatch) {
-              if (adminMatch.status === 'Inactive') {
-                return {
-                  success: false,
-                  error: 'This admin account has been deactivated. Please contact your Super Admin.',
-                };
-              }
-              const mockUser: MockAuthUser = {
-                id: adminMatch.id || `usr_${Date.now()}`,
-                name: adminMatch.name,
-                email: adminMatch.email,
-                role: 'admin',
-                organizationId: adminMatch.organizationId || 'org_cool_tech_001',
-                organizationName: adminMatch.organizationName || 'Cool Technologies LLC',
-                avatar: adminMatch.avatar,
-                designation: adminMatch.designation || 'Admin',
-              };
-              const sessionData = {
-                authenticated: true,
-                user: mockUser,
-                role: 'admin',
-                rememberMe,
-                timestamp: Date.now(),
-              };
-              localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
-              if (rememberMe) {
-                localStorage.setItem('cool_crm_remember_email', normalizedEmail);
-              }
+  // 1. Check dynamically created Admins in localStorage (crm_admin_accounts_list)
+  if (typeof window !== 'undefined') {
+    try {
+      const storedAdminsRaw = localStorage.getItem('crm_admin_accounts_list');
+      if (storedAdminsRaw) {
+        const storedAdmins = JSON.parse(storedAdminsRaw);
+        if (Array.isArray(storedAdmins)) {
+          const adminMatch = storedAdmins.find(
+            (a: any) =>
+              (a.email?.trim().toLowerCase() === normalizedEmail ||
+                a.username?.trim().toLowerCase() === normalizedEmail)
+          );
+          if (adminMatch) {
+            if (adminMatch.status === 'Inactive') {
               return {
-                success: true,
-                user: mockUser,
+                user: {
+                  id: adminMatch.id || `usr_${Date.now()}`,
+                  name: adminMatch.name,
+                  email: adminMatch.email,
+                  role: 'admin',
+                  organizationId: adminMatch.organizationId || 'org_cool_tech_001',
+                  organizationName: adminMatch.organizationName || 'Cool Technologies LLC',
+                },
                 redirectUrl: '/admin/dashboard',
+                isInactive: true,
               };
             }
+            const defaults = resolveDefaultPermissions('Admin', 'admin');
+            const mockUser: MockAuthUser = {
+              id: adminMatch.id || `usr_${Date.now()}`,
+              name: adminMatch.name,
+              email: adminMatch.email,
+              role: 'admin',
+              organizationId: adminMatch.organizationId || 'org_cool_tech_001',
+              organizationName: adminMatch.organizationName || 'Cool Technologies LLC',
+              avatar: adminMatch.avatar,
+              designation: adminMatch.designation || 'Admin',
+              department: 'Administration',
+              profileType: 'Admin',
+              dataScope: 'all',
+              modulePermissions: defaults.modulePermissions,
+              actionPermissions: defaults.actionPermissions,
+              firebaseUid,
+            };
+            return {
+              user: mockUser,
+              redirectUrl: '/admin/dashboard',
+            };
           }
         }
-      } catch (e) {
-        console.error('Error checking crm_admin_accounts_list during login:', e);
       }
+    } catch (e) {
+      console.error('Error checking crm_admin_accounts_list:', e);
+    }
 
-      // 2. Check dynamically created Users in Settings (cezcon_crm_users_list)
-      try {
-        const storedUsersRaw = localStorage.getItem('cezcon_crm_users_list');
-        if (storedUsersRaw) {
-          const storedUsers = JSON.parse(storedUsersRaw);
-          if (Array.isArray(storedUsers)) {
-            const userByIdentifier = storedUsers.find((u: any) => {
-              const uEmail = u.email ? u.email.trim().toLowerCase() : '';
-              const uUsername = u.username ? u.username.trim().toLowerCase() : '';
-              const uPrefix = uUsername.split('@')[0];
-              return (
-                uEmail === normalizedEmail ||
-                uUsername === normalizedEmail ||
-                uPrefix === normalizedEmail
-              );
-            });
+    // 2. Check dynamically created Users in Settings (cezcon_crm_users_list)
+    try {
+      const storedUsersRaw = localStorage.getItem('cezcon_crm_users_list');
+      if (storedUsersRaw) {
+        const storedUsers = JSON.parse(storedUsersRaw);
+        if (Array.isArray(storedUsers)) {
+          const userByIdentifier = storedUsers.find((u: any) => {
+            const uEmail = u.email ? u.email.trim().toLowerCase() : '';
+            const uUsername = u.username ? u.username.trim().toLowerCase() : '';
+            const uPrefix = uUsername.split('@')[0];
+            return (
+              uEmail === normalizedEmail ||
+              uUsername === normalizedEmail ||
+              uPrefix === normalizedEmail
+            );
+          });
 
-            if (userByIdentifier) {
-              if (userByIdentifier.status === 'Inactive') {
-                return {
-                  success: false,
-                  error: 'This account has been deactivated.',
-                };
-              }
-              if (userByIdentifier.password && userByIdentifier.password !== password) {
-                return {
-                  success: false,
-                  error: 'Invalid password. Please verify your credentials.',
-                };
-              }
-              const isSuper =
-                userByIdentifier.profileType &&
-                (userByIdentifier.profileType.toLowerCase().includes('super') ||
-                  userByIdentifier.role === 'super_admin');
-              const isAdm =
-                !isSuper &&
-                (userByIdentifier.isAdmin ||
-                  (userByIdentifier.profileType &&
-                    userByIdentifier.profileType.toLowerCase().includes('admin')));
-              const isMgr =
-                !isSuper &&
-                !isAdm &&
+          if (userByIdentifier) {
+            const isInactive = userByIdentifier.status === 'Inactive';
+            const isSuper =
+              userByIdentifier.profileType &&
+              (userByIdentifier.profileType.toLowerCase().includes('super') ||
+                userByIdentifier.role === 'super_admin');
+            const isAdm =
+              !isSuper &&
+              (userByIdentifier.isAdmin ||
                 (userByIdentifier.profileType &&
-                  (userByIdentifier.profileType.toLowerCase().includes('manager') ||
-                    userByIdentifier.profileType.toLowerCase().includes('operation') ||
-                    !!userByIdentifier.managerType));
-              const userRole: UserRole = isSuper ? 'super_admin' : isAdm ? 'admin' : isMgr ? 'manager' : 'employee';
-              const defaults = resolveDefaultPermissions(
-                userByIdentifier.profileType || 'Sales',
-                userRole,
-                userByIdentifier.managerType || userByIdentifier.employeeType
-              );
+                  userByIdentifier.profileType.toLowerCase().includes('admin')));
+            const isMgr =
+              !isSuper &&
+              !isAdm &&
+              (userByIdentifier.profileType &&
+                (userByIdentifier.profileType.toLowerCase().includes('manager') ||
+                  userByIdentifier.profileType.toLowerCase().includes('operation') ||
+                  !!userByIdentifier.managerType));
+            const userRole: UserRole = isSuper
+              ? 'super_admin'
+              : isAdm
+              ? 'admin'
+              : isMgr
+              ? 'manager'
+              : 'employee';
+            const defaults = resolveDefaultPermissions(
+              userByIdentifier.profileType || 'Sales',
+              userRole,
+              userByIdentifier.managerType || userByIdentifier.employeeType
+            );
 
-              const userIdStr = String(userByIdentifier.id || '');
-              const normalizedId = userIdStr.startsWith('usr_') || userIdStr.startsWith('mgr_') || userIdStr.startsWith('emp_')
+            const userIdStr = String(userByIdentifier.id || '');
+            const normalizedId =
+              userIdStr.startsWith('usr_') ||
+              userIdStr.startsWith('mgr_') ||
+              userIdStr.startsWith('emp_')
                 ? userIdStr
                 : `usr_${userIdStr}`;
 
-              const mockUser: MockAuthUser = {
-                id: normalizedId,
-                name: userByIdentifier.name,
-                email: userByIdentifier.email || normalizedEmail,
-                role: userRole,
-                organizationId: 'org_cool_tech_001',
-                organizationName: 'Cool Technologies LLC',
-                avatar: userByIdentifier.avatarImage,
-                designation:
-                  userByIdentifier.designation ||
-                  userByIdentifier.managerType ||
-                  userByIdentifier.employeeType ||
-                  userByIdentifier.profileType ||
-                  'Team Member',
-                department: userByIdentifier.department || userByIdentifier.profileType || 'Sales',
-                profileType: userByIdentifier.profileType || 'Sales',
-                managerType: userByIdentifier.managerType,
-                employeeType: userByIdentifier.employeeType,
-                managerId: userByIdentifier.managerId || userByIdentifier.assignedManagerId || userByIdentifier.reportingManagerId || null,
-                dataScope: userByIdentifier.dataScope || defaults.dataScope,
-                modulePermissions: userByIdentifier.modulePermissions || defaults.modulePermissions,
-                actionPermissions: userByIdentifier.actionPermissions || defaults.actionPermissions,
-              };
-              const sessionData = {
-                authenticated: true,
-                user: mockUser,
-                role: userRole,
-                rememberMe,
-                timestamp: Date.now(),
-              };
-              localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
-              if (rememberMe) {
-                localStorage.setItem('cool_crm_remember_email', normalizedEmail);
-              }
-              return {
-                success: true,
-                user: mockUser,
-                redirectUrl: isSuper
-                  ? '/dashboard'
-                  : isAdm
-                  ? '/admin/dashboard'
-                  : isMgr
-                  ? '/manager/dashboard'
-                  : '/worker/dashboard',
-              };
-            }
+            const mockUser: MockAuthUser = {
+              id: normalizedId,
+              name: userByIdentifier.name,
+              email: userByIdentifier.email || normalizedEmail,
+              role: userRole,
+              organizationId: 'org_cool_tech_001',
+              organizationName: 'Cool Technologies LLC',
+              avatar: userByIdentifier.avatarImage,
+              designation:
+                userByIdentifier.designation ||
+                userByIdentifier.managerType ||
+                userByIdentifier.employeeType ||
+                userByIdentifier.profileType ||
+                'Team Member',
+              department:
+                userByIdentifier.department ||
+                userByIdentifier.profileType ||
+                'Sales',
+              profileType: userByIdentifier.profileType || 'Sales',
+              managerType: userByIdentifier.managerType,
+              employeeType: userByIdentifier.employeeType,
+              managerId:
+                userByIdentifier.managerId ||
+                userByIdentifier.assignedManagerId ||
+                userByIdentifier.reportingManagerId ||
+                null,
+              dataScope: userByIdentifier.dataScope || defaults.dataScope,
+              modulePermissions:
+                userByIdentifier.modulePermissions || defaults.modulePermissions,
+              actionPermissions:
+                userByIdentifier.actionPermissions || defaults.actionPermissions,
+              firebaseUid,
+            };
+
+            return {
+              user: mockUser,
+              redirectUrl: isSuper
+                ? '/dashboard'
+                : isAdm
+                ? '/admin/dashboard'
+                : isMgr
+                ? '/manager/dashboard'
+                : '/worker/dashboard',
+              isInactive,
+            };
           }
         }
-      } catch (e) {
-        console.error('Error checking cezcon_crm_users_list during login:', e);
       }
+    } catch (e) {
+      console.error('Error checking cezcon_crm_users_list:', e);
     }
+  }
 
-    // 3. Fallback to predefined static accounts
-    const match = MOCK_CREDENTIALS.find(
-      (c) => c.email.toLowerCase() === normalizedEmail && c.password === password
+  // 3. Match against pre-configured static accounts
+  const staticMatch = MOCK_CREDENTIALS.find(
+    (c) => c.email.toLowerCase() === normalizedEmail
+  );
+
+  if (staticMatch) {
+    const defaults = resolveDefaultPermissions(
+      staticMatch.user.profileType || 'Sales',
+      staticMatch.user.role,
+      staticMatch.user.managerType || staticMatch.user.employeeType
     );
+    return {
+      user: {
+        ...staticMatch.user,
+        modulePermissions: staticMatch.user.modulePermissions || defaults.modulePermissions,
+        actionPermissions: staticMatch.user.actionPermissions || defaults.actionPermissions,
+        dataScope: staticMatch.user.dataScope || defaults.dataScope,
+        firebaseUid,
+      },
+      redirectUrl: staticMatch.redirectUrl,
+    };
+  }
 
-    if (!match) {
+  // 4. Fallback for any newly authenticated Firebase user
+  const isSuper = normalizedEmail.includes('super');
+  const isAdm = !isSuper && normalizedEmail.includes('admin');
+  const isMgr = !isSuper && !isAdm && normalizedEmail.includes('manager');
+  const fallbackRole: UserRole = isSuper
+    ? 'super_admin'
+    : isAdm
+    ? 'admin'
+    : isMgr
+    ? 'manager'
+    : 'employee';
+
+  const defaultPerms = resolveDefaultPermissions(
+    isSuper ? 'Super Admin' : isAdm ? 'Admin' : isMgr ? 'Manager' : 'Employee',
+    fallbackRole
+  );
+
+  const displayName =
+    normalizedEmail.split('@')[0]?.replace(/[._-]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()) ||
+    'CRM User';
+
+  const fallbackUser: MockAuthUser = {
+    id: `usr_${firebaseUid ? firebaseUid.slice(0, 8) : Date.now()}`,
+    name: displayName,
+    email: normalizedEmail,
+    role: fallbackRole,
+    organizationId: 'org_cool_tech_001',
+    organizationName: 'Cool Technologies LLC',
+    designation: isSuper
+      ? 'System Super Admin'
+      : isAdm
+      ? 'Administrator'
+      : isMgr
+      ? 'Operations Manager'
+      : 'Operations Employee',
+    department: isSuper ? 'Executive' : isAdm ? 'Management' : 'Operations',
+    profileType: isSuper ? 'Super Admin' : isAdm ? 'Admin' : isMgr ? 'Manager' : 'Employee',
+    dataScope: defaultPerms.dataScope,
+    modulePermissions: defaultPerms.modulePermissions,
+    actionPermissions: defaultPerms.actionPermissions,
+    firebaseUid,
+  };
+
+  return {
+    user: fallbackUser,
+    redirectUrl: isSuper
+      ? '/dashboard'
+      : isAdm
+      ? '/admin/dashboard'
+      : isMgr
+      ? '/manager/dashboard'
+      : '/worker/dashboard',
+  };
+}
+
+export const authMockService = {
+  /**
+   * Authenticates user via Firebase Authentication signInWithEmailAndPassword
+   * and maps authenticated identity to CRM roles, permissions, and data scopes.
+   */
+  async login(email: string, password: string, rememberMe = true): Promise<MockLoginResult> {
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
       return {
         success: false,
-        error: 'Invalid email address or password. Please try again.',
+        error: 'Please enter both your email address and password.',
       };
     }
 
-    // Store active mock auth session
-    if (typeof window !== 'undefined') {
-      try {
-        const sessionData = {
-          authenticated: true,
-          user: match.user,
-          role: match.user.role,
-          rememberMe,
-          timestamp: Date.now(),
-        };
-        localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
-        if (rememberMe) {
-          localStorage.setItem('cool_crm_remember_email', normalizedEmail);
-        } else {
-          localStorage.removeItem('cool_crm_remember_email');
-        }
-      } catch (err) {
-        console.error('Local storage error during authentication:', err);
-      }
-    }
+    try {
+      // 1. Firebase Authentication: Validates credentials securely
+      const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
+      const fbUser = userCredential.user;
 
-    return {
-      success: true,
-      user: match.user,
-      redirectUrl: match.redirectUrl,
-    };
+      // 2. CRM Role & Profile Resolution: Determines user permissions & access level
+      const resolved = resolveCrmUserByEmail(fbUser.email || trimmedEmail, fbUser.uid);
+
+      if (resolved.isInactive) {
+        await signOut(auth);
+        return {
+          success: false,
+          error: 'This account has been deactivated. Please contact your Super Admin.',
+        };
+      }
+
+      // 3. Store active CRM session (No plaintext passwords stored)
+      if (typeof window !== 'undefined') {
+        try {
+          const sessionData = {
+            authenticated: true,
+            user: resolved.user,
+            role: resolved.user.role,
+            firebaseUid: fbUser.uid,
+            rememberMe,
+            timestamp: Date.now(),
+          };
+          localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
+        } catch (err) {
+          console.error('Session storage error:', err);
+        }
+      }
+
+      return {
+        success: true,
+        user: resolved.user,
+        redirectUrl: resolved.redirectUrl,
+      };
+    } catch (err: any) {
+      // Map Firebase Auth error codes to clean, friendly error messages
+      const errorCode = err?.code || '';
+      let message = 'Invalid email address or password. Please verify your credentials.';
+
+      switch (errorCode) {
+        case 'auth/invalid-credential':
+        case 'auth/wrong-password':
+          message = 'Invalid email address or password. Please verify your credentials.';
+          break;
+        case 'auth/user-not-found':
+          message = 'No registered account found with this email address.';
+          break;
+        case 'auth/invalid-email':
+          message = 'Please enter a valid email address format.';
+          break;
+        case 'auth/user-disabled':
+          message = 'This user account has been disabled. Please contact your administrator.';
+          break;
+        case 'auth/too-many-requests':
+          message = 'Access temporarily disabled due to multiple failed login attempts. Please try again later.';
+          break;
+        case 'auth/operation-not-allowed':
+          message = 'Email/Password sign-in is not enabled in Firebase Console. Please enable Email/Password under Authentication > Sign-in method.';
+          break;
+        case 'auth/network-request-failed':
+          message = 'Network connection error. Please check your internet connection and try again.';
+          break;
+        default:
+          if (err?.message) {
+            message = err.message.replace(/^Firebase:\s*/i, '').replace(/\s*\([^)]+\)$/, '');
+          }
+          break;
+      }
+
+      return {
+        success: false,
+        error: message,
+      };
+    }
   },
 
   /**
-   * Reads currently active mock session
+   * Reads currently active authenticated session
    */
   getCurrentUser(): MockAuthUser | null {
     if (typeof window === 'undefined') return null;
@@ -1183,9 +1323,46 @@ export const authMockService = {
   },
 
   /**
-   * Clears mock session on logout
+   * Listens to real-time Firebase Auth state changes
    */
-  logout(): void {
+  onAuthStateChanged(callback: (user: MockAuthUser | null, fbUser: FirebaseUser | null) => void): Unsubscribe {
+    return onAuthStateChanged(auth, (fbUser) => {
+      if (fbUser) {
+        const existingSession = this.getCurrentUser();
+        if (existingSession && (existingSession.email.toLowerCase() === fbUser.email?.toLowerCase() || existingSession.firebaseUid === fbUser.uid)) {
+          callback(existingSession, fbUser);
+        } else {
+          const resolved = resolveCrmUserByEmail(fbUser.email || '', fbUser.uid);
+          if (typeof window !== 'undefined') {
+            const sessionData = {
+              authenticated: true,
+              user: resolved.user,
+              role: resolved.user.role,
+              firebaseUid: fbUser.uid,
+              timestamp: Date.now(),
+            };
+            localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
+          }
+          callback(resolved.user, fbUser);
+        }
+      } else {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('cool_crm_auth');
+        }
+        callback(null, null);
+      }
+    });
+  },
+
+  /**
+   * Signs out from Firebase Authentication and clears CRM local session
+   */
+  async logout(): Promise<void> {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error('Firebase sign out error:', err);
+    }
     if (typeof window !== 'undefined') {
       try {
         localStorage.removeItem('cool_crm_auth');
@@ -1195,3 +1372,4 @@ export const authMockService = {
     }
   },
 };
+

@@ -425,6 +425,7 @@ export default function LoginPage() {
                   id="email"
                   type="text"
                   required
+                  autoComplete="off"
                   placeholder="Enter your email or username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -449,6 +450,7 @@ export default function LoginPage() {
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   required
+                  autoComplete="new-password"
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
