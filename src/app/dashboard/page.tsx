@@ -277,7 +277,7 @@ export default function DashboardPage() {
         <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Total Pipeline Value
+              Total Value
             </span>
             <span className="p-1 rounded bg-blue-50 text-blue-600">
               <DollarSign className="w-3.5 h-3.5" />

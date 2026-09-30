@@ -93,17 +93,28 @@ function BarcodeGraphic({ value }: { value: string }) {
 export function ProductsTab() {
   const [activeSubTab, setActiveSubTab] = useState<'products' | 'unit' | 'brand' | 'category'>('products');
 
-  // Products State
+  // Products State (Live Clean State - No Dummy Data)
   const [products, setProducts] = useState<ProductSettingItem[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('cezcon_products_master_v3');
-        if (saved) return JSON.parse(saved);
+        const isPurged = localStorage.getItem('cezcon_products_clean_purged_v5');
+        if (!isPurged) {
+          localStorage.removeItem('cezcon_products_master_v4');
+          localStorage.removeItem('cezcon_products_master_v3');
+          localStorage.removeItem('cezcon_products_master_live');
+          localStorage.setItem('cezcon_products_clean_purged_v5', 'true');
+          return [];
+        }
+        const saved = localStorage.getItem('cezcon_products_master_live');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        }
       } catch (e) {
         console.error('Failed to load products master', e);
       }
     }
-    return PRODUCTS_SETTINGS;
+    return [];
   });
 
   // Mode: List View or Full Add/Edit Form View
@@ -224,11 +235,29 @@ export function ProductsTab() {
     return () => window.removeEventListener('click', handleOutside);
   }, []);
 
-  // LocalStorage Persist
+  // Live Cross-Tab & Context Sync Listener
+  useEffect(() => {
+    const handleLiveSync = () => {
+      try {
+        const saved = localStorage.getItem('cezcon_products_master_live');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) setProducts(parsed);
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener('crm_products_updated', handleLiveSync);
+    return () => window.removeEventListener('crm_products_updated', handleLiveSync);
+  }, []);
+
+  // LocalStorage Persist & Live Broadcast
   const saveProducts = (updated: ProductSettingItem[]) => {
     setProducts(updated);
     try {
-      localStorage.setItem('cezcon_products_master_v3', JSON.stringify(updated));
+      localStorage.setItem('cezcon_products_master_live', JSON.stringify(updated));
+      window.dispatchEvent(new Event('crm_products_updated'));
+      window.dispatchEvent(new Event('crm_data_updated'));
     } catch (e) {}
   };
 
@@ -236,6 +265,7 @@ export function ProductsTab() {
     setUnits(updated);
     try {
       localStorage.setItem('cezcon_product_units', JSON.stringify(updated));
+      window.dispatchEvent(new Event('crm_product_units_updated'));
     } catch (e) {}
   };
 
@@ -243,6 +273,7 @@ export function ProductsTab() {
     setBrands(updated);
     try {
       localStorage.setItem('cezcon_product_brands', JSON.stringify(updated));
+      window.dispatchEvent(new Event('crm_product_brands_updated'));
     } catch (e) {}
   };
 
@@ -250,6 +281,7 @@ export function ProductsTab() {
     setCategories(updated);
     try {
       localStorage.setItem('cezcon_product_categories', JSON.stringify(updated));
+      window.dispatchEvent(new Event('crm_product_categories_updated'));
     } catch (e) {}
   };
 

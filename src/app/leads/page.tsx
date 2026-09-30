@@ -31,10 +31,14 @@ import {
   Check,
   ArrowUpRight,
   CornerUpRight,
+  Smartphone,
+  HelpCircle,
+  Globe,
 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { BackButton } from '@/components/ui/BackButton';
 import { Modal } from '@/components/ui/Modal';
+import { DatePicker } from '@/components/ui/DatePicker';
 import { Input, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { authMockService } from '@/services/authMockService';
@@ -99,26 +103,36 @@ export function LeadsContent() {
   const [convertingLead, setConvertingLead] = useState<CrmLead | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
 
-  // New Lead Form State
-  const [newLead, setNewLead] = useState({
-    name: '',
-    company: '',
-    phone: '',
-    email: '',
-    whatsapp: '',
-    specification: '',
-    owner: 'Alex Rivera',
-    createdBy: 'Alex Rivera',
-    rating: 'Cold' as LeadRating,
-    status: 'Contacted' as LeadStatus,
-    source: 'Website Inbound',
-    campaign: 'SIMPLE LIFE - 2025',
-    businessOpportunity: 'HVAC Installation',
-    value: 50000,
-  });
-
   const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
   const isEmployee = currentUser?.role === 'employee' || currentUser?.role === 'worker';
+
+  // New Lead Form State (Full Cezcon CRM Compatibility)
+  const [newLead, setNewLead] = useState({
+    owner: currentUser?.name || '',
+    leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+    contactPrefix: 'Mr.',
+    name: '',
+    designation: '',
+    businessMobileCode: '+971',
+    businessMobile: '',
+    personalMobileCode: '+971',
+    personalMobile: '',
+    email: '',
+    nationality: '',
+    customerName: '',
+    telCode: '+971',
+    tel: '',
+    website: '',
+    leadTags: '',
+    campaign: '',
+    source: '',
+    sourceName: '',
+    rating: 'Cold' as LeadRating,
+    status: 'Pending' as LeadStatus,
+    businessOpportunity: '',
+    location: '',
+    comments: '',
+  });
 
   // Filtered Leads Calculation
   const filteredLeads = useMemo(() => {
@@ -196,63 +210,178 @@ export function LeadsContent() {
   );
   const totalPages = Math.ceil(totalEntries / pageSize);
 
+  const getEmployeePhoto = (name?: string): string | null => {
+    if (!name) return null;
+    const clean = name.trim().toLowerCase();
+
+    // 1. Check in context users
+    const matchedUser = users.find((u) => u.name && u.name.trim().toLowerCase() === clean);
+    if (matchedUser?.avatar && !matchedUser.avatar.includes('photo-1507003211169-0a1dd7228f2d')) {
+      return matchedUser.avatar;
+    }
+
+    // 2. Direct read from localStorage (cezcon_crm_users_list)
+    if (typeof window !== 'undefined') {
+      try {
+        const storedUsersRaw = localStorage.getItem('cezcon_crm_users_list');
+        if (storedUsersRaw) {
+          const parsed = JSON.parse(storedUsersRaw);
+          if (Array.isArray(parsed)) {
+            const found = parsed.find(
+              (u: any) =>
+                (u.name && u.name.trim().toLowerCase() === clean) ||
+                (u.username && u.username.trim().toLowerCase() === clean) ||
+                (u.email && u.email.trim().toLowerCase() === clean)
+            );
+            if (found && (found.avatarImage || found.avatarUrl || found.avatar)) {
+              return found.avatarImage || found.avatarUrl || found.avatar;
+            }
+          }
+        }
+
+        // 3. Check crm_admin_accounts_list
+        const storedAdminsRaw = localStorage.getItem('crm_admin_accounts_list');
+        if (storedAdminsRaw) {
+          const parsedAdmins = JSON.parse(storedAdminsRaw);
+          if (Array.isArray(parsedAdmins)) {
+            const foundAdmin = parsedAdmins.find(
+              (a: any) =>
+                (a.name && a.name.trim().toLowerCase() === clean) ||
+                (a.email && a.email.trim().toLowerCase() === clean)
+            );
+            if (foundAdmin && (foundAdmin.avatar || foundAdmin.avatarUrl || foundAdmin.avatarImage)) {
+              return foundAdmin.avatar || foundAdmin.avatarUrl || foundAdmin.avatarImage;
+            }
+          }
+        }
+
+        // 4. Check cool_crm_auth
+        const authRaw = localStorage.getItem('cool_crm_auth');
+        if (authRaw) {
+          const authUser = JSON.parse(authRaw);
+          if (
+            authUser &&
+            (authUser.name?.trim().toLowerCase() === clean || authUser.email?.trim().toLowerCase() === clean)
+          ) {
+            if (authUser.avatar || authUser.avatarImage) {
+              return authUser.avatar || authUser.avatarImage;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('getEmployeePhoto error:', e);
+      }
+    }
+
+    return null;
+  };
+
+  const renderUserAvatar = (name: string, explicitAvatar?: string, size = 'w-7 h-7') => {
+    const isMockMan = explicitAvatar?.includes('photo-1507003211169-0a1dd7228f2d');
+    const photo = (!isMockMan && explicitAvatar) || getEmployeePhoto(name);
+
+    if (photo) {
+      return (
+        <img
+          src={photo}
+          alt={name}
+          title={name}
+          className={`${size} rounded-full object-cover mx-auto border border-slate-200 shadow-2xs`}
+        />
+      );
+    }
+
+    const initials = (name || 'U')
+      .split(' ')
+      .map((w) => w[0])
+      .filter(Boolean)
+      .join('')
+      .substring(0, 2)
+      .toUpperCase() || 'U';
+
+    return (
+      <div
+        title={name}
+        className={`${size} rounded-full bg-gradient-to-tr from-[#1E293B] to-[#334155] text-white flex items-center justify-center font-bold text-[10px] mx-auto shadow-2xs border border-slate-200`}
+      >
+        {initials}
+      </div>
+    );
+  };
+
   const handleCreateLead = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newLead.name || !newLead.company) return;
+    const contactDisplayName = newLead.name.trim() ? `${newLead.contactPrefix} ${newLead.name.trim()}` : (newLead.customerName || 'Point of contact');
+    const companyDisplayName = newLead.customerName.trim() || newLead.name.trim() || 'New Enterprise Client';
 
-    const canAssignOthers = currentUser?.actionPermissions?.canReassign || !isEmployee;
-    const effectiveOwner = canAssignOthers ? newLead.owner : (currentUser?.name || newLead.owner);
-    const effectiveCreatedBy = currentUser?.name || newLead.createdBy;
-    const effectiveAssignedEmployee = isEmployee ? (currentUser?.name || newLead.owner) : newLead.owner;
+    const enteredOwner = newLead.owner.trim();
+    const effectiveOwner = enteredOwner || currentUser?.name || 'Super Admin';
+    const effectiveCreatedBy = currentUser?.name || 'Super Admin';
+    const effectiveAssignedEmployee = enteredOwner || (isEmployee ? currentUser?.name || 'Super Admin' : 'Super Admin');
+
+    const ownerAvatarImg = getEmployeePhoto(effectiveOwner) || currentUser?.avatar || '';
+    const createdByAvatarImg = getEmployeePhoto(effectiveCreatedBy) || currentUser?.avatar || '';
+
+    const mainPhone = newLead.businessMobile ? `${newLead.businessMobileCode} ${newLead.businessMobile}` : (newLead.personalMobile ? `${newLead.personalMobileCode} ${newLead.personalMobile}` : '+971 50 123 4567');
 
     addLead({
-      leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
-      assignedDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+      leadDate: newLead.leadDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+      assignedDate: newLead.leadDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
       leadAssigned: {
         name: effectiveOwner,
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+        avatar: ownerAvatarImg,
       },
       contactDetails: {
-        name: newLead.name,
-        company: newLead.company,
-        phone: newLead.phone,
+        name: contactDisplayName,
+        company: companyDisplayName,
+        phone: mainPhone,
         email: newLead.email,
-        whatsapp: newLead.whatsapp || newLead.phone,
+        whatsapp: newLead.personalMobile ? `${newLead.personalMobileCode} ${newLead.personalMobile}` : mainPhone,
       },
-      leadSpecification: newLead.specification || 'New customer enterprise HVAC inquiry',
+      leadSpecification: newLead.comments || newLead.businessOpportunity || 'Commercial client HVAC specification',
       createdBy: effectiveCreatedBy,
-      createdByAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+      createdByAvatar: createdByAvatarImg,
       owner: effectiveOwner,
-      ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+      ownerAvatar: ownerAvatarImg,
       assignedEmployee: effectiveAssignedEmployee,
       rating: newLead.rating,
       status: newLead.status,
       lastActivity: 'Just created',
       lastActivityDate: `${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       lastActivityTimeAgo: 'Just now',
-      value: newLead.value,
-      source: newLead.source,
-      campaign: newLead.campaign,
-      businessOpportunity: newLead.businessOpportunity,
-      tags: ['New Lead'],
+      value: 50000,
+      source: newLead.source || 'Website Inbound',
+      campaign: newLead.campaign || 'SIMPLE LIFE - 2025',
+      businessOpportunity: newLead.businessOpportunity || 'HVAC Installation',
+      tags: newLead.leadTags ? newLead.leadTags.split(',').map((t) => t.trim()) : ['New Lead'],
     });
 
     setIsAddModalOpen(false);
     setNewLead({
+      owner: currentUser?.name || '',
+      leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+      contactPrefix: 'Mr.',
       name: '',
-      company: '',
-      phone: '',
+      designation: '',
+      businessMobileCode: '+971',
+      businessMobile: '',
+      personalMobileCode: '+971',
+      personalMobile: '',
       email: '',
-      whatsapp: '',
-      specification: '',
-      owner: currentUser?.name || 'Alex Rivera',
-      createdBy: currentUser?.name || 'Alex Rivera',
+      nationality: '',
+      customerName: '',
+      telCode: '+971',
+      tel: '',
+      website: '',
+      leadTags: '',
+      campaign: '',
+      source: '',
+      sourceName: '',
       rating: 'Cold',
-      status: 'Contacted',
-      source: 'Website Inbound',
-      campaign: 'SIMPLE LIFE - 2025',
-      businessOpportunity: 'HVAC Installation',
-      value: 50000,
+      status: 'Pending',
+      businessOpportunity: '',
+      location: '',
+      comments: '',
     });
   };
 
@@ -262,6 +391,516 @@ export function LeadsContent() {
     updateLead(editingLead.id, editingLead);
     setEditingLead(null);
   };
+
+  if (isAddModalOpen) {
+    return (
+      <div className="space-y-3 pb-8 text-[#212529] animate-in fade-in duration-150">
+        <div className="bg-white border border-slate-200 rounded shadow-xs overflow-hidden">
+          {/* Top Header Bar */}
+          <div className="px-4 py-2 bg-[#FAFBFD] border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-600 font-bold text-sm">≡</span>
+              <span className="font-bold text-slate-800 text-xs">Add Lead</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(false)}
+              className="w-5 h-5 rounded bg-[#E11D48] text-white flex items-center justify-center hover:bg-[#BE123C] transition-colors cursor-pointer font-black text-xs shadow-2xs"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5 stroke-[3]" />
+            </button>
+          </div>
+
+          {/* 2-Column Cezcon Form */}
+          <form onSubmit={handleCreateLead} className="p-5 sm:p-7 space-y-4 text-xs">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-3.5">
+              {/* ── LEFT COLUMN ── */}
+              <div className="space-y-3.5">
+                {/* 1. Lead Owner */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Lead Owner
+                  </label>
+                  <div className="sm:col-span-9 relative">
+                    <input
+                      type="text"
+                      placeholder="Enter lead owner name"
+                      value={newLead.owner}
+                      onChange={(e) => setNewLead({ ...newLead, owner: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 font-medium focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Contact Name * */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Contact Name <span className="text-red-500">*</span>
+                  </label>
+                  <div className="sm:col-span-9 flex items-center gap-1.5">
+                    <select
+                      value={newLead.contactPrefix}
+                      onChange={(e) => setNewLead({ ...newLead, contactPrefix: e.target.value })}
+                      className="w-20 bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs shrink-0 cursor-pointer"
+                    >
+                      <option value="Mr.">Mr.</option>
+                      <option value="Ms.">Ms.</option>
+                      <option value="Mrs.">Mrs.</option>
+                      <option value="Dr.">Dr.</option>
+                      <option value="Eng.">Eng.</option>
+                    </select>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Point of contact"
+                      value={newLead.name}
+                      onChange={(e) => setNewLead({ ...newLead, name: e.target.value })}
+                      className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Business Mobile */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <Smartphone className="w-3.5 h-3.5 text-[#EA580C] shrink-0" />
+                    <span>Business Mobile</span>
+                  </label>
+                  <div className="sm:col-span-9 flex items-center gap-1.5">
+                    <select
+                      value={newLead.businessMobileCode}
+                      onChange={(e) => setNewLead({ ...newLead, businessMobileCode: e.target.value })}
+                      className="w-24 bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs shrink-0 cursor-pointer"
+                    >
+                      <option value="+971">🇦🇪 +971</option>
+                      <option value="+966">🇸🇦 +966</option>
+                      <option value="+968">🇴🇲 +968</option>
+                      <option value="+91">🇮🇳 +91</option>
+                      <option value="+92">🇵🇰 +92</option>
+                      <option value="+44">🇬🇧 +44</option>
+                      <option value="+1">🇺🇸 +1</option>
+                    </select>
+                    <input
+                      type="tel"
+                      placeholder=""
+                      value={newLead.businessMobile}
+                      onChange={(e) => setNewLead({ ...newLead, businessMobile: e.target.value })}
+                      className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 4. Email */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <Mail className="w-3.5 h-3.5 text-[#E11D48] shrink-0" />
+                    <span>Email</span>
+                  </label>
+                  <div className="sm:col-span-9">
+                    <input
+                      type="email"
+                      placeholder="Add multiple emails by pressing Tab button."
+                      value={newLead.email}
+                      onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 5. Customer Name */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Customer Name
+                  </label>
+                  <div className="sm:col-span-9">
+                    <input
+                      type="text"
+                      placeholder=""
+                      value={newLead.customerName}
+                      onChange={(e) => setNewLead({ ...newLead, customerName: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 6. Website */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Website
+                  </label>
+                  <div className="sm:col-span-9">
+                    <input
+                      type="text"
+                      placeholder=""
+                      value={newLead.website}
+                      onChange={(e) => setNewLead({ ...newLead, website: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 7. Campaign */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <span>Campaign</span>
+                    <span className="w-3.5 h-3.5 rounded-full bg-slate-800 text-white flex items-center justify-center text-[9px] font-black">?</span>
+                  </label>
+                  <div className="sm:col-span-9 relative">
+                    <select
+                      value={newLead.campaign}
+                      onChange={(e) => setNewLead({ ...newLead, campaign: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 appearance-none shadow-2xs cursor-pointer pr-8"
+                    >
+                      <option value="">Select Campaign</option>
+                      <option value="SIMPLE LIFE - 2025">SIMPLE LIFE - 2025</option>
+                      <option value="REACHUAE - 2025">REACHUAE - 2025</option>
+                      <option value="ATN - 2025">ATN - 2025</option>
+                      <option value="YELLOW PAGES-UAE.COM - 2025">YELLOW PAGES-UAE.COM - 2025</option>
+                      <option value="INBOUND PHONE CALLS - 2025">INBOUND PHONE CALLS - 2025</option>
+                      <option value="GOOGLE AD 2025">GOOGLE AD 2025</option>
+                      <option value="META AD - 2025">META AD - 2025</option>
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 8. Source Name */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Source Name
+                  </label>
+                  <div className="sm:col-span-9">
+                    <input
+                      type="text"
+                      placeholder="Name of the source. Eg Google, LinkedIn"
+                      value={newLead.sourceName}
+                      onChange={(e) => setNewLead({ ...newLead, sourceName: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 9. Status */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Status
+                  </label>
+                  <div className="sm:col-span-9 relative">
+                    <select
+                      value={newLead.status}
+                      onChange={(e) => setNewLead({ ...newLead, status: e.target.value as LeadStatus })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 appearance-none shadow-2xs cursor-pointer pr-8"
+                    >
+                      <option value="Pending">Pending</option>
+                      <option value="Contacted">Contacted</option>
+                      <option value="Qualified">Qualified</option>
+                      <option value="Proposal Sent">Proposal Sent</option>
+                      <option value="Converted">Converted</option>
+                      <option value="Lost">Lost</option>
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 10. Location */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-[#0284C7] shrink-0" />
+                    <span>Location</span>
+                  </label>
+                  <div className="sm:col-span-9 relative flex items-center">
+                    <input
+                      type="text"
+                      placeholder="Search location"
+                      value={newLead.location}
+                      onChange={(e) => setNewLead({ ...newLead, location: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs pr-7"
+                    />
+                    {newLead.location && (
+                      <button
+                        type="button"
+                        onClick={() => setNewLead({ ...newLead, location: '' })}
+                        className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── RIGHT COLUMN ── */}
+              <div className="space-y-3.5">
+                {/* 1. Lead Date */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Lead Date
+                  </label>
+                  <div className="sm:col-span-9">
+                    <DatePicker
+                      value={newLead.leadDate}
+                      onChange={(val) => setNewLead({ ...newLead, leadDate: val })}
+                      placeholder="DD-MM-YYYY"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Designation */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Designation
+                  </label>
+                  <div className="sm:col-span-9 relative">
+                    <select
+                      value={newLead.designation}
+                      onChange={(e) => setNewLead({ ...newLead, designation: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 appearance-none shadow-2xs cursor-pointer pr-8"
+                    >
+                      <option value="">Select</option>
+                      <option value="Managing Director">Managing Director</option>
+                      <option value="General Manager">General Manager</option>
+                      <option value="Procurement Manager">Procurement Manager</option>
+                      <option value="Chief Engineer">Chief Engineer</option>
+                      <option value="Project Engineer">Project Engineer</option>
+                      <option value="Facility Manager">Facility Manager</option>
+                      <option value="Owner / Executive">Owner / Executive</option>
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 3. Personal Mobile */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <Smartphone className="w-3.5 h-3.5 text-[#EA580C] shrink-0" />
+                    <span>Personal Mobile</span>
+                  </label>
+                  <div className="sm:col-span-9 flex items-center gap-1.5">
+                    <select
+                      value={newLead.personalMobileCode}
+                      onChange={(e) => setNewLead({ ...newLead, personalMobileCode: e.target.value })}
+                      className="w-24 bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs shrink-0 cursor-pointer"
+                    >
+                      <option value="+971">🇦🇪 +971</option>
+                      <option value="+966">🇸🇦 +966</option>
+                      <option value="+968">🇴🇲 +968</option>
+                      <option value="+91">🇮🇳 +91</option>
+                      <option value="+92">🇵🇰 +92</option>
+                      <option value="+44">🇬🇧 +44</option>
+                      <option value="+1">🇺🇸 +1</option>
+                    </select>
+                    <input
+                      type="tel"
+                      placeholder=""
+                      value={newLead.personalMobile}
+                      onChange={(e) => setNewLead({ ...newLead, personalMobile: e.target.value })}
+                      className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 4. Nationality */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Nationality
+                  </label>
+                  <div className="sm:col-span-9 relative">
+                    <select
+                      value={newLead.nationality}
+                      onChange={(e) => setNewLead({ ...newLead, nationality: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 appearance-none shadow-2xs cursor-pointer pr-8"
+                    >
+                      <option value="">Select Nationality</option>
+                      <option value="United Arab Emirates">United Arab Emirates</option>
+                      <option value="Saudi Arabia">Saudi Arabia</option>
+                      <option value="Oman">Oman</option>
+                      <option value="India">India</option>
+                      <option value="Pakistan">Pakistan</option>
+                      <option value="Egypt">Egypt</option>
+                      <option value="United Kingdom">United Kingdom</option>
+                      <option value="Philippines">Philippines</option>
+                      <option value="Lebanon">Lebanon</option>
+                      <option value="Other">Other</option>
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 5. Tel */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5 text-[#0D9488] shrink-0" />
+                    <span>Tel</span>
+                  </label>
+                  <div className="sm:col-span-9 flex items-center gap-1.5">
+                    <select
+                      value={newLead.telCode}
+                      onChange={(e) => setNewLead({ ...newLead, telCode: e.target.value })}
+                      className="w-24 bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs shrink-0 cursor-pointer"
+                    >
+                      <option value="+971">🇦🇪 +971</option>
+                      <option value="+966">🇸🇦 +966</option>
+                      <option value="+968">🇴🇲 +968</option>
+                      <option value="+91">🇮🇳 +91</option>
+                    </select>
+                    <input
+                      type="tel"
+                      placeholder="Landline"
+                      value={newLead.tel}
+                      onChange={(e) => setNewLead({ ...newLead, tel: e.target.value })}
+                      className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 6. Lead Tags */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Lead Tags
+                  </label>
+                  <div className="sm:col-span-9">
+                    <input
+                      type="text"
+                      placeholder=""
+                      value={newLead.leadTags}
+                      onChange={(e) => setNewLead({ ...newLead, leadTags: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 7. Source */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <span>Source</span>
+                    <span className="w-3.5 h-3.5 rounded-full bg-slate-800 text-white flex items-center justify-center text-[9px] font-black">?</span>
+                  </label>
+                  <div className="sm:col-span-9 relative">
+                    <select
+                      value={newLead.source}
+                      onChange={(e) => setNewLead({ ...newLead, source: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 appearance-none shadow-2xs cursor-pointer pr-8"
+                    >
+                      <option value="">Select Source</option>
+                      <option value="Website Inbound">Website Inbound</option>
+                      <option value="Direct Inbound Call">Direct Inbound Call</option>
+                      <option value="Google Ads">Google Ads</option>
+                      <option value="Meta Ads">Meta Ads</option>
+                      <option value="Yellow Pages UAE">Yellow Pages UAE</option>
+                      <option value="Referral Client">Referral Client</option>
+                      <option value="Trade Exhibition">Trade Exhibition</option>
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 8. Rating */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <span>Rating</span>
+                    <span className="w-3.5 h-3.5 rounded-full bg-slate-800 text-white flex items-center justify-center text-[9px] font-black">?</span>
+                  </label>
+                  <div className="sm:col-span-9 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setNewLead({ ...newLead, rating: 'Cold' })}
+                      className={cn(
+                        'px-3 py-1 rounded text-[11px] font-bold uppercase transition-all cursor-pointer shadow-2xs',
+                        newLead.rating === 'Cold'
+                          ? 'bg-[#0284C7] text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      )}
+                    >
+                      COLD
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewLead({ ...newLead, rating: 'Warm' })}
+                      className={cn(
+                        'px-3 py-1 rounded text-[11px] font-bold uppercase transition-all cursor-pointer shadow-2xs',
+                        newLead.rating === 'Warm'
+                          ? 'bg-[#F59E0B] text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      )}
+                    >
+                      WARM
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewLead({ ...newLead, rating: 'Hot' })}
+                      className={cn(
+                        'px-3 py-1 rounded text-[11px] font-bold uppercase transition-all cursor-pointer shadow-2xs',
+                        newLead.rating === 'Hot'
+                          ? 'bg-[#E11D48] text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      )}
+                    >
+                      HOT
+                    </button>
+                  </div>
+                </div>
+
+                {/* 9. Business Opportunity */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Business Opportunity
+                  </label>
+                  <div className="sm:col-span-9 relative">
+                    <select
+                      value={newLead.businessOpportunity}
+                      onChange={(e) => setNewLead({ ...newLead, businessOpportunity: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 appearance-none shadow-2xs cursor-pointer pr-8"
+                    >
+                      <option value="">Select Business Opportunity</option>
+                      <option value="HVAC Installation">HVAC Installation</option>
+                      <option value="Commercial Construction">Commercial Construction</option>
+                      <option value="Industrial Cooling">Industrial Cooling</option>
+                      <option value="Facility Maintenance">Facility Maintenance</option>
+                      <option value="Chiller Overhaul">Chiller Overhaul</option>
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 10. Comments */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-start">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 pt-1">
+                    Comments
+                  </label>
+                  <div className="sm:col-span-9">
+                    <textarea
+                      rows={3}
+                      value={newLead.comments}
+                      onChange={(e) => setNewLead({ ...newLead, comments: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs leading-relaxed"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="border-t border-slate-200 pt-4 flex items-center justify-end gap-2">
+              <button
+                type="submit"
+                className="px-5 py-1.5 rounded bg-[#0F2844] hover:bg-[#0A1D33] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+              >
+                Submit
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                className="px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+              >
+                ← Back
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3 pb-8 text-[#212529]">
@@ -394,97 +1033,41 @@ export function LeadsContent() {
           {/* Row 2 - Col 3: Inactive From */}
           <div>
             <label className="block text-[11px] font-medium text-slate-700 mb-1">Inactive From</label>
-            <div className="relative flex items-center">
-              <input
-                type="text"
-                placeholder="Select Date"
-                value={inactiveFromDate}
-                onChange={(e) => setInactiveFromDate(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded pl-7 pr-7 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-600"
-              />
-              <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2 pointer-events-none" />
-              {inactiveFromDate && (
-                <button
-                  type="button"
-                  onClick={() => setInactiveFromDate('')}
-                  className="absolute right-2 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
+            <DatePicker
+              value={inactiveFromDate}
+              onChange={(val) => setInactiveFromDate(val)}
+              placeholder="Select Date"
+            />
           </div>
 
           {/* Row 2 - Col 4: Lead Date */}
           <div>
             <label className="block text-[11px] font-medium text-slate-700 mb-1">Lead Date</label>
-            <div className="relative flex items-center">
-              <input
-                type="text"
-                placeholder="All Month & Year"
-                value={leadDateFilter}
-                onChange={(e) => setLeadDateFilter(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded pl-7 pr-7 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-600"
-              />
-              <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2 pointer-events-none" />
-              {leadDateFilter && (
-                <button
-                  type="button"
-                  onClick={() => setLeadDateFilter('')}
-                  className="absolute right-2 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
+            <DatePicker
+              value={leadDateFilter}
+              onChange={(val) => setLeadDateFilter(val)}
+              placeholder="All Month & Year"
+            />
           </div>
 
           {/* Row 3 - Col 1: Lead Created Date */}
           <div>
             <label className="block text-[11px] font-medium text-slate-700 mb-1">Lead Created Date</label>
-            <div className="relative flex items-center">
-              <input
-                type="text"
-                placeholder="All Month & Year"
-                value={leadCreatedDateFilter}
-                onChange={(e) => setLeadCreatedDateFilter(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded pl-7 pr-7 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-600"
-              />
-              <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2 pointer-events-none" />
-              {leadCreatedDateFilter && (
-                <button
-                  type="button"
-                  onClick={() => setLeadCreatedDateFilter('')}
-                  className="absolute right-2 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
+            <DatePicker
+              value={leadCreatedDateFilter}
+              onChange={(val) => setLeadCreatedDateFilter(val)}
+              placeholder="All Month & Year"
+            />
           </div>
 
           {/* Row 3 - Col 2: Lead Assigned Date */}
           <div>
             <label className="block text-[11px] font-medium text-slate-700 mb-1">Lead Assigned Date</label>
-            <div className="relative flex items-center">
-              <input
-                type="text"
-                placeholder="All Month & Year"
-                value={leadAssignedDateFilter}
-                onChange={(e) => setLeadAssignedDateFilter(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded pl-7 pr-7 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-600"
-              />
-              <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2 pointer-events-none" />
-              {leadAssignedDateFilter && (
-                <button
-                  type="button"
-                  onClick={() => setLeadAssignedDateFilter('')}
-                  className="absolute right-2 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
+            <DatePicker
+              value={leadAssignedDateFilter}
+              onChange={(val) => setLeadAssignedDateFilter(val)}
+              placeholder="All Month & Year"
+            />
           </div>
 
           {/* Row 3 - Col 3: Source */}
@@ -729,14 +1312,7 @@ export function LeadsContent() {
 
                     <div className="flex items-center gap-2 relative">
                       <div className="flex items-center gap-1">
-                        <img
-                          src={
-                            lead.ownerAvatar ||
-                            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
-                          }
-                          alt={lead.owner}
-                          className="w-5 h-5 rounded-full object-cover border border-slate-200"
-                        />
+                        {renderUserAvatar(lead.owner, lead.ownerAvatar || lead.leadAssigned?.avatar, 'w-5 h-5')}
                         <span className="font-medium text-slate-700 text-xs">{lead.owner}</span>
                       </div>
 
@@ -914,29 +1490,12 @@ export function LeadsContent() {
 
                       {/* Created By Avatar */}
                       <td className="py-3 px-3 text-center border-r border-slate-200">
-                        <img
-                          src={
-                            lead.createdByAvatar ||
-                            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
-                          }
-                          alt={lead.createdBy}
-                          title={`Created by: ${lead.createdBy}`}
-                          className="w-7 h-7 rounded-full object-cover mx-auto border border-slate-200"
-                        />
+                        {renderUserAvatar(lead.createdBy, lead.createdByAvatar)}
                       </td>
 
                       {/* Owner Avatar */}
                       <td className="py-3 px-3 text-center border-r border-slate-200">
-                        <img
-                          src={
-                            lead.ownerAvatar ||
-                            lead.leadAssigned?.avatar ||
-                            'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
-                          }
-                          alt={lead.owner}
-                          title={`Owner: ${lead.owner}`}
-                          className="w-7 h-7 rounded-full object-cover mx-auto border border-slate-200"
-                        />
+                        {renderUserAvatar(lead.owner, lead.ownerAvatar || lead.leadAssigned?.avatar)}
                       </td>
 
                       {/* Rating (✏ COLD / ✏ WARM / ✏ HOT) */}
@@ -1143,143 +1702,7 @@ export function LeadsContent() {
         </div>
       </div>
 
-      {/* ── MODAL 1: + LEAD (Create Lead) ────────────────────────────── */}
-      {isAddModalOpen && (
-        <Modal
-          isOpen={isAddModalOpen}
-          onClose={() => setIsAddModalOpen(false)}
-          title="Create New Lead"
-          description="Register prospective customer inquiry and assign sales representative."
-        >
-          <form onSubmit={handleCreateLead} className="space-y-3 text-xs">
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Contact Person Name *"
-                placeholder="e.g. Mr. WAQUAR"
-                value={newLead.name}
-                onChange={(e) => setNewLead({ ...newLead, name: e.target.value })}
-                required
-              />
-              <Input
-                label="Company Name *"
-                placeholder="e.g. URUGUAY GENERAL TRADING"
-                value={newLead.company}
-                onChange={(e) => setNewLead({ ...newLead, company: e.target.value })}
-                required
-              />
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Phone Number *"
-                placeholder="e.g. +971 58 194 1460"
-                value={newLead.phone}
-                onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })}
-                required
-              />
-              <Input
-                label="WhatsApp Number"
-                placeholder="e.g. +971581941460"
-                value={newLead.whatsapp}
-                onChange={(e) => setNewLead({ ...newLead, whatsapp: e.target.value })}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Email Address"
-                type="email"
-                placeholder="client@domain.ae"
-                value={newLead.email}
-                onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
-              />
-              <Select
-                label="Lead Owner"
-                value={newLead.owner}
-                onChange={(e) => setNewLead({ ...newLead, owner: e.target.value })}
-                options={[
-                  { label: 'Alex Rivera', value: 'Alex Rivera' },
-                  { label: 'Elena Rostova', value: 'Elena Rostova' },
-                  { label: 'Jordan Hayes', value: 'Jordan Hayes' },
-                  { label: 'Mohammed Rashid', value: 'Mohammed Rashid' },
-                ]}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Select
-                label="Rating"
-                value={newLead.rating}
-                onChange={(e) => setNewLead({ ...newLead, rating: e.target.value as LeadRating })}
-                options={[
-                  { label: 'Cold', value: 'Cold' },
-                  { label: 'Warm', value: 'Warm' },
-                  { label: 'Hot', value: 'Hot' },
-                ]}
-              />
-              <Select
-                label="Status"
-                value={newLead.status}
-                onChange={(e) => setNewLead({ ...newLead, status: e.target.value as LeadStatus })}
-                options={[
-                  { label: 'Contacted', value: 'Contacted' },
-                  { label: 'Pending', value: 'Pending' },
-                  { label: 'Qualified', value: 'Qualified' },
-                  { label: 'Proposal Sent', value: 'Proposal Sent' },
-                ]}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Select
-                label="Campaign"
-                value={newLead.campaign}
-                onChange={(e) => setNewLead({ ...newLead, campaign: e.target.value })}
-                options={[
-                  { label: 'SIMPLE LIFE - 2025', value: 'SIMPLE LIFE - 2025' },
-                  { label: 'REACHUAE - 2025', value: 'REACHUAE - 2025' },
-                  { label: 'ATN - 2025', value: 'ATN - 2025' },
-                  { label: 'GOOGLE AD 2025', value: 'GOOGLE AD 2025' },
-                  { label: 'META AD - 2025', value: 'META AD - 2025' },
-                ]}
-              />
-              <Select
-                label="Business Opportunity"
-                value={newLead.businessOpportunity}
-                onChange={(e) => setNewLead({ ...newLead, businessOpportunity: e.target.value })}
-                options={[
-                  { label: 'HVAC Installation', value: 'HVAC Installation' },
-                  { label: 'Commercial Construction', value: 'Commercial Construction' },
-                  { label: 'Industrial HVAC', value: 'Industrial HVAC' },
-                  { label: 'Facility Maintenance', value: 'Facility Maintenance' },
-                ]}
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Lead Specification / Requirements
-              </label>
-              <textarea
-                rows={2}
-                value={newLead.specification}
-                onChange={(e) => setNewLead({ ...newLead, specification: e.target.value })}
-                placeholder="Describe equipment capacity, project location, unit quantities..."
-                className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs focus:outline-none focus:border-blue-600"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
-              <Button type="button" variant="outline" size="sm" onClick={() => setIsAddModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" size="sm" className="bg-[#22C55E] hover:bg-[#16A34A] text-white">
-                Save & Create Lead
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
 
       {/* ── MODAL 2: View Lead Details ───────────────────────────────── */}
       {viewingLead && (
@@ -1524,21 +1947,30 @@ export function LeadsContent() {
                   Assign To
                 </label>
                 <div className="sm:col-span-9 relative flex items-center border border-slate-300 rounded-[3px] bg-white px-2.5 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
-                  <img
-                    src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
-                    alt="avatar"
-                    className="w-4 h-4 rounded-full object-cover mr-2 flex-shrink-0"
-                  />
+                  {renderUserAvatar(assignToOwner, undefined, 'w-4 h-4 mr-2 shrink-0')}
                   <select
                     value={assignToOwner}
                     onChange={(e) => setAssignToOwner(e.target.value)}
                     className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-semibold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
                   >
-                    <option value="JISMON JOSE">JISMON JOSE</option>
-                    <option value="Alex Rivera">Alex Rivera</option>
-                    <option value="Elena Rostova">Elena Rostova</option>
-                    <option value="Jordan Hayes">Jordan Hayes</option>
-                    <option value="Mohammed Rashid">Mohammed Rashid</option>
+                    {users.length > 0 ? (
+                      users.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="JISMON JOSE">JISMON JOSE</option>
+                        <option value="Alex Rivera">Alex Rivera</option>
+                        <option value="Elena Rostova">Elena Rostova</option>
+                        <option value="Jordan Hayes">Jordan Hayes</option>
+                        <option value="Mohammed Rashid">Mohammed Rashid</option>
+                      </>
+                    )}
+                    {assignToOwner && !users.some((u) => u.name === assignToOwner) && (
+                      <option value={assignToOwner}>{assignToOwner}</option>
+                    )}
                   </select>
                   <span className="absolute right-2.5 pointer-events-none text-slate-500 text-[10px]">▼</span>
                 </div>
@@ -1626,21 +2058,30 @@ export function LeadsContent() {
                   Assign To
                 </label>
                 <div className="sm:col-span-9 relative flex items-center border border-slate-300 rounded-[3px] bg-white px-2.5 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
-                  <img
-                    src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
-                    alt="avatar"
-                    className="w-4 h-4 rounded-full object-cover mr-2 flex-shrink-0"
-                  />
+                  {renderUserAvatar(assignToOwner, undefined, 'w-4 h-4 mr-2 shrink-0')}
                   <select
                     value={assignToOwner}
                     onChange={(e) => setAssignToOwner(e.target.value)}
                     className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-semibold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
                   >
-                    <option value="JISMON JOSE">JISMON JOSE</option>
-                    <option value="Alex Rivera">Alex Rivera</option>
-                    <option value="Elena Rostova">Elena Rostova</option>
-                    <option value="Jordan Hayes">Jordan Hayes</option>
-                    <option value="Mohammed Rashid">Mohammed Rashid</option>
+                    {users.length > 0 ? (
+                      users.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="JISMON JOSE">JISMON JOSE</option>
+                        <option value="Alex Rivera">Alex Rivera</option>
+                        <option value="Elena Rostova">Elena Rostova</option>
+                        <option value="Jordan Hayes">Jordan Hayes</option>
+                        <option value="Mohammed Rashid">Mohammed Rashid</option>
+                      </>
+                    )}
+                    {assignToOwner && !users.some((u) => u.name === assignToOwner) && (
+                      <option value={assignToOwner}>{assignToOwner}</option>
+                    )}
                   </select>
                   <span className="absolute right-2.5 pointer-events-none text-slate-500 text-[10px]">▼</span>
                 </div>

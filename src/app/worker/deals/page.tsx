@@ -28,19 +28,17 @@ export default function EmployeeDealsPage() {
   const filteredDeals = useMemo(() => {
     return (salesOpportunities || [])
       .filter((opp: CrmSalesOpportunity) => {
-        // 🛡️ Strict Employee Data Isolation: Only show deals assigned to this employee
+        // 🛡️ Strict Employee Data Isolation: Only show deals assigned directly to this employee
         if (isEmployee && currentUser?.name) {
           const userName = currentUser.name.trim().toLowerCase();
-          const dealOwner = (opp.ownerBadge || opp.subtitle || '').trim().toLowerCase();
-          const dealContact = (opp.contactPerson || '').trim().toLowerCase();
+          const dealOwner = (opp.owner || opp.opportunityAssigned || opp.ownerBadge || opp.subtitle || '').trim().toLowerCase();
+          const dealCreatedBy = (opp.createdBy || '').trim().toLowerCase();
 
           const isMatch =
-            dealOwner === userName ||
-            dealOwner.includes(userName) ||
-            userName.includes(dealOwner) ||
-            dealContact === userName;
+            (dealOwner && (dealOwner === userName || dealOwner.includes(userName) || userName.includes(dealOwner))) ||
+            (dealCreatedBy && (dealCreatedBy === userName || dealCreatedBy.includes(userName) || userName.includes(dealCreatedBy)));
 
-          if ((opp.ownerBadge || opp.subtitle) && !isMatch) {
+          if (!isMatch) {
             return false;
           }
         }

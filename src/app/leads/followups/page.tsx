@@ -316,8 +316,8 @@ function FollowupsContent() {
                         item.priority === 'Urgent'
                           ? 'bg-rose-100 text-rose-800'
                           : item.priority === 'High'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-slate-100 text-slate-700'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-slate-100 text-slate-700'
                       )}
                     >
                       {item.priority}

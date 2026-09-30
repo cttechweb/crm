@@ -176,13 +176,12 @@ function ManagerSalesContent() {
                     </td>
                     <td className="py-3.5 px-3">
                       <span
-                        className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                          d.stage === 'Won' || d.stage === 'Order'
+                        className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${d.stage === 'Won' || d.stage === 'Order'
                             ? 'bg-emerald-100 text-emerald-800'
                             : d.stage === 'Under Approval' || d.stage === 'On Review'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-blue-100 text-blue-800'
-                        }`}
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}
                       >
                         {d.stage}
                       </span>

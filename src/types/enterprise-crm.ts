@@ -144,10 +144,25 @@ export interface CrmCustomer {
   customerName: string;
   companyName?: string;
   contactPerson: string;
+  salutation?: string;
   phone: string;
   email: string;
   owner: string;
+  ownerAvatar?: string;
   status: 'Active' | 'Inactive' | 'Prospect';
+  type?: 'Customer' | 'Prospect';
+  date?: string;
+  createdDate?: string;
+  assignedDate?: string;
+  industryType?: string;
+  keyCustomer?: boolean | string;
+  source?: string;
+  campaign?: string;
+  tags?: string[];
+  lastEnquiry?: string;
+  openEnquiries?: number;
+  lastOrder?: string;
+  outstanding?: number;
   lastActivity: string;
   companyGroup: string;
   totalDeals: number;
@@ -155,6 +170,7 @@ export interface CrmCustomer {
   category?: string;
   address?: string;
   city?: string;
+  website?: string;
   contractStatus?: string;
   lastVisitDate?: string;
   assignedEquipmentCount?: number;
@@ -240,6 +256,7 @@ export interface CrmUser {
   department: string;
   status: 'Active' | 'Inactive';
   lastLogin: string;
+  avatar?: string;
 }
 
 export interface PermissionRule {

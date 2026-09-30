@@ -21,12 +21,30 @@ import {
   EyeOff,
   FileText,
   ShieldCheck,
+  Calendar,
+  Phone,
+  AlertCircle,
 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { authMockService, resolveDefaultPermissions } from '@/services/authMockService';
 import { Modal } from '@/components/ui/Modal';
+import { DatePicker } from '@/components/ui/DatePicker';
 import { CezconUserItem, CezconProfileItem } from '@/types/settings';
 import { CEZCON_PROFILES_DATA } from '@/data/settingsMockData';
+
+const COUNTRY_CODES = [
+  { code: '+971', country: 'United Arab Emirates', flag: '🇦🇪', iso: 'AE', minDigits: 9, maxDigits: 9, placeholder: '50 123 4567' },
+  { code: '+966', country: 'Saudi Arabia', flag: '🇸🇦', iso: 'SA', minDigits: 9, maxDigits: 9, placeholder: '50 123 4567' },
+  { code: '+968', country: 'Oman', flag: '🇴🇲', iso: 'OM', minDigits: 8, maxDigits: 8, placeholder: '9123 4567' },
+  { code: '+974', country: 'Qatar', flag: '🇶🇦', iso: 'QA', minDigits: 8, maxDigits: 8, placeholder: '3312 3456' },
+  { code: '+965', country: 'Kuwait', flag: '🇰🇼', iso: 'KW', minDigits: 8, maxDigits: 8, placeholder: '9123 4567' },
+  { code: '+973', country: 'Bahrain', flag: '🇧🇭', iso: 'BH', minDigits: 8, maxDigits: 8, placeholder: '3612 3456' },
+  { code: '+91', country: 'India', flag: '🇮🇳', iso: 'IN', minDigits: 10, maxDigits: 10, placeholder: '98765 43210' },
+  { code: '+92', country: 'Pakistan', flag: '🇵🇰', iso: 'PK', minDigits: 10, maxDigits: 10, placeholder: '300 1234567' },
+  { code: '+20', country: 'Egypt', flag: '🇪🇬', iso: 'EG', minDigits: 10, maxDigits: 10, placeholder: '10 1234 5678' },
+  { code: '+44', country: 'United Kingdom', flag: '🇬🇧', iso: 'GB', minDigits: 10, maxDigits: 11, placeholder: '7123 456789' },
+  { code: '+1', country: 'United States', flag: '🇺🇸', iso: 'US', minDigits: 10, maxDigits: 10, placeholder: '555 123 4567' },
+];
 
 export function UsersTab({
   selectedUserId,
@@ -179,6 +197,10 @@ export function UsersTab({
 
   const [editingUserId, setEditingUserId] = useState<number | string | null>(null);
 
+  // Mobile & DOB Enhancements
+  const [isCountryCodeDropdownOpen, setIsCountryCodeDropdownOpen] = useState(false);
+  const [countrySearchQuery, setCountrySearchQuery] = useState('');
+
   const [userFormData, setUserFormData] = useState({
     name: '',
     email: '',
@@ -237,6 +259,52 @@ export function UsersTab({
       canViewFinancials: false,
     } as Record<string, boolean>,
   });
+
+  const selectedCountry = useMemo(() => {
+    return (
+      COUNTRY_CODES.find((c) => c.code === userFormData.mobileCountry) ||
+      COUNTRY_CODES[0]
+    );
+  }, [userFormData.mobileCountry]);
+
+  const filteredCountryCodes = useMemo(() => {
+    if (!countrySearchQuery.trim()) return COUNTRY_CODES;
+    const q = countrySearchQuery.toLowerCase();
+    return COUNTRY_CODES.filter(
+      (c) =>
+        c.country.toLowerCase().includes(q) ||
+        c.code.includes(q) ||
+        c.iso.toLowerCase().includes(q)
+    );
+  }, [countrySearchQuery]);
+
+  const calculateAge = (dobString: string): number | null => {
+    if (!dobString) return null;
+    const birthDate = new Date(dobString);
+    if (isNaN(birthDate.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age >= 0 ? age : null;
+  };
+
+  const currentAge = useMemo(() => calculateAge(userFormData.dob), [userFormData.dob]);
+  const isDobInFuture = useMemo(() => {
+    if (!userFormData.dob) return false;
+    const birthDate = new Date(userFormData.dob);
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return birthDate > today;
+  }, [userFormData.dob]);
+
+  const isMobileValid = useMemo(() => {
+    const rawDigits = userFormData.mobileNumber.replace(/\D/g, '');
+    if (!rawDigits) return null;
+    return rawDigits.length >= selectedCountry.minDigits && rawDigits.length <= selectedCountry.maxDigits;
+  }, [userFormData.mobileNumber, selectedCountry]);
 
   const loggedInUser = authMockService.getCurrentUser();
   const isSuperAdminSession = loggedInUser?.role === 'super_admin';
@@ -842,6 +910,16 @@ export function UsersTab({
       return;
     }
 
+    if (isDobInFuture) {
+      alert('Validation Error: Date of birth cannot be in the future. Please select a valid past date.');
+      return;
+    }
+
+    if (userFormData.mobileNumber && isMobileValid === false) {
+      alert(`Validation Error: Please enter a valid ${selectedCountry.minDigits}-digit mobile number for ${selectedCountry.country}.`);
+      return;
+    }
+
     const enteredEmail = userFormData.email.trim();
     const rawUsername = userFormData.username.trim();
     const fullUsername = rawUsername.includes('@')
@@ -1056,7 +1134,7 @@ export function UsersTab({
       )}
 
       {isAddUserModalOpen ? (
-        <div className="bg-white border border-slate-200 rounded-md shadow-xs overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-md shadow-xs overflow-visible">
           <div className="flex items-center justify-between px-4 py-2.5 bg-[#F1F5F9] border-b border-slate-200">
             <div className="flex items-center gap-2 font-bold text-xs text-slate-800">
               <User className="w-4 h-4 text-slate-700" />
@@ -1214,39 +1292,148 @@ export function UsersTab({
                   </div>
                 </div>
 
+                {/* Mobile Number with Interactive Country Code & Real-Time Validation */}
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    Mobile Number
-                  </label>
-                  <div className="flex gap-2">
-                    <div className="w-24 border border-slate-300 rounded bg-white px-2 py-1.5 flex items-center justify-between text-xs text-slate-700">
-                      <span className="flex items-center gap-1">
-                        <span>🇦🇪</span>
-                        <span>+971</span>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-medium text-slate-700">
+                      Mobile Number
+                    </label>
+                    {userFormData.mobileNumber && (
+                      <span className={`text-[10px] font-semibold flex items-center gap-1 ${isMobileValid ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {isMobileValid ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-600 font-bold" />
+                            <span>Valid Mobile</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="w-3 h-3 text-amber-500" />
+                            <span>Requires {selectedCountry.minDigits} digits</span>
+                          </>
+                        )}
                       </span>
-                      <ChevronDown className="w-3 h-3 text-slate-400" />
+                    )}
+                  </div>
+                  <div className="flex gap-2 relative">
+                    {/* Country Code Selector */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setIsCountryCodeDropdownOpen(!isCountryCodeDropdownOpen)}
+                        className="h-full border border-slate-300 rounded bg-white px-2.5 py-1.5 flex items-center gap-1.5 text-xs text-slate-700 hover:bg-slate-50 focus:outline-none focus:border-sky-500 cursor-pointer shadow-2xs"
+                      >
+                        <span className="text-sm">{selectedCountry.flag}</span>
+                        <span className="font-semibold">{selectedCountry.code}</span>
+                        <ChevronDown className="w-3 h-3 text-slate-400" />
+                      </button>
+
+                      {isCountryCodeDropdownOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => setIsCountryCodeDropdownOpen(false)}
+                          />
+                          <div className="absolute left-0 top-full mt-1 w-64 bg-white border border-slate-300 rounded shadow-xl z-50 p-2 text-xs animate-in fade-in duration-100">
+                            <div className="relative mb-2">
+                              <input
+                                type="text"
+                                autoFocus
+                                value={countrySearchQuery}
+                                onChange={(e) => setCountrySearchQuery(e.target.value)}
+                                placeholder="Search country or code..."
+                                className="w-full border border-slate-300 rounded pl-7 pr-2 py-1 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
+                              />
+                              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2" />
+                            </div>
+                            <div className="max-h-48 overflow-y-auto space-y-0.5 divide-y divide-slate-100">
+                              {filteredCountryCodes.map((c) => (
+                                <button
+                                  key={c.code + c.country}
+                                  type="button"
+                                  onClick={() => {
+                                    setUserFormData((prev) => ({ ...prev, mobileCountry: c.code }));
+                                    setIsCountryCodeDropdownOpen(false);
+                                    setCountrySearchQuery('');
+                                  }}
+                                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-left hover:bg-sky-50 transition-colors cursor-pointer ${
+                                    userFormData.mobileCountry === c.code ? 'bg-sky-50/80 font-bold text-sky-700' : 'text-slate-700'
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <span className="text-sm">{c.flag}</span>
+                                    <span className="truncate max-w-[120px]">{c.country}</span>
+                                  </span>
+                                  <span className="font-mono text-[11px] text-slate-500">{c.code}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
-                    <input
-                      type="tel"
-                      value={userFormData.mobileNumber}
-                      onChange={(e) => setUserFormData({ ...userFormData, mobileNumber: e.target.value })}
-                      className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
-                    />
+
+                    {/* Numeric Input with Clean Real-Time Formatting */}
+                    <div className="flex-1 relative">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={userFormData.mobileNumber}
+                        placeholder={selectedCountry.placeholder}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, selectedCountry.maxDigits);
+                          setUserFormData({ ...userFormData, mobileNumber: digitsOnly });
+                        }}
+                        className={`w-full bg-white border rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none transition-colors ${
+                          userFormData.mobileNumber && isMobileValid === false
+                            ? 'border-amber-400 focus:border-amber-500'
+                            : userFormData.mobileNumber && isMobileValid === true
+                            ? 'border-emerald-400 focus:border-emerald-500'
+                            : 'border-slate-300 focus:border-sky-500'
+                        }`}
+                      />
+                      {userFormData.mobileNumber && (
+                        <button
+                          type="button"
+                          onClick={() => setUserFormData({ ...userFormData, mobileNumber: '' })}
+                          className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer p-0.5"
+                          title="Clear Mobile Number"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
+                {/* DOB with Custom Interactive Calendar Popover, Fast Year Jumpers & Age Badge */}
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    DOB
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={userFormData.dob}
-                      onChange={(e) => setUserFormData({ ...userFormData, dob: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
-                    />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-medium text-slate-700">
+                      DOB
+                    </label>
+                    {currentAge !== null && !isDobInFuture && (
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                        currentAge >= 18 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}>
+                        Age: {currentAge} yrs {currentAge < 18 ? '(Minor)' : ''}
+                      </span>
+                    )}
+                    {isDobInFuture && (
+                      <span className="text-[10px] font-semibold text-rose-600 flex items-center gap-0.5">
+                        <AlertCircle className="w-3 h-3" />
+                        <span>Invalid Future Date</span>
+                      </span>
+                    )}
                   </div>
+                  <DatePicker
+                    value={userFormData.dob}
+                    onChange={(dateStr) => setUserFormData({ ...userFormData, dob: dateStr })}
+                    isDob={true}
+                    maxDate={new Date().toISOString().split('T')[0]}
+                    placeholder="DD-MM-YYYY"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Select date of birth (Format: DD-MM-YYYY)</p>
                 </div>
 
                 <div className="space-y-2 pt-2">
@@ -2521,11 +2708,10 @@ export function UsersTab({
                   <label className="block text-xs font-medium text-slate-700 mb-1">
                     Joining Date
                   </label>
-                  <input
-                    type="text"
+                  <DatePicker
                     value={workerFormData.joiningDate}
-                    onChange={(e) => setWorkerFormData({ ...workerFormData, joiningDate: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
+                    onChange={(dateStr) => setWorkerFormData({ ...workerFormData, joiningDate: dateStr })}
+                    placeholder="DD-MM-YYYY"
                   />
                 </div>
               </>

@@ -325,6 +325,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
                 department: u.department || u.profileType || 'Sales',
                 status: u.status === 'Inactive' ? 'Inactive' : 'Active',
                 lastLogin: u.lastLogin || 'Recent',
+                avatar: u.avatarImage || u.avatarUrl || u.avatar || '',
               });
             });
           }
@@ -343,6 +344,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
                   department: a.department || 'Management',
                   status: a.status || 'Active',
                   lastLogin: a.lastLogin || 'Recent',
+                  avatar: a.avatar || a.avatarUrl || a.avatarImage || '',
                 });
               }
             });
@@ -383,12 +385,20 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
 
   // Task Handlers
   const addTask = (taskData: Omit<CrmTask, 'id' | 'slNo'>) => {
+    let currentTasks = tasks;
+    try {
+      const stored = localStorage.getItem('crm_tasks_data');
+      if (stored) currentTasks = JSON.parse(stored);
+    } catch (e) {
+      console.error(e);
+    }
+    const uniqueId = `TSK-${Date.now().toString().slice(-4)}${Math.floor(100 + Math.random() * 900)}`;
     const newTask: CrmTask = {
       ...taskData,
-      id: `TSK-${Math.floor(1000 + Math.random() * 9000)}`,
-      slNo: tasks.length + 1,
+      id: uniqueId,
+      slNo: currentTasks.length + 1,
     };
-    const updated = [newTask, ...tasks];
+    const updated = [newTask, ...currentTasks.filter((t) => t.id !== uniqueId)];
     setTasks(updated);
     persist('crm_tasks_data', updated);
   };
@@ -397,6 +407,17 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const assigneeName = taskData.assignedEmployee || taskData.assignee?.name || 'Assigned Employee';
     const managerName = taskData.assignedBy || taskData.createdBy || 'Operations Manager';
+    
+    let currentTasks = tasks;
+    try {
+      const stored = localStorage.getItem('crm_tasks_data');
+      if (stored) currentTasks = JSON.parse(stored);
+    } catch (e) {
+      console.error(e);
+    }
+
+    const uniqueId = taskData.id || `TSK-${Date.now().toString().slice(-4)}${Math.floor(100 + Math.random() * 900)}`;
+
     const newTask: CrmTask = {
       description: '',
       customer: 'Client Facility',
@@ -414,8 +435,8 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
       },
       ...taskData,
-      id: `TSK-${Math.floor(1000 + Math.random() * 9000)}`,
-      slNo: tasks.length + 1,
+      id: uniqueId,
+      slNo: currentTasks.length + 1,
       status: taskData.status || 'Assigned',
       progress: taskData.progress || 0,
       createdAt: new Date().toISOString(),
@@ -431,7 +452,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       ],
       comments: taskData.comments || [],
     };
-    const updated = [newTask, ...tasks];
+    const updated = [newTask, ...currentTasks.filter((t) => t.id !== uniqueId)];
     setTasks(updated);
     persist('crm_tasks_data', updated);
     return newTask;
@@ -657,13 +678,27 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   };
 
   const updateTask = (id: string, updated: Partial<CrmTask>) => {
-    const list = tasks.map((t) => (t.id === id ? { ...t, ...updated } : t));
+    let currentTasks = tasks;
+    try {
+      const stored = localStorage.getItem('crm_tasks_data');
+      if (stored) currentTasks = JSON.parse(stored);
+    } catch (e) {
+      console.error(e);
+    }
+    const list = currentTasks.map((t) => (t.id === id ? { ...t, ...updated } : t));
     setTasks(list);
     persist('crm_tasks_data', list);
   };
 
   const toggleTaskStatus = (id: string) => {
-    const list = tasks.map((t) =>
+    let currentTasks = tasks;
+    try {
+      const stored = localStorage.getItem('crm_tasks_data');
+      if (stored) currentTasks = JSON.parse(stored);
+    } catch (e) {
+      console.error(e);
+    }
+    const list = currentTasks.map((t) =>
       t.id === id ? { ...t, status: (t.status === 'Completed' ? 'Pending' : 'Completed') as any } : t
     );
     setTasks(list);
@@ -671,7 +706,14 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   };
 
   const deleteTask = (id: string) => {
-    const list = tasks.filter((t) => t.id !== id);
+    let currentTasks = tasks;
+    try {
+      const stored = localStorage.getItem('crm_tasks_data');
+      if (stored) currentTasks = JSON.parse(stored);
+    } catch (e) {
+      console.error(e);
+    }
+    const list = currentTasks.filter((t) => t.id !== id);
     setTasks(list);
     persist('crm_tasks_data', list);
   };

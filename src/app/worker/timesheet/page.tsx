@@ -132,16 +132,14 @@ export default function WorkerTimesheetPage() {
                   {attendance?.todayDate || new Date().toLocaleDateString('en-GB')}
                 </span>
                 <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    attendance?.isClockedIn
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${attendance?.isClockedIn
                       ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                       : 'bg-slate-100 text-slate-600'
-                  }`}
+                    }`}
                 >
                   <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      attendance?.isClockedIn ? 'bg-emerald-500' : 'bg-slate-400'
-                    }`}
+                    className={`w-1.5 h-1.5 rounded-full ${attendance?.isClockedIn ? 'bg-emerald-500' : 'bg-slate-400'
+                      }`}
                   />
                   {attendance?.isClockedIn ? 'Shift Active' : 'Shift Paused'}
                 </span>
@@ -156,11 +154,10 @@ export default function WorkerTimesheetPage() {
             <button
               type="button"
               onClick={handleToggleClock}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
-                attendance?.isClockedIn
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${attendance?.isClockedIn
                   ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
                   : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
-              }`}
+                }`}
             >
               {attendance?.isClockedIn ? (
                 <>
@@ -281,11 +278,10 @@ export default function WorkerTimesheetPage() {
                       </td>
                       <td className="py-2.5 px-2.5 text-center whitespace-nowrap">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                            entry.status === 'Approved'
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${entry.status === 'Approved'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               : 'bg-amber-50 text-amber-700 border border-amber-200'
-                          }`}
+                            }`}
                         >
                           {entry.status}
                         </span>

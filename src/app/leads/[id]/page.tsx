@@ -76,7 +76,7 @@ export default function LeadDetailPage({ params }: PageProps) {
         assignedDate: '23 Sep 2026',
         leadAssigned: {
           name: 'JISMON JOSE',
-          avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+          avatar: '',
         },
         contactDetails: {
           name: 'Mr. MUBARAK',
@@ -87,9 +87,9 @@ export default function LeadDetailPage({ params }: PageProps) {
         },
         leadSpecification: 'Supply of hydraulic flexible hoses and industrial fittings',
         createdBy: 'JISMON JOSE',
-        createdByAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+        createdByAvatar: '',
         owner: 'JISMON JOSE',
-        ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+        ownerAvatar: '',
         rating: 'Cold' as LeadRating,
         status: 'Contacted' as LeadStatus,
         lastActivity: '23 Sep 2026 2:15:17 PM',
@@ -101,6 +101,87 @@ export default function LeadDetailPage({ params }: PageProps) {
       }
     );
   }, [leads, resolvedParams.id]);
+
+  const getEmployeePhoto = (name?: string): string | null => {
+    if (!name) return null;
+    const clean = name.trim().toLowerCase();
+
+    const matchedUser = users.find((u) => u.name && u.name.trim().toLowerCase() === clean);
+    if (matchedUser?.avatar && !matchedUser.avatar.includes('photo-1507003211169-0a1dd7228f2d')) {
+      return matchedUser.avatar;
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const storedUsersRaw = localStorage.getItem('cezcon_crm_users_list');
+        if (storedUsersRaw) {
+          const parsed = JSON.parse(storedUsersRaw);
+          if (Array.isArray(parsed)) {
+            const found = parsed.find(
+              (u: any) =>
+                (u.name && u.name.trim().toLowerCase() === clean) ||
+                (u.username && u.username.trim().toLowerCase() === clean) ||
+                (u.email && u.email.trim().toLowerCase() === clean)
+            );
+            if (found && (found.avatarImage || found.avatarUrl || found.avatar)) {
+              return found.avatarImage || found.avatarUrl || found.avatar;
+            }
+          }
+        }
+
+        const storedAdminsRaw = localStorage.getItem('crm_admin_accounts_list');
+        if (storedAdminsRaw) {
+          const parsedAdmins = JSON.parse(storedAdminsRaw);
+          if (Array.isArray(parsedAdmins)) {
+            const foundAdmin = parsedAdmins.find(
+              (a: any) =>
+                (a.name && a.name.trim().toLowerCase() === clean) ||
+                (a.email && a.email.trim().toLowerCase() === clean)
+            );
+            if (foundAdmin && (foundAdmin.avatar || foundAdmin.avatarUrl || foundAdmin.avatarImage)) {
+              return foundAdmin.avatar || foundAdmin.avatarUrl || foundAdmin.avatarImage;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('getEmployeePhoto error:', e);
+      }
+    }
+    return null;
+  };
+
+  const renderUserAvatar = (name: string, explicitAvatar?: string, size = 'w-5 h-5') => {
+    const isMockMan = explicitAvatar?.includes('photo-1507003211169-0a1dd7228f2d');
+    const photo = (!isMockMan && explicitAvatar) || getEmployeePhoto(name);
+
+    if (photo) {
+      return (
+        <img
+          src={photo}
+          alt={name}
+          title={name}
+          className={`${size} rounded-full object-cover border border-slate-300 flex-shrink-0 shadow-2xs`}
+        />
+      );
+    }
+
+    const initials = (name || 'U')
+      .split(' ')
+      .map((w) => w[0])
+      .filter(Boolean)
+      .join('')
+      .substring(0, 2)
+      .toUpperCase() || 'U';
+
+    return (
+      <div
+        title={name}
+        className={`${size} rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-[9px] flex-shrink-0 border border-slate-300 shadow-2xs`}
+      >
+        {initials}
+      </div>
+    );
+  };
 
   // Tab State for Activities
   const [activeActivityTab, setActiveActivityTab] = useState<'Notes' | 'Task' | 'Files' | 'Sales Visit'>('Notes');
@@ -375,15 +456,7 @@ export default function LeadDetailPage({ params }: PageProps) {
               <div className="flex flex-col sm:flex-row sm:items-center">
                 <span className="text-slate-600 sm:w-36 flex-shrink-0 font-normal">Lead Owner</span>
                 <div className="flex items-center gap-2 mt-0.5 sm:mt-0">
-                  <img
-                    src={
-                      lead.ownerAvatar ||
-                      lead.createdByAvatar ||
-                      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
-                    }
-                    alt={lead.owner}
-                    className="w-5 h-5 rounded-full object-cover border border-slate-300 flex-shrink-0"
-                  />
+                  {renderUserAvatar(lead.owner || 'JISMON JOSE', lead.ownerAvatar || lead.leadAssigned?.avatar)}
                   <span className="font-bold text-slate-800 uppercase tracking-tight">
                     {lead.owner || 'JISMON JOSE'}
                   </span>
@@ -402,15 +475,7 @@ export default function LeadDetailPage({ params }: PageProps) {
               <div className="flex flex-col sm:flex-row sm:items-center">
                 <span className="text-slate-600 sm:w-36 flex-shrink-0 font-normal">Created</span>
                 <div className="flex items-center gap-2 mt-0.5 sm:mt-0">
-                  <img
-                    src={
-                      lead.createdByAvatar ||
-                      lead.ownerAvatar ||
-                      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
-                    }
-                    alt={lead.createdBy}
-                    className="w-5 h-5 rounded-full object-cover border border-slate-300 flex-shrink-0"
-                  />
+                  {renderUserAvatar(lead.createdBy || 'JISMON JOSE', lead.createdByAvatar)}
                   <span className="font-semibold text-slate-800">
                     {lead.lastActivityDate || '23 Sep 2026 2:15:17 PM'}
                   </span>
@@ -421,14 +486,7 @@ export default function LeadDetailPage({ params }: PageProps) {
               <div className="flex flex-col sm:flex-row sm:items-center">
                 <span className="text-slate-600 sm:w-36 flex-shrink-0 font-normal">Last Activity</span>
                 <div className="flex items-center gap-2 mt-0.5 sm:mt-0 flex-wrap">
-                  <img
-                    src={
-                      lead.ownerAvatar ||
-                      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
-                    }
-                    alt={lead.owner}
-                    className="w-5 h-5 rounded-full object-cover border border-slate-300 flex-shrink-0"
-                  />
+                  {renderUserAvatar(lead.owner || 'JISMON JOSE', lead.ownerAvatar || lead.leadAssigned?.avatar)}
                   <span className="font-semibold text-slate-800">
                     {lead.lastActivityDate || lead.lastActivity || '23 Sep 2026 2:15:17 PM'}
                   </span>
@@ -971,21 +1029,30 @@ export default function LeadDetailPage({ params }: PageProps) {
                   Assign To
                 </label>
                 <div className="sm:col-span-9 relative flex items-center border border-slate-300 rounded-[3px] bg-white px-2.5 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
-                  <img
-                    src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
-                    alt="avatar"
-                    className="w-4 h-4 rounded-full object-cover mr-2 flex-shrink-0"
-                  />
+                  {renderUserAvatar(assignOwner)}
                   <select
                     value={assignOwner}
                     onChange={(e) => setAssignOwner(e.target.value)}
                     className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-semibold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
                   >
-                    <option value="JISMON JOSE">JISMON JOSE</option>
-                    <option value="Alex Rivera">Alex Rivera</option>
-                    <option value="Elena Rostova">Elena Rostova</option>
-                    <option value="Jordan Hayes">Jordan Hayes</option>
-                    <option value="Mohammed Rashid">Mohammed Rashid</option>
+                    {users.length > 0 ? (
+                      users.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="JISMON JOSE">JISMON JOSE</option>
+                        <option value="Alex Rivera">Alex Rivera</option>
+                        <option value="Elena Rostova">Elena Rostova</option>
+                        <option value="Jordan Hayes">Jordan Hayes</option>
+                        <option value="Mohammed Rashid">Mohammed Rashid</option>
+                      </>
+                    )}
+                    {assignOwner && !users.some((u) => u.name === assignOwner) && (
+                      <option value={assignOwner}>{assignOwner}</option>
+                    )}
                   </select>
                   <span className="absolute right-2.5 pointer-events-none text-slate-500 text-[10px]">▼</span>
                 </div>

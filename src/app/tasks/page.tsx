@@ -42,11 +42,11 @@ import { Button } from '@/components/ui/Button';
 import { formatDate, cn } from '@/lib/utils';
 import { TaskType, TaskPriority, TaskStatus, CrmTask } from '@/types/enterprise-crm';
 
-type TaskTab = 'today' | 'pending' | 'progress' | 'overdue' | 'upcoming' | 'completed' | 'meeting';
+type TaskTab = 'all' | 'today' | 'pending' | 'progress' | 'overdue' | 'upcoming' | 'completed' | 'meeting';
 
 function TasksContent() {
   const searchParams = useSearchParams();
-  const initialView = (searchParams.get('view') || 'pending') as TaskTab;
+  const initialView = (searchParams.get('view') || 'all') as TaskTab;
 
   const { tasks, addTask, updateTask, toggleTaskStatus, deleteTask, users } = useEnterpriseCrm();
 
@@ -63,7 +63,7 @@ function TasksContent() {
 
   useEffect(() => {
     const viewParam = searchParams.get('view') as TaskTab;
-    if (viewParam && ['today', 'pending', 'progress', 'overdue', 'upcoming', 'completed', 'meeting'].includes(viewParam)) {
+    if (viewParam && ['all', 'today', 'pending', 'progress', 'overdue', 'upcoming', 'completed', 'meeting'].includes(viewParam)) {
       setActiveTab(viewParam);
       setActiveSubtype('ALL');
     }
@@ -141,45 +141,11 @@ function TasksContent() {
     return count;
   }, [sortBy, assigneeFilter, typeFilter, createdByFilter]);
 
-  // Auto-clean dummy tasks on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('crm_tasks_data');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          const genuineOnly = parsed.filter((t: any) => {
-            const title = (t.taskDetails || t.title || '').trim().toLowerCase();
-            const isGibberish =
-              title.includes('qewrty') ||
-              title.includes('efwregv') ||
-              title.includes('asdf') ||
-              title.length < 3;
-            const isFakeAlex =
-              (t.assignedBy === 'Alex Rivera (Sales Manager)' ||
-                t.assignedBy === 'Alex Rivera (Operations Manager)') &&
-              (title.includes('qewrty') || title.includes('efwregv'));
-            return !isGibberish && !isFakeAlex;
-          });
-
-          if (genuineOnly.length !== parsed.length) {
-            localStorage.setItem('crm_tasks_data', JSON.stringify(genuineOnly));
-            window.location.reload();
-          }
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }, []);
-
-  // Filter out any gibberish / test dummy entries
+  // Retain all real tasks (do not aggressively purge user-created tasks)
   const cleanTasks = useMemo(() => {
     return tasks.filter((t) => {
       const title = (t.taskDetails || t.title || '').trim().toLowerCase();
       const isGibberish =
-        title.includes('qewrty') ||
-        title.includes('efwregv') ||
         (t.assignedBy?.includes('Alex Rivera') && (title.includes('qewrty') || title.includes('efwregv')));
       return !isGibberish;
     });
@@ -189,8 +155,9 @@ function TasksContent() {
   const counts = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     return {
-      today: cleanTasks.filter((t) => t.dueDate === today).length,
-      pending: cleanTasks.filter((t) => t.status === 'Pending' || t.status === 'Assigned').length,
+      all: cleanTasks.length,
+      today: cleanTasks.filter((t) => t.dueDate === today || t.createdAt?.startsWith(today)).length,
+      pending: cleanTasks.filter((t) => t.status === 'Pending' || t.status === 'Assigned' || t.status === 'Accepted').length,
       progress: cleanTasks.filter((t) => t.status === 'In Progress').length,
       overdue: cleanTasks.filter((t) => t.status === 'Overdue' || (t.status !== 'Completed' && t.status !== 'Reviewed' && t.dueDate && t.dueDate < today)).length,
       upcoming: cleanTasks.filter((t) => t.status === 'Upcoming' || (t.dueDate && t.dueDate > today)).length,
@@ -203,7 +170,7 @@ function TasksContent() {
   const todayMeetings = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     return cleanTasks.filter(
-      (t) => (t.taskType === 'Meeting' || t.taskType === 'Demo') && t.dueDate === today
+      (t) => (t.taskType === 'Meeting' || t.taskType === 'Demo') && (t.dueDate === today || t.createdAt?.startsWith(today))
     );
   }, [cleanTasks]);
 
@@ -227,6 +194,7 @@ function TasksContent() {
 
   // Tab Labels
   const tabTitles: Record<TaskTab, string> = {
+    all: 'All Tasks',
     today: 'Task Today',
     pending: 'Task Pending',
     progress: 'Task In Progress',
@@ -240,8 +208,9 @@ function TasksContent() {
   const subtypeCounts = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     const currentTabTasks = cleanTasks.filter((task) => {
-      if (activeTab === 'today') return task.dueDate === today;
-      if (activeTab === 'pending') return task.status === 'Pending' || task.status === 'Assigned';
+      if (activeTab === 'all') return true;
+      if (activeTab === 'today') return task.dueDate === today || task.createdAt?.startsWith(today);
+      if (activeTab === 'pending') return task.status === 'Pending' || task.status === 'Assigned' || task.status === 'Accepted';
       if (activeTab === 'progress') return task.status === 'In Progress';
       if (activeTab === 'overdue') return task.status === 'Overdue' || (task.status !== 'Completed' && task.status !== 'Reviewed' && task.dueDate && task.dueDate < today);
       if (activeTab === 'upcoming') return task.status === 'Upcoming' || (task.dueDate && task.dueDate > today);
@@ -265,10 +234,12 @@ function TasksContent() {
     return cleanTasks
       .filter((task) => {
         // Tab Filtering
-        if (activeTab === 'today') {
-          if (task.dueDate !== today) return false;
+        if (activeTab === 'all') {
+          // Show all tasks
+        } else if (activeTab === 'today') {
+          if (task.dueDate !== today && !task.createdAt?.startsWith(today)) return false;
         } else if (activeTab === 'pending') {
-          if (task.status !== 'Pending' && task.status !== 'Assigned') return false;
+          if (task.status !== 'Pending' && task.status !== 'Assigned' && task.status !== 'Accepted') return false;
         } else if (activeTab === 'progress') {
           if (task.status !== 'In Progress') return false;
         } else if (activeTab === 'overdue') {
@@ -846,14 +817,14 @@ function TasksContent() {
                 TASK CREATED BY {viewingTaskInfo.createdBy || viewingTaskInfo.assignedBy || 'MUHAMMED SHIBIL'} ON{' '}
                 {viewingTaskInfo.createdAt
                   ? new Date(viewingTaskInfo.createdAt).toLocaleString('en-GB', {
-                      weekday: 'short',
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                    }).toUpperCase()
+                    weekday: 'short',
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  }).toUpperCase()
                   : 'MON, 28/09/2026, 15:51:30'}
               </span>
             </div>
@@ -988,6 +959,17 @@ function TasksContent() {
                               {viewingTaskInfo.customer || viewingTaskInfo.taskUnder?.split(' / ')[1] || 'LCC'}
                             </span>
                             <Info className="w-3.5 h-3.5 text-[#0284C7]" />
+                          </div>
+                        )}
+
+                        {/* Manager / Created By */}
+                        {(viewingTaskInfo.assignedBy || viewingTaskInfo.createdBy || viewingTaskInfo.department) && (
+                          <div className="flex items-center gap-1.5 text-slate-700 font-semibold text-xs pt-0.5">
+                            <UserCheck className="w-3.5 h-3.5 text-[#2563EB] flex-shrink-0" />
+                            <span>
+                              <span className="text-slate-400 text-[11px] font-normal">Assigned by Manager: </span>
+                              <span className="text-slate-900 font-bold">{viewingTaskInfo.assignedBy || viewingTaskInfo.createdBy || `${viewingTaskInfo.department} Manager`}</span>
+                            </span>
                           </div>
                         )}
                       </td>
@@ -1149,6 +1131,26 @@ function TasksContent() {
     <div className="space-y-3 pb-28 sm:pb-32 w-full">
       {/* ── Top Horizontal Cezcon-Style Sub-Tabs Bar ─────────────────── */}
       <div className="bg-white border border-slate-200 px-3 sm:px-4 flex items-center gap-2 overflow-x-auto no-scrollbar py-2 select-none shadow-xs rounded-lg">
+        {/* Tab 0: All Tasks */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('all');
+            setActiveSubtype('ALL');
+            setCurrentPage(1);
+          }}
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${activeTab === 'all'
+            ? 'bg-slate-900 text-white font-bold shadow-xs'
+            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+            }`}
+        >
+          <Book className="w-3.5 h-3.5" />
+          <span>All Tasks</span>
+          <span className="px-2 py-0.2 rounded text-[11px] font-bold bg-slate-700 text-white">
+            {counts.all}
+          </span>
+        </button>
+
         {/* Tab 1: Today */}
         <button
           type="button"
@@ -1164,6 +1166,9 @@ function TasksContent() {
         >
           <span className="w-2.5 h-2.5 rounded-xs bg-blue-500 inline-block" />
           <span>Today</span>
+          <span className="px-2 py-0.2 rounded text-[11px] font-bold bg-blue-600 text-white">
+            {counts.today}
+          </span>
         </button>
 
         {/* Tab 2: Pending (Active in screenshot) */}
@@ -1335,23 +1340,21 @@ function TasksContent() {
                           </td>
                           <td className="py-3 px-4">
                             <div className="space-y-1">
-                              <div className="flex items-center gap-1.5 text-[#0284C7] font-medium text-[11px]">
-                                <Key className="w-3.5 h-3.5 text-[#EF4444] flex-shrink-0" />
-                                <span className="truncate hover:underline cursor-pointer" onClick={() => setViewingTaskInfo(task)}>
-                                  {oppRef}
+                              {/* Manager Name */}
+                              <div className="flex items-center gap-1.5 text-slate-800 font-medium text-[11px]">
+                                <UserCheck className="w-3.5 h-3.5 text-[#2563EB] flex-shrink-0" />
+                                <span
+                                  className="truncate hover:underline cursor-pointer font-bold text-slate-900"
+                                  onClick={() => setViewingTaskInfo(task)}
+                                >
+                                  {task.assignedBy || task.createdBy || `${task.department || 'Sales'} Manager`}
                                 </span>
-                                <button type="button" onClick={() => setViewingTaskInfo(task)} className="text-[#0284C7] p-0.5">
-                                  <Info className="w-3 h-3" />
-                                </button>
                               </div>
-                              <div className="flex items-center gap-1.5 text-[#0284C7] font-medium text-[11px]">
-                                <Shield className="w-3.5 h-3.5 text-[#EF4444] flex-shrink-0" />
-                                <span className="truncate uppercase hover:underline cursor-pointer" onClick={() => setViewingTaskInfo(task)}>
-                                  {customerName}
-                                </span>
-                                <button type="button" onClick={() => setViewingTaskInfo(task)} className="text-[#0284C7] p-0.5">
-                                  <Info className="w-3 h-3" />
-                                </button>
+
+                              {/* Time */}
+                              <div className="flex items-center gap-1.5 text-slate-600 font-medium text-[11px]">
+                                <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                                <span>{task.dueTime || '04:00 PM'}</span>
                               </div>
                             </div>
                           </td>
@@ -2032,22 +2035,18 @@ function TasksContent() {
                         </div>
                       </div>
 
-                      {/* Task Under Box */}
+                      {/* Task Under Box: Manager & Time Only */}
                       <div className="bg-slate-50 p-2.5 rounded border border-slate-100 space-y-1 text-xs">
-                        <div className="flex items-center gap-1.5 text-[#0284C7] font-medium text-[11px]">
-                          <Key className="w-3.5 h-3.5 text-[#EF4444] shrink-0" />
-                          <span className="truncate hover:underline cursor-pointer" onClick={() => setViewingTaskInfo(task)}>
-                            {oppRef}
+                        <div className="flex items-center gap-1.5 text-slate-800 font-medium text-[11px]">
+                          <UserCheck className="w-3.5 h-3.5 text-[#2563EB] shrink-0" />
+                          <span className="truncate hover:underline cursor-pointer font-bold text-slate-900" onClick={() => setViewingTaskInfo(task)}>
+                            {task.assignedBy || task.createdBy || `${task.department || 'Sales'} Manager`}
                           </span>
                         </div>
-                        {customerName && customerName !== oppRef && (
-                          <div className="flex items-center gap-1.5 text-[#0284C7] font-medium text-[11px]">
-                            <Shield className="w-3.5 h-3.5 text-[#EF4444] shrink-0" />
-                            <span className="truncate uppercase hover:underline cursor-pointer" onClick={() => setViewingTaskInfo(task)}>
-                              {customerName}
-                            </span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1.5 text-slate-600 font-medium text-[11px]">
+                          <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span>{task.dueTime || '04:00 PM'}</span>
+                        </div>
                       </div>
 
                       {/* Footer: Due Date & Task Type */}
@@ -2145,42 +2144,33 @@ function TasksContent() {
                             </div>
                           </td>
 
-                          {/* Task Under: Opportunity (Key icon) + Customer (Shield icon) */}
+                          {/* Task Under: Assigned Manager & Time Only */}
                           <td className="py-2.5 px-3">
                             <div className="space-y-1">
-                              {/* Opportunity Ref with Key icon */}
-                              <div className="flex items-center gap-1.5 text-[#0284C7] font-medium text-[11px]">
-                                <Key className="w-3.5 h-3.5 text-[#EF4444] flex-shrink-0" />
-                                <span className="truncate hover:underline cursor-pointer" onClick={() => setViewingTaskInfo(task)}>
-                                  {oppRef}
+                              {/* Manager Name */}
+                              <div className="flex items-center gap-1.5 text-slate-800 font-medium text-[11px]">
+                                <UserCheck className="w-3.5 h-3.5 text-[#2563EB] flex-shrink-0" />
+                                <span
+                                  className="truncate hover:underline cursor-pointer font-bold text-slate-900"
+                                  onClick={() => setViewingTaskInfo(task)}
+                                >
+                                  {task.assignedBy || task.createdBy || `${task.department || 'Sales'} Manager`}
                                 </span>
                                 <button
                                   type="button"
                                   onClick={() => setViewingTaskInfo(task)}
-                                  className="text-[#0284C7] hover:text-[#0369A1] p-0.5 flex-shrink-0"
-                                  title="Opportunity Details"
+                                  className="text-[#0284C7] hover:text-[#0369A1] p-0.5 flex-shrink-0 cursor-pointer"
+                                  title="Manager Details"
                                 >
                                   <Info className="w-3.5 h-3.5" />
                                 </button>
                               </div>
 
-                              {/* Customer with Shield icon (only if different & present) */}
-                              {customerName && customerName !== oppRef && (
-                                <div className="flex items-center gap-1.5 text-[#0284C7] font-medium text-[11px]">
-                                  <Shield className="w-3.5 h-3.5 text-[#EF4444] flex-shrink-0" />
-                                  <span className="truncate uppercase hover:underline cursor-pointer max-w-[200px]" onClick={() => setViewingTaskInfo(task)}>
-                                    {customerName}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setViewingTaskInfo(task)}
-                                    className="text-[#0284C7] hover:text-[#0369A1] p-0.5 flex-shrink-0"
-                                    title="Customer Details"
-                                  >
-                                    <Info className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              )}
+                              {/* Time */}
+                              <div className="flex items-center gap-1.5 text-slate-600 font-medium text-[11px]">
+                                <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                                <span>{task.dueTime || '04:00 PM'}</span>
+                              </div>
                             </div>
                           </td>
 

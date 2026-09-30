@@ -24,6 +24,7 @@ import {
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { CrmLead, LeadRating, LeadStatus } from '@/types/enterprise-crm';
 import { cn } from '@/lib/utils';
+import { DatePicker } from '@/components/ui/DatePicker';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -37,7 +38,89 @@ export default function ConvertLeadPage({ params }: PageProps) {
     updateLead,
     addCustomer,
     addOpportunity,
+    users,
   } = useEnterpriseCrm();
+
+  const getEmployeePhoto = (name?: string): string | null => {
+    if (!name) return null;
+    const clean = name.trim().toLowerCase();
+
+    const matchedUser = users.find((u) => u.name && u.name.trim().toLowerCase() === clean);
+    if (matchedUser?.avatar && !matchedUser.avatar.includes('photo-1507003211169-0a1dd7228f2d')) {
+      return matchedUser.avatar;
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const storedUsersRaw = localStorage.getItem('cezcon_crm_users_list');
+        if (storedUsersRaw) {
+          const parsed = JSON.parse(storedUsersRaw);
+          if (Array.isArray(parsed)) {
+            const found = parsed.find(
+              (u: any) =>
+                (u.name && u.name.trim().toLowerCase() === clean) ||
+                (u.username && u.username.trim().toLowerCase() === clean) ||
+                (u.email && u.email.trim().toLowerCase() === clean)
+            );
+            if (found && (found.avatarImage || found.avatarUrl || found.avatar)) {
+              return found.avatarImage || found.avatarUrl || found.avatar;
+            }
+          }
+        }
+
+        const storedAdminsRaw = localStorage.getItem('crm_admin_accounts_list');
+        if (storedAdminsRaw) {
+          const parsedAdmins = JSON.parse(storedAdminsRaw);
+          if (Array.isArray(parsedAdmins)) {
+            const foundAdmin = parsedAdmins.find(
+              (a: any) =>
+                (a.name && a.name.trim().toLowerCase() === clean) ||
+                (a.email && a.email.trim().toLowerCase() === clean)
+            );
+            if (foundAdmin && (foundAdmin.avatar || foundAdmin.avatarUrl || foundAdmin.avatarImage)) {
+              return foundAdmin.avatar || foundAdmin.avatarUrl || foundAdmin.avatarImage;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('getEmployeePhoto error:', e);
+      }
+    }
+    return null;
+  };
+
+  const renderUserAvatar = (name: string, explicitAvatar?: string, size = 'w-5 h-5') => {
+    const isMockMan = explicitAvatar?.includes('photo-1507003211169-0a1dd7228f2d');
+    const photo = (!isMockMan && explicitAvatar) || getEmployeePhoto(name);
+
+    if (photo) {
+      return (
+        <img
+          src={photo}
+          alt={name}
+          title={name}
+          className={`${size} rounded-full object-cover border border-slate-300 flex-shrink-0 shadow-2xs mr-2`}
+        />
+      );
+    }
+
+    const initials = (name || 'U')
+      .split(' ')
+      .map((w) => w[0])
+      .filter(Boolean)
+      .join('')
+      .substring(0, 2)
+      .toUpperCase() || 'U';
+
+    return (
+      <div
+        title={name}
+        className={`${size} rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-[9px] flex-shrink-0 border border-slate-300 shadow-2xs mr-2`}
+      >
+        {initials}
+      </div>
+    );
+  };
 
   // Find lead by ID or fallback
   const lead = useMemo(() => {
@@ -260,7 +343,7 @@ export default function ConvertLeadPage({ params }: PageProps) {
 
       {/* ── Main Convert Form ──────────────────────────────────────── */}
       <form onSubmit={handleConvertSubmit} className="space-y-4">
-        
+
         {/* Owner Selector Bar */}
         <div className="bg-white border border-slate-200 rounded-[3px] shadow-xs p-3 sm:p-4">
           <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2 sm:gap-4 text-xs sm:text-[13px]">
@@ -268,21 +351,30 @@ export default function ConvertLeadPage({ params }: PageProps) {
               Owner
             </label>
             <div className="sm:col-span-10 max-w-md relative flex items-center border border-slate-300 rounded-[3px] bg-white px-2.5 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
-              <img
-                src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
-                alt="avatar"
-                className="w-4 h-4 rounded-full object-cover mr-2 flex-shrink-0"
-              />
+              {renderUserAvatar(owner)}
               <select
                 value={owner}
                 onChange={(e) => setOwner(e.target.value)}
                 className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-semibold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
               >
-                <option value="JISMON JOSE">JISMON JOSE</option>
-                <option value="Alex Rivera">Alex Rivera</option>
-                <option value="Elena Rostova">Elena Rostova</option>
-                <option value="Jordan Hayes">Jordan Hayes</option>
-                <option value="Mohammed Rashid">Mohammed Rashid</option>
+                {users.length > 0 ? (
+                  users.map((u) => (
+                    <option key={u.id} value={u.name}>
+                      {u.name}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="JISMON JOSE">JISMON JOSE</option>
+                    <option value="Alex Rivera">Alex Rivera</option>
+                    <option value="Elena Rostova">Elena Rostova</option>
+                    <option value="Jordan Hayes">Jordan Hayes</option>
+                    <option value="Mohammed Rashid">Mohammed Rashid</option>
+                  </>
+                )}
+                {owner && !users.some((u) => u.name === owner) && (
+                  <option value={owner}>{owner}</option>
+                )}
               </select>
               <span className="absolute right-2.5 pointer-events-none text-slate-500 text-[10px]">▼</span>
             </div>
@@ -299,7 +391,7 @@ export default function ConvertLeadPage({ params }: PageProps) {
 
           <div className="p-4 sm:p-5 text-xs sm:text-[13px]">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-y-3.5 gap-x-12">
-              
+
               {/* Left Column */}
               <div className="space-y-3.5">
                 {/* Contact Name ✓ */}
@@ -560,7 +652,7 @@ export default function ConvertLeadPage({ params }: PageProps) {
 
           <div className="p-4 sm:p-5 text-xs sm:text-[13px]">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-y-3.5 gap-x-12">
-              
+
               {/* Left Column */}
               <div className="space-y-3.5">
                 {/* Customer Name * */}
@@ -919,7 +1011,7 @@ export default function ConvertLeadPage({ params }: PageProps) {
           </label>
 
           {includeOpportunity && (
-            <div className="bg-white border border-slate-200 rounded-[3px] shadow-xs overflow-hidden animate-in fade-in duration-150">
+            <div className="bg-white border border-slate-200 rounded-[3px] shadow-xs overflow-visible animate-in fade-in duration-150">
               {/* Card Header */}
               <div className="bg-[#f1f3f7] border-b border-slate-200 px-3 sm:px-4 py-2 flex items-center gap-2">
                 <FileText className="w-4 h-4 text-slate-600" />
@@ -928,7 +1020,7 @@ export default function ConvertLeadPage({ params }: PageProps) {
 
               <div className="p-4 sm:p-5 text-xs sm:text-[13px]">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-y-3.5 gap-x-12">
-                  
+
                   {/* Left Column */}
                   <div className="space-y-3.5">
                     {/* Opportunity Title * */}
@@ -1067,15 +1159,12 @@ export default function ConvertLeadPage({ params }: PageProps) {
                     {/* Delivery Date */}
                     <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-1.5 sm:gap-3">
                       <label className="sm:col-span-4 text-slate-700 font-normal">Delivery Date</label>
-                      <div className="sm:col-span-8 relative flex items-center border border-slate-300 rounded-[3px] bg-white px-3 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
-                        <input
-                          type="text"
+                      <div className="sm:col-span-8">
+                        <DatePicker
                           value={deliveryDate}
-                          onChange={(e) => setDeliveryDate(e.target.value)}
+                          onChange={(val) => setDeliveryDate(val)}
                           placeholder="DD-MM-YYYY"
-                          className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-mono focus:outline-none"
                         />
-                        <Calendar className="w-4 h-4 text-slate-500 flex-shrink-0 ml-2" />
                       </div>
                     </div>
                   </div>
@@ -1085,14 +1174,12 @@ export default function ConvertLeadPage({ params }: PageProps) {
                     {/* Opportunity Date */}
                     <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-1.5 sm:gap-3">
                       <label className="sm:col-span-4 text-slate-700 font-normal">Opportunity Date</label>
-                      <div className="sm:col-span-8 relative flex items-center border border-slate-300 rounded-[3px] bg-white px-3 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
-                        <input
-                          type="text"
+                      <div className="sm:col-span-8">
+                        <DatePicker
                           value={oppDate}
-                          onChange={(e) => setOppDate(e.target.value)}
-                          className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-mono focus:outline-none"
+                          onChange={(val) => setOppDate(val)}
+                          placeholder="DD-MM-YYYY"
                         />
-                        <Calendar className="w-4 h-4 text-slate-500 flex-shrink-0 ml-2" />
                       </div>
                     </div>
 
@@ -1127,13 +1214,11 @@ export default function ConvertLeadPage({ params }: PageProps) {
                       <label className="sm:col-span-4 text-slate-700 font-normal">
                         Close Date <span className="text-red-500">*</span>
                       </label>
-                      <div className="sm:col-span-8 relative flex items-center border border-slate-300 rounded-[3px] bg-white px-3 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
-                        <input
-                          type="date"
-                          required={includeOpportunity}
+                      <div className="sm:col-span-8">
+                        <DatePicker
                           value={oppCloseDate}
-                          onChange={(e) => setOppCloseDate(e.target.value)}
-                          className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] focus:outline-none"
+                          onChange={(val) => setOppCloseDate(val)}
+                          placeholder="DD-MM-YYYY"
                         />
                       </div>
                     </div>
@@ -1168,15 +1253,12 @@ export default function ConvertLeadPage({ params }: PageProps) {
                     {/* LPO Date */}
                     <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-1.5 sm:gap-3">
                       <label className="sm:col-span-4 text-slate-700 font-normal">LPO Date</label>
-                      <div className="sm:col-span-8 relative flex items-center border border-slate-300 rounded-[3px] bg-white px-3 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
-                        <input
-                          type="text"
+                      <div className="sm:col-span-8">
+                        <DatePicker
                           value={lpoDate}
-                          onChange={(e) => setLpoDate(e.target.value)}
+                          onChange={(val) => setLpoDate(val)}
                           placeholder="DD-MM-YYYY"
-                          className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-mono focus:outline-none"
                         />
-                        <Calendar className="w-4 h-4 text-slate-500 flex-shrink-0 ml-2" />
                       </div>
                     </div>
 
