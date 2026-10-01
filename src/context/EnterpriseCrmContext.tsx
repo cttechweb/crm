@@ -235,40 +235,6 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     const loadAllData = () => {
       try {
-        const isFreshClean = localStorage.getItem('crm_fresh_clean_init_v2');
-        if (!isFreshClean) {
-          localStorage.removeItem('crm_leads_data');
-          localStorage.removeItem('crm_customers_data');
-          localStorage.removeItem('crm_opportunities_data');
-          localStorage.removeItem('crm_tasks_data');
-          localStorage.removeItem('crm_quotations_data');
-          localStorage.removeItem('crm_orders_data');
-          localStorage.removeItem('crm_invoices_data');
-          localStorage.removeItem('crm_receipts_data');
-          localStorage.removeItem('crm_delivery_notes_data');
-          localStorage.removeItem('crm_campaigns_data');
-          localStorage.removeItem('crm_stocks_data');
-          localStorage.removeItem('cool_worker_tasks');
-          localStorage.removeItem('cool_material_requests');
-          localStorage.removeItem('cool_timesheet');
-          localStorage.removeItem('crm_manager_tasks');
-          localStorage.removeItem('crm_manager_opportunities');
-          localStorage.removeItem('crm_manager_activities');
-          localStorage.setItem('crm_fresh_clean_init_v2', 'true');
-          setLeads([]);
-          setCustomers([]);
-          setSalesOpportunities([]);
-          setTasks([]);
-          setQuotations([]);
-          setSalesOrders([]);
-          setInvoices([]);
-          setReceipts([]);
-          setDeliveryNotes([]);
-          setCampaigns([]);
-          setPurchaseStocks([]);
-          return;
-        }
-
         const storedLeads = localStorage.getItem('crm_leads_data');
         if (storedLeads) {
           const parsed = JSON.parse(storedLeads);

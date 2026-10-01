@@ -124,6 +124,7 @@ function ManagerTasksContent() {
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [usersVersion, setUsersVersion] = useState(0);
+  const [tasksVersion, setTasksVersion] = useState(0);
 
   // Current Logged-in Manager Info with live client hydration
   const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(() => authMockService.getCurrentUser());
@@ -133,6 +134,20 @@ function ManagerTasksContent() {
     if (user) {
       setCurrentUser(user);
     }
+  }, []);
+
+  useEffect(() => {
+    const handleTaskChange = () => {
+      setTasksVersion((v) => v + 1);
+    };
+    window.addEventListener('crm_tasks_updated', handleTaskChange);
+    window.addEventListener('crm_data_updated', handleTaskChange);
+    window.addEventListener('storage', handleTaskChange);
+    return () => {
+      window.removeEventListener('crm_tasks_updated', handleTaskChange);
+      window.removeEventListener('crm_data_updated', handleTaskChange);
+      window.removeEventListener('storage', handleTaskChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -810,20 +825,23 @@ function ManagerTasksContent() {
 
   // Immediate fallback hydration from localStorage to prevent empty-state flicker during hydration
   const displayTasks = useMemo(() => {
-    if (tasks && tasks.length > 0) return tasks;
+    let localData: CrmTask[] = [];
     if (typeof window !== 'undefined') {
       try {
         const stored = localStorage.getItem('crm_tasks_data');
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            localData = parsed;
+          }
         }
       } catch (e) {
         console.error(e);
       }
     }
+    if (localData.length > 0) return localData;
     return tasks || [];
-  }, [tasks]);
+  }, [tasks, tasksVersion]);
 
   const filteredTasks = useMemo(() => {
     return displayTasks.filter((t) => {
@@ -833,20 +851,26 @@ function ManagerTasksContent() {
       const dept = t.department || '';
       const loc = t.location || t.description || '';
       const taskType = t.taskType || '';
+      const assignedBy = t.assignedBy || '';
+      const createdBy = t.createdBy || '';
 
       // Direct Creator / Assigner Ownership Guarantee:
-      // If task was assigned/created by this manager, ALWAYS display it to them
+      // If task was assigned/created by this manager or matches current domain
       const isCreatedByMe =
         Boolean(
           currentUser?.name &&
-            ((t.assignedBy && t.assignedBy.toLowerCase().includes(nameStr)) ||
-              (t.createdBy && t.createdBy.toLowerCase().includes(nameStr)))
+            ((assignedBy && assignedBy.toLowerCase().includes(nameStr)) ||
+              (createdBy && createdBy.toLowerCase().includes(nameStr)))
         ) ||
         (Boolean(currentUser?.id) &&
-          (String(t.assignedBy) === String(currentUser?.id) ||
-            String(t.createdBy) === String(currentUser?.id)));
+          (String(assignedBy) === String(currentUser?.id) ||
+            String(createdBy) === String(currentUser?.id))) ||
+        (isSalesManager && (assignedBy.toLowerCase().includes('sales') || createdBy.toLowerCase().includes('sales') || dept.toLowerCase().includes('sales'))) ||
+        (isMarketingManager && (assignedBy.toLowerCase().includes('marketing') || createdBy.toLowerCase().includes('marketing') || dept.toLowerCase().includes('marketing'))) ||
+        (isPurchaseManager && (assignedBy.toLowerCase().includes('purchase') || createdBy.toLowerCase().includes('purchase') || dept.toLowerCase().includes('purchase'))) ||
+        (isOperationsManager && (assignedBy.toLowerCase().includes('operation') || createdBy.toLowerCase().includes('operation') || dept.toLowerCase().includes('operation')));
 
-      // Strict Domain Isolation for Manager Roles (when not created by current manager)
+      // Strict Domain Isolation for Manager Roles (when not created by / matching current manager)
       if (!isSuperAdminOrAdmin && !isCreatedByMe) {
         if (isSalesManager) {
           const isMarketing = dept.toLowerCase().includes('marketing') || dept.toLowerCase().includes('digital marketing');
