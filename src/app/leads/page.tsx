@@ -202,6 +202,22 @@ export function LeadsContent() {
     return Array.from(memberIdentifiers);
   }, [currentUser]);
 
+  // Country Phone Rules & Validation Schemas
+  const COUNTRY_DIAL_RULES: Record<string, { minDigits: number; maxDigits: number; label: string; placeholder: string }> = {
+    '+971': { minDigits: 9, maxDigits: 9, label: 'UAE', placeholder: '50 123 4567' },
+    '+966': { minDigits: 9, maxDigits: 9, label: 'Saudi Arabia', placeholder: '50 123 4567' },
+    '+968': { minDigits: 8, maxDigits: 8, label: 'Oman', placeholder: '9123 4567' },
+    '+974': { minDigits: 8, maxDigits: 8, label: 'Qatar', placeholder: '3312 3456' },
+    '+965': { minDigits: 8, maxDigits: 8, label: 'Kuwait', placeholder: '9123 4567' },
+    '+973': { minDigits: 8, maxDigits: 8, label: 'Bahrain', placeholder: '3612 3456' },
+    '+91': { minDigits: 10, maxDigits: 10, label: 'India', placeholder: '98765 43210' },
+    '+92': { minDigits: 10, maxDigits: 10, label: 'Pakistan', placeholder: '300 1234567' },
+    '+44': { minDigits: 10, maxDigits: 11, label: 'UK', placeholder: '7123 456789' },
+    '+1': { minDigits: 10, maxDigits: 10, label: 'USA', placeholder: '555 123 4567' },
+  };
+
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
   // New Lead Form State (Full Cezcon CRM Compatibility)
   const [newLead, setNewLead] = useState({
     owner: currentUser?.name || '',
@@ -401,8 +417,55 @@ export function LeadsContent() {
     );
   };
 
+  const validateLeadForm = () => {
+    const errors: Record<string, string> = {};
+
+    if (!newLead.name.trim()) {
+      errors.name = 'Contact Name is required';
+    } else if (newLead.name.trim().length < 2) {
+      errors.name = 'Contact Name must be at least 2 characters';
+    }
+
+    if (newLead.email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(newLead.email.trim())) {
+        errors.email = 'Please enter a valid email address (e.g. name@domain.com)';
+      }
+    }
+
+    if (newLead.businessMobile.trim()) {
+      const cleanDigits = newLead.businessMobile.replace(/\D/g, '');
+      const rule = COUNTRY_DIAL_RULES[newLead.businessMobileCode] || { minDigits: 7, maxDigits: 15, label: 'Selected Country', placeholder: '' };
+      if (cleanDigits.length < rule.minDigits || cleanDigits.length > rule.maxDigits) {
+        errors.businessMobile = `${rule.label} (${newLead.businessMobileCode}) requires ${rule.minDigits === rule.maxDigits ? `${rule.minDigits} digits` : `${rule.minDigits}-${rule.maxDigits} digits`} (entered: ${cleanDigits.length})`;
+      }
+    }
+
+    if (newLead.personalMobile.trim()) {
+      const cleanDigits = newLead.personalMobile.replace(/\D/g, '');
+      const rule = COUNTRY_DIAL_RULES[newLead.personalMobileCode] || { minDigits: 7, maxDigits: 15, label: 'Selected Country', placeholder: '' };
+      if (cleanDigits.length < rule.minDigits || cleanDigits.length > rule.maxDigits) {
+        errors.personalMobile = `${rule.label} (${newLead.personalMobileCode}) requires ${rule.minDigits === rule.maxDigits ? `${rule.minDigits} digits` : `${rule.minDigits}-${rule.maxDigits} digits`} (entered: ${cleanDigits.length})`;
+      }
+    }
+
+    if (newLead.tel.trim()) {
+      const cleanDigits = newLead.tel.replace(/\D/g, '');
+      if (cleanDigits.length < 6 || cleanDigits.length > 12) {
+        errors.tel = `Landline requires between 6 and 12 digits (entered: ${cleanDigits.length})`;
+      }
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleCreateLead = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateLeadForm()) {
+      return;
+    }
+
     const contactDisplayName = newLead.name.trim() ? `${newLead.contactPrefix} ${newLead.name.trim()}` : (newLead.customerName || 'Point of contact');
     const companyDisplayName = newLead.customerName.trim() || newLead.name.trim() || 'New Enterprise Client';
 
@@ -414,7 +477,9 @@ export function LeadsContent() {
     const ownerAvatarImg = getEmployeePhoto(effectiveOwner) || currentUser?.avatar || '';
     const createdByAvatarImg = getEmployeePhoto(effectiveCreatedBy) || currentUser?.avatar || '';
 
-    const mainPhone = newLead.businessMobile ? `${newLead.businessMobileCode} ${newLead.businessMobile}` : (newLead.personalMobile ? `${newLead.personalMobileCode} ${newLead.personalMobile}` : '+971 50 123 4567');
+    const cleanBiz = newLead.businessMobile.replace(/\D/g, '');
+    const cleanPersonal = newLead.personalMobile.replace(/\D/g, '');
+    const mainPhone = cleanBiz ? `${newLead.businessMobileCode} ${cleanBiz}` : (cleanPersonal ? `${newLead.personalMobileCode} ${cleanPersonal}` : '+971 50 123 4567');
 
     addLead({
       leadDate: newLead.leadDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
@@ -427,8 +492,8 @@ export function LeadsContent() {
         name: contactDisplayName,
         company: companyDisplayName,
         phone: mainPhone,
-        email: newLead.email,
-        whatsapp: newLead.personalMobile ? `${newLead.personalMobileCode} ${newLead.personalMobile}` : mainPhone,
+        email: newLead.email.trim(),
+        whatsapp: cleanPersonal ? `${newLead.personalMobileCode} ${cleanPersonal}` : mainPhone,
       },
       leadSpecification: newLead.comments || newLead.businessOpportunity || 'Commercial client HVAC specification',
       createdBy: effectiveCreatedBy,
@@ -442,13 +507,14 @@ export function LeadsContent() {
       lastActivity: 'Just created',
       lastActivityDate: `${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       lastActivityTimeAgo: 'Just now',
-      value: 50000,
+      value: 0,
       source: newLead.source || 'Website Inbound',
       campaign: newLead.campaign || 'SIMPLE LIFE - 2025',
       businessOpportunity: newLead.businessOpportunity || 'HVAC Installation',
       tags: newLead.leadTags ? newLead.leadTags.split(',').map((t) => t.trim()) : ['New Lead'],
     });
 
+    setFormErrors({});
     setIsAddModalOpen(false);
     setNewLead({
       owner: currentUser?.name || '',
@@ -486,6 +552,9 @@ export function LeadsContent() {
   };
 
   if (isAddModalOpen) {
+    const bizRule = COUNTRY_DIAL_RULES[newLead.businessMobileCode] || { maxDigits: 15, placeholder: '50 123 4567' };
+    const persRule = COUNTRY_DIAL_RULES[newLead.personalMobileCode] || { maxDigits: 15, placeholder: '50 123 4567' };
+
     return (
       <div className="space-y-3 pb-8 text-[#212529] animate-in fade-in duration-150">
         <div className="bg-white border border-slate-200 rounded shadow-xs overflow-hidden">
@@ -497,7 +566,10 @@ export function LeadsContent() {
             </div>
             <button
               type="button"
-              onClick={() => setIsAddModalOpen(false)}
+              onClick={() => {
+                setFormErrors({});
+                setIsAddModalOpen(false);
+              }}
               className="w-5 h-5 rounded bg-[#E11D48] text-white flex items-center justify-center hover:bg-[#BE123C] transition-colors cursor-pointer font-black text-xs shadow-2xs"
               title="Close"
             >
@@ -506,7 +578,7 @@ export function LeadsContent() {
           </div>
 
           {/* 2-Column Cezcon Form */}
-          <form onSubmit={handleCreateLead} className="p-5 sm:p-7 space-y-4 text-xs">
+          <form onSubmit={handleCreateLead} noValidate className="p-5 sm:p-7 space-y-4 text-xs">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-3.5">
               {/* ── LEFT COLUMN ── */}
               <div className="space-y-3.5">
@@ -527,77 +599,158 @@ export function LeadsContent() {
                 </div>
 
                 {/* 2. Contact Name * */}
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
-                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-start">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 pt-1.5">
                     Contact Name <span className="text-red-500">*</span>
                   </label>
-                  <div className="sm:col-span-9 flex items-center gap-1.5">
-                    <select
-                      value={newLead.contactPrefix}
-                      onChange={(e) => setNewLead({ ...newLead, contactPrefix: e.target.value })}
-                      className="w-20 bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs shrink-0 cursor-pointer"
-                    >
-                      <option value="Mr.">Mr.</option>
-                      <option value="Ms.">Ms.</option>
-                      <option value="Mrs.">Mrs.</option>
-                      <option value="Dr.">Dr.</option>
-                      <option value="Eng.">Eng.</option>
-                    </select>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Point of contact"
-                      value={newLead.name}
-                      onChange={(e) => setNewLead({ ...newLead, name: e.target.value })}
-                      className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
-                    />
+                  <div className="sm:col-span-9">
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={newLead.contactPrefix}
+                        onChange={(e) => setNewLead({ ...newLead, contactPrefix: e.target.value })}
+                        className="w-20 bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs shrink-0 cursor-pointer"
+                      >
+                        <option value="Mr.">Mr.</option>
+                        <option value="Ms.">Ms.</option>
+                        <option value="Mrs.">Mrs.</option>
+                        <option value="Dr.">Dr.</option>
+                        <option value="Eng.">Eng.</option>
+                      </select>
+                      <input
+                        type="text"
+                        placeholder="Point of contact"
+                        value={newLead.name}
+                        onChange={(e) => {
+                          setNewLead({ ...newLead, name: e.target.value });
+                          if (formErrors.name) {
+                            setFormErrors((prev) => {
+                              const copy = { ...prev };
+                              delete copy.name;
+                              return copy;
+                            });
+                          }
+                        }}
+                        className={cn(
+                          "flex-1 bg-white border rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none shadow-2xs transition-colors",
+                          formErrors.name
+                            ? "border-red-500 bg-red-50/20 focus:border-red-500 focus:ring-1 focus:ring-red-500/20"
+                            : "border-slate-300 focus:border-blue-500"
+                        )}
+                      />
+                    </div>
+                    {formErrors.name && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1 animate-in fade-in flex items-center gap-1">
+                        <span>⚠️</span> {formErrors.name}
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 {/* 3. Business Mobile */}
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
-                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-start">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1 pt-1.5">
                     <Smartphone className="w-3.5 h-3.5 text-[#EA580C] shrink-0" />
                     <span>Business Mobile</span>
                   </label>
-                  <div className="sm:col-span-9 flex items-center gap-1.5">
-                    <select
-                      value={newLead.businessMobileCode}
-                      onChange={(e) => setNewLead({ ...newLead, businessMobileCode: e.target.value })}
-                      className="w-24 bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs shrink-0 cursor-pointer"
-                    >
-                      <option value="+971">🇦🇪 +971</option>
-                      <option value="+966">🇸🇦 +966</option>
-                      <option value="+968">🇴🇲 +968</option>
-                      <option value="+91">🇮🇳 +91</option>
-                      <option value="+92">🇵🇰 +92</option>
-                      <option value="+44">🇬🇧 +44</option>
-                      <option value="+1">🇺🇸 +1</option>
-                    </select>
-                    <input
-                      type="tel"
-                      placeholder=""
-                      value={newLead.businessMobile}
-                      onChange={(e) => setNewLead({ ...newLead, businessMobile: e.target.value })}
-                      className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
-                    />
+                  <div className="sm:col-span-9">
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={newLead.businessMobileCode}
+                        onChange={(e) => {
+                          const newCode = e.target.value;
+                          const rule = COUNTRY_DIAL_RULES[newCode] || { maxDigits: 15 };
+                          setNewLead({
+                            ...newLead,
+                            businessMobileCode: newCode,
+                            businessMobile: newLead.businessMobile.replace(/\D/g, '').slice(0, rule.maxDigits),
+                          });
+                          if (formErrors.businessMobile) {
+                            setFormErrors((prev) => {
+                              const copy = { ...prev };
+                              delete copy.businessMobile;
+                              return copy;
+                            });
+                          }
+                        }}
+                        className="w-24 bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs shrink-0 cursor-pointer"
+                      >
+                        <option value="+971">🇦🇪 +971</option>
+                        <option value="+966">🇸🇦 +966</option>
+                        <option value="+968">🇴🇲 +968</option>
+                        <option value="+974">🇶🇦 +974</option>
+                        <option value="+965">🇰🇼 +965</option>
+                        <option value="+973">🇧🇭 +973</option>
+                        <option value="+91">🇮🇳 +91</option>
+                        <option value="+92">🇵🇰 +92</option>
+                        <option value="+44">🇬🇧 +44</option>
+                        <option value="+1">🇺🇸 +1</option>
+                      </select>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={bizRule.maxDigits}
+                        placeholder={bizRule.placeholder || 'e.g. 501234567'}
+                        value={newLead.businessMobile}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, bizRule.maxDigits);
+                          setNewLead({ ...newLead, businessMobile: digitsOnly });
+                          if (formErrors.businessMobile) {
+                            setFormErrors((prev) => {
+                              const copy = { ...prev };
+                              delete copy.businessMobile;
+                              return copy;
+                            });
+                          }
+                        }}
+                        className={cn(
+                          "flex-1 bg-white border rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none shadow-2xs font-mono transition-colors",
+                          formErrors.businessMobile
+                            ? "border-red-500 bg-red-50/20 focus:border-red-500 focus:ring-1 focus:ring-red-500/20"
+                            : "border-slate-300 focus:border-blue-500"
+                        )}
+                      />
+                    </div>
+                    {formErrors.businessMobile && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1 animate-in fade-in flex items-center gap-1">
+                        <span>⚠️</span> {formErrors.businessMobile}
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 {/* 4. Email */}
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
-                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-start">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1 pt-1.5">
                     <Mail className="w-3.5 h-3.5 text-[#E11D48] shrink-0" />
                     <span>Email</span>
                   </label>
                   <div className="sm:col-span-9">
                     <input
                       type="email"
-                      placeholder="Add multiple emails by pressing Tab button."
+                      placeholder="Add email e.g. client@company.com"
                       value={newLead.email}
-                      onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
+                      onChange={(e) => {
+                        setNewLead({ ...newLead, email: e.target.value });
+                        if (formErrors.email) {
+                          setFormErrors((prev) => {
+                            const copy = { ...prev };
+                            delete copy.email;
+                            return copy;
+                          });
+                        }
+                      }}
+                      className={cn(
+                        "w-full bg-white border rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none shadow-2xs transition-colors",
+                        formErrors.email
+                          ? "border-red-500 bg-red-50/20 focus:border-red-500 focus:ring-1 focus:ring-red-500/20"
+                          : "border-slate-300 focus:border-blue-500"
+                      )}
                     />
+                    {formErrors.email && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1 animate-in fade-in flex items-center gap-1">
+                        <span>⚠️</span> {formErrors.email}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -609,7 +762,7 @@ export function LeadsContent() {
                   <div className="sm:col-span-9">
                     <input
                       type="text"
-                      placeholder=""
+                      placeholder="Company or Organization Name"
                       value={newLead.customerName}
                       onChange={(e) => setNewLead({ ...newLead, customerName: e.target.value })}
                       className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
@@ -625,7 +778,7 @@ export function LeadsContent() {
                   <div className="sm:col-span-9">
                     <input
                       type="text"
-                      placeholder=""
+                      placeholder="https://example.com"
                       value={newLead.website}
                       onChange={(e) => setNewLead({ ...newLead, website: e.target.value })}
                       className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
@@ -764,32 +917,74 @@ export function LeadsContent() {
                 </div>
 
                 {/* 3. Personal Mobile */}
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
-                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-start">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1 pt-1.5">
                     <Smartphone className="w-3.5 h-3.5 text-[#EA580C] shrink-0" />
                     <span>Personal Mobile</span>
                   </label>
-                  <div className="sm:col-span-9 flex items-center gap-1.5">
-                    <select
-                      value={newLead.personalMobileCode}
-                      onChange={(e) => setNewLead({ ...newLead, personalMobileCode: e.target.value })}
-                      className="w-24 bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs shrink-0 cursor-pointer"
-                    >
-                      <option value="+971">🇦🇪 +971</option>
-                      <option value="+966">🇸🇦 +966</option>
-                      <option value="+968">🇴🇲 +968</option>
-                      <option value="+91">🇮🇳 +91</option>
-                      <option value="+92">🇵🇰 +92</option>
-                      <option value="+44">🇬🇧 +44</option>
-                      <option value="+1">🇺🇸 +1</option>
-                    </select>
-                    <input
-                      type="tel"
-                      placeholder=""
-                      value={newLead.personalMobile}
-                      onChange={(e) => setNewLead({ ...newLead, personalMobile: e.target.value })}
-                      className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
-                    />
+                  <div className="sm:col-span-9">
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={newLead.personalMobileCode}
+                        onChange={(e) => {
+                          const newCode = e.target.value;
+                          const rule = COUNTRY_DIAL_RULES[newCode] || { maxDigits: 15 };
+                          setNewLead({
+                            ...newLead,
+                            personalMobileCode: newCode,
+                            personalMobile: newLead.personalMobile.replace(/\D/g, '').slice(0, rule.maxDigits),
+                          });
+                          if (formErrors.personalMobile) {
+                            setFormErrors((prev) => {
+                              const copy = { ...prev };
+                              delete copy.personalMobile;
+                              return copy;
+                            });
+                          }
+                        }}
+                        className="w-24 bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs shrink-0 cursor-pointer"
+                      >
+                        <option value="+971">🇦🇪 +971</option>
+                        <option value="+966">🇸🇦 +966</option>
+                        <option value="+968">🇴🇲 +968</option>
+                        <option value="+974">🇶🇦 +974</option>
+                        <option value="+965">🇰🇼 +965</option>
+                        <option value="+973">🇧🇭 +973</option>
+                        <option value="+91">🇮🇳 +91</option>
+                        <option value="+92">🇵🇰 +92</option>
+                        <option value="+44">🇬🇧 +44</option>
+                        <option value="+1">🇺🇸 +1</option>
+                      </select>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={persRule.maxDigits}
+                        placeholder={persRule.placeholder || 'e.g. 501234567'}
+                        value={newLead.personalMobile}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, persRule.maxDigits);
+                          setNewLead({ ...newLead, personalMobile: digitsOnly });
+                          if (formErrors.personalMobile) {
+                            setFormErrors((prev) => {
+                              const copy = { ...prev };
+                              delete copy.personalMobile;
+                              return copy;
+                            });
+                          }
+                        }}
+                        className={cn(
+                          "flex-1 bg-white border rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none shadow-2xs font-mono transition-colors",
+                          formErrors.personalMobile
+                            ? "border-red-500 bg-red-50/20 focus:border-red-500 focus:ring-1 focus:ring-red-500/20"
+                            : "border-slate-300 focus:border-blue-500"
+                        )}
+                      />
+                    </div>
+                    {formErrors.personalMobile && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1 animate-in fade-in flex items-center gap-1">
+                        <span>⚠️</span> {formErrors.personalMobile}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -821,29 +1016,56 @@ export function LeadsContent() {
                 </div>
 
                 {/* 5. Tel */}
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
-                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-start">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700 flex items-center gap-1 pt-1.5">
                     <Phone className="w-3.5 h-3.5 text-[#0D9488] shrink-0" />
                     <span>Tel</span>
                   </label>
-                  <div className="sm:col-span-9 flex items-center gap-1.5">
-                    <select
-                      value={newLead.telCode}
-                      onChange={(e) => setNewLead({ ...newLead, telCode: e.target.value })}
-                      className="w-24 bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs shrink-0 cursor-pointer"
-                    >
-                      <option value="+971">🇦🇪 +971</option>
-                      <option value="+966">🇸🇦 +966</option>
-                      <option value="+968">🇴🇲 +968</option>
-                      <option value="+91">🇮🇳 +91</option>
-                    </select>
-                    <input
-                      type="tel"
-                      placeholder="Landline"
-                      value={newLead.tel}
-                      onChange={(e) => setNewLead({ ...newLead, tel: e.target.value })}
-                      className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
-                    />
+                  <div className="sm:col-span-9">
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={newLead.telCode}
+                        onChange={(e) => setNewLead({ ...newLead, telCode: e.target.value })}
+                        className="w-24 bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs shrink-0 cursor-pointer"
+                      >
+                        <option value="+971">🇦🇪 +971</option>
+                        <option value="+966">🇸🇦 +966</option>
+                        <option value="+968">🇴🇲 +968</option>
+                        <option value="+974">🇶🇦 +974</option>
+                        <option value="+965">🇰🇼 +965</option>
+                        <option value="+973">🇧🇭 +973</option>
+                        <option value="+91">🇮🇳 +91</option>
+                      </select>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        maxLength={12}
+                        placeholder="Landline number"
+                        value={newLead.tel}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 12);
+                          setNewLead({ ...newLead, tel: digitsOnly });
+                          if (formErrors.tel) {
+                            setFormErrors((prev) => {
+                              const copy = { ...prev };
+                              delete copy.tel;
+                              return copy;
+                            });
+                          }
+                        }}
+                        className={cn(
+                          "flex-1 bg-white border rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none shadow-2xs font-mono transition-colors",
+                          formErrors.tel
+                            ? "border-red-500 bg-red-50/20 focus:border-red-500 focus:ring-1 focus:ring-red-500/20"
+                            : "border-slate-300 focus:border-blue-500"
+                        )}
+                      />
+                    </div>
+                    {formErrors.tel && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1 animate-in fade-in flex items-center gap-1">
+                        <span>⚠️</span> {formErrors.tel}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -855,7 +1077,7 @@ export function LeadsContent() {
                   <div className="sm:col-span-9">
                     <input
                       type="text"
-                      placeholder=""
+                      placeholder="e.g. VIP, Priority, Chiller"
                       value={newLead.leadTags}
                       onChange={(e) => setNewLead({ ...newLead, leadTags: e.target.value })}
                       className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
@@ -983,7 +1205,10 @@ export function LeadsContent() {
               </button>
               <button
                 type="button"
-                onClick={() => setIsAddModalOpen(false)}
+                onClick={() => {
+                  setFormErrors({});
+                  setIsAddModalOpen(false);
+                }}
                 className="px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
               >
                 ← Back

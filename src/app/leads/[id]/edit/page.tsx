@@ -209,15 +209,79 @@ export default function EditLeadPage({ params }: PageProps) {
     lead.comments || 'PROVIDED PRICE FOR SUPER GENERAL PORTABLE AC - SGP204T3'
   );
 
+  const COUNTRY_DIAL_RULES: Record<string, { minDigits: number; maxDigits: number; label: string; placeholder: string }> = {
+    '+971': { minDigits: 9, maxDigits: 9, label: 'UAE', placeholder: '50 123 4567' },
+    '+966': { minDigits: 9, maxDigits: 9, label: 'Saudi Arabia', placeholder: '50 123 4567' },
+    '+968': { minDigits: 8, maxDigits: 8, label: 'Oman', placeholder: '9123 4567' },
+    '+974': { minDigits: 8, maxDigits: 8, label: 'Qatar', placeholder: '3312 3456' },
+    '+965': { minDigits: 8, maxDigits: 8, label: 'Kuwait', placeholder: '9123 4567' },
+    '+973': { minDigits: 8, maxDigits: 8, label: 'Bahrain', placeholder: '3612 3456' },
+    '+91': { minDigits: 10, maxDigits: 10, label: 'India', placeholder: '98765 43210' },
+    '+92': { minDigits: 10, maxDigits: 10, label: 'Pakistan', placeholder: '300 1234567' },
+    '+44': { minDigits: 10, maxDigits: 11, label: 'UK', placeholder: '7123 456789' },
+    '+1': { minDigits: 10, maxDigits: 10, label: 'USA', placeholder: '555 123 4567' },
+  };
+
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSaved, setIsSaved] = useState(false);
+
+  const validateEditForm = () => {
+    const errors: Record<string, string> = {};
+
+    if (!contactName.trim()) {
+      errors.contactName = 'Contact Name is required';
+    } else if (contactName.trim().length < 2) {
+      errors.contactName = 'Contact Name must be at least 2 characters';
+    }
+
+    if (email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        errors.email = 'Please enter a valid email address';
+      }
+    }
+
+    if (businessMobile.trim()) {
+      const cleanDigits = businessMobile.replace(/\D/g, '');
+      const rule = COUNTRY_DIAL_RULES[businessCountryCode] || { minDigits: 7, maxDigits: 15, label: 'Country' };
+      if (cleanDigits.length < rule.minDigits || cleanDigits.length > rule.maxDigits) {
+        errors.businessMobile = `${rule.label} (${businessCountryCode}) requires ${rule.minDigits === rule.maxDigits ? `${rule.minDigits} digits` : `${rule.minDigits}-${rule.maxDigits} digits`} (entered: ${cleanDigits.length})`;
+      }
+    }
+
+    if (personalMobile.trim()) {
+      const cleanDigits = personalMobile.replace(/\D/g, '');
+      const rule = COUNTRY_DIAL_RULES[personalCountryCode] || { minDigits: 7, maxDigits: 15, label: 'Country' };
+      if (cleanDigits.length < rule.minDigits || cleanDigits.length > rule.maxDigits) {
+        errors.personalMobile = `${rule.label} (${personalCountryCode}) requires ${rule.minDigits === rule.maxDigits ? `${rule.minDigits} digits` : `${rule.minDigits}-${rule.maxDigits} digits`} (entered: ${cleanDigits.length})`;
+      }
+    }
+
+    if (landline.trim()) {
+      const cleanDigits = landline.replace(/\D/g, '');
+      if (cleanDigits.length < 6 || cleanDigits.length > 12) {
+        errors.landline = `Landline requires between 6 and 12 digits (entered: ${cleanDigits.length})`;
+      }
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   // Form submit handler
   const handleUpdate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateEditForm()) {
+      return;
+    }
 
-    const formattedPhone = `${businessCountryCode}${businessMobile}`;
-    const formattedPersonal = personalMobile ? `${personalCountryCode}${personalMobile}` : '';
-    const formattedTel = landline ? `${telCountryCode} ${landline}` : '';
+    const cleanBiz = businessMobile.replace(/\D/g, '');
+    const cleanPers = personalMobile.replace(/\D/g, '');
+    const cleanTel = landline.replace(/\D/g, '');
+
+    const formattedPhone = cleanBiz ? `${businessCountryCode} ${cleanBiz}` : (cleanPers ? `${personalCountryCode} ${cleanPers}` : lead.contactDetails.phone);
+    const formattedPersonal = cleanPers ? `${personalCountryCode} ${cleanPers}` : '';
+    const formattedTel = cleanTel ? `${telCountryCode} ${cleanTel}` : '';
 
     updateLead(lead.id, {
       owner,
@@ -230,7 +294,7 @@ export default function EditLeadPage({ params }: PageProps) {
         personalMobile: formattedPersonal,
         telephone: formattedTel,
         company: customerName,
-        email,
+        email: email.trim(),
         website,
         designation,
         nationality,
@@ -336,69 +400,121 @@ export default function EditLeadPage({ params }: PageProps) {
               </div>
             </div>
 
-            {/* 2. Contact Name ✓ */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-1.5 sm:gap-4">
-              <label className="sm:col-span-4 text-slate-700 font-normal flex items-center gap-1">
+            {/* 2. Contact Name */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 items-start gap-1.5 sm:gap-4">
+              <label className="sm:col-span-4 text-slate-700 font-normal flex items-center gap-1 pt-1.5">
                 <span>Contact Name</span>
-                <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
+                <span className="text-red-500">*</span>
               </label>
-              <div className="sm:col-span-8 flex items-center border border-emerald-500/80 rounded-[3px] bg-white overflow-hidden shadow-2xs focus-within:ring-1 focus-within:ring-emerald-500">
-                <select
-                  value={salutation}
-                  onChange={(e) => setSalutation(e.target.value)}
-                  className="bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs sm:text-[13px] focus:outline-none cursor-pointer"
-                >
-                  <option value="Mr.">Mr.</option>
-                  <option value="Mrs.">Mrs.</option>
-                  <option value="Ms.">Ms.</option>
-                  <option value="Dr.">Dr.</option>
-                  <option value="Eng.">Eng.</option>
-                </select>
-                <input
-                  type="text"
-                  required
-                  value={contactName}
-                  onChange={(e) => setContactName(e.target.value)}
-                  placeholder="Enter Contact Name"
-                  className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] font-medium uppercase focus:outline-none"
-                />
+              <div className="sm:col-span-8">
+                <div className={cn(
+                  "flex items-center border rounded-[3px] bg-white overflow-hidden shadow-2xs transition-colors",
+                  formErrors.contactName ? "border-red-500 bg-red-50/20" : "border-slate-300 focus-within:border-[#006f8e]"
+                )}>
+                  <select
+                    value={salutation}
+                    onChange={(e) => setSalutation(e.target.value)}
+                    className="bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs sm:text-[13px] focus:outline-none cursor-pointer"
+                  >
+                    <option value="Mr.">Mr.</option>
+                    <option value="Mrs.">Mrs.</option>
+                    <option value="Ms.">Ms.</option>
+                    <option value="Dr.">Dr.</option>
+                    <option value="Eng.">Eng.</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={contactName}
+                    onChange={(e) => {
+                      setContactName(e.target.value);
+                      if (formErrors.contactName) {
+                        setFormErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.contactName;
+                          return copy;
+                        });
+                      }
+                    }}
+                    placeholder="Enter Contact Name"
+                    className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] font-medium uppercase focus:outline-none"
+                  />
+                </div>
+                {formErrors.contactName && (
+                  <p className="text-[11px] text-red-600 font-medium mt-1">⚠️ {formErrors.contactName}</p>
+                )}
               </div>
             </div>
 
             {/* 3. Business Mobile */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-1.5 sm:gap-4">
-              <label className="sm:col-span-4 text-slate-700 font-normal flex items-center gap-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-12 items-start gap-1.5 sm:gap-4">
+              <label className="sm:col-span-4 text-slate-700 font-normal flex items-center gap-1.5 pt-1.5">
                 <span className="w-1.5 h-3 bg-orange-500 rounded-xs inline-block" />
                 <span>Business Mobile</span>
               </label>
-              <div className="sm:col-span-8 flex items-center border border-slate-300 rounded-[3px] bg-white overflow-hidden shadow-2xs focus-within:border-[#006f8e]">
-                <div className="flex items-center gap-1 bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs">
-                  <span>🇦🇪</span>
-                  <select
-                    value={businessCountryCode}
-                    onChange={(e) => setBusinessCountryCode(e.target.value)}
-                    className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer pr-1"
-                  >
-                    <option value="+971">+971</option>
-                    <option value="+968">+968</option>
-                    <option value="+966">+966</option>
-                    <option value="+91">+91</option>
-                    <option value="+1">+1</option>
-                  </select>
+              <div className="sm:col-span-8">
+                <div className={cn(
+                  "flex items-center border rounded-[3px] bg-white overflow-hidden shadow-2xs transition-colors",
+                  formErrors.businessMobile ? "border-red-500 bg-red-50/20" : "border-slate-300 focus-within:border-[#006f8e]"
+                )}>
+                  <div className="flex items-center gap-1 bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs">
+                    <select
+                      value={businessCountryCode}
+                      onChange={(e) => {
+                        const newCode = e.target.value;
+                        const rule = COUNTRY_DIAL_RULES[newCode] || { maxDigits: 15 };
+                        setBusinessCountryCode(newCode);
+                        setBusinessMobile(businessMobile.replace(/\D/g, '').slice(0, rule.maxDigits));
+                        if (formErrors.businessMobile) {
+                          setFormErrors((prev) => {
+                            const copy = { ...prev };
+                            delete copy.businessMobile;
+                            return copy;
+                          });
+                        }
+                      }}
+                      className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer pr-1"
+                    >
+                      <option value="+971">🇦🇪 +971</option>
+                      <option value="+966">🇸🇦 +966</option>
+                      <option value="+968">🇴🇲 +968</option>
+                      <option value="+974">🇶🇦 +974</option>
+                      <option value="+965">🇰🇼 +965</option>
+                      <option value="+973">🇧🇭 +973</option>
+                      <option value="+91">🇮🇳 +91</option>
+                      <option value="+92">🇵🇰 +92</option>
+                      <option value="+44">🇬🇧 +44</option>
+                      <option value="+1">🇺🇸 +1</option>
+                    </select>
+                  </div>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={(COUNTRY_DIAL_RULES[businessCountryCode] || { maxDigits: 15 }).maxDigits}
+                    value={businessMobile}
+                    onChange={(e) => {
+                      const maxD = (COUNTRY_DIAL_RULES[businessCountryCode] || { maxDigits: 15 }).maxDigits;
+                      setBusinessMobile(e.target.value.replace(/\D/g, '').slice(0, maxD));
+                      if (formErrors.businessMobile) {
+                        setFormErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.businessMobile;
+                          return copy;
+                        });
+                      }
+                    }}
+                    placeholder={(COUNTRY_DIAL_RULES[businessCountryCode] || { placeholder: 'Mobile number' }).placeholder}
+                    className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] font-mono focus:outline-none"
+                  />
                 </div>
-                <input
-                  type="text"
-                  value={businessMobile}
-                  onChange={(e) => setBusinessMobile(e.target.value)}
-                  placeholder="Mobile number"
-                  className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] focus:outline-none"
-                />
+                {formErrors.businessMobile && (
+                  <p className="text-[11px] text-red-600 font-medium mt-1">⚠️ {formErrors.businessMobile}</p>
+                )}
               </div>
             </div>
 
             {/* 4. Email */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-1.5 sm:gap-4">
-              <label className="sm:col-span-4 text-slate-700 font-normal flex items-center gap-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-12 items-start gap-1.5 sm:gap-4">
+              <label className="sm:col-span-4 text-slate-700 font-normal flex items-center gap-1.5 pt-1.5">
                 <Mail className="w-3.5 h-3.5 text-red-500" />
                 <span>Email</span>
               </label>
@@ -406,10 +522,25 @@ export default function EditLeadPage({ params }: PageProps) {
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Add multiple emails by pressing Tab button."
-                  className="w-full border border-slate-300 rounded-[3px] bg-white px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] placeholder:text-slate-400 placeholder:text-xs focus:outline-none focus:border-[#006f8e] shadow-2xs"
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (formErrors.email) {
+                      setFormErrors((prev) => {
+                        const copy = { ...prev };
+                        delete copy.email;
+                        return copy;
+                      });
+                    }
+                  }}
+                  placeholder="e.g. client@company.com"
+                  className={cn(
+                    "w-full border rounded-[3px] bg-white px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] placeholder:text-slate-400 placeholder:text-xs focus:outline-none shadow-2xs transition-colors",
+                    formErrors.email ? "border-red-500 bg-red-50/20 focus:border-red-500" : "border-slate-300 focus:border-[#006f8e]"
+                  )}
                 />
+                {formErrors.email && (
+                  <p className="text-[11px] text-red-600 font-medium mt-1">⚠️ {formErrors.email}</p>
+                )}
               </div>
             </div>
 
@@ -579,33 +710,69 @@ export default function EditLeadPage({ params }: PageProps) {
             </div>
 
             {/* 3. Personal Mobile */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-1.5 sm:gap-4">
-              <label className="sm:col-span-4 text-slate-700 font-normal flex items-center gap-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-12 items-start gap-1.5 sm:gap-4">
+              <label className="sm:col-span-4 text-slate-700 font-normal flex items-center gap-1.5 pt-1.5">
                 <span className="w-1.5 h-3 bg-orange-500 rounded-xs inline-block" />
                 <span>Personal Mobile</span>
               </label>
-              <div className="sm:col-span-8 flex items-center border border-slate-300 rounded-[3px] bg-white overflow-hidden shadow-2xs focus-within:border-[#006f8e]">
-                <div className="flex items-center gap-1 bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs">
-                  <span>🇦🇪</span>
-                  <select
-                    value={personalCountryCode}
-                    onChange={(e) => setPersonalCountryCode(e.target.value)}
-                    className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer pr-1"
-                  >
-                    <option value="+971">+971</option>
-                    <option value="+968">+968</option>
-                    <option value="+966">+966</option>
-                    <option value="+91">+91</option>
-                    <option value="+1">+1</option>
-                  </select>
+              <div className="sm:col-span-8">
+                <div className={cn(
+                  "flex items-center border rounded-[3px] bg-white overflow-hidden shadow-2xs transition-colors",
+                  formErrors.personalMobile ? "border-red-500 bg-red-50/20" : "border-slate-300 focus-within:border-[#006f8e]"
+                )}>
+                  <div className="flex items-center gap-1 bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs">
+                    <select
+                      value={personalCountryCode}
+                      onChange={(e) => {
+                        const newCode = e.target.value;
+                        const rule = COUNTRY_DIAL_RULES[newCode] || { maxDigits: 15 };
+                        setPersonalCountryCode(newCode);
+                        setPersonalMobile(personalMobile.replace(/\D/g, '').slice(0, rule.maxDigits));
+                        if (formErrors.personalMobile) {
+                          setFormErrors((prev) => {
+                            const copy = { ...prev };
+                            delete copy.personalMobile;
+                            return copy;
+                          });
+                        }
+                      }}
+                      className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer pr-1"
+                    >
+                      <option value="+971">🇦🇪 +971</option>
+                      <option value="+966">🇸🇦 +966</option>
+                      <option value="+968">🇴🇲 +968</option>
+                      <option value="+974">🇶🇦 +974</option>
+                      <option value="+965">🇰🇼 +965</option>
+                      <option value="+973">🇧🇭 +973</option>
+                      <option value="+91">🇮🇳 +91</option>
+                      <option value="+92">🇵🇰 +92</option>
+                      <option value="+44">🇬🇧 +44</option>
+                      <option value="+1">🇺🇸 +1</option>
+                    </select>
+                  </div>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={(COUNTRY_DIAL_RULES[personalCountryCode] || { maxDigits: 15 }).maxDigits}
+                    value={personalMobile}
+                    onChange={(e) => {
+                      const maxD = (COUNTRY_DIAL_RULES[personalCountryCode] || { maxDigits: 15 }).maxDigits;
+                      setPersonalMobile(e.target.value.replace(/\D/g, '').slice(0, maxD));
+                      if (formErrors.personalMobile) {
+                        setFormErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.personalMobile;
+                          return copy;
+                        });
+                      }
+                    }}
+                    placeholder={(COUNTRY_DIAL_RULES[personalCountryCode] || { placeholder: 'Personal mobile' }).placeholder}
+                    className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] font-mono focus:outline-none"
+                  />
                 </div>
-                <input
-                  type="text"
-                  value={personalMobile}
-                  onChange={(e) => setPersonalMobile(e.target.value)}
-                  placeholder="Personal mobile"
-                  className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] focus:outline-none"
-                />
+                {formErrors.personalMobile && (
+                  <p className="text-[11px] text-red-600 font-medium mt-1">⚠️ {formErrors.personalMobile}</p>
+                )}
               </div>
             </div>
 
@@ -635,32 +802,50 @@ export default function EditLeadPage({ params }: PageProps) {
             </div>
 
             {/* 5. Tel (Landline) */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-1.5 sm:gap-4">
-              <label className="sm:col-span-4 text-slate-700 font-normal flex items-center gap-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-12 items-start gap-1.5 sm:gap-4">
+              <label className="sm:col-span-4 text-slate-700 font-normal flex items-center gap-1.5 pt-1.5">
                 <Phone className="w-3.5 h-3.5 text-[#006f8e]" />
                 <span>Tel</span>
               </label>
-              <div className="sm:col-span-8 flex items-center border border-slate-300 rounded-[3px] bg-white overflow-hidden shadow-2xs focus-within:border-[#006f8e]">
-                <div className="flex items-center gap-1 bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs">
-                  <span>🇦🇪</span>
-                  <select
-                    value={telCountryCode}
-                    onChange={(e) => setTelCountryCode(e.target.value)}
-                    className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer pr-1"
-                  >
-                    <option value="+971">+971</option>
-                    <option value="+968">+968</option>
-                    <option value="+966">+966</option>
-                    <option value="+91">+91</option>
-                  </select>
+              <div className="sm:col-span-8">
+                <div className={cn(
+                  "flex items-center border rounded-[3px] bg-white overflow-hidden shadow-2xs transition-colors",
+                  formErrors.landline ? "border-red-500 bg-red-50/20" : "border-slate-300 focus-within:border-[#006f8e]"
+                )}>
+                  <div className="flex items-center gap-1 bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs">
+                    <select
+                      value={telCountryCode}
+                      onChange={(e) => setTelCountryCode(e.target.value)}
+                      className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer pr-1"
+                    >
+                      <option value="+971">🇦🇪 +971</option>
+                      <option value="+968">🇴🇲 +968</option>
+                      <option value="+966">🇸🇦 +966</option>
+                      <option value="+91">🇮🇳 +91</option>
+                    </select>
+                  </div>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={12}
+                    value={landline}
+                    onChange={(e) => {
+                      setLandline(e.target.value.replace(/\D/g, '').slice(0, 12));
+                      if (formErrors.landline) {
+                        setFormErrors((prev) => {
+                          const copy = { ...prev };
+                          delete copy.landline;
+                          return copy;
+                        });
+                      }
+                    }}
+                    placeholder="Landline"
+                    className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] font-mono focus:outline-none"
+                  />
                 </div>
-                <input
-                  type="text"
-                  value={landline}
-                  onChange={(e) => setLandline(e.target.value)}
-                  placeholder="Landline"
-                  className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] focus:outline-none"
-                />
+                {formErrors.landline && (
+                  <p className="text-[11px] text-red-600 font-medium mt-1">⚠️ {formErrors.landline}</p>
+                )}
               </div>
             </div>
 
