@@ -311,12 +311,12 @@ export function LeadsContent() {
     search,
   ]);
 
-  const totalEntries = 286; // Simulated full enterprise count as in Cezcon screenshot
+  const totalEntries = filteredLeads.length;
   const displayLeads = filteredLeads.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
-  const totalPages = Math.ceil(totalEntries / pageSize);
+  const totalPages = Math.max(1, Math.ceil(totalEntries / pageSize));
 
   const getEmployeePhoto = (name?: string): string | null => {
     if (!name) return null;
@@ -1426,10 +1426,12 @@ export function LeadsContent() {
         <div className="px-4 py-2.5 bg-[#F8FAFC] border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
           {/* Left Title with Red Pin Badge */}
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 bg-red-50 text-red-600 px-2 py-0.5 rounded text-xs font-bold border border-red-200">
-              <MapPin className="w-3 h-3 fill-red-500 text-red-500" />
-              <span>115</span>
-            </div>
+            {filteredLeads.length > 0 && (
+              <div className="flex items-center gap-1 bg-red-50 text-red-600 px-2 py-0.5 rounded text-xs font-bold border border-red-200">
+                <MapPin className="w-3 h-3 fill-red-500 text-red-500" />
+                <span>{filteredLeads.length}</span>
+              </div>
+            )}
             <span className="font-semibold text-slate-800 text-sm">Lead List</span>
           </div>
 

@@ -238,14 +238,82 @@ export default function ConvertLeadPage({ params }: PageProps) {
   const [deliveryDate, setDeliveryDate] = useState('');
   const [winProbability, setWinProbability] = useState(10);
 
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const COUNTRY_DIAL_RULES: Record<string, { minDigits: number; maxDigits: number; label: string; placeholder: string }> = {
+    '+971': { minDigits: 9, maxDigits: 9, label: 'UAE', placeholder: '50 123 4567' },
+    '+966': { minDigits: 9, maxDigits: 9, label: 'Saudi Arabia', placeholder: '50 123 4567' },
+    '+968': { minDigits: 8, maxDigits: 8, label: 'Oman', placeholder: '9123 4567' },
+    '+974': { minDigits: 8, maxDigits: 8, label: 'Qatar', placeholder: '3312 3456' },
+    '+965': { minDigits: 8, maxDigits: 8, label: 'Kuwait', placeholder: '9123 4567' },
+    '+973': { minDigits: 8, maxDigits: 8, label: 'Bahrain', placeholder: '3612 3456' },
+    '+91': { minDigits: 10, maxDigits: 10, label: 'India', placeholder: '98765 43210' },
+    '+92': { minDigits: 10, maxDigits: 10, label: 'Pakistan', placeholder: '300 1234567' },
+    '+44': { minDigits: 10, maxDigits: 11, label: 'UK', placeholder: '7123 456789' },
+    '+1': { minDigits: 10, maxDigits: 10, label: 'USA', placeholder: '555 123 4567' },
+  };
+
+  const validateConvertForm = () => {
+    const errors: Record<string, string> = {};
+
+    if (!contactName.trim()) {
+      errors.contactName = 'Contact Name is required';
+    } else if (contactName.trim().length < 2) {
+      errors.contactName = 'Contact Name must be at least 2 characters';
+    }
+
+    if (!customerName.trim()) {
+      errors.customerName = 'Customer Name is required';
+    } else if (customerName.trim().length < 2) {
+      errors.customerName = 'Customer Name must be at least 2 characters';
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (contactEmail.trim() && !emailRegex.test(contactEmail.trim())) {
+      errors.contactEmail = 'Please enter a valid email address';
+    }
+
+    if (custEmail.trim() && !emailRegex.test(custEmail.trim())) {
+      errors.custEmail = 'Please enter a valid email address';
+    }
+
+    if (businessMobile.trim()) {
+      const cleanDigits = businessMobile.replace(/\D/g, '');
+      const rule = COUNTRY_DIAL_RULES[businessCountryCode] || { minDigits: 7, maxDigits: 15, label: 'Country' };
+      if (cleanDigits.length < rule.minDigits || cleanDigits.length > rule.maxDigits) {
+        errors.businessMobile = `${rule.label} (${businessCountryCode}) requires ${rule.minDigits === rule.maxDigits ? `${rule.minDigits} digits` : `${rule.minDigits}-${rule.maxDigits} digits`} (entered: ${cleanDigits.length})`;
+      }
+    }
+
+    if (personalMobile.trim()) {
+      const cleanDigits = personalMobile.replace(/\D/g, '');
+      const rule = COUNTRY_DIAL_RULES[personalCountryCode] || { minDigits: 7, maxDigits: 15, label: 'Country' };
+      if (cleanDigits.length < rule.minDigits || cleanDigits.length > rule.maxDigits) {
+        errors.personalMobile = `${rule.label} (${personalCountryCode}) requires ${rule.minDigits === rule.maxDigits ? `${rule.minDigits} digits` : `${rule.minDigits}-${rule.maxDigits} digits`} (entered: ${cleanDigits.length})`;
+      }
+    }
+
+    if (custTel.trim()) {
+      const cleanDigits = custTel.replace(/\D/g, '');
+      if (cleanDigits.length < 6 || cleanDigits.length > 12) {
+        errors.custTel = `Telephone requires between 6 and 12 digits (entered: ${cleanDigits.length})`;
+      }
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   // Handle Form Submission
   const handleConvertSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateConvertForm()) {
+      return;
+    }
     setIsSubmitting(true);
 
-    const fullContactPhone = `${businessCountryCode}${businessMobile}`;
+    const fullContactPhone = businessMobile.trim() ? `${businessCountryCode}${businessMobile.replace(/\D/g, '')}` : '';
     const fullContactName = `${salutation} ${contactName.trim()}`;
 
     // 1. Mark Lead as Converted
@@ -275,7 +343,7 @@ export default function ConvertLeadPage({ params }: PageProps) {
       lastActivity: 'Just converted from Lead',
       companyGroup: industryType || 'Enterprise Key Accounts',
       totalDeals: 1,
-      totalSpend: Number(oppAmount) || lead.value || 50000,
+      totalSpend: Number(oppAmount) || lead.value || 0,
       createdFromLeadId: lead.id,
     });
 
@@ -287,7 +355,7 @@ export default function ConvertLeadPage({ params }: PageProps) {
         customer: customerName,
         contactPerson: fullContactName,
         phone: fullContactPhone,
-        amount: Number(oppAmount) || lead.value || 50000,
+        amount: Number(oppAmount) || lead.value || 0,
         stage: oppStage,
         owner,
         probability: winProbability,
@@ -400,25 +468,42 @@ export default function ConvertLeadPage({ params }: PageProps) {
                     <span>Contact Name</span>
                     <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
                   </label>
-                  <div className="sm:col-span-8 flex items-center border border-emerald-500/80 rounded-[3px] bg-white overflow-hidden shadow-2xs focus-within:ring-1 focus-within:ring-emerald-500">
-                    <select
-                      value={salutation}
-                      onChange={(e) => setSalutation(e.target.value)}
-                      className="bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs focus:outline-none cursor-pointer"
-                    >
-                      <option value="Mr.">Mr.</option>
-                      <option value="Mrs.">Mrs.</option>
-                      <option value="Ms.">Ms.</option>
-                      <option value="Dr.">Dr.</option>
-                      <option value="Eng.">Eng.</option>
-                    </select>
-                    <input
-                      type="text"
-                      required
-                      value={contactName}
-                      onChange={(e) => setContactName(e.target.value)}
-                      className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] font-medium uppercase focus:outline-none"
-                    />
+                  <div className="sm:col-span-8">
+                    <div className={cn(
+                      "flex items-center border rounded-[3px] bg-white overflow-hidden shadow-2xs focus-within:ring-1",
+                      formErrors.contactName ? "border-red-500 focus-within:ring-red-500" : "border-emerald-500/80 focus-within:ring-emerald-500"
+                    )}>
+                      <select
+                        value={salutation}
+                        onChange={(e) => setSalutation(e.target.value)}
+                        className="bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs focus:outline-none cursor-pointer"
+                      >
+                        <option value="Mr.">Mr.</option>
+                        <option value="Mrs.">Mrs.</option>
+                        <option value="Ms.">Ms.</option>
+                        <option value="Dr.">Dr.</option>
+                        <option value="Eng.">Eng.</option>
+                      </select>
+                      <input
+                        type="text"
+                        required
+                        value={contactName}
+                        onChange={(e) => {
+                          setContactName(e.target.value);
+                          if (formErrors.contactName && e.target.value.trim().length >= 2) {
+                            setFormErrors((prev) => {
+                              const n = { ...prev };
+                              delete n.contactName;
+                              return n;
+                            });
+                          }
+                        }}
+                        className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] font-medium uppercase focus:outline-none"
+                      />
+                    </div>
+                    {formErrors.contactName && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1">{formErrors.contactName}</p>
+                    )}
                   </div>
                 </div>
 
@@ -448,26 +533,59 @@ export default function ConvertLeadPage({ params }: PageProps) {
                     <span className="w-1.5 h-3 bg-orange-500 rounded-xs inline-block" />
                     <span>Business Mobile</span>
                   </label>
-                  <div className="sm:col-span-8 flex items-center border border-slate-300 rounded-[3px] bg-white overflow-hidden shadow-2xs focus-within:border-[#006f8e]">
-                    <div className="flex items-center gap-1 bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs">
-                      <span>🇦🇪</span>
-                      <select
-                        value={businessCountryCode}
-                        onChange={(e) => setBusinessCountryCode(e.target.value)}
-                        className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer pr-1"
-                      >
-                        <option value="+971">+971</option>
-                        <option value="+968">+968</option>
-                        <option value="+966">+966</option>
-                        <option value="+91">+91</option>
-                      </select>
+                  <div className="sm:col-span-8">
+                    <div className={cn(
+                      "flex items-center border rounded-[3px] bg-white overflow-hidden shadow-2xs focus-within:border-[#006f8e]",
+                      formErrors.businessMobile ? "border-red-500" : "border-slate-300"
+                    )}>
+                      <div className="flex items-center gap-1 bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs">
+                        <span>🇦🇪</span>
+                        <select
+                          value={businessCountryCode}
+                          onChange={(e) => {
+                            setBusinessCountryCode(e.target.value);
+                            const rule = COUNTRY_DIAL_RULES[e.target.value];
+                            if (rule && businessMobile) {
+                              setBusinessMobile(businessMobile.slice(0, rule.maxDigits));
+                            }
+                          }}
+                          className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer pr-1"
+                        >
+                          <option value="+971">+971 (UAE)</option>
+                          <option value="+966">+966 (KSA)</option>
+                          <option value="+968">+968 (OM)</option>
+                          <option value="+974">+974 (QA)</option>
+                          <option value="+965">+965 (KW)</option>
+                          <option value="+973">+973 (BH)</option>
+                          <option value="+91">+91 (IN)</option>
+                          <option value="+92">+92 (PK)</option>
+                          <option value="+44">+44 (UK)</option>
+                          <option value="+1">+1 (US)</option>
+                        </select>
+                      </div>
+                      <input
+                        type="text"
+                        value={businessMobile}
+                        placeholder={COUNTRY_DIAL_RULES[businessCountryCode]?.placeholder || '50 123 4567'}
+                        onChange={(e) => {
+                          const clean = e.target.value.replace(/\D/g, '');
+                          const rule = COUNTRY_DIAL_RULES[businessCountryCode];
+                          const limited = rule ? clean.slice(0, rule.maxDigits) : clean;
+                          setBusinessMobile(limited);
+                          if (formErrors.businessMobile) {
+                            setFormErrors((prev) => {
+                              const n = { ...prev };
+                              delete n.businessMobile;
+                              return n;
+                            });
+                          }
+                        }}
+                        className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] focus:outline-none"
+                      />
                     </div>
-                    <input
-                      type="text"
-                      value={businessMobile}
-                      onChange={(e) => setBusinessMobile(e.target.value)}
-                      className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] focus:outline-none"
-                    />
+                    {formErrors.businessMobile && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1">{formErrors.businessMobile}</p>
+                    )}
                   </div>
                 </div>
 
@@ -481,10 +599,25 @@ export default function ConvertLeadPage({ params }: PageProps) {
                     <input
                       type="email"
                       value={contactEmail}
-                      onChange={(e) => setContactEmail(e.target.value)}
-                      placeholder="Add multiple emails by pressing Tab button."
-                      className="w-full border border-slate-300 rounded-[3px] bg-white px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] placeholder:text-slate-400 placeholder:text-xs focus:outline-none focus:border-[#006f8e] shadow-2xs"
+                      onChange={(e) => {
+                        setContactEmail(e.target.value);
+                        if (formErrors.contactEmail) {
+                          setFormErrors((prev) => {
+                            const n = { ...prev };
+                            delete n.contactEmail;
+                            return n;
+                          });
+                        }
+                      }}
+                      placeholder="Add email (e.g. name@domain.com)"
+                      className={cn(
+                        "w-full border rounded-[3px] bg-white px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] placeholder:text-slate-400 placeholder:text-xs focus:outline-none focus:border-[#006f8e] shadow-2xs",
+                        formErrors.contactEmail ? "border-red-500" : "border-slate-300"
+                      )}
                     />
+                    {formErrors.contactEmail && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1">{formErrors.contactEmail}</p>
+                    )}
                   </div>
                 </div>
 
@@ -567,24 +700,59 @@ export default function ConvertLeadPage({ params }: PageProps) {
                     <span className="w-1.5 h-3 bg-orange-500 rounded-xs inline-block" />
                     <span>Personal Mobile</span>
                   </label>
-                  <div className="sm:col-span-8 flex items-center border border-slate-300 rounded-[3px] bg-white overflow-hidden shadow-2xs focus-within:border-[#006f8e]">
-                    <div className="flex items-center gap-1 bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs">
-                      <span>🇦🇪</span>
-                      <select
-                        value={personalCountryCode}
-                        onChange={(e) => setPersonalCountryCode(e.target.value)}
-                        className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer pr-1"
-                      >
-                        <option value="+971">+971</option>
-                        <option value="+968">+968</option>
-                      </select>
+                  <div className="sm:col-span-8">
+                    <div className={cn(
+                      "flex items-center border rounded-[3px] bg-white overflow-hidden shadow-2xs focus-within:border-[#006f8e]",
+                      formErrors.personalMobile ? "border-red-500" : "border-slate-300"
+                    )}>
+                      <div className="flex items-center gap-1 bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs">
+                        <span>🇦🇪</span>
+                        <select
+                          value={personalCountryCode}
+                          onChange={(e) => {
+                            setPersonalCountryCode(e.target.value);
+                            const rule = COUNTRY_DIAL_RULES[e.target.value];
+                            if (rule && personalMobile) {
+                              setPersonalMobile(personalMobile.slice(0, rule.maxDigits));
+                            }
+                          }}
+                          className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer pr-1"
+                        >
+                          <option value="+971">+971 (UAE)</option>
+                          <option value="+966">+966 (KSA)</option>
+                          <option value="+968">+968 (OM)</option>
+                          <option value="+974">+974 (QA)</option>
+                          <option value="+965">+965 (KW)</option>
+                          <option value="+973">+973 (BH)</option>
+                          <option value="+91">+91 (IN)</option>
+                          <option value="+92">+92 (PK)</option>
+                          <option value="+44">+44 (UK)</option>
+                          <option value="+1">+1 (US)</option>
+                        </select>
+                      </div>
+                      <input
+                        type="text"
+                        value={personalMobile}
+                        placeholder={COUNTRY_DIAL_RULES[personalCountryCode]?.placeholder || '50 123 4567'}
+                        onChange={(e) => {
+                          const clean = e.target.value.replace(/\D/g, '');
+                          const rule = COUNTRY_DIAL_RULES[personalCountryCode];
+                          const limited = rule ? clean.slice(0, rule.maxDigits) : clean;
+                          setPersonalMobile(limited);
+                          if (formErrors.personalMobile) {
+                            setFormErrors((prev) => {
+                              const n = { ...prev };
+                              delete n.personalMobile;
+                              return n;
+                            });
+                          }
+                        }}
+                        className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] focus:outline-none"
+                      />
                     </div>
-                    <input
-                      type="text"
-                      value={personalMobile}
-                      onChange={(e) => setPersonalMobile(e.target.value)}
-                      className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] focus:outline-none"
-                    />
+                    {formErrors.personalMobile && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1">{formErrors.personalMobile}</p>
+                    )}
                   </div>
                 </div>
 
@@ -665,9 +833,24 @@ export default function ConvertLeadPage({ params }: PageProps) {
                       type="text"
                       required
                       value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      className="w-full border border-slate-300 rounded-[3px] bg-white px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] font-medium uppercase focus:outline-none focus:border-[#006f8e] shadow-2xs"
+                      onChange={(e) => {
+                        setCustomerName(e.target.value);
+                        if (formErrors.customerName && e.target.value.trim().length >= 2) {
+                          setFormErrors((prev) => {
+                            const n = { ...prev };
+                            delete n.customerName;
+                            return n;
+                          });
+                        }
+                      }}
+                      className={cn(
+                        "w-full border rounded-[3px] bg-white px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] font-medium uppercase focus:outline-none focus:border-[#006f8e] shadow-2xs",
+                        formErrors.customerName ? "border-red-500" : "border-slate-300"
+                      )}
                     />
+                    {formErrors.customerName && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1">{formErrors.customerName}</p>
+                    )}
                   </div>
                 </div>
 
@@ -757,10 +940,25 @@ export default function ConvertLeadPage({ params }: PageProps) {
                     <input
                       type="email"
                       value={custEmail}
-                      onChange={(e) => setCustEmail(e.target.value)}
-                      placeholder="Add multiple emails by pressing Tab button."
-                      className="w-full border border-slate-300 rounded-[3px] bg-white px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] placeholder:text-slate-400 placeholder:text-xs focus:outline-none focus:border-[#006f8e] shadow-2xs"
+                      onChange={(e) => {
+                        setCustEmail(e.target.value);
+                        if (formErrors.custEmail) {
+                          setFormErrors((prev) => {
+                            const n = { ...prev };
+                            delete n.custEmail;
+                            return n;
+                          });
+                        }
+                      }}
+                      placeholder="Add customer email (e.g. info@company.com)"
+                      className={cn(
+                        "w-full border rounded-[3px] bg-white px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] placeholder:text-slate-400 placeholder:text-xs focus:outline-none focus:border-[#006f8e] shadow-2xs",
+                        formErrors.custEmail ? "border-red-500" : "border-slate-300"
+                      )}
                     />
+                    {formErrors.custEmail && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1">{formErrors.custEmail}</p>
+                    )}
                   </div>
                 </div>
 
@@ -901,23 +1099,51 @@ export default function ConvertLeadPage({ params }: PageProps) {
                     <Phone className="w-3.5 h-3.5 text-[#006f8e]" />
                     <span>Tel</span>
                   </label>
-                  <div className="sm:col-span-8 flex items-center border border-slate-300 rounded-[3px] bg-white overflow-hidden shadow-2xs focus-within:border-[#006f8e]">
-                    <div className="flex items-center gap-1 bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs">
-                      <span>🇦🇪</span>
-                      <select
-                        value={telCountryCode}
-                        onChange={(e) => setTelCountryCode(e.target.value)}
-                        className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer pr-1"
-                      >
-                        <option value="+971">+971</option>
-                      </select>
+                  <div className="sm:col-span-8">
+                    <div className={cn(
+                      "flex items-center border rounded-[3px] bg-white overflow-hidden shadow-2xs focus-within:border-[#006f8e]",
+                      formErrors.custTel ? "border-red-500" : "border-slate-300"
+                    )}>
+                      <div className="flex items-center gap-1 bg-slate-50 border-r border-slate-300 px-2 py-1.5 text-slate-700 text-xs">
+                        <span>🇦🇪</span>
+                        <select
+                          value={telCountryCode}
+                          onChange={(e) => setTelCountryCode(e.target.value)}
+                          className="bg-transparent text-slate-800 text-xs focus:outline-none cursor-pointer pr-1"
+                        >
+                          <option value="+971">+971 (UAE)</option>
+                          <option value="+966">+966 (KSA)</option>
+                          <option value="+968">+968 (OM)</option>
+                          <option value="+974">+974 (QA)</option>
+                          <option value="+965">+965 (KW)</option>
+                          <option value="+973">+973 (BH)</option>
+                          <option value="+91">+91 (IN)</option>
+                          <option value="+92">+92 (PK)</option>
+                          <option value="+44">+44 (UK)</option>
+                          <option value="+1">+1 (US)</option>
+                        </select>
+                      </div>
+                      <input
+                        type="text"
+                        value={custTel}
+                        placeholder="04 123 4567"
+                        onChange={(e) => {
+                          const clean = e.target.value.replace(/\D/g, '');
+                          setCustTel(clean.slice(0, 15));
+                          if (formErrors.custTel) {
+                            setFormErrors((prev) => {
+                              const n = { ...prev };
+                              delete n.custTel;
+                              return n;
+                            });
+                          }
+                        }}
+                        className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] focus:outline-none"
+                      />
                     </div>
-                    <input
-                      type="text"
-                      value={custTel}
-                      onChange={(e) => setCustTel(e.target.value)}
-                      className="w-full px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] focus:outline-none"
-                    />
+                    {formErrors.custTel && (
+                      <p className="text-[11px] text-red-600 font-medium mt-1">{formErrors.custTel}</p>
+                    )}
                   </div>
                 </div>
 
