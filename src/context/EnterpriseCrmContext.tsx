@@ -139,17 +139,17 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   const [currentRole, setCurrentRole] = useState<UserRole>('Super Admin');
   const [globalSearch, setGlobalSearch] = useState('');
 
-  const [tasks, setTasks] = useState<CrmTask[]>([]);
-  const [leads, setLeads] = useState<CrmLead[]>([]);
-  const [customers, setCustomers] = useState<CrmCustomer[]>([]);
-  const [salesOpportunities, setSalesOpportunities] = useState<CrmSalesOpportunity[]>([]);
-  const [quotations, setQuotations] = useState<CrmQuotation[]>([]);
-  const [salesOrders, setSalesOrders] = useState<CrmSalesOrder[]>([]);
-  const [invoices, setInvoices] = useState<CrmInvoice[]>([]);
-  const [receipts, setReceipts] = useState<CrmReceipt[]>([]);
-  const [deliveryNotes, setDeliveryNotes] = useState<CrmDeliveryNote[]>([]);
-  const [purchaseStocks, setPurchaseStocks] = useState<CrmPurchaseStock[]>([]);
-  const [campaigns, setCampaigns] = useState<CrmCampaign[]>([]);
+  const [tasks, setTasks] = useState<CrmTask[]>(mockTasks);
+  const [leads, setLeads] = useState<CrmLead[]>(mockLeads);
+  const [customers, setCustomers] = useState<CrmCustomer[]>(mockCustomers);
+  const [salesOpportunities, setSalesOpportunities] = useState<CrmSalesOpportunity[]>(mockSalesOpportunities);
+  const [quotations, setQuotations] = useState<CrmQuotation[]>(mockQuotations);
+  const [salesOrders, setSalesOrders] = useState<CrmSalesOrder[]>(mockSalesOrders);
+  const [invoices, setInvoices] = useState<CrmInvoice[]>(mockInvoices);
+  const [receipts, setReceipts] = useState<CrmReceipt[]>(mockReceipts);
+  const [deliveryNotes, setDeliveryNotes] = useState<CrmDeliveryNote[]>(mockDeliveryNotes);
+  const [purchaseStocks, setPurchaseStocks] = useState<CrmPurchaseStock[]>(mockPurchaseStocks);
+  const [campaigns, setCampaigns] = useState<CrmCampaign[]>(mockCampaigns);
   const [users, setUsers] = useState<CrmUser[]>(mockUsers);
   const [rbacRules, setRbacRules] = useState<PermissionRule[]>(mockRbacRules);
 
@@ -199,28 +199,28 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         (key === 'crm_tasks_data'
           ? 'crm_tasks_updated'
           : key === 'crm_leads_data'
-          ? 'crm_leads_updated'
-          : key === 'crm_customers_data'
-          ? 'crm_customers_updated'
-          : key === 'crm_opportunities_data'
-          ? 'crm_opportunities_updated'
-          : key === 'crm_quotations_data'
-          ? 'crm_quotations_updated'
-          : key === 'crm_orders_data'
-          ? 'crm_orders_updated'
-          : key === 'crm_invoices_data'
-          ? 'crm_invoices_updated'
-          : key === 'crm_receipts_data'
-          ? 'crm_receipts_updated'
-          : key === 'crm_delivery_notes_data'
-          ? 'crm_delivery_notes_updated'
-          : key === 'crm_campaigns_data'
-          ? 'crm_campaigns_updated'
-          : key === 'crm_stocks_data'
-          ? 'crm_stocks_updated'
-          : key === 'cezcon_crm_users_list'
-          ? 'crm_users_updated'
-          : undefined);
+            ? 'crm_leads_updated'
+            : key === 'crm_customers_data'
+              ? 'crm_customers_updated'
+              : key === 'crm_opportunities_data'
+                ? 'crm_opportunities_updated'
+                : key === 'crm_quotations_data'
+                  ? 'crm_quotations_updated'
+                  : key === 'crm_orders_data'
+                    ? 'crm_orders_updated'
+                    : key === 'crm_invoices_data'
+                      ? 'crm_invoices_updated'
+                      : key === 'crm_receipts_data'
+                        ? 'crm_receipts_updated'
+                        : key === 'crm_delivery_notes_data'
+                          ? 'crm_delivery_notes_updated'
+                          : key === 'crm_campaigns_data'
+                            ? 'crm_campaigns_updated'
+                            : key === 'crm_stocks_data'
+                              ? 'crm_stocks_updated'
+                              : key === 'cezcon_crm_users_list'
+                                ? 'crm_users_updated'
+                                : undefined);
 
       if (derivedEvent) {
         window.dispatchEvent(new Event(derivedEvent));
@@ -235,127 +235,103 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     const loadAllData = () => {
       try {
-        const isLiveCleaned = localStorage.getItem('crm_live_pure_clean_v1');
-        if (!isLiveCleaned) {
-          // Purge all legacy demo / mock caches to ensure 100% pure live state
-          localStorage.removeItem('crm_leads_data');
-          localStorage.removeItem('crm_customers_data');
-          localStorage.removeItem('crm_opportunities_data');
-          localStorage.removeItem('crm_tasks_data');
-          localStorage.removeItem('crm_quotations_data');
-          localStorage.removeItem('crm_orders_data');
-          localStorage.removeItem('crm_invoices_data');
-          localStorage.removeItem('crm_receipts_data');
-          localStorage.removeItem('crm_delivery_notes_data');
-          localStorage.removeItem('crm_campaigns_data');
-          localStorage.removeItem('crm_stocks_data');
-          localStorage.removeItem('cool_worker_tasks');
-          localStorage.removeItem('cool_material_requests');
-          localStorage.removeItem('cool_timesheet');
-          localStorage.removeItem('crm_manager_tasks');
-          localStorage.removeItem('crm_manager_opportunities');
-          localStorage.removeItem('crm_manager_activities');
-          localStorage.setItem('crm_live_pure_clean_v1', 'true');
-          setLeads([]);
-          setCustomers([]);
-          setSalesOpportunities([]);
-          setTasks([]);
-          setQuotations([]);
-          setSalesOrders([]);
-          setInvoices([]);
-          setReceipts([]);
-          setDeliveryNotes([]);
-          setCampaigns([]);
-          setPurchaseStocks([]);
-          return;
-        }
-
         const storedLeads = localStorage.getItem('crm_leads_data');
         if (storedLeads) {
           const parsed = JSON.parse(storedLeads);
-          setLeads(Array.isArray(parsed) ? parsed : []);
+          setLeads(Array.isArray(parsed) && parsed.length > 0 ? parsed : mockLeads);
         } else {
-          setLeads([]);
+          setLeads(mockLeads);
+          localStorage.setItem('crm_leads_data', JSON.stringify(mockLeads));
         }
 
         const storedCustomers = localStorage.getItem('crm_customers_data');
         if (storedCustomers) {
           const parsed = JSON.parse(storedCustomers);
-          setCustomers(Array.isArray(parsed) ? parsed : []);
+          setCustomers(Array.isArray(parsed) && parsed.length > 0 ? parsed : mockCustomers);
         } else {
-          setCustomers([]);
+          setCustomers(mockCustomers);
+          localStorage.setItem('crm_customers_data', JSON.stringify(mockCustomers));
         }
 
         const storedOpps = localStorage.getItem('crm_opportunities_data');
         if (storedOpps) {
           const parsed = JSON.parse(storedOpps);
-          setSalesOpportunities(Array.isArray(parsed) ? parsed : []);
+          setSalesOpportunities(Array.isArray(parsed) && parsed.length > 0 ? parsed : mockSalesOpportunities);
         } else {
-          setSalesOpportunities([]);
+          setSalesOpportunities(mockSalesOpportunities);
+          localStorage.setItem('crm_opportunities_data', JSON.stringify(mockSalesOpportunities));
         }
 
         const storedTasks = localStorage.getItem('crm_tasks_data');
         if (storedTasks) {
           const parsed = JSON.parse(storedTasks);
-          setTasks(Array.isArray(parsed) ? parsed : []);
+          setTasks(Array.isArray(parsed) && parsed.length > 0 ? parsed : mockTasks);
         } else {
-          setTasks([]);
+          setTasks(mockTasks);
+          localStorage.setItem('crm_tasks_data', JSON.stringify(mockTasks));
         }
 
         const storedQuotes = localStorage.getItem('crm_quotations_data');
         if (storedQuotes) {
           const parsed = JSON.parse(storedQuotes);
-          setQuotations(Array.isArray(parsed) ? parsed : []);
+          setQuotations(Array.isArray(parsed) && parsed.length > 0 ? parsed : mockQuotations);
         } else {
-          setQuotations([]);
+          setQuotations(mockQuotations);
+          localStorage.setItem('crm_quotations_data', JSON.stringify(mockQuotations));
         }
 
         const storedOrders = localStorage.getItem('crm_orders_data');
         if (storedOrders) {
           const parsed = JSON.parse(storedOrders);
-          setSalesOrders(Array.isArray(parsed) ? parsed : []);
+          setSalesOrders(Array.isArray(parsed) && parsed.length > 0 ? parsed : mockSalesOrders);
         } else {
-          setSalesOrders([]);
+          setSalesOrders(mockSalesOrders);
+          localStorage.setItem('crm_orders_data', JSON.stringify(mockSalesOrders));
         }
 
         const storedInvoices = localStorage.getItem('crm_invoices_data');
         if (storedInvoices) {
           const parsed = JSON.parse(storedInvoices);
-          setInvoices(Array.isArray(parsed) ? parsed : []);
+          setInvoices(Array.isArray(parsed) && parsed.length > 0 ? parsed : mockInvoices);
         } else {
-          setInvoices([]);
+          setInvoices(mockInvoices);
+          localStorage.setItem('crm_invoices_data', JSON.stringify(mockInvoices));
         }
 
         const storedReceipts = localStorage.getItem('crm_receipts_data');
         if (storedReceipts) {
           const parsed = JSON.parse(storedReceipts);
-          setReceipts(Array.isArray(parsed) ? parsed : []);
+          setReceipts(Array.isArray(parsed) && parsed.length > 0 ? parsed : mockReceipts);
         } else {
-          setReceipts([]);
+          setReceipts(mockReceipts);
+          localStorage.setItem('crm_receipts_data', JSON.stringify(mockReceipts));
         }
 
         const storedDeliveryNotes = localStorage.getItem('crm_delivery_notes_data');
         if (storedDeliveryNotes) {
           const parsed = JSON.parse(storedDeliveryNotes);
-          setDeliveryNotes(Array.isArray(parsed) ? parsed : []);
+          setDeliveryNotes(Array.isArray(parsed) && parsed.length > 0 ? parsed : mockDeliveryNotes);
         } else {
-          setDeliveryNotes([]);
+          setDeliveryNotes(mockDeliveryNotes);
+          localStorage.setItem('crm_delivery_notes_data', JSON.stringify(mockDeliveryNotes));
         }
 
         const storedCampaigns = localStorage.getItem('crm_campaigns_data');
         if (storedCampaigns) {
           const parsed = JSON.parse(storedCampaigns);
-          setCampaigns(Array.isArray(parsed) ? parsed : []);
+          setCampaigns(Array.isArray(parsed) && parsed.length > 0 ? parsed : mockCampaigns);
         } else {
-          setCampaigns([]);
+          setCampaigns(mockCampaigns);
+          localStorage.setItem('crm_campaigns_data', JSON.stringify(mockCampaigns));
         }
 
         const storedStocks = localStorage.getItem('crm_stocks_data');
         if (storedStocks) {
           const parsed = JSON.parse(storedStocks);
-          setPurchaseStocks(Array.isArray(parsed) ? parsed : []);
+          setPurchaseStocks(Array.isArray(parsed) && parsed.length > 0 ? parsed : mockPurchaseStocks);
         } else {
-          setPurchaseStocks([]);
+          setPurchaseStocks(mockPurchaseStocks);
+          localStorage.setItem('crm_stocks_data', JSON.stringify(mockPurchaseStocks));
         }
 
         // Load dynamic shared users
@@ -460,7 +436,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const assigneeName = taskData.assignedEmployee || taskData.assignee?.name || 'Assigned Employee';
     const managerName = taskData.assignedBy || taskData.createdBy || 'Operations Manager';
-    
+
     let currentTasks = tasks;
     try {
       const stored = localStorage.getItem('crm_tasks_data');
