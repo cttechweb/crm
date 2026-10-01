@@ -84,8 +84,8 @@ export function resolveUserDepartment(user?: UserContext | null): DepartmentType
     .join(' ')
     .toLowerCase();
 
-  if (raw.includes('market') || raw.includes('afsal') || raw.includes('arun')) return 'marketing';
-  if (raw.includes('sale') || raw.includes('shibil')) return 'sales';
+  if (raw.includes('market') || raw.includes('afsal') || raw.includes('arun') || raw.includes('shameem')) return 'marketing';
+  if (raw.includes('sale') || raw.includes('shibil') || raw.includes('shaheer') || raw.includes('adhil')) return 'sales';
   if (raw.includes('purch') || raw.includes('procure')) return 'purchase';
   if (raw.includes('operat') || raw.includes('service') || raw.includes('field')) return 'operations';
   if (raw.includes('admin')) return 'administration';
@@ -123,15 +123,41 @@ export function resolveManagerTeamIdentifiers(manager?: UserContext | null, allU
   if (mgrEmail) identifiers.add(mgrEmail);
   if (mgrName) identifiers.add(mgrName);
 
-  // Department-specific seed defaults
+  // Department-specific team member identifiers
   if (mgrDept === 'marketing' || mgrEmail.includes('afsal') || mgrName.includes('afsal')) {
-    ['arun', 'arun employee', 'a', 'arun@gmail.com', 'arun@company.com', 'employee 7', 'employee7@company.com', 'employee 8', 'employee8@company.com'].forEach((m) =>
-      identifiers.add(m.toLowerCase())
-    );
+    [
+      'arun',
+      'arun employee',
+      'arun@gmail.com',
+      'arun@cooltechuae.com',
+      'emp_arun_001',
+      'shameem',
+      'shameem@gmail.com',
+      'shameem@cooltechuae.com',
+      'emp_shameem_001',
+      'employee 7',
+      'employee7@company.com',
+      'employee 8',
+      'employee8@company.com',
+    ].forEach((m) => identifiers.add(m.toLowerCase()));
   } else if (mgrDept === 'sales' || mgrEmail.includes('shibil') || mgrName.includes('shibil')) {
-    ['employee 1', 'employee@gmail.com', 'employee 2', 'employee2@company.com', 'employee 3', 'employee3@company.com'].forEach((m) =>
-      identifiers.add(m.toLowerCase())
-    );
+    [
+      'shaheer',
+      'shaheer@gmail.com',
+      'shaheer@cooltechuae.com',
+      'emp_shaheer_001',
+      'adhil',
+      'muhammed adhil',
+      'adhil@gmail.com',
+      'adhil@cooltechuae.com',
+      'emp_adhil_001',
+      'employee 1',
+      'employee@gmail.com',
+      'employee 2',
+      'employee2@company.com',
+      'employee 3',
+      'employee3@company.com',
+    ].forEach((m) => identifiers.add(m.toLowerCase()));
   } else if (mgrDept === 'purchase') {
     ['employee 4', 'employee 5', 'employee 6', 'employee4@company.com', 'employee5@company.com', 'employee6@company.com'].forEach((m) =>
       identifiers.add(m.toLowerCase())

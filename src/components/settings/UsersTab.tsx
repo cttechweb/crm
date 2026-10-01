@@ -404,13 +404,12 @@ export function UsersTab({
         }
       });
 
-      // 3. Ensure Muhammed shemin exists as live Admin if not already present
+      // 3. Ensure Muhammed shemin exists as live Admin
       const hasShemin = Array.from(userMap.values()).some(
         (u) =>
           (u.email && u.email.toLowerCase() === 'shemin@gmail.com') ||
           (u.username && u.username.toLowerCase().includes('shemin'))
       );
-
       if (!hasShemin) {
         userMap.set('usr_shemin_001', {
           id: 'usr_shemin_001',
@@ -440,7 +439,7 @@ export function UsersTab({
           name: 'Afsal',
           email: 'afsal@gmail.com',
           username: 'afsal@cooltechuae.com',
-          profileType: 'Manager',
+          profileType: 'Marketing Manager',
           managerType: 'Marketing Manager',
           designation: 'Marketing Manager',
           department: 'Marketing',
@@ -464,7 +463,7 @@ export function UsersTab({
           name: 'Muhammed Shibil',
           email: 'shibil@gmail.com',
           username: 'shibil@cooltechuae.com',
-          profileType: 'Manager',
+          profileType: 'Sales Manager',
           managerType: 'Sales Manager',
           designation: 'Sales Manager',
           department: 'Sales',
@@ -472,6 +471,106 @@ export function UsersTab({
           status: 'Active',
           role: 'Manager',
           dataScope: 'team',
+          loginPermission: 'Web & Mobile',
+        });
+      }
+
+      // 6. Ensure Shaheer (Sales Employee) exists
+      const hasShaheer = Array.from(userMap.values()).some(
+        (u) =>
+          (u.email && u.email.toLowerCase() === 'shaheer@gmail.com') ||
+          (u.name && u.name.toLowerCase().includes('shaheer'))
+      );
+      if (!hasShaheer) {
+        userMap.set('emp_shaheer_001', {
+          id: 'emp_shaheer_001',
+          name: 'shaheer',
+          email: 'shaheer@gmail.com',
+          username: 'shaheer@cooltechuae.com',
+          profileType: 'Sales Employee',
+          employeeType: 'Sales Employee',
+          designation: 'Sales Executive',
+          department: 'Sales',
+          managerId: 'usr_shibil_001',
+          phone: '+971 50 776 5432',
+          status: 'Active',
+          role: 'Employee',
+          dataScope: 'own',
+          loginPermission: 'Web & Mobile',
+        });
+      }
+
+      // 7. Ensure Muhammed Adhil (Sales Employee) exists
+      const hasAdhil = Array.from(userMap.values()).some(
+        (u) =>
+          (u.email && u.email.toLowerCase() === 'adhil@gmail.com') ||
+          (u.name && u.name.toLowerCase().includes('adhil'))
+      );
+      if (!hasAdhil) {
+        userMap.set('emp_adhil_001', {
+          id: 'emp_adhil_001',
+          name: 'adhil',
+          email: 'adhil@gmail.com',
+          username: 'adhil@cooltechuae.com',
+          profileType: 'Sales Employee',
+          employeeType: 'Sales Employee',
+          designation: 'Sales Representative',
+          department: 'Sales',
+          managerId: 'usr_shibil_001',
+          phone: '+971 56 881 1334',
+          status: 'Active',
+          role: 'Employee',
+          dataScope: 'own',
+          loginPermission: 'Web & Mobile',
+        });
+      }
+
+      // 8. Ensure Shameem (Marketing Employee) exists
+      const hasShameem = Array.from(userMap.values()).some(
+        (u) =>
+          (u.email && u.email.toLowerCase() === 'shameem@gmail.com') ||
+          (u.name && u.name.toLowerCase().includes('shameem'))
+      );
+      if (!hasShameem) {
+        userMap.set('emp_shameem_001', {
+          id: 'emp_shameem_001',
+          name: 'shameem',
+          email: 'shameem@gmail.com',
+          username: 'shameem@cooltechuae.com',
+          profileType: 'Marketing Employee',
+          employeeType: 'Marketing Employee',
+          designation: 'Marketing Executive',
+          department: 'Marketing',
+          managerId: 'usr_afsal_001',
+          phone: '+971 52 443 8901',
+          status: 'Active',
+          role: 'Employee',
+          dataScope: 'own',
+          loginPermission: 'Web & Mobile',
+        });
+      }
+
+      // 9. Ensure Arun (Marketing Employee) exists
+      const hasArun = Array.from(userMap.values()).some(
+        (u) =>
+          (u.email && u.email.toLowerCase() === 'arun@gmail.com') ||
+          (u.name && u.name.toLowerCase().includes('arun'))
+      );
+      if (!hasArun) {
+        userMap.set('emp_arun_001', {
+          id: 'emp_arun_001',
+          name: 'arun',
+          email: 'arun@gmail.com',
+          username: 'arun@cooltechuae.com',
+          profileType: 'Marketing Employee',
+          employeeType: 'Marketing Employee',
+          designation: 'Marketing Specialist',
+          department: 'Marketing',
+          managerId: 'usr_afsal_001',
+          phone: '+971 54 321 0987',
+          status: 'Active',
+          role: 'Employee',
+          dataScope: 'own',
           loginPermission: 'Web & Mobile',
         });
       }

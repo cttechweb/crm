@@ -741,7 +741,62 @@ const MOCK_CREDENTIALS: Array<{
       },
     },
 
-    // --- Pre-configured Employees (10 distributed across 4 managers) ---
+    // --- Real Company Team Credentials ---
+    {
+      email: 'shaheer@gmail.com',
+      password: 'cool@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_shaheer_001',
+        name: 'shaheer',
+        email: 'shaheer@gmail.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Sales Executive',
+        profileType: 'Employee',
+        employeeType: 'Sales Employee',
+        department: 'Sales',
+        managerId: 'mgr_1',
+      },
+    },
+    {
+      email: 'adhil@gmail.com',
+      password: 'cool@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_adhil_001',
+        name: 'adhil',
+        email: 'adhil@gmail.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Sales Representative',
+        profileType: 'Employee',
+        employeeType: 'Sales Employee',
+        department: 'Sales',
+        managerId: 'mgr_1',
+      },
+    },
+    {
+      email: 'shameem@gmail.com',
+      password: 'cool@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_shameem_001',
+        name: 'shameem',
+        email: 'shameem@gmail.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Marketing Executive',
+        profileType: 'Employee',
+        employeeType: 'Marketing Employee',
+        department: 'Marketing',
+        managerId: 'mgr_3',
+      },
+    },
+    // --- Pre-configured Employees ---
     {
       email: 'employee1@company.com',
       password: 'employee@123',
