@@ -26,7 +26,12 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
-import { authMockService, resolveDefaultPermissions } from '@/services/authMockService';
+import {
+  authMockService,
+  resolveDefaultPermissions,
+  canCreateRole,
+  validateUserCreationAuthority,
+} from '@/services/authMockService';
 import { Modal } from '@/components/ui/Modal';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { CezconUserItem, CezconProfileItem } from '@/types/settings';
@@ -210,18 +215,18 @@ export function UsersTab({
     mobileCountry: '+971',
     mobileNumber: '',
     dob: '',
-    profile: 'Select Profile',
+    profile: '',
     managerType: 'Sales Manager',
     employeeType: 'Sales Employee',
     assignedManagerId: '',
-    businessOpportunity: 'None selected',
-    businessOpportunityAll: true,
-    designation: 'Sales Representative',
+    businessOpportunity: 'None',
+    businessOpportunityAll: false,
+    designation: '',
     signatureImage: null as string | null,
     avatarImage: null as string | null,
     loginPermission: 'Web & Mobile' as 'Web Only' | 'Mobile Only' | 'Web & Mobile',
     salesVisitPermission: false,
-    store: 'None selected',
+    store: 'None',
     storeAll: false,
     isWorker: false,
     monthlyTargets: false,
@@ -338,14 +343,7 @@ export function UsersTab({
   const [profilesList, setProfilesList] = useState(CEZCON_PROFILES_DATA);
 
   const availableManagers = useMemo(() => {
-    const baseMgrs = [
-      { id: 'mgr_1', name: 'Manager 1', email: 'manager1@company.com', managerType: 'Sales Manager' },
-      { id: 'mgr_2', name: 'Manager 2', email: 'manager2@company.com', managerType: 'Purchase Manager' },
-      { id: 'mgr_3', name: 'Manager 3', email: 'manager3@company.com', managerType: 'Marketing Manager' },
-      { id: 'mgr_4', name: 'Manager 4', email: 'manager4@company.com', managerType: 'Operations Manager' },
-    ];
-
-    const dynamicMgrs = cezconUsersList
+    return cezconUsersList
       .filter((u) => {
         const p = (u.profileType || '').toLowerCase();
         const r = (u.role || '').toLowerCase();
@@ -357,239 +355,153 @@ export function UsersTab({
         name: u.name,
         email: u.email || u.username || '',
         managerType: u.managerType || u.profileType || 'Manager',
-      }));
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [cezconUsersList]);
 
-    const map = new Map<string, { id: string; name: string; email: string; managerType: string }>();
-    [...baseMgrs, ...dynamicMgrs].forEach((m) => {
-      map.set(m.id, m);
-    });
-
-    const list = Array.from(map.values());
-    const empType = (userFormData.employeeType || '').toLowerCase();
-
-    // Sort matching department first while keeping all available
-    return list.sort((a, b) => {
-      const aType = (a.managerType || '').toLowerCase();
-      const bType = (b.managerType || '').toLowerCase();
-      const aMatches =
-        (empType.includes('sales') && aType.includes('sales')) ||
-        (empType.includes('purchase') && aType.includes('purchase')) ||
-        (empType.includes('marketing') && (aType.includes('marketing') || aType.includes('market'))) ||
-        (empType.includes('operation') && aType.includes('operation'));
-      const bMatches =
-        (empType.includes('sales') && bType.includes('sales')) ||
-        (empType.includes('purchase') && bType.includes('purchase')) ||
-        (empType.includes('marketing') && (bType.includes('marketing') || bType.includes('market'))) ||
-        (empType.includes('operation') && bType.includes('operation'));
-
-      if (aMatches && !bMatches) return -1;
-      if (!aMatches && bMatches) return 1;
-      return a.name.localeCompare(b.name);
-    });
-  }, [cezconUsersList, userFormData.employeeType]);
-
-  useEffect(() => {
+  const loadUnifiedUsers = () => {
     try {
-      const storedUsers = localStorage.getItem('cezcon_crm_users_list');
-      if (storedUsers) {
-        setCezconUsersList(JSON.parse(storedUsers));
-      } else {
-        const seedUsers: CezconUserItem[] = [
-          {
-            id: 'mgr_1',
-            name: 'Manager 1',
-            email: 'manager1@company.com',
-            username: 'manager1@cooltechuae.com',
-            profileType: 'Manager',
-            managerType: 'Sales Manager',
-            designation: 'Sales Manager',
-            dataScope: 'team',
-            status: 'Active',
-            role: 'Manager',
-          },
-          {
-            id: 'mgr_2',
-            name: 'Manager 2',
-            email: 'manager2@company.com',
-            username: 'manager2@cooltechuae.com',
-            profileType: 'Manager',
-            managerType: 'Purchase Manager',
-            designation: 'Purchase Manager',
-            dataScope: 'team',
-            status: 'Active',
-            role: 'Manager',
-          },
-          {
-            id: 'mgr_3',
-            name: 'Manager 3',
-            email: 'manager3@company.com',
-            username: 'manager3@cooltechuae.com',
-            profileType: 'Manager',
-            managerType: 'Marketing Manager',
-            designation: 'Marketing Manager',
-            dataScope: 'team',
-            status: 'Active',
-            role: 'Manager',
-          },
-          {
-            id: 'mgr_4',
-            name: 'Manager 4',
-            email: 'manager4@company.com',
-            username: 'manager4@cooltechuae.com',
-            profileType: 'Manager',
-            managerType: 'Operations Manager',
-            designation: 'Operations Manager',
-            dataScope: 'team',
-            status: 'Active',
-            role: 'Manager',
-          },
-          {
-            id: 'emp_1',
-            name: 'Employee 1',
-            email: 'employee1@company.com',
-            username: 'employee1@cooltechuae.com',
-            profileType: 'Employee',
-            employeeType: 'Sales Employee',
-            managerId: 'mgr_1',
-            reportingManagerId: 'mgr_1',
-            designation: 'Sales Employee',
-            dataScope: 'own',
-            status: 'Active',
-            role: 'Employee',
-          },
-          {
-            id: 'emp_2',
-            name: 'Employee 2',
-            email: 'employee2@company.com',
-            username: 'employee2@cooltechuae.com',
-            profileType: 'Employee',
-            employeeType: 'Sales Employee',
-            managerId: 'mgr_1',
-            reportingManagerId: 'mgr_1',
-            designation: 'Sales Employee',
-            dataScope: 'own',
-            status: 'Active',
-            role: 'Employee',
-          },
-          {
-            id: 'emp_3',
-            name: 'Employee 3',
-            email: 'employee3@company.com',
-            username: 'employee3@cooltechuae.com',
-            profileType: 'Employee',
-            employeeType: 'Sales Employee',
-            managerId: 'mgr_1',
-            reportingManagerId: 'mgr_1',
-            designation: 'Sales Employee',
-            dataScope: 'own',
-            status: 'Active',
-            role: 'Employee',
-          },
-          {
-            id: 'emp_4',
-            name: 'Employee 4',
-            email: 'employee4@company.com',
-            username: 'employee4@cooltechuae.com',
-            profileType: 'Employee',
-            employeeType: 'Purchase Employee',
-            managerId: 'mgr_2',
-            reportingManagerId: 'mgr_2',
-            designation: 'Purchase Employee',
-            dataScope: 'own',
-            status: 'Active',
-            role: 'Employee',
-          },
-          {
-            id: 'emp_5',
-            name: 'Employee 5',
-            email: 'employee5@company.com',
-            username: 'employee5@cooltechuae.com',
-            profileType: 'Employee',
-            employeeType: 'Purchase Employee',
-            managerId: 'mgr_2',
-            reportingManagerId: 'mgr_2',
-            designation: 'Purchase Employee',
-            dataScope: 'own',
-            status: 'Active',
-            role: 'Employee',
-          },
-          {
-            id: 'emp_6',
-            name: 'Employee 6',
-            email: 'employee6@company.com',
-            username: 'employee6@cooltechuae.com',
-            profileType: 'Employee',
-            employeeType: 'Purchase Employee',
-            managerId: 'mgr_2',
-            reportingManagerId: 'mgr_2',
-            designation: 'Purchase Employee',
-            dataScope: 'own',
-            status: 'Active',
-            role: 'Employee',
-          },
-          {
-            id: 'emp_7',
-            name: 'Employee 7',
-            email: 'employee7@company.com',
-            username: 'employee7@cooltechuae.com',
-            profileType: 'Employee',
-            employeeType: 'Marketing Employee',
-            managerId: 'mgr_3',
-            reportingManagerId: 'mgr_3',
-            designation: 'Marketing Employee',
-            dataScope: 'own',
-            status: 'Active',
-            role: 'Employee',
-          },
-          {
-            id: 'emp_8',
-            name: 'Employee 8',
-            email: 'employee8@company.com',
-            username: 'employee8@cooltechuae.com',
-            profileType: 'Employee',
-            employeeType: 'Marketing Employee',
-            managerId: 'mgr_3',
-            reportingManagerId: 'mgr_3',
-            designation: 'Marketing Employee',
-            dataScope: 'own',
-            status: 'Active',
-            role: 'Employee',
-          },
-          {
-            id: 'emp_9',
-            name: 'Employee 9',
-            email: 'employee9@company.com',
-            username: 'employee9@cooltechuae.com',
-            profileType: 'Employee',
-            employeeType: 'Operations Employee',
-            managerId: 'mgr_4',
-            reportingManagerId: 'mgr_4',
-            designation: 'Operations Employee',
-            dataScope: 'own',
-            status: 'Active',
-            role: 'Employee',
-          },
-          {
-            id: 'emp_10',
-            name: 'Employee 10',
-            email: 'employee10@company.com',
-            username: 'employee10@cooltechuae.com',
-            profileType: 'Employee',
-            employeeType: 'Operations Employee',
-            managerId: 'mgr_4',
-            reportingManagerId: 'mgr_4',
-            designation: 'Operations Employee',
-            dataScope: 'own',
-            status: 'Active',
-            role: 'Employee',
-          },
-        ];
-        setCezconUsersList(seedUsers);
-        localStorage.setItem('cezcon_crm_users_list', JSON.stringify(seedUsers));
+      const storedUsersRaw = localStorage.getItem('cezcon_crm_users_list');
+      const storedAdminsRaw = localStorage.getItem('crm_admin_accounts_list');
+
+      let cezconList: CezconUserItem[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
+      let adminList: any[] = storedAdminsRaw ? JSON.parse(storedAdminsRaw) : [];
+
+      const userMap = new Map<string | number, CezconUserItem>();
+
+      // 1. Add all Cezcon users (Managers, Employees, Workers, Admins) keyed by unique ID
+      cezconList.forEach((u) => {
+        if (u && u.id) {
+          userMap.set(u.id, u);
+        }
+      });
+
+      // 2. Merge Admins created in Super Admin
+      adminList.forEach((a) => {
+        if (a && a.id) {
+          const alreadyExists = Array.from(userMap.values()).some(
+            (u) =>
+              String(u.id) === String(a.id) ||
+              (u.email && a.email && u.email.toLowerCase() === a.email.toLowerCase())
+          );
+          if (!alreadyExists) {
+            userMap.set(a.id, {
+              id: a.id || `adm_${Date.now()}`,
+              name: a.name,
+              email: a.email,
+              username: a.username ? (a.username.includes('@') ? a.username : `${a.username}@cooltechuae.com`) : `${a.name.toLowerCase().replace(/\s+/g, '.')}@cooltechuae.com`,
+              profileType: 'Admin',
+              designation: a.designation || 'Admin',
+              department: a.department || 'Administration',
+              phone: a.phone || '+971 55 485 3829',
+              status: a.status || 'Active',
+              isAdmin: true,
+              role: 'Admin',
+              loginPermission: 'Web & Mobile',
+              avatarImage: a.avatar,
+            });
+          }
+        }
+      });
+
+      // 3. Ensure Muhammed shemin exists as live Admin if not already present
+      const hasShemin = Array.from(userMap.values()).some(
+        (u) =>
+          (u.email && u.email.toLowerCase() === 'shemin@gmail.com') ||
+          (u.username && u.username.toLowerCase().includes('shemin'))
+      );
+
+      if (!hasShemin) {
+        userMap.set('usr_shemin_001', {
+          id: 'usr_shemin_001',
+          name: 'Muhammed shemin',
+          email: 'shemin@gmail.com',
+          username: 'shemin@cooltechuae.com',
+          profileType: 'Admin',
+          designation: 'Managing Director / Business Admin',
+          department: 'Executive Operations',
+          phone: '+971 50 123 4567',
+          status: 'Active',
+          isAdmin: true,
+          role: 'Admin',
+          loginPermission: 'Web & Mobile',
+        });
+      }
+
+      // 4. Ensure Afsal (Marketing Manager) exists
+      const hasAfsal = Array.from(userMap.values()).some(
+        (u) =>
+          (u.email && u.email.toLowerCase() === 'afsal@gmail.com') ||
+          (u.name && u.name.toLowerCase().includes('afsal'))
+      );
+      if (!hasAfsal) {
+        userMap.set('usr_afsal_001', {
+          id: 'usr_afsal_001',
+          name: 'Afsal',
+          email: 'afsal@gmail.com',
+          username: 'afsal@cooltechuae.com',
+          profileType: 'Manager',
+          managerType: 'Marketing Manager',
+          designation: 'Marketing Manager',
+          department: 'Marketing',
+          phone: '+971 55 123 9988',
+          status: 'Active',
+          role: 'Manager',
+          dataScope: 'team',
+          loginPermission: 'Web & Mobile',
+        });
+      }
+
+      // 5. Ensure Muhammed Shibil (Sales Manager) exists
+      const hasShibil = Array.from(userMap.values()).some(
+        (u) =>
+          (u.email && u.email.toLowerCase() === 'shibil@gmail.com') ||
+          (u.name && u.name.toLowerCase().includes('shibil'))
+      );
+      if (!hasShibil) {
+        userMap.set('usr_shibil_001', {
+          id: 'usr_shibil_001',
+          name: 'Muhammed Shibil',
+          email: 'shibil@gmail.com',
+          username: 'shibil@cooltechuae.com',
+          profileType: 'Manager',
+          managerType: 'Sales Manager',
+          designation: 'Sales Manager',
+          department: 'Sales',
+          phone: '+971 50 987 6543',
+          status: 'Active',
+          role: 'Manager',
+          dataScope: 'team',
+          loginPermission: 'Web & Mobile',
+        });
+      }
+
+      const mergedUsers = Array.from(userMap.values());
+      setCezconUsersList(mergedUsers);
+
+      // Only write to localStorage if there are new merged items to avoid race conditions
+      try {
+        if (mergedUsers.length > cezconList.length) {
+          localStorage.setItem('cezcon_crm_users_list', JSON.stringify(mergedUsers));
+        }
+      } catch (err) {
+        console.error(err);
       }
     } catch (e) {
-      console.error(e);
+      console.error('Error loading unified users:', e);
     }
+  };
+
+  useEffect(() => {
+    loadUnifiedUsers();
+    window.addEventListener('crm_users_updated', loadUnifiedUsers);
+    window.addEventListener('crm_admins_updated', loadUnifiedUsers);
+    window.addEventListener('storage', loadUnifiedUsers);
+    return () => {
+      window.removeEventListener('crm_users_updated', loadUnifiedUsers);
+      window.removeEventListener('crm_admins_updated', loadUnifiedUsers);
+      window.removeEventListener('storage', loadUnifiedUsers);
+    };
   }, []);
 
   useEffect(() => {
@@ -646,24 +558,30 @@ export function UsersTab({
     if (isSuperAdminSession) {
       return combined;
     }
+    if (isSuperAdminSession) {
+      return combined;
+    }
     if (isAdminSession) {
-      return combined.filter(
-        (p) => {
-          const l = p.toLowerCase();
-          return !l.includes('super admin') && !l.includes('superadmin') && !l.includes('super_admin');
-        }
-      );
+      return combined.filter((p) => {
+        const l = p.toLowerCase().trim();
+        // Admin cannot create Super Admin or Admin accounts
+        return (
+          !l.includes('super admin') &&
+          !l.includes('superadmin') &&
+          !l.includes('super_admin') &&
+          l !== 'admin'
+        );
+      });
     }
     if (isManagerSession) {
-      return combined.filter(
-        (p) => {
-          const l = p.toLowerCase();
-          return !l.includes('admin') && !l.includes('manager') && !l.includes('super');
-        }
-      );
+      return combined.filter((p) => {
+        const l = p.toLowerCase().trim();
+        // Manager cannot create Super Admin, Admin, or Manager accounts
+        return !l.includes('admin') && !l.includes('manager') && !l.includes('super');
+      });
     }
     return combined.filter((p) => {
-      const l = p.toLowerCase();
+      const l = p.toLowerCase().trim();
       return !l.includes('admin') && !l.includes('manager') && !l.includes('super');
     });
   }, [isSuperAdminSession, isAdminSession, isManagerSession, profilesList]);
@@ -683,12 +601,7 @@ export function UsersTab({
   }, [designationSearchQuery, designationsList]);
 
   const filteredCezconUsers = cezconUsersList.filter((u) => {
-    // When logged in as Admin or Manager, do not display Admin users/profiles in the Users Directory table
-    const isUserAdmin = u.isAdmin || (u.profileType && u.profileType.toLowerCase().trim() === 'admin');
-    if (!isSuperAdminSession && isUserAdmin) {
-      return false;
-    }
-
+    // When logged in as Manager: only display team members (Employees, Workers) under their department
     if (isManagerSession) {
       const isTeam =
         u.profileType?.toLowerCase().includes('employee') ||
@@ -697,15 +610,19 @@ export function UsersTab({
       if (!isTeam) return false;
 
       // STRICT: Only show employees whose department matches this manager's department
-      // Sales Manager → Sales Employees ONLY
-      // Marketing Manager → Marketing Employees ONLY
-      // Purchase Manager → Purchase Employees ONLY
-      // Operations Manager → Operations Employees ONLY
       if (managerDeptType) {
         const uType = (u.employeeType || u.profileType || '').toLowerCase();
         const deptKey = managerDeptType.toLowerCase().replace(' employee', '');
         if (!uType.includes(deptKey)) return false;
       }
+    }
+
+    // When logged in as Admin: show Admins, Managers, Employees, and Workers, but do not display Super Admin accounts
+    if (isAdminSession) {
+      const isSuper =
+        (u.profileType || '').toLowerCase().includes('super') ||
+        (u.role || '').toLowerCase().includes('super');
+      if (isSuper) return false;
     }
 
     const matchesSearch =
@@ -926,7 +843,7 @@ export function UsersTab({
       ? rawUsername
       : `${rawUsername}@cooltechuae.com`;
     const userEmail = enteredEmail || fullUsername;
-    const profileName = userFormData.profile && userFormData.profile !== 'Select Profile' ? userFormData.profile : 'Sales';
+    const profileName = userFormData.profile && userFormData.profile !== 'Select Profile' ? userFormData.profile : 'Employee';
     const isEmployeeSession = loggedInUser?.role === 'employee' || loggedInUser?.role === 'worker';
     if (isEmployeeSession) {
       alert('Authority Restriction: Employees do not have permission to create or modify user accounts.');
@@ -940,26 +857,65 @@ export function UsersTab({
     }
 
     const isAdminUser = profileName.toLowerCase().includes('admin');
+    if (isAdminUser && !isSuperAdminSession) {
+      alert('Authority Restriction: Only Super Admin can create Admin accounts.');
+      return;
+    }
+
     const isManager = profileName.toLowerCase().includes('manager') || profileName.toLowerCase().includes('operation');
     if (isManagerSession && (isAdminUser || isManager)) {
-      alert('Authority Restriction: Managers can only create and manage Employee / Team accounts.');
+      alert('Authority Restriction: Managers can only create and manage Employee / Team accounts for their own team.');
       return;
     }
     const isEmployee = !isAdminUser && !isManager;
+
+    const authCheck = validateUserCreationAuthority(
+      loggedInUser,
+      profileName,
+      isAdminUser ? 'admin' : isManager ? 'manager' : 'employee'
+    );
+    if (!authCheck.allowed) {
+      alert(authCheck.error || 'Authority Restriction: Unauthorized action.');
+      return;
+    }
 
     // For manager sessions: force the employee type to match the manager's own department
     const resolvedEmployeeType = isManagerSession && managerDeptType && isEmployee
       ? managerDeptType
       : userFormData.employeeType;
 
-    // For manager sessions: always assign to the logged-in manager
-    const effectiveManagerId = isEmployee
+    // Resolve reporting manager: Manager sessions strictly auto-assign to themselves
+    let effectiveManagerId = isEmployee
       ? (isManagerSession ? (loggedInUser?.id || loggedInUser?.email || 'mgr_1') : (userFormData.assignedManagerId || null))
       : null;
 
+    if (isEmployee && !effectiveManagerId) {
+      const typeStr = (resolvedEmployeeType || '').toLowerCase();
+      if (typeStr.includes('sales')) {
+        const salesMgr = cezconUsersList.find(
+          (u) => (u.profileType || '').toLowerCase().includes('sales') && (u.profileType || '').toLowerCase().includes('manager')
+        ) || cezconUsersList.find((u) => (u.name || '').toLowerCase().includes('shibil'));
+        effectiveManagerId = salesMgr ? String(salesMgr.id || salesMgr.email) : 'shibil@gmail.com';
+      } else if (typeStr.includes('marketing') || typeStr.includes('market')) {
+        const mktMgr = cezconUsersList.find(
+          (u) => (u.profileType || '').toLowerCase().includes('marketing') && (u.profileType || '').toLowerCase().includes('manager')
+        ) || cezconUsersList.find((u) => (u.name || '').toLowerCase().includes('afsal'));
+        effectiveManagerId = mktMgr ? String(mktMgr.id || mktMgr.email) : 'afsal@gmail.com';
+      }
+    }
+
     if (editingUserId) {
-      const updated = cezconUsersList.map((u) => {
-        if (u.id === editingUserId) {
+      let currentList: CezconUserItem[] = [];
+      try {
+        const raw = localStorage.getItem('cezcon_crm_users_list');
+        if (raw) currentList = JSON.parse(raw);
+      } catch (e) {}
+      if (!Array.isArray(currentList) || currentList.length === 0) {
+        currentList = cezconUsersList;
+      }
+
+      const updated = currentList.map((u) => {
+        if (String(u.id) === String(editingUserId)) {
           return {
             ...u,
             name: userFormData.name.trim(),
@@ -993,12 +949,15 @@ export function UsersTab({
       try {
         localStorage.setItem('cezcon_crm_users_list', JSON.stringify(updated));
         window.dispatchEvent(new Event('crm_users_updated'));
+        window.dispatchEvent(new Event('crm_team_updated'));
+        window.dispatchEvent(new Event('crm_data_updated'));
+        window.dispatchEvent(new Event('storage'));
       } catch (err) {
         console.error(err);
       }
     } else {
       const newUser: CezconUserItem = {
-        id: Date.now(),
+        id: `usr_${Date.now()}`,
         name: userFormData.name.trim(),
         email: userEmail,
         username: fullUsername,
@@ -1012,13 +971,14 @@ export function UsersTab({
         modulePermissions: userFormData.modulePermissions,
         actionPermissions: userFormData.actionPermissions,
         isAdmin: isAdminUser,
+        role: isAdminUser ? 'Admin' : isManager ? 'Manager' : 'Employee',
         hasTarget: userFormData.monthlyTargets,
         salesPermission: 'All',
         projectPermission: 'All',
         status: 'Active',
         avatarBg: isAdminUser ? 'bg-indigo-600' : isManager ? 'bg-blue-600' : 'bg-emerald-600',
         phone: userFormData.mobileNumber ? `${userFormData.mobileCountry} ${userFormData.mobileNumber}` : '+971 55 485 3829',
-        dob: userFormData.dob || '20-05-1968',
+        dob: userFormData.dob || '20-05-1995',
         designation:
           userFormData.designation ||
           (isManager ? userFormData.managerType : isEmployee ? resolvedEmployeeType : profileName),
@@ -1031,14 +991,65 @@ export function UsersTab({
         isWorker: isEmployee,
       };
 
-      const updated = [newUser, ...cezconUsersList];
+      let currentUsers: CezconUserItem[] = [];
+      try {
+        const raw = localStorage.getItem('cezcon_crm_users_list');
+        if (raw) currentUsers = JSON.parse(raw);
+      } catch (e) {}
+      if (!Array.isArray(currentUsers) || currentUsers.length === 0) {
+        currentUsers = cezconUsersList;
+      }
+      const updated = [
+        newUser,
+        ...currentUsers.filter(
+          (u) => String(u.id) !== String(newUser.id) && (u.email ? u.email.toLowerCase() !== newUser.email.toLowerCase() : true)
+        ),
+      ];
       setCezconUsersList(updated);
       try {
         localStorage.setItem('cezcon_crm_users_list', JSON.stringify(updated));
         window.dispatchEvent(new Event('crm_users_updated'));
+        window.dispatchEvent(new Event('crm_team_updated'));
+        window.dispatchEvent(new Event('crm_data_updated'));
+        window.dispatchEvent(new Event('storage'));
       } catch (err) {
         console.error(err);
       }
+
+      // Sync Admin accounts with Super Admin's crm_admin_accounts_list
+      if (isAdminUser || profileName === 'Admin') {
+        try {
+          const rawAdmins = localStorage.getItem('crm_admin_accounts_list');
+          const adminList: any[] = rawAdmins ? JSON.parse(rawAdmins) : [];
+          const exists = adminList.some(
+            (a) => (a.email && a.email.toLowerCase() === userEmail.toLowerCase()) || a.id === String(newUser.id)
+          );
+          if (!exists) {
+            adminList.push({
+              id: String(newUser.id),
+              name: newUser.name,
+              email: newUser.email,
+              username: newUser.username,
+              password: newUser.password,
+              phone: newUser.phone,
+              role: 'Admin',
+              organizationId: 'org_cool_tech_001',
+              organizationName: 'Cool Technologies LLC',
+              status: 'Active',
+              avatar: newUser.avatarImage,
+              designation: newUser.designation || 'Business Admin',
+              department: newUser.department || 'Administration',
+              createdAt: new Date().toISOString().split('T')[0],
+              updatedAt: new Date().toISOString().split('T')[0],
+            });
+            localStorage.setItem('crm_admin_accounts_list', JSON.stringify(adminList));
+            window.dispatchEvent(new Event('crm_admins_updated'));
+          }
+        } catch (err) {
+          console.error('Error syncing admin account:', err);
+        }
+      }
+
       addUser({
         name: userFormData.name.trim(),
         email: userEmail,
@@ -1118,6 +1129,19 @@ export function UsersTab({
     try {
       localStorage.setItem('cezcon_crm_users_list', JSON.stringify(updated));
       window.dispatchEvent(new Event('crm_users_updated'));
+
+      // Also remove from crm_admin_accounts_list if it was an admin
+      if (userToDelete.profileType === 'Admin' || userToDelete.isAdmin) {
+        const rawAdmins = localStorage.getItem('crm_admin_accounts_list');
+        if (rawAdmins) {
+          const adminList: any[] = JSON.parse(rawAdmins);
+          const filtered = adminList.filter(
+            (a) => a.id !== String(userToDelete.id) && a.email?.toLowerCase() !== userToDelete.email?.toLowerCase()
+          );
+          localStorage.setItem('crm_admin_accounts_list', JSON.stringify(filtered));
+          window.dispatchEvent(new Event('crm_admins_updated'));
+        }
+      }
     } catch (err) {
       console.error(err);
     }
@@ -1150,7 +1174,11 @@ export function UsersTab({
             </button>
           </div>
 
-          <form onSubmit={handleCezconAddUser} className="p-4 sm:p-6 bg-white space-y-4">
+          <form onSubmit={handleCezconAddUser} autoComplete="off" className="p-4 sm:p-6 bg-white space-y-4">
+            {/* Decoy fields to block Chrome autofill from hijacking new user email/password */}
+            <input type="text" name="crm_decoy_usr" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" autoComplete="off" />
+            <input type="password" name="crm_decoy_pwd" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" autoComplete="off" />
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4 text-xs">
               {/* Left Column */}
               <div className="space-y-3.5">
@@ -1161,9 +1189,12 @@ export function UsersTab({
                   <input
                     type="text"
                     required
+                    name="new_admin_user_fullname"
+                    autoComplete="off"
                     value={userFormData.name}
                     onChange={(e) => setUserFormData({ ...userFormData, name: e.target.value })}
-                    className="w-full bg-white border border-sky-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    placeholder="Enter full name"
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
                   />
                 </div>
 
@@ -1173,8 +1204,11 @@ export function UsersTab({
                   </label>
                   <input
                     type="email"
+                    name="new_admin_user_email_id"
+                    autoComplete="new-password"
                     value={userFormData.email}
                     onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
+                    placeholder="user@example.com"
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
                   />
                 </div>
@@ -1187,6 +1221,8 @@ export function UsersTab({
                     <input
                       type="text"
                       required
+                      name="new_admin_user_username_alias"
+                      autoComplete="off"
                       value={userFormData.username}
                       onChange={(e) => setUserFormData({ ...userFormData, username: e.target.value })}
                       placeholder="Allowed only (a-z, 0-9)"
@@ -1207,8 +1243,11 @@ export function UsersTab({
                     <input
                       type={userFormData.showPassword ? 'text' : 'password'}
                       required
+                      name="new_admin_user_secure_key"
+                      autoComplete="new-password"
                       value={userFormData.password}
                       onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
+                      placeholder="Enter new password"
                       className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 pr-8 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
                     />
                     <button
@@ -1219,41 +1258,78 @@ export function UsersTab({
                       {userFormData.showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
                   </div>
-                  <div className="mt-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-500">Password Strength:</span>
-                      <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden max-w-[120px]">
-                        <div
-                          className={`h-full ${userFormData.password.length >= 8
-                            ? 'bg-emerald-500 w-full'
-                            : userFormData.password.length >= 4
-                              ? 'bg-amber-500 w-1/2'
-                              : userFormData.password.length > 0
-                                ? 'bg-rose-400 w-1/4'
-                                : 'w-0'
-                            }`}
-                        />
+                  {(() => {
+                    const pwd = userFormData.password || '';
+                    const hasUpperAndLower = /[a-z]/.test(pwd) && /[A-Z]/.test(pwd);
+                    const hasNumber = /[0-9]/.test(pwd);
+                    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(pwd);
+                    const hasMin8 = pwd.length >= 8;
+                    return (
+                      <div className="mt-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-500">Password Strength:</span>
+                          <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden max-w-[120px]">
+                            <div
+                              className={`h-full transition-all duration-300 ${hasUpperAndLower && hasNumber && hasSpecial && hasMin8
+                                ? 'bg-emerald-500 w-full'
+                                : [hasUpperAndLower, hasNumber, hasSpecial, hasMin8].filter(Boolean).length >= 2
+                                  ? 'bg-amber-500 w-1/2'
+                                  : pwd.length > 0
+                                    ? 'bg-rose-400 w-1/4'
+                                    : 'w-0'
+                                }`}
+                            />
+                          </div>
+                        </div>
+                        <div className="text-[10px] space-y-0.5 pl-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`w-3 h-3 rounded-xs flex items-center justify-center text-[8px] font-bold ${hasUpperAndLower ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-transparent'
+                                }`}
+                            >
+                              ✓
+                            </span>
+                            <span className={hasUpperAndLower ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
+                              1 lowercase &amp; 1 uppercase
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`w-3 h-3 rounded-xs flex items-center justify-center text-[8px] font-bold ${hasNumber ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-transparent'
+                                }`}
+                            >
+                              ✓
+                            </span>
+                            <span className={hasNumber ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
+                              1 number (0-9)
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`w-3 h-3 rounded-xs flex items-center justify-center text-[8px] font-bold ${hasSpecial ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-transparent'
+                                }`}
+                            >
+                              ✓
+                            </span>
+                            <span className={hasSpecial ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
+                              1 Special Character (!@#$%^&amp;*).
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`w-3 h-3 rounded-xs flex items-center justify-center text-[8px] font-bold ${hasMin8 ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-transparent'
+                                }`}
+                            >
+                              ✓
+                            </span>
+                            <span className={hasMin8 ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
+                              Atleast 8 Character
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-[10px] text-slate-700 space-y-0.5 pl-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-3 h-3 bg-slate-900 text-white rounded-xs flex items-center justify-center text-[8px] font-bold">✓</span>
-                        <span>1 lowercase &amp; 1 uppercase</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-3 h-3 bg-slate-900 text-white rounded-xs flex items-center justify-center text-[8px] font-bold">✓</span>
-                        <span>1 number (0-9)</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-3 h-3 bg-slate-900 text-white rounded-xs flex items-center justify-center text-[8px] font-bold">✓</span>
-                        <span>1 Special Character (!@#$%^&amp;*).</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-3 h-3 bg-slate-900 text-white rounded-xs flex items-center justify-center text-[8px] font-bold">✓</span>
-                        <span>Atleast 8 Character</span>
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
 
                 <div>
@@ -1355,9 +1431,8 @@ export function UsersTab({
                                     setIsCountryCodeDropdownOpen(false);
                                     setCountrySearchQuery('');
                                   }}
-                                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-left hover:bg-sky-50 transition-colors cursor-pointer ${
-                                    userFormData.mobileCountry === c.code ? 'bg-sky-50/80 font-bold text-sky-700' : 'text-slate-700'
-                                  }`}
+                                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-left hover:bg-sky-50 transition-colors cursor-pointer ${userFormData.mobileCountry === c.code ? 'bg-sky-50/80 font-bold text-sky-700' : 'text-slate-700'
+                                    }`}
                                 >
                                   <span className="flex items-center gap-2">
                                     <span className="text-sm">{c.flag}</span>
@@ -1384,13 +1459,12 @@ export function UsersTab({
                           const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, selectedCountry.maxDigits);
                           setUserFormData({ ...userFormData, mobileNumber: digitsOnly });
                         }}
-                        className={`w-full bg-white border rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none transition-colors ${
-                          userFormData.mobileNumber && isMobileValid === false
-                            ? 'border-amber-400 focus:border-amber-500'
-                            : userFormData.mobileNumber && isMobileValid === true
+                        className={`w-full bg-white border rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none transition-colors ${userFormData.mobileNumber && isMobileValid === false
+                          ? 'border-amber-400 focus:border-amber-500'
+                          : userFormData.mobileNumber && isMobileValid === true
                             ? 'border-emerald-400 focus:border-emerald-500'
                             : 'border-slate-300 focus:border-sky-500'
-                        }`}
+                          }`}
                       />
                       {userFormData.mobileNumber && (
                         <button
@@ -1413,9 +1487,8 @@ export function UsersTab({
                       DOB
                     </label>
                     {currentAge !== null && !isDobInFuture && (
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
-                        currentAge >= 18 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${currentAge >= 18 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
                         Age: {currentAge} yrs {currentAge < 18 ? '(Minor)' : ''}
                       </span>
                     )}
@@ -1594,11 +1667,10 @@ export function UsersTab({
                           });
                         }}
                         disabled={isManagerSession && !!managerDeptType}
-                        className={`w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 ${
-                          isManagerSession && managerDeptType
-                            ? 'cursor-not-allowed opacity-75 bg-slate-50'
-                            : 'cursor-pointer'
-                        }`}
+                        className={`w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 ${isManagerSession && managerDeptType
+                          ? 'cursor-not-allowed opacity-75 bg-slate-50'
+                          : 'cursor-pointer'
+                          }`}
                       >
                         {allowedEmployeeTypes.map((eType) => (
                           <option key={eType} value={eType}>
@@ -2416,7 +2488,67 @@ export function UsersTab({
             </div>
             <button
               type="button"
-              onClick={() => setIsAddUserModalOpen(true)}
+              onClick={() => {
+                setUserFormData({
+                  name: '',
+                  email: '',
+                  username: '',
+                  password: '',
+                  showPassword: false,
+                  mobileCountry: '+971',
+                  mobileNumber: '',
+                  dob: '',
+                  profile: '',
+                  managerType: 'Sales Manager',
+                  employeeType: 'Sales Employee',
+                  assignedManagerId: '',
+                  businessOpportunity: 'None',
+                  businessOpportunityAll: false,
+                  designation: '',
+                  signatureImage: null,
+                  avatarImage: null,
+                  loginPermission: 'Web & Mobile',
+                  salesVisitPermission: false,
+                  store: 'None',
+                  storeAll: false,
+                  isWorker: false,
+                  monthlyTargets: false,
+                  dataScope: 'team',
+                  modulePermissions: {
+                    dashboard: true,
+                    tasks: true,
+                    leads: true,
+                    customers: true,
+                    sales: true,
+                    invoices: true,
+                    purchase: false,
+                    manufacturing: false,
+                    service: false,
+                    materials: false,
+                    timesheet: false,
+                    marketing: false,
+                    whatsapp: false,
+                    financials: false,
+                    reports: true,
+                    fileManager: true,
+                    users: false,
+                    settings: false,
+                  },
+                  actionPermissions: {
+                    canView: true,
+                    canCreate: true,
+                    canEdit: true,
+                    canDelete: false,
+                    canExport: true,
+                    canPrint: true,
+                    canApprove: false,
+                    canImport: false,
+                    canReassign: false,
+                    canViewFinancials: false,
+                  },
+                });
+                setIsAddUserModalOpen(true);
+              }}
               className="inline-flex items-center gap-1 px-3 py-1 rounded bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />

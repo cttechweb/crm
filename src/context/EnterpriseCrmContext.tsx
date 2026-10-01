@@ -235,78 +235,128 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     const loadAllData = () => {
       try {
-        const isPurged = localStorage.getItem('crm_clean_state_purged_v4');
-        if (!isPurged) {
-          clearAllData();
-          localStorage.setItem('crm_clean_state_purged_v4', 'true');
+        const isLiveCleaned = localStorage.getItem('crm_live_pure_clean_v1');
+        if (!isLiveCleaned) {
+          // Purge all legacy demo / mock caches to ensure 100% pure live state
+          localStorage.removeItem('crm_leads_data');
+          localStorage.removeItem('crm_customers_data');
+          localStorage.removeItem('crm_opportunities_data');
+          localStorage.removeItem('crm_tasks_data');
+          localStorage.removeItem('crm_quotations_data');
+          localStorage.removeItem('crm_orders_data');
+          localStorage.removeItem('crm_invoices_data');
+          localStorage.removeItem('crm_receipts_data');
+          localStorage.removeItem('crm_delivery_notes_data');
+          localStorage.removeItem('crm_campaigns_data');
+          localStorage.removeItem('crm_stocks_data');
+          localStorage.removeItem('cool_worker_tasks');
+          localStorage.removeItem('cool_material_requests');
+          localStorage.removeItem('cool_timesheet');
+          localStorage.removeItem('crm_manager_tasks');
+          localStorage.removeItem('crm_manager_opportunities');
+          localStorage.removeItem('crm_manager_activities');
+          localStorage.setItem('crm_live_pure_clean_v1', 'true');
+          setLeads([]);
+          setCustomers([]);
+          setSalesOpportunities([]);
+          setTasks([]);
+          setQuotations([]);
+          setSalesOrders([]);
+          setInvoices([]);
+          setReceipts([]);
+          setDeliveryNotes([]);
+          setCampaigns([]);
+          setPurchaseStocks([]);
           return;
         }
 
         const storedLeads = localStorage.getItem('crm_leads_data');
         if (storedLeads) {
           const parsed = JSON.parse(storedLeads);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setLeads(parsed);
-          } else {
-            setLeads(mockLeads);
-            localStorage.setItem('crm_leads_data', JSON.stringify(mockLeads));
-          }
+          setLeads(Array.isArray(parsed) ? parsed : []);
         } else {
-          setLeads(mockLeads);
-          localStorage.setItem('crm_leads_data', JSON.stringify(mockLeads));
+          setLeads([]);
         }
 
         const storedCustomers = localStorage.getItem('crm_customers_data');
         if (storedCustomers) {
           const parsed = JSON.parse(storedCustomers);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setCustomers(parsed);
-          } else {
-            setCustomers(mockCustomers);
-            localStorage.setItem('crm_customers_data', JSON.stringify(mockCustomers));
-          }
+          setCustomers(Array.isArray(parsed) ? parsed : []);
         } else {
-          setCustomers(mockCustomers);
-          localStorage.setItem('crm_customers_data', JSON.stringify(mockCustomers));
+          setCustomers([]);
         }
 
         const storedOpps = localStorage.getItem('crm_opportunities_data');
         if (storedOpps) {
           const parsed = JSON.parse(storedOpps);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setSalesOpportunities(parsed);
-          } else {
-            setSalesOpportunities(mockSalesOpportunities);
-            localStorage.setItem('crm_opportunities_data', JSON.stringify(mockSalesOpportunities));
-          }
+          setSalesOpportunities(Array.isArray(parsed) ? parsed : []);
         } else {
-          setSalesOpportunities(mockSalesOpportunities);
-          localStorage.setItem('crm_opportunities_data', JSON.stringify(mockSalesOpportunities));
+          setSalesOpportunities([]);
         }
 
         const storedTasks = localStorage.getItem('crm_tasks_data');
-        if (storedTasks) setTasks(JSON.parse(storedTasks));
+        if (storedTasks) {
+          const parsed = JSON.parse(storedTasks);
+          setTasks(Array.isArray(parsed) ? parsed : []);
+        } else {
+          setTasks([]);
+        }
 
         const storedQuotes = localStorage.getItem('crm_quotations_data');
-        if (storedQuotes) setQuotations(JSON.parse(storedQuotes));
+        if (storedQuotes) {
+          const parsed = JSON.parse(storedQuotes);
+          setQuotations(Array.isArray(parsed) ? parsed : []);
+        } else {
+          setQuotations([]);
+        }
 
         const storedOrders = localStorage.getItem('crm_orders_data');
-        if (storedOrders) setSalesOrders(JSON.parse(storedOrders));
+        if (storedOrders) {
+          const parsed = JSON.parse(storedOrders);
+          setSalesOrders(Array.isArray(parsed) ? parsed : []);
+        } else {
+          setSalesOrders([]);
+        }
 
         const storedInvoices = localStorage.getItem('crm_invoices_data');
-        if (storedInvoices) setInvoices(JSON.parse(storedInvoices));
+        if (storedInvoices) {
+          const parsed = JSON.parse(storedInvoices);
+          setInvoices(Array.isArray(parsed) ? parsed : []);
+        } else {
+          setInvoices([]);
+        }
 
         const storedReceipts = localStorage.getItem('crm_receipts_data');
-        if (storedReceipts) setReceipts(JSON.parse(storedReceipts));
+        if (storedReceipts) {
+          const parsed = JSON.parse(storedReceipts);
+          setReceipts(Array.isArray(parsed) ? parsed : []);
+        } else {
+          setReceipts([]);
+        }
 
         const storedDeliveryNotes = localStorage.getItem('crm_delivery_notes_data');
-        if (storedDeliveryNotes) setDeliveryNotes(JSON.parse(storedDeliveryNotes));
+        if (storedDeliveryNotes) {
+          const parsed = JSON.parse(storedDeliveryNotes);
+          setDeliveryNotes(Array.isArray(parsed) ? parsed : []);
+        } else {
+          setDeliveryNotes([]);
+        }
 
         const storedCampaigns = localStorage.getItem('crm_campaigns_data');
-        if (storedCampaigns) setCampaigns(JSON.parse(storedCampaigns));
+        if (storedCampaigns) {
+          const parsed = JSON.parse(storedCampaigns);
+          setCampaigns(Array.isArray(parsed) ? parsed : []);
+        } else {
+          setCampaigns([]);
+        }
 
         const storedStocks = localStorage.getItem('crm_stocks_data');
-        if (storedStocks) setPurchaseStocks(JSON.parse(storedStocks));
+        if (storedStocks) {
+          const parsed = JSON.parse(storedStocks);
+          setPurchaseStocks(Array.isArray(parsed) ? parsed : []);
+        } else {
+          setPurchaseStocks([]);
+        }
 
         // Load dynamic shared users
         const cezconRaw = localStorage.getItem('cezcon_crm_users_list');
@@ -374,6 +424,9 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       'crm_stocks_updated',
       'crm_campaigns_updated',
       'crm_users_updated',
+      'crm_admins_updated',
+      'crm_team_updated',
+      'crm_profiles_updated',
       'crm_data_updated',
     ];
 
@@ -909,10 +962,13 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     };
     const updated = [newRec, ...receipts];
     setReceipts(updated);
+    persist('crm_receipts_data', updated);
   };
 
   const deleteReceipt = (id: string) => {
-    setReceipts((prev) => prev.filter((r) => r.id !== id));
+    const updated = receipts.filter((r) => r.id !== id);
+    setReceipts(updated);
+    persist('crm_receipts_data', updated);
   };
 
   // Delivery Note Handlers
@@ -924,10 +980,13 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     };
     const updated = [newDn, ...deliveryNotes];
     setDeliveryNotes(updated);
+    persist('crm_delivery_notes_data', updated);
   };
 
   const deleteDeliveryNote = (id: string) => {
-    setDeliveryNotes((prev) => prev.filter((d) => d.id !== id));
+    const updated = deliveryNotes.filter((d) => d.id !== id);
+    setDeliveryNotes(updated);
+    persist('crm_delivery_notes_data', updated);
   };
 
   // Stock / Purchase Handlers

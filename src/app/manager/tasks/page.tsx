@@ -448,7 +448,10 @@ function ManagerTasksContent() {
                 uProfile.includes('market') ||
                 uId === 'emp_7' ||
                 uId === 'emp_8' ||
+                uId.includes('arun') ||
+                uName.includes('arun') ||
                 uName.includes('marketing') ||
+                uEmail.includes('arun') ||
                 uEmail.includes('employee7') ||
                 uEmail.includes('employee8');
 

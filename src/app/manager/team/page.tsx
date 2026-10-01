@@ -32,9 +32,13 @@ export default function ManagerTeamPage() {
   React.useEffect(() => {
     const handleUpdate = () => setUsersVersion((v) => v + 1);
     window.addEventListener('crm_users_updated', handleUpdate);
+    window.addEventListener('crm_team_updated', handleUpdate);
+    window.addEventListener('crm_admins_updated', handleUpdate);
     window.addEventListener('storage', handleUpdate);
     return () => {
       window.removeEventListener('crm_users_updated', handleUpdate);
+      window.removeEventListener('crm_team_updated', handleUpdate);
+      window.removeEventListener('crm_admins_updated', handleUpdate);
       window.removeEventListener('storage', handleUpdate);
     };
   }, []);
@@ -44,6 +48,7 @@ export default function ManagerTeamPage() {
     const curMgrId = String(currentManagerId || '').toLowerCase();
     const curMgrEmail = String(currentUser?.email || '').toLowerCase();
     const curMgrName = String(currentUser?.name || '').toLowerCase();
+    const mgrType = (currentUser?.managerType || currentUser?.profileType || currentUser?.department || '').toLowerCase();
 
     try {
       const stored = localStorage.getItem('cezcon_crm_users_list');
@@ -60,24 +65,30 @@ export default function ManagerTeamPage() {
                 (!u.isAdmin && !u.profileType?.toLowerCase().includes('manager') && !u.profileType?.toLowerCase().includes('admin'));
 
               const matches =
-                uMgrId.length > 0 &&
+                (uMgrId.length > 0 &&
                 (uMgrId === curMgrId ||
                   `usr_${uMgrId}` === curMgrId ||
                   uMgrId === curMgrId.replace('usr_', '') ||
                   uMgrId === curMgrEmail ||
                   uMgrId === curMgrName ||
-                  (curMgrEmail.startsWith('manager') && uMgrId === curMgrId.replace('mgr_', '')));
+                  (curMgrEmail.includes('afsal') && (uMgrId.includes('afsal') || uMgrId === 'mgr_3' || uMgrId === '3')) ||
+                  (curMgrEmail.includes('shibil') && (uMgrId.includes('shibil') || uMgrId === 'mgr_1' || uMgrId === '1')) ||
+                  (curMgrEmail.startsWith('manager') && uMgrId === curMgrId.replace('mgr_', '')))) ||
+                (mgrType.includes('marketing') && ((u.employeeType && u.employeeType.toLowerCase().includes('market')) || (u.department && u.department.toLowerCase().includes('market')))) ||
+                (mgrType.includes('sales') && ((u.employeeType && u.employeeType.toLowerCase().includes('sales')) || (u.department && u.department.toLowerCase().includes('sales')))) ||
+                (mgrType.includes('purchase') && ((u.employeeType && u.employeeType.toLowerCase().includes('purchase')) || (u.department && u.department.toLowerCase().includes('purchase')))) ||
+                (mgrType.includes('operation') && ((u.employeeType && u.employeeType.toLowerCase().includes('operation')) || (u.department && u.department.toLowerCase().includes('operation'))));
 
               return isEmployeeOrWorker && matches;
             }
           ).map((u: any) => ({
             id: String(u.id).startsWith('usr_') ? u.id : `usr_${u.id}`,
             name: u.name,
-            role: u.designation || u.employeeType || u.profileType || 'Sales Representative',
+            role: u.designation || u.employeeType || u.profileType || 'Marketing Specialist',
             email: u.email || `${u.username}@company.com`,
             phone: u.phone || '+971 50 123 4567',
             zone: 'Regional Desk',
-            specialization: u.employeeType ? `${u.employeeType} Specialist` : 'Client Deals & Relations',
+            specialization: u.employeeType ? `${u.employeeType} Specialist` : 'Campaign Operations & Growth',
             capacity: 65,
             assignedTasks: 2,
             completedMonth: 18,
@@ -90,14 +101,13 @@ export default function ManagerTeamPage() {
       console.error(e);
     }
 
-    const mgrType = (currentUser?.managerType || currentUser?.profileType || '').toLowerCase();
     const staticAssigned = ALL_EMPLOYEES.filter((e) => {
       if (e.managerId === currentManagerId) return true;
-      if (currentManagerId.startsWith('usr_')) {
-        if (mgrType.includes('sales') && e.managerId === 'mgr_1') return true;
-        if (mgrType.includes('purchase') && e.managerId === 'mgr_2') return true;
-        if (mgrType.includes('marketing') && e.managerId === 'mgr_3') return true;
-        if (mgrType.includes('operation') && e.managerId === 'mgr_4') return true;
+      if (currentManagerId.startsWith('usr_') || currentManagerId.startsWith('mgr_') || curMgrEmail.includes('afsal') || curMgrEmail.includes('shibil')) {
+        if (mgrType.includes('sales') && (e.managerId === 'mgr_1' || e.role?.toLowerCase().includes('sales'))) return true;
+        if (mgrType.includes('purchase') && (e.managerId === 'mgr_2' || e.role?.toLowerCase().includes('purchase'))) return true;
+        if (mgrType.includes('marketing') && (e.managerId === 'mgr_3' || e.role?.toLowerCase().includes('market'))) return true;
+        if (mgrType.includes('operation') && (e.managerId === 'mgr_4' || e.role?.toLowerCase().includes('operation'))) return true;
       }
       return false;
     });
@@ -170,10 +180,10 @@ export default function ManagerTeamPage() {
                     <h3 className="text-sm font-bold text-slate-900">{tech.name}</h3>
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tech.status === 'Available'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : tech.status === 'On Field'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                            : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : tech.status === 'On Field'
+                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                          : 'bg-rose-50 text-rose-700 border border-rose-200'
                         }`}
                     >
                       {tech.status}
@@ -196,10 +206,10 @@ export default function ManagerTeamPage() {
                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full ${tech.capacity > 90
-                        ? 'bg-rose-500'
-                        : tech.capacity > 70
-                          ? 'bg-amber-500'
-                          : 'bg-blue-600'
+                      ? 'bg-rose-500'
+                      : tech.capacity > 70
+                        ? 'bg-amber-500'
+                        : 'bg-blue-600'
                       }`}
                     style={{ width: `${tech.capacity}%` }}
                   />

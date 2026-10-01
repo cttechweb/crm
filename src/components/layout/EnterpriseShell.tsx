@@ -17,16 +17,15 @@ export function EnterpriseShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const user = authMockService.getCurrentUser();
-    setCurrentUser(user);
-
-    const isLoginPage = pathname === '/login';
-    if (!user && !isLoginPage) {
-      router.push('/login');
+    if (user) {
+      setCurrentUser(user);
     }
 
     const unsubscribe = authMockService.onAuthStateChanged((resolvedUser) => {
-      setCurrentUser(resolvedUser);
-      if (!resolvedUser && pathname !== '/login') {
+      const activeUser = resolvedUser || authMockService.getCurrentUser();
+      setCurrentUser(activeUser);
+      const isLoginPage = pathname === '/login';
+      if (!activeUser && !isLoginPage) {
         router.push('/login');
       }
     });

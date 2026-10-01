@@ -71,6 +71,73 @@ export interface MockAuthUser {
   firebaseUid?: string;
 }
 
+/**
+ * Final CRM Role Hierarchy & Authority Matrix
+ * 
+ *                    CREATE SUPER ADMIN   CREATE ADMIN   CREATE MANAGER   CREATE EMPLOYEE
+ * SUPER ADMIN                YES                YES             YES              YES
+ * ADMIN                       NO                 NO              YES              YES
+ * MANAGER                     NO                 NO              NO               YES
+ * EMPLOYEE                    NO                 NO              NO               NO
+ */
+export function canCreateRole(currentUserRole: UserRole | string, targetRole: UserRole | string): boolean {
+  const cur = String(currentUserRole || '').toLowerCase().trim();
+  const tgt = String(targetRole || '').toLowerCase().trim();
+
+  if (cur === 'super_admin' || cur === 'super admin') {
+    return true; // Super admin can create all roles
+  }
+
+  if (cur === 'admin') {
+    // Admin can create Managers, Employees, Workers (CANNOT create Super Admin or Admin)
+    return tgt === 'manager' || tgt === 'employee' || tgt === 'worker' || tgt === 'service_supervisor' || tgt === 'service supervisor';
+  }
+
+  if (cur === 'manager') {
+    // Manager can only create Employees or Workers for their own team
+    return tgt === 'employee' || tgt === 'worker';
+  }
+
+  // Employee cannot create users unless explicitly granted
+  return false;
+}
+
+export function validateUserCreationAuthority(
+  currentUser: MockAuthUser | null,
+  targetProfile: string,
+  targetRole?: string
+): { allowed: boolean; error?: string } {
+  if (!currentUser) {
+    return { allowed: false, error: 'Authentication required: No active session found.' };
+  }
+
+  const curRole = currentUser.role;
+  const p = (targetProfile || '').toLowerCase();
+  const r = (targetRole || '').toLowerCase();
+
+  const isTargetSuper = p.includes('super admin') || r === 'super_admin';
+  const isTargetAdmin = !isTargetSuper && (p.includes('admin') || r === 'admin');
+  const isTargetManager = !isTargetSuper && !isTargetAdmin && (p.includes('manager') || r === 'manager');
+  const isTargetEmployee = !isTargetSuper && !isTargetAdmin && !isTargetManager;
+
+  const resolvedTargetRole = isTargetSuper
+    ? 'super_admin'
+    : isTargetAdmin
+      ? 'admin'
+      : isTargetManager
+        ? 'manager'
+        : 'employee';
+
+  if (!canCreateRole(curRole, resolvedTargetRole)) {
+    return {
+      allowed: false,
+      error: `Authority Restriction: A user with role "${curRole}" cannot create a user with role "${resolvedTargetRole}".`,
+    };
+  }
+
+  return { allowed: true };
+}
+
 export function resolveDefaultPermissions(
   profileType: string = 'Sales',
   role?: string,
@@ -420,6 +487,23 @@ const MOCK_CREDENTIALS: Array<{
       },
     },
     {
+      email: 'shemin@gmail.com',
+      password: 'cool@123',
+      redirectUrl: '/admin/dashboard',
+      user: {
+        id: 'usr_shemin_001',
+        name: 'Muhammed Shemin',
+        email: 'shemin@gmail.com',
+        role: 'admin',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+        designation: 'Managing Director / Business Admin',
+        profileType: 'Admin',
+        department: 'Administration',
+      },
+    },
+    {
       email: 'admin@cooltechuae.com',
       password: 'cool@123',
       redirectUrl: '/admin/dashboard',
@@ -448,520 +532,610 @@ const MOCK_CREDENTIALS: Array<{
         designation: 'System Administrator',
       },
     },
-  // --- Pre-configured Managers ---
-  {
-    email: 'manager1@company.com',
-    password: 'manager@123',
-    redirectUrl: '/manager/dashboard',
-    user: {
-      id: 'mgr_1',
-      name: 'Manager 1',
+    // --- Pre-configured Managers ---
+    {
       email: 'manager1@company.com',
-      role: 'manager',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-      designation: 'Sales Manager',
-      profileType: 'Manager',
-      managerType: 'Sales Manager',
+      password: 'manager@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'mgr_1',
+        name: 'Manager 1',
+        email: 'manager1@company.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+        designation: 'Sales Manager',
+        profileType: 'Manager',
+        managerType: 'Sales Manager',
+      },
     },
-  },
-  {
-    email: 'manager1@test.com',
-    password: 'manager@123',
-    redirectUrl: '/manager/dashboard',
-    user: {
-      id: 'mgr_1',
-      name: 'Manager 1',
+    {
       email: 'manager1@test.com',
-      role: 'manager',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-      designation: 'Sales Manager',
-      profileType: 'Manager',
-      managerType: 'Sales Manager',
+      password: 'manager@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'mgr_1',
+        name: 'Manager 1',
+        email: 'manager1@test.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+        designation: 'Sales Manager',
+        profileType: 'Manager',
+        managerType: 'Sales Manager',
+      },
     },
-  },
-  {
-    email: 'manager2@company.com',
-    password: 'manager@123',
-    redirectUrl: '/manager/dashboard',
-    user: {
-      id: 'mgr_2',
-      name: 'Manager 2',
+    {
       email: 'manager2@company.com',
-      role: 'manager',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
-      designation: 'Purchase Manager',
-      profileType: 'Manager',
-      managerType: 'Purchase Manager',
+      password: 'manager@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'mgr_2',
+        name: 'Manager 2',
+        email: 'manager2@company.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
+        designation: 'Purchase Manager',
+        profileType: 'Manager',
+        managerType: 'Purchase Manager',
+      },
     },
-  },
-  {
-    email: 'manager2@test.com',
-    password: 'manager@123',
-    redirectUrl: '/manager/dashboard',
-    user: {
-      id: 'mgr_2',
-      name: 'Manager 2',
+    {
       email: 'manager2@test.com',
-      role: 'manager',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
-      designation: 'Purchase Manager',
-      profileType: 'Manager',
-      managerType: 'Purchase Manager',
+      password: 'manager@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'mgr_2',
+        name: 'Manager 2',
+        email: 'manager2@test.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
+        designation: 'Purchase Manager',
+        profileType: 'Manager',
+        managerType: 'Purchase Manager',
+      },
     },
-  },
-  {
-    email: 'manager3@company.com',
-    password: 'manager@123',
-    redirectUrl: '/manager/dashboard',
-    user: {
-      id: 'mgr_3',
-      name: 'Manager 3',
+    {
+      email: 'shibil@gmail.com',
+      password: 'shibil@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'mgr_1',
+        name: 'Muhammed Shibil',
+        email: 'shibil@gmail.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+        designation: 'Sales Manager',
+        profileType: 'Manager',
+        managerType: 'Sales Manager',
+        department: 'Sales',
+      },
+    },
+    {
+      email: 'afsal@gmail.com',
+      password: 'afsal@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'mgr_3',
+        name: 'Afsal',
+        email: 'afsal@gmail.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150',
+        designation: 'Marketing Manager',
+        profileType: 'Manager',
+        managerType: 'Marketing Manager',
+        department: 'Marketing',
+      },
+    },
+    {
+      email: 'afsakl@gmail.com',
+      password: 'afsal@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'mgr_3',
+        name: 'Afsal',
+        email: 'afsal@gmail.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150',
+        designation: 'Marketing Manager',
+        profileType: 'Manager',
+        managerType: 'Marketing Manager',
+        department: 'Marketing',
+      },
+    },
+    {
       email: 'manager3@company.com',
-      role: 'manager',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150',
-      designation: 'Marketing Manager',
-      profileType: 'Manager',
-      managerType: 'Marketing Manager',
+      password: 'manager@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'mgr_3',
+        name: 'Manager 3',
+        email: 'manager3@company.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150',
+        designation: 'Marketing Manager',
+        profileType: 'Manager',
+        managerType: 'Marketing Manager',
+      },
     },
-  },
-  {
-    email: 'manager3@test.com',
-    password: 'manager@123',
-    redirectUrl: '/manager/dashboard',
-    user: {
-      id: 'mgr_3',
-      name: 'Manager 3',
+    {
       email: 'manager3@test.com',
-      role: 'manager',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150',
-      designation: 'Marketing Manager',
-      profileType: 'Manager',
-      managerType: 'Marketing Manager',
+      password: 'manager@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'mgr_3',
+        name: 'Manager 3',
+        email: 'manager3@test.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150',
+        designation: 'Marketing Manager',
+        profileType: 'Manager',
+        managerType: 'Marketing Manager',
+      },
     },
-  },
-  {
-    email: 'manager4@company.com',
-    password: 'manager@123',
-    redirectUrl: '/manager/dashboard',
-    user: {
-      id: 'mgr_4',
-      name: 'Manager 4',
+    {
       email: 'manager4@company.com',
-      role: 'manager',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150',
-      designation: 'Operations Manager',
-      profileType: 'Manager',
-      managerType: 'Operations Manager',
+      password: 'manager@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'mgr_4',
+        name: 'Manager 4',
+        email: 'manager4@company.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150',
+        designation: 'Operations Manager',
+        profileType: 'Manager',
+        managerType: 'Operations Manager',
+      },
     },
-  },
-  {
-    email: 'manager4@test.com',
-    password: 'manager@123',
-    redirectUrl: '/manager/dashboard',
-    user: {
-      id: 'mgr_4',
-      name: 'Manager 4',
+    {
       email: 'manager4@test.com',
-      role: 'manager',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150',
-      designation: 'Operations Manager',
-      profileType: 'Manager',
-      managerType: 'Operations Manager',
+      password: 'manager@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'mgr_4',
+        name: 'Manager 4',
+        email: 'manager4@test.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150',
+        designation: 'Operations Manager',
+        profileType: 'Manager',
+        managerType: 'Operations Manager',
+      },
     },
-  },
-  {
-    email: 'manager@gmail.com',
-    password: 'manager@123',
-    redirectUrl: '/manager/dashboard',
-    user: {
-      id: 'mgr_1',
-      name: 'Manager 1',
+    {
       email: 'manager@gmail.com',
-      role: 'manager',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-      designation: 'Sales Manager',
-      profileType: 'Manager',
-      managerType: 'Sales Manager',
+      password: 'manager@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'mgr_1',
+        name: 'Manager 1',
+        email: 'manager@gmail.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+        designation: 'Sales Manager',
+        profileType: 'Manager',
+        managerType: 'Sales Manager',
+      },
     },
-  },
 
-  // --- Pre-configured Employees (10 distributed across 4 managers) ---
-  {
-    email: 'employee1@company.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_1',
-      name: 'Employee 1',
+    // --- Pre-configured Employees (10 distributed across 4 managers) ---
+    {
       email: 'employee1@company.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Sales Employee',
-      profileType: 'Employee',
-      employeeType: 'Sales Employee',
-      managerId: 'mgr_1',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_1',
+        name: 'Employee 1',
+        email: 'employee1@company.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Sales Employee',
+        profileType: 'Employee',
+        employeeType: 'Sales Employee',
+        managerId: 'mgr_1',
+      },
     },
-  },
-  {
-    email: 'employee1@test.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_1',
-      name: 'Employee 1',
+    {
       email: 'employee1@test.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Sales Employee',
-      profileType: 'Employee',
-      employeeType: 'Sales Employee',
-      managerId: 'mgr_1',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_1',
+        name: 'Employee 1',
+        email: 'employee1@test.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Sales Employee',
+        profileType: 'Employee',
+        employeeType: 'Sales Employee',
+        managerId: 'mgr_1',
+      },
     },
-  },
-  {
-    email: 'employee2@company.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_2',
-      name: 'Employee 2',
+    {
       email: 'employee2@company.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Sales Employee',
-      profileType: 'Employee',
-      employeeType: 'Sales Employee',
-      managerId: 'mgr_1',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_2',
+        name: 'Employee 2',
+        email: 'employee2@company.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Sales Employee',
+        profileType: 'Employee',
+        employeeType: 'Sales Employee',
+        managerId: 'mgr_1',
+      },
     },
-  },
-  {
-    email: 'employee2@test.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_2',
-      name: 'Employee 2',
+    {
       email: 'employee2@test.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Sales Employee',
-      profileType: 'Employee',
-      employeeType: 'Sales Employee',
-      managerId: 'mgr_1',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_2',
+        name: 'Employee 2',
+        email: 'employee2@test.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Sales Employee',
+        profileType: 'Employee',
+        employeeType: 'Sales Employee',
+        managerId: 'mgr_1',
+      },
     },
-  },
-  {
-    email: 'employee3@company.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_3',
-      name: 'Employee 3',
+    {
       email: 'employee3@company.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Sales Employee',
-      profileType: 'Employee',
-      employeeType: 'Sales Employee',
-      managerId: 'mgr_1',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_3',
+        name: 'Employee 3',
+        email: 'employee3@company.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Sales Employee',
+        profileType: 'Employee',
+        employeeType: 'Sales Employee',
+        managerId: 'mgr_1',
+      },
     },
-  },
-  {
-    email: 'employee3@test.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_3',
-      name: 'Employee 3',
+    {
       email: 'employee3@test.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Sales Employee',
-      profileType: 'Employee',
-      employeeType: 'Sales Employee',
-      managerId: 'mgr_1',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_3',
+        name: 'Employee 3',
+        email: 'employee3@test.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Sales Employee',
+        profileType: 'Employee',
+        employeeType: 'Sales Employee',
+        managerId: 'mgr_1',
+      },
     },
-  },
-  {
-    email: 'employee4@company.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_4',
-      name: 'Employee 4',
+    {
       email: 'employee4@company.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Purchase Employee',
-      profileType: 'Employee',
-      employeeType: 'Purchase Employee',
-      managerId: 'mgr_2',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_4',
+        name: 'Employee 4',
+        email: 'employee4@company.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Purchase Employee',
+        profileType: 'Employee',
+        employeeType: 'Purchase Employee',
+        managerId: 'mgr_2',
+      },
     },
-  },
-  {
-    email: 'employee4@test.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_4',
-      name: 'Employee 4',
+    {
       email: 'employee4@test.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Purchase Employee',
-      profileType: 'Employee',
-      employeeType: 'Purchase Employee',
-      managerId: 'mgr_2',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_4',
+        name: 'Employee 4',
+        email: 'employee4@test.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Purchase Employee',
+        profileType: 'Employee',
+        employeeType: 'Purchase Employee',
+        managerId: 'mgr_2',
+      },
     },
-  },
-  {
-    email: 'employee5@company.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_5',
-      name: 'Employee 5',
+    {
       email: 'employee5@company.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Purchase Employee',
-      profileType: 'Employee',
-      employeeType: 'Purchase Employee',
-      managerId: 'mgr_2',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_5',
+        name: 'Employee 5',
+        email: 'employee5@company.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Purchase Employee',
+        profileType: 'Employee',
+        employeeType: 'Purchase Employee',
+        managerId: 'mgr_2',
+      },
     },
-  },
-  {
-    email: 'employee5@test.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_5',
-      name: 'Employee 5',
+    {
       email: 'employee5@test.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Purchase Employee',
-      profileType: 'Employee',
-      employeeType: 'Purchase Employee',
-      managerId: 'mgr_2',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_5',
+        name: 'Employee 5',
+        email: 'employee5@test.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Purchase Employee',
+        profileType: 'Employee',
+        employeeType: 'Purchase Employee',
+        managerId: 'mgr_2',
+      },
     },
-  },
-  {
-    email: 'employee6@company.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_6',
-      name: 'Employee 6',
+    {
       email: 'employee6@company.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Purchase Employee',
-      profileType: 'Employee',
-      employeeType: 'Purchase Employee',
-      managerId: 'mgr_2',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_6',
+        name: 'Employee 6',
+        email: 'employee6@company.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Purchase Employee',
+        profileType: 'Employee',
+        employeeType: 'Purchase Employee',
+        managerId: 'mgr_2',
+      },
     },
-  },
-  {
-    email: 'employee6@test.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_6',
-      name: 'Employee 6',
+    {
       email: 'employee6@test.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Purchase Employee',
-      profileType: 'Employee',
-      employeeType: 'Purchase Employee',
-      managerId: 'mgr_2',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_6',
+        name: 'Employee 6',
+        email: 'employee6@test.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Purchase Employee',
+        profileType: 'Employee',
+        employeeType: 'Purchase Employee',
+        managerId: 'mgr_2',
+      },
     },
-  },
-  {
-    email: 'employee7@company.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_7',
-      name: 'Employee 7',
+    {
       email: 'employee7@company.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Marketing Employee',
-      profileType: 'Employee',
-      employeeType: 'Marketing Employee',
-      managerId: 'mgr_3',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_7',
+        name: 'Employee 7',
+        email: 'employee7@company.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Marketing Employee',
+        profileType: 'Employee',
+        employeeType: 'Marketing Employee',
+        managerId: 'mgr_3',
+      },
     },
-  },
-  {
-    email: 'employee7@test.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_7',
-      name: 'Employee 7',
+    {
       email: 'employee7@test.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Marketing Employee',
-      profileType: 'Employee',
-      employeeType: 'Marketing Employee',
-      managerId: 'mgr_3',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_7',
+        name: 'Employee 7',
+        email: 'employee7@test.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Marketing Employee',
+        profileType: 'Employee',
+        employeeType: 'Marketing Employee',
+        managerId: 'mgr_3',
+      },
     },
-  },
-  {
-    email: 'employee8@company.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_8',
-      name: 'Employee 8',
+    {
+      email: 'arun@gmail.com',
+      password: 'arun@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_arun_001',
+        name: 'Arun',
+        email: 'arun@gmail.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Marketing Employee',
+        profileType: 'Employee',
+        employeeType: 'Marketing Employee',
+        department: 'Marketing',
+        managerId: 'mgr_3',
+      },
+    },
+    {
+      email: 'arun@company.com',
+      password: 'arun@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_arun_001',
+        name: 'Arun',
+        email: 'arun@company.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Marketing Employee',
+        profileType: 'Employee',
+        employeeType: 'Marketing Employee',
+        department: 'Marketing',
+        managerId: 'mgr_3',
+      },
+    },
+    {
       email: 'employee8@company.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Marketing Employee',
-      profileType: 'Employee',
-      employeeType: 'Marketing Employee',
-      managerId: 'mgr_3',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_8',
+        name: 'Employee 8',
+        email: 'employee8@company.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Marketing Employee',
+        profileType: 'Employee',
+        employeeType: 'Marketing Employee',
+        managerId: 'mgr_3',
+      },
     },
-  },
-  {
-    email: 'employee8@test.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_8',
-      name: 'Employee 8',
+    {
       email: 'employee8@test.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Marketing Employee',
-      profileType: 'Employee',
-      employeeType: 'Marketing Employee',
-      managerId: 'mgr_3',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_8',
+        name: 'Employee 8',
+        email: 'employee8@test.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Marketing Employee',
+        profileType: 'Employee',
+        employeeType: 'Marketing Employee',
+        managerId: 'mgr_3',
+      },
     },
-  },
-  {
-    email: 'employee9@company.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_9',
-      name: 'Employee 9',
+    {
       email: 'employee9@company.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Operations Employee',
-      profileType: 'Employee',
-      employeeType: 'Operations Employee',
-      managerId: 'mgr_4',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_9',
+        name: 'Employee 9',
+        email: 'employee9@company.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Operations Employee',
+        profileType: 'Employee',
+        employeeType: 'Operations Employee',
+        managerId: 'mgr_4',
+      },
     },
-  },
-  {
-    email: 'employee9@test.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_9',
-      name: 'Employee 9',
+    {
       email: 'employee9@test.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Operations Employee',
-      profileType: 'Employee',
-      employeeType: 'Operations Employee',
-      managerId: 'mgr_4',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_9',
+        name: 'Employee 9',
+        email: 'employee9@test.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Operations Employee',
+        profileType: 'Employee',
+        employeeType: 'Operations Employee',
+        managerId: 'mgr_4',
+      },
     },
-  },
-  {
-    email: 'employee10@company.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_10',
-      name: 'Employee 10',
+    {
       email: 'employee10@company.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Operations Employee',
-      profileType: 'Employee',
-      employeeType: 'Operations Employee',
-      managerId: 'mgr_4',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_10',
+        name: 'Employee 10',
+        email: 'employee10@company.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Operations Employee',
+        profileType: 'Employee',
+        employeeType: 'Operations Employee',
+        managerId: 'mgr_4',
+      },
     },
-  },
-  {
-    email: 'employee10@test.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_10',
-      name: 'Employee 10',
+    {
       email: 'employee10@test.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Operations Employee',
-      profileType: 'Employee',
-      employeeType: 'Operations Employee',
-      managerId: 'mgr_4',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_10',
+        name: 'Employee 10',
+        email: 'employee10@test.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Operations Employee',
+        profileType: 'Employee',
+        employeeType: 'Operations Employee',
+        managerId: 'mgr_4',
+      },
     },
-  },
-  {
-    email: 'employee@gmail.com',
-    password: 'employee@123',
-    redirectUrl: '/worker/dashboard',
-    user: {
-      id: 'emp_1',
-      name: 'Employee 1',
+    {
       email: 'employee@gmail.com',
-      role: 'employee',
-      organizationId: 'org_cool_tech_001',
-      organizationName: 'Cool Technologies LLC',
-      designation: 'Sales Employee',
-      profileType: 'Employee',
-      employeeType: 'Sales Employee',
-      managerId: 'mgr_1',
+      password: 'employee@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_1',
+        name: 'Employee 1',
+        email: 'employee@gmail.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Sales Employee',
+        profileType: 'Employee',
+        employeeType: 'Sales Employee',
+        managerId: 'mgr_1',
+      },
     },
-  },
-];
+  ];
 
 export function resolveCrmUserByEmail(
   email: string,
@@ -978,8 +1152,8 @@ export function resolveCrmUserByEmail(
         if (Array.isArray(storedAdmins)) {
           const adminMatch = storedAdmins.find(
             (a: any) =>
-              (a.email?.trim().toLowerCase() === normalizedEmail ||
-                a.username?.trim().toLowerCase() === normalizedEmail)
+            (a.email?.trim().toLowerCase() === normalizedEmail ||
+              a.username?.trim().toLowerCase() === normalizedEmail)
           );
           if (adminMatch) {
             if (adminMatch.status === 'Inactive') {
@@ -1062,10 +1236,10 @@ export function resolveCrmUserByEmail(
             const userRole: UserRole = isSuper
               ? 'super_admin'
               : isAdm
-              ? 'admin'
-              : isMgr
-              ? 'manager'
-              : 'employee';
+                ? 'admin'
+                : isMgr
+                  ? 'manager'
+                  : 'employee';
             const defaults = resolveDefaultPermissions(
               userByIdentifier.profileType || 'Sales',
               userRole,
@@ -1075,8 +1249,8 @@ export function resolveCrmUserByEmail(
             const userIdStr = String(userByIdentifier.id || '');
             const normalizedId =
               userIdStr.startsWith('usr_') ||
-              userIdStr.startsWith('mgr_') ||
-              userIdStr.startsWith('emp_')
+                userIdStr.startsWith('mgr_') ||
+                userIdStr.startsWith('emp_')
                 ? userIdStr
                 : `usr_${userIdStr}`;
 
@@ -1119,10 +1293,10 @@ export function resolveCrmUserByEmail(
               redirectUrl: isSuper
                 ? '/dashboard'
                 : isAdm
-                ? '/admin/dashboard'
-                : isMgr
-                ? '/manager/dashboard'
-                : '/worker/dashboard',
+                  ? '/admin/dashboard'
+                  : isMgr
+                    ? '/manager/dashboard'
+                    : '/worker/dashboard',
               isInactive,
             };
           }
@@ -1163,10 +1337,10 @@ export function resolveCrmUserByEmail(
   const fallbackRole: UserRole = isSuper
     ? 'super_admin'
     : isAdm
-    ? 'admin'
-    : isMgr
-    ? 'manager'
-    : 'employee';
+      ? 'admin'
+      : isMgr
+        ? 'manager'
+        : 'employee';
 
   const defaultPerms = resolveDefaultPermissions(
     isSuper ? 'Super Admin' : isAdm ? 'Admin' : isMgr ? 'Manager' : 'Employee',
@@ -1187,10 +1361,10 @@ export function resolveCrmUserByEmail(
     designation: isSuper
       ? 'System Super Admin'
       : isAdm
-      ? 'Administrator'
-      : isMgr
-      ? 'Operations Manager'
-      : 'Operations Employee',
+        ? 'Administrator'
+        : isMgr
+          ? 'Operations Manager'
+          : 'Operations Employee',
     department: isSuper ? 'Executive' : isAdm ? 'Management' : 'Operations',
     profileType: isSuper ? 'Super Admin' : isAdm ? 'Admin' : isMgr ? 'Manager' : 'Employee',
     dataScope: defaultPerms.dataScope,
@@ -1204,10 +1378,10 @@ export function resolveCrmUserByEmail(
     redirectUrl: isSuper
       ? '/dashboard'
       : isAdm
-      ? '/admin/dashboard'
-      : isMgr
-      ? '/manager/dashboard'
-      : '/worker/dashboard',
+        ? '/admin/dashboard'
+        : isMgr
+          ? '/manager/dashboard'
+          : '/worker/dashboard',
   };
 }
 
@@ -1227,12 +1401,150 @@ export const authMockService = {
       };
     }
 
+    const normalizedEmail = trimmedEmail.toLowerCase();
+
+    // 1. Direct match against pre-configured system credentials (e.g. afsal@gmail.com, shibil@gmail.com, superadmin@gmail.com)
+    const staticMatch = MOCK_CREDENTIALS.find(
+      (c) =>
+        c.email.toLowerCase() === normalizedEmail ||
+        (c.user.email && c.user.email.toLowerCase() === normalizedEmail)
+    );
+
+    if (staticMatch && staticMatch.password === trimmedPassword) {
+      const resolved = resolveCrmUserByEmail(staticMatch.email);
+      if (resolved.isInactive) {
+        return {
+          success: false,
+          error: 'This account has been deactivated. Please contact your Super Admin.',
+        };
+      }
+
+      // Try background Firebase Auth sign-in if credentials match Firebase account
+      try {
+        await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
+      } catch (fbErr) {
+        // Non-blocking for verified system credentials
+      }
+
+      if (typeof window !== 'undefined') {
+        try {
+          const sessionData = {
+            authenticated: true,
+            user: resolved.user,
+            role: resolved.user.role,
+            firebaseUid: `mock_${resolved.user.id}`,
+            rememberMe,
+            timestamp: Date.now(),
+          };
+          localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
+        } catch (err) {
+          console.error('Session storage error:', err);
+        }
+      }
+
+      return {
+        success: true,
+        user: resolved.user,
+        redirectUrl: resolved.redirectUrl || staticMatch.redirectUrl,
+      };
+    }
+
+    // 2. Check dynamically created users in localStorage (cezcon_crm_users_list)
+    if (typeof window !== 'undefined') {
+      try {
+        const storedUsersRaw = localStorage.getItem('cezcon_crm_users_list');
+        if (storedUsersRaw) {
+          const storedUsers = JSON.parse(storedUsersRaw);
+          if (Array.isArray(storedUsers)) {
+            const matchedUser = storedUsers.find((u: any) => {
+              const uEmail = (u.email || '').trim().toLowerCase();
+              const uUsername = (u.username || '').trim().toLowerCase();
+              const uPrefix = uUsername.split('@')[0];
+              return (
+                uEmail === normalizedEmail ||
+                uUsername === normalizedEmail ||
+                uPrefix === normalizedEmail
+              );
+            });
+
+            if (matchedUser) {
+              if (matchedUser.status === 'Inactive') {
+                return {
+                  success: false,
+                  error: 'This account has been deactivated. Please contact your Super Admin.',
+                };
+              }
+              const storedPwd = (matchedUser.password || '').trim();
+              if (storedPwd === trimmedPassword || !storedPwd) {
+                const resolved = resolveCrmUserByEmail(matchedUser.email || trimmedEmail);
+                const sessionData = {
+                  authenticated: true,
+                  user: resolved.user,
+                  role: resolved.user.role,
+                  firebaseUid: `crm_${resolved.user.id}`,
+                  rememberMe,
+                  timestamp: Date.now(),
+                };
+                localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
+                return {
+                  success: true,
+                  user: resolved.user,
+                  redirectUrl: resolved.redirectUrl,
+                };
+              }
+            }
+          }
+        }
+
+        // Check crm_admin_accounts_list
+        const storedAdminsRaw = localStorage.getItem('crm_admin_accounts_list');
+        if (storedAdminsRaw) {
+          const storedAdmins = JSON.parse(storedAdminsRaw);
+          if (Array.isArray(storedAdmins)) {
+            const matchedAdmin = storedAdmins.find((a: any) => {
+              const aEmail = (a.email || '').trim().toLowerCase();
+              const aUsername = (a.username || '').trim().toLowerCase();
+              return aEmail === normalizedEmail || aUsername === normalizedEmail;
+            });
+
+            if (matchedAdmin) {
+              if (matchedAdmin.status === 'Inactive') {
+                return {
+                  success: false,
+                  error: 'This account has been deactivated. Please contact your Super Admin.',
+                };
+              }
+              const storedPwd = (matchedAdmin.password || '').trim();
+              if (storedPwd === trimmedPassword || !storedPwd) {
+                const resolved = resolveCrmUserByEmail(matchedAdmin.email || trimmedEmail);
+                const sessionData = {
+                  authenticated: true,
+                  user: resolved.user,
+                  role: resolved.user.role,
+                  firebaseUid: `crm_${resolved.user.id}`,
+                  rememberMe,
+                  timestamp: Date.now(),
+                };
+                localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
+                return {
+                  success: true,
+                  user: resolved.user,
+                  redirectUrl: resolved.redirectUrl,
+                };
+              }
+            }
+          }
+        }
+      } catch (storageErr) {
+        console.error('Error checking local storage auth:', storageErr);
+      }
+    }
+
+    // 3. Fallback to Firebase Authentication
     try {
-      // 1. Firebase Authentication: Validates credentials securely
       const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
       const fbUser = userCredential.user;
 
-      // 2. CRM Role & Profile Resolution: Determines user permissions & access level
       const resolved = resolveCrmUserByEmail(fbUser.email || trimmedEmail, fbUser.uid);
 
       if (resolved.isInactive) {
@@ -1243,7 +1555,6 @@ export const authMockService = {
         };
       }
 
-      // 3. Store active CRM session (No plaintext passwords stored)
       if (typeof window !== 'undefined') {
         try {
           const sessionData = {
@@ -1266,7 +1577,6 @@ export const authMockService = {
         redirectUrl: resolved.redirectUrl,
       };
     } catch (err: any) {
-      // Map Firebase Auth error codes to clean, friendly error messages
       const errorCode = err?.code || '';
       let message = 'Invalid email address or password. Please verify your credentials.';
 
@@ -1329,7 +1639,11 @@ export const authMockService = {
     return onAuthStateChanged(auth, (fbUser) => {
       if (fbUser) {
         const existingSession = this.getCurrentUser();
-        if (existingSession && (existingSession.email.toLowerCase() === fbUser.email?.toLowerCase() || existingSession.firebaseUid === fbUser.uid)) {
+        if (
+          existingSession &&
+          (existingSession.email.toLowerCase() === (fbUser.email || '').toLowerCase() ||
+            existingSession.firebaseUid === fbUser.uid)
+        ) {
           callback(existingSession, fbUser);
         } else {
           const resolved = resolveCrmUserByEmail(fbUser.email || '', fbUser.uid);
@@ -1341,15 +1655,20 @@ export const authMockService = {
               firebaseUid: fbUser.uid,
               timestamp: Date.now(),
             };
-            localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
+            try {
+              localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
+            } catch (err) {}
           }
           callback(resolved.user, fbUser);
         }
       } else {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('cool_crm_auth');
+        // When Firebase emits null on initial load, preserve active local CRM session
+        const localSession = this.getCurrentUser();
+        if (localSession) {
+          callback(localSession, null);
+        } else {
+          callback(null, null);
         }
-        callback(null, null);
       }
     });
   },

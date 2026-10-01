@@ -41,7 +41,8 @@ import { Modal } from '@/components/ui/Modal';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { Input, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { authMockService } from '@/services/authMockService';
+import { authMockService, MockAuthUser } from '@/services/authMockService';
+import { canAccessLead } from '@/services/crmDataScopeService';
 import { CrmLead, LeadRating, LeadStatus } from '@/types/enterprise-crm';
 import { cn } from '@/lib/utils';
 
@@ -103,8 +104,103 @@ export function LeadsContent() {
   const [convertingLead, setConvertingLead] = useState<CrmLead | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
 
-  const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
+  const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
+
+  useEffect(() => {
+    const syncUser = () => {
+      const u = authMockService.getCurrentUser();
+      if (u) setCurrentUser(u);
+    };
+    syncUser();
+    const unsub = authMockService.onAuthStateChanged((u) => {
+      if (u) setCurrentUser(u);
+    });
+    window.addEventListener('storage', syncUser);
+    window.addEventListener('crm_auth_updated', syncUser);
+    return () => {
+      unsub();
+      window.removeEventListener('storage', syncUser);
+      window.removeEventListener('crm_auth_updated', syncUser);
+    };
+  }, []);
+
   const isEmployee = currentUser?.role === 'employee' || currentUser?.role === 'worker';
+  const isManager = currentUser?.role === 'manager';
+
+  // Compute team members reporting to this manager
+  const managerTeamMembers = useMemo(() => {
+    if (!currentUser || currentUser.role !== 'manager') return [];
+    const mgrId = String(currentUser.id || '').toLowerCase();
+    const mgrEmail = String(currentUser.email || '').toLowerCase();
+    const mgrName = String(currentUser.name || '').toLowerCase();
+    const mgrType = (
+      currentUser.managerType ||
+      currentUser.designation ||
+      currentUser.department ||
+      ''
+    ).toLowerCase();
+
+    const isMktMgr = mgrType.includes('market') || mgrEmail.includes('afsal') || mgrName.includes('afsal') || mgrId.includes('3');
+    const isSalesMgr = mgrType.includes('sales') || mgrEmail.includes('shibil') || mgrName.includes('shibil') || mgrId.includes('1');
+    const isPurchMgr = mgrType.includes('purchase') || mgrId.includes('2');
+    const isOpsMgr = mgrType.includes('operation') || mgrId.includes('4');
+
+    let allCrmUsers: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('cezcon_crm_users_list');
+        if (raw) allCrmUsers = JSON.parse(raw);
+      } catch (e) {}
+    }
+
+    const team = allCrmUsers.filter((u) => {
+      const uMgr = String(u.managerId || u.reportingManagerId || '').toLowerCase();
+      const uEmpType = String(u.employeeType || u.designation || '').toLowerCase();
+      const uDept = String(u.department || u.profileType || '').toLowerCase();
+
+      const matchesId =
+        uMgr.length > 0 &&
+        (uMgr === mgrId ||
+          `usr_${uMgr}` === mgrId ||
+          uMgr === mgrId.replace('usr_', '') ||
+          uMgr === mgrEmail ||
+          uMgr === mgrName ||
+          (isMktMgr && (uMgr.includes('afsal') || uMgr === 'mgr_3' || uMgr === '3')) ||
+          (isSalesMgr && (uMgr.includes('shibil') || uMgr === 'mgr_1' || uMgr === '1')));
+
+      const matchesDept =
+        (isMktMgr && (uEmpType.includes('market') || uDept.includes('market'))) ||
+        (isSalesMgr && (uEmpType.includes('sales') || uDept.includes('sales'))) ||
+        (isPurchMgr && (uEmpType.includes('purchase') || uDept.includes('purchase'))) ||
+        (isOpsMgr && (uEmpType.includes('operation') || uDept.includes('operation')));
+
+      return matchesId || matchesDept;
+    });
+
+    const memberIdentifiers = new Set<string>();
+    team.forEach((u) => {
+      if (u.name) memberIdentifiers.add(u.name.trim().toLowerCase());
+      if (u.email) memberIdentifiers.add(u.email.trim().toLowerCase());
+      if (u.username) {
+        memberIdentifiers.add(u.username.trim().toLowerCase());
+        memberIdentifiers.add(u.username.split('@')[0].trim().toLowerCase());
+      }
+      if (u.id) memberIdentifiers.add(String(u.id).trim().toLowerCase());
+    });
+
+    // Seed defaults per manager type
+    if (isMktMgr) {
+      ['arun', 'arun employee', 'a', 'arun@gmail.com', 'arun@company.com', 'employee 7', 'employee7@company.com', 'employee 8', 'employee8@company.com'].forEach((m) =>
+        memberIdentifiers.add(m.toLowerCase())
+      );
+    } else if (isSalesMgr) {
+      ['employee 1', 'employee@gmail.com', 'employee 2', 'employee2@company.com', 'employee 3', 'employee3@company.com'].forEach((m) =>
+        memberIdentifiers.add(m.toLowerCase())
+      );
+    }
+
+    return Array.from(memberIdentifiers);
+  }, [currentUser]);
 
   // New Lead Form State (Full Cezcon CRM Compatibility)
   const [newLead, setNewLead] = useState({
@@ -136,24 +232,18 @@ export function LeadsContent() {
 
   // Filtered Leads Calculation
   const filteredLeads = useMemo(() => {
+    let allCrmUsers: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('cezcon_crm_users_list');
+        if (raw) allCrmUsers = JSON.parse(raw);
+      } catch (e) {}
+    }
+
     return leads.filter((lead) => {
-      // 🛡️ Strict Employee Data Isolation: Employees only see their own assigned/created leads
-      if (isEmployee && currentUser?.name) {
-        const userName = currentUser.name.trim().toLowerCase();
-        const leadOwner = (lead.owner || lead.leadAssigned?.name || '').trim().toLowerCase();
-        const leadCreatedBy = (lead.createdBy || '').trim().toLowerCase();
-        const leadAssignedEmp = (lead.assignedEmployee || '').trim().toLowerCase();
-
-        const isMatch =
-          leadOwner === userName ||
-          leadCreatedBy === userName ||
-          leadAssignedEmp === userName ||
-          leadOwner.includes(userName) ||
-          userName.includes(leadOwner);
-
-        if (!isMatch) {
-          return false;
-        }
+      // 🛡️ Centralized Role Hierarchy & Department Scope Enforcement
+      if (!canAccessLead(lead, currentUser, allCrmUsers)) {
+        return false;
       }
 
       // Owner Filter
@@ -192,6 +282,8 @@ export function LeadsContent() {
   }, [
     leads,
     isEmployee,
+    isManager,
+    managerTeamMembers,
     currentUser,
     ownerFilter,
     createdByFilter,
@@ -344,6 +436,7 @@ export function LeadsContent() {
       owner: effectiveOwner,
       ownerAvatar: ownerAvatarImg,
       assignedEmployee: effectiveAssignedEmployee,
+      department: currentUser?.department || currentUser?.managerType || currentUser?.employeeType || (currentUser?.name?.toLowerCase().includes('arun') ? 'Marketing' : 'Sales'),
       rating: newLead.rating,
       status: newLead.status,
       lastActivity: 'Just created',

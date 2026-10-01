@@ -120,6 +120,7 @@ export interface CrmLead {
   ownerAvatar?: string;
   assignedEmployee?: string;
   assignedManager?: string;
+  department?: string;
   rating: LeadRating;
   status: LeadStatus;
   lastActivity: string;

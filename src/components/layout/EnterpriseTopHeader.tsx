@@ -23,20 +23,29 @@ export function EnterpriseTopHeader() {
   const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
 
   React.useEffect(() => {
-    const user = authMockService.getCurrentUser();
-    if (user) {
-      setCurrentUser(user);
-    } else {
-      // Default to Admin session when accessing dashboard
-      setCurrentUser({
-        id: 'usr_admin_001',
-        name: 'Cool Admin',
-        email: 'cooladmin@gmail.com',
-        role: 'admin',
-        organizationId: 'org_cool_tech_001',
-        organizationName: 'Cool Technologies LLC',
-      });
-    }
+    const syncUser = () => {
+      const user = authMockService.getCurrentUser();
+      if (user) {
+        setCurrentUser(user);
+      }
+    };
+
+    syncUser();
+
+    const unsubscribe = authMockService.onAuthStateChanged((user) => {
+      if (user) {
+        setCurrentUser(user);
+      }
+    });
+
+    window.addEventListener('storage', syncUser);
+    window.addEventListener('crm_auth_updated', syncUser);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('storage', syncUser);
+      window.removeEventListener('crm_auth_updated', syncUser);
+    };
   }, []);
 
   const roles: UserRole[] = ['Super Admin', 'Admin', 'Manager', 'Employee'];

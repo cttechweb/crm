@@ -35,7 +35,8 @@ import { BackButton } from '@/components/ui/BackButton';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { authMockService } from '@/services/authMockService';
+import { authMockService, MockAuthUser } from '@/services/authMockService';
+import { canAccessCustomer } from '@/services/crmDataScopeService';
 import { CrmCustomer } from '@/types/enterprise-crm';
 import { cn, formatCurrency } from '@/lib/utils';
 
@@ -90,8 +91,102 @@ function CustomersContent() {
   const [editingCustomer, setEditingCustomer] = useState<CrmCustomer | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
 
-  const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
+  const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
+
+  useEffect(() => {
+    const syncUser = () => {
+      const u = authMockService.getCurrentUser();
+      if (u) setCurrentUser(u);
+    };
+    syncUser();
+    const unsub = authMockService.onAuthStateChanged((u) => {
+      if (u) setCurrentUser(u);
+    });
+    window.addEventListener('storage', syncUser);
+    window.addEventListener('crm_auth_updated', syncUser);
+    return () => {
+      unsub();
+      window.removeEventListener('storage', syncUser);
+      window.removeEventListener('crm_auth_updated', syncUser);
+    };
+  }, []);
+
   const isEmployee = currentUser?.role === 'employee' || currentUser?.role === 'worker';
+  const isManager = currentUser?.role === 'manager';
+
+  // Compute team members reporting to this manager
+  const managerTeamMembers = useMemo(() => {
+    if (!currentUser || currentUser.role !== 'manager') return [];
+    const mgrId = String(currentUser.id || '').toLowerCase();
+    const mgrEmail = String(currentUser.email || '').toLowerCase();
+    const mgrName = String(currentUser.name || '').toLowerCase();
+    const mgrType = (
+      currentUser.managerType ||
+      currentUser.designation ||
+      currentUser.department ||
+      ''
+    ).toLowerCase();
+
+    const isMktMgr = mgrType.includes('market') || mgrEmail.includes('afsal') || mgrName.includes('afsal') || mgrId.includes('3');
+    const isSalesMgr = mgrType.includes('sales') || mgrEmail.includes('shibil') || mgrName.includes('shibil') || mgrId.includes('1');
+    const isPurchMgr = mgrType.includes('purchase') || mgrId.includes('2');
+    const isOpsMgr = mgrType.includes('operation') || mgrId.includes('4');
+
+    let allCrmUsers: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('cezcon_crm_users_list');
+        if (raw) allCrmUsers = JSON.parse(raw);
+      } catch (e) {}
+    }
+
+    const team = allCrmUsers.filter((u) => {
+      const uMgr = String(u.managerId || u.reportingManagerId || '').toLowerCase();
+      const uEmpType = String(u.employeeType || u.designation || '').toLowerCase();
+      const uDept = String(u.department || u.profileType || '').toLowerCase();
+
+      const matchesId =
+        uMgr.length > 0 &&
+        (uMgr === mgrId ||
+          `usr_${uMgr}` === mgrId ||
+          uMgr === mgrId.replace('usr_', '') ||
+          uMgr === mgrEmail ||
+          uMgr === mgrName ||
+          (isMktMgr && (uMgr.includes('afsal') || uMgr === 'mgr_3' || uMgr === '3')) ||
+          (isSalesMgr && (uMgr.includes('shibil') || uMgr === 'mgr_1' || uMgr === '1')));
+
+      const matchesDept =
+        (isMktMgr && (uEmpType.includes('market') || uDept.includes('market'))) ||
+        (isSalesMgr && (uEmpType.includes('sales') || uDept.includes('sales'))) ||
+        (isPurchMgr && (uEmpType.includes('purchase') || uDept.includes('purchase'))) ||
+        (isOpsMgr && (uEmpType.includes('operation') || uDept.includes('operation')));
+
+      return matchesId || matchesDept;
+    });
+
+    const memberIdentifiers = new Set<string>();
+    team.forEach((u) => {
+      if (u.name) memberIdentifiers.add(u.name.trim().toLowerCase());
+      if (u.email) memberIdentifiers.add(u.email.trim().toLowerCase());
+      if (u.username) {
+        memberIdentifiers.add(u.username.trim().toLowerCase());
+        memberIdentifiers.add(u.username.split('@')[0].trim().toLowerCase());
+      }
+      if (u.id) memberIdentifiers.add(String(u.id).trim().toLowerCase());
+    });
+
+    if (isMktMgr) {
+      ['arun', 'arun@gmail.com', 'arun@company.com', 'employee 7', 'employee7@company.com', 'employee 8', 'employee8@company.com'].forEach((m) =>
+        memberIdentifiers.add(m.toLowerCase())
+      );
+    } else if (isSalesMgr) {
+      ['employee 1', 'employee@gmail.com', 'employee 2', 'employee2@company.com', 'employee 3', 'employee3@company.com'].forEach((m) =>
+        memberIdentifiers.add(m.toLowerCase())
+      );
+    }
+
+    return Array.from(memberIdentifiers);
+  }, [currentUser]);
 
   // New Customer Form State (Cezcon CRM Spec)
   const [formData, setFormData] = useState({
@@ -242,13 +337,18 @@ function CustomersContent() {
   const query = (search || globalSearch || '').trim().toLowerCase();
 
   const filteredCustomers = useMemo(() => {
+    let allCrmUsers: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('cezcon_crm_users_list');
+        if (raw) allCrmUsers = JSON.parse(raw);
+      } catch (e) {}
+    }
+
     return effectiveCustomers.filter((cust) => {
-      // 🛡️ Strict Employee Data Isolation
-      if (isEmployee && currentUser?.name) {
-        const userName = currentUser.name.trim().toLowerCase();
-        const custOwner = (cust.owner || '').trim().toLowerCase();
-        const isMatch = custOwner === userName || custOwner.includes(userName) || userName.includes(custOwner);
-        if (!isMatch) return false;
+      // 🛡️ Centralized Role Hierarchy & Department Scope Enforcement
+      if (!canAccessCustomer(cust, currentUser, allCrmUsers)) {
+        return false;
       }
 
       // Tab filter: 'All' | 'Customer' | 'Prospect'
@@ -286,6 +386,8 @@ function CustomersContent() {
   }, [
     effectiveCustomers,
     isEmployee,
+    isManager,
+    managerTeamMembers,
     currentUser,
     activeTab,
     ownerFilter,

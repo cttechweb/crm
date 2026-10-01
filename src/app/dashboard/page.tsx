@@ -163,38 +163,16 @@ export default function DashboardPage() {
   const totalReceiptsRevenue = (receipts || []).reduce((sum, rec) => sum + (Number(rec.amount) || 0), 0);
   const currentMonthRevenue = Math.max(totalInvoicedRevenue, totalReceiptsRevenue);
 
+  const currentMonthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const liveTarget = totalPipeline > 0 ? Math.round(totalPipeline * 1.2) : 0;
   const monthlyRevenueRows = [
     {
-      month: 'September 2026',
-      target: 100000,
+      month: currentMonthName,
+      target: liveTarget,
       achieved: currentMonthRevenue,
-      variance: currentMonthRevenue - 100000,
-      pct: Math.round((currentMonthRevenue / 100000) * 100),
-      status: currentMonthRevenue >= 100000 ? 'Achieved' : 'In Progress',
-    },
-    {
-      month: 'August 2026',
-      target: 90000,
-      achieved: 112000,
-      variance: 22000,
-      pct: 124,
-      status: 'Exceeded',
-    },
-    {
-      month: 'July 2026',
-      target: 85000,
-      achieved: 104000,
-      variance: 19000,
-      pct: 122,
-      status: 'Exceeded',
-    },
-    {
-      month: 'June 2026',
-      target: 80000,
-      achieved: 95000,
-      variance: 15000,
-      pct: 118,
-      status: 'Achieved',
+      variance: currentMonthRevenue - liveTarget,
+      pct: liveTarget > 0 ? Math.round((currentMonthRevenue / liveTarget) * 100) : currentMonthRevenue > 0 ? 100 : 0,
+      status: currentMonthRevenue >= liveTarget && currentMonthRevenue > 0 ? 'Achieved' : currentMonthRevenue > 0 ? 'In Progress' : 'No Data',
     },
   ];
 

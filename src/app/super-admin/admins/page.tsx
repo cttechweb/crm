@@ -89,6 +89,14 @@ export default function AdminManagementPage() {
 
   useEffect(() => {
     loadAdmins();
+    window.addEventListener('crm_admins_updated', loadAdmins);
+    window.addEventListener('crm_users_updated', loadAdmins);
+    window.addEventListener('storage', loadAdmins);
+    return () => {
+      window.removeEventListener('crm_admins_updated', loadAdmins);
+      window.removeEventListener('crm_users_updated', loadAdmins);
+      window.removeEventListener('storage', loadAdmins);
+    };
   }, [searchQuery, statusFilter, currentPage, rowsPerPage]);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {

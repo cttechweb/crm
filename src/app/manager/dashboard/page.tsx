@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
-import { authMockService } from '@/services/authMockService';
+import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { workerMockService } from '@/services/workerMockService';
 
 // Default baseline technicians if custom team list is fresh
@@ -252,8 +252,52 @@ export default function ManagerDashboardPage() {
     password: 'employee123',
   });
 
-  const currentUser = authMockService.getCurrentUser();
-  const currentManagerId = currentUser?.id || 'mgr_1';
+  const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
+
+  useEffect(() => {
+    const syncUser = () => {
+      const u = authMockService.getCurrentUser();
+      if (u) setCurrentUser(u);
+    };
+    syncUser();
+    const unsub = authMockService.onAuthStateChanged((u) => {
+      if (u) setCurrentUser(u);
+    });
+    window.addEventListener('storage', syncUser);
+    window.addEventListener('crm_auth_updated', syncUser);
+    return () => {
+      unsub();
+      window.removeEventListener('storage', syncUser);
+      window.removeEventListener('crm_auth_updated', syncUser);
+    };
+  }, []);
+
+  const currentManagerId = currentUser?.id || 'mgr_3';
+
+  const managerDisplayName = useMemo(() => {
+    const mgrType = (
+      currentUser?.managerType ||
+      currentUser?.designation ||
+      currentUser?.department ||
+      ''
+    ).toLowerCase();
+
+    if (mgrType.includes('market') || currentUser?.email?.includes('afsal')) {
+      return 'Marketing Manager Dashboard';
+    }
+    if (mgrType.includes('sales') || currentUser?.email?.includes('shibil')) {
+      return 'Sales Manager Dashboard';
+    }
+    if (mgrType.includes('purchase')) {
+      return 'Purchase Manager Dashboard';
+    }
+    if (mgrType.includes('operation')) {
+      return 'Operations Manager Dashboard';
+    }
+    return currentUser?.designation?.includes('Manager')
+      ? `${currentUser.designation} Dashboard`
+      : 'Marketing Manager Dashboard';
+  }, [currentUser]);
 
   // Quick Assign Task Form State
   const [newTaskForm, setNewTaskForm] = useState({
@@ -400,37 +444,95 @@ export default function ManagerDashboardPage() {
           if (Array.isArray(parsed) && parsed.length > 0) {
             const curMgrId = String(currentManagerId || '').toLowerCase();
             const curMgrEmail = String(currentUser?.email || '').toLowerCase();
+            const mgrType = (
+              currentUser?.managerType ||
+              currentUser?.designation ||
+              currentUser?.department ||
+              ''
+            ).toLowerCase();
+
+            const isMarketingMgr = mgrType.includes('market') || curMgrEmail.includes('afsal');
+            const isSalesMgr = mgrType.includes('sales') || curMgrEmail.includes('shibil');
+            const isPurchaseMgr = mgrType.includes('purchase');
+            const isOpsMgr = mgrType.includes('operation');
 
             const managerSpecific = parsed.filter((u: any) => {
               const uMgrId = String(u.managerId || u.reportingManagerId || '').toLowerCase();
-              const matchesMgr =
+              const uEmpType = String(u.employeeType || u.designation || '').toLowerCase();
+              const uDept = String(u.department || u.profileType || '').toLowerCase();
+
+              const matchesId =
                 uMgrId.length > 0 &&
                 (uMgrId === curMgrId ||
                   `usr_${uMgrId}` === curMgrId ||
                   uMgrId === curMgrId.replace('usr_', '') ||
                   uMgrId === curMgrEmail ||
-                  (curMgrEmail.startsWith('manager') && uMgrId === curMgrId.replace('mgr_', '')));
+                  (curMgrEmail.includes('afsal') && (uMgrId.includes('afsal') || uMgrId === 'mgr_3' || uMgrId === '3')) ||
+                  (curMgrEmail.includes('shibil') && (uMgrId.includes('shibil') || uMgrId === 'mgr_1' || uMgrId === '1')));
+
+              const matchesDept =
+                (isMarketingMgr && (uEmpType.includes('market') || uDept.includes('market'))) ||
+                (isSalesMgr && (uEmpType.includes('sales') || uDept.includes('sales'))) ||
+                (isPurchaseMgr && (uEmpType.includes('purchase') || uDept.includes('purchase'))) ||
+                (isOpsMgr && (uEmpType.includes('operation') || uDept.includes('operation')));
+
               const isEmployeeOrWorker =
                 u.profileType === 'Employee' ||
                 u.profileType === 'Worker' ||
                 u.role === 'Employee' ||
                 u.isWorker ||
                 (!u.isAdmin && !u.profileType?.toLowerCase().includes('manager') && !u.profileType?.toLowerCase().includes('admin'));
-              return matchesMgr && isEmployeeOrWorker;
+
+              return (matchesId || matchesDept) && isEmployeeOrWorker;
             });
 
-            const listToUse =
-              managerSpecific.length > 0
-                ? managerSpecific
-                : parsed.filter((u: any) => {
-                    const isEmployeeOrWorker =
-                      u.profileType === 'Employee' ||
-                      u.profileType === 'Worker' ||
-                      u.role === 'Employee' ||
-                      u.isWorker ||
-                      (!u.isAdmin && !u.profileType?.toLowerCase().includes('manager') && !u.profileType?.toLowerCase().includes('admin'));
-                    return isEmployeeOrWorker;
-                  });
+            let listToUse = managerSpecific;
+            if (listToUse.length === 0) {
+              if (isMarketingMgr) {
+                listToUse = [
+                  {
+                    id: 'emp_arun_001',
+                    name: 'Arun',
+                    email: 'arun@cooltech.com',
+                    designation: 'Marketing Employee',
+                    department: 'Marketing',
+                    status: 'Active',
+                    profileType: 'Employee',
+                  },
+                  {
+                    id: 'emp_7',
+                    name: 'Marketing Specialist 1',
+                    email: 'marketing1@cooltech.com',
+                    designation: 'Marketing Employee',
+                    department: 'Marketing',
+                    status: 'Active',
+                    profileType: 'Employee',
+                  },
+                ];
+              } else if (isSalesMgr) {
+                listToUse = [
+                  {
+                    id: 'emp_1',
+                    name: 'Sales Executive 1',
+                    email: 'sales1@cooltech.com',
+                    designation: 'Sales Employee',
+                    department: 'Sales',
+                    status: 'Active',
+                    profileType: 'Employee',
+                  },
+                ];
+              } else {
+                listToUse = parsed.filter((u: any) => {
+                  const isEmployeeOrWorker =
+                    u.profileType === 'Employee' ||
+                    u.profileType === 'Worker' ||
+                    u.role === 'Employee' ||
+                    u.isWorker ||
+                    (!u.isAdmin && !u.profileType?.toLowerCase().includes('manager') && !u.profileType?.toLowerCase().includes('admin'));
+                  return isEmployeeOrWorker;
+                });
+              }
+            }
 
             const bgPalette = ['bg-slate-900', 'bg-slate-800', 'bg-slate-700', 'bg-blue-900', 'bg-indigo-950'];
 
@@ -841,7 +943,7 @@ export default function ManagerDashboardPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-              Operations Manager Dashboard
+              {managerDisplayName}
             </h1>
             {/* Live Synchronized Badge */}
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold shadow-2xs">

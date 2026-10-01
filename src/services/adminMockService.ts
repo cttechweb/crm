@@ -50,12 +50,12 @@ export interface AdminListResponse {
 // Initial Seed Admins
 const INITIAL_ADMINS: AdminAccount[] = [
   {
-    id: 'adm_001',
-    name: 'Cool Admin',
-    email: 'admin@gmail.com',
-    username: 'admin',
-    password: 'admin@123',
-    phone: '+971 55 485 3829',
+    id: 'adm_shemin_001',
+    name: 'Muhammed shemin',
+    email: 'shemin@gmail.com',
+    username: 'shemin',
+    password: 'password@123',
+    phone: '+971 50 123 4567',
     role: 'Admin',
     organizationId: 'org_cool_tech_001',
     organizationName: 'Cool Technologies LLC',
@@ -64,7 +64,7 @@ const INITIAL_ADMINS: AdminAccount[] = [
     designation: 'Managing Director / Business Admin',
     department: 'Executive Operations',
     createdAt: '2026-01-15',
-    updatedAt: '2026-09-25',
+    updatedAt: '2026-10-01',
   },
 ];
 
@@ -85,10 +85,52 @@ function getStoredAdmins(): AdminAccount[] {
   }
 }
 
+function syncAdminsToCezcon(admins: AdminAccount[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem('cezcon_crm_users_list');
+    const usersList: any[] = raw ? JSON.parse(raw) : [];
+
+    admins.forEach((admin) => {
+      const existingIdx = usersList.findIndex(
+        (u) => (u.email && u.email.toLowerCase() === admin.email.toLowerCase()) || u.id === admin.id
+      );
+      const userObj = {
+        id: admin.id,
+        name: admin.name,
+        email: admin.email,
+        username: admin.username.includes('@') ? admin.username : `${admin.username}@cooltechuae.com`,
+        profileType: 'Admin',
+        designation: admin.designation || 'Admin',
+        department: admin.department || 'Administration',
+        phone: admin.phone || '+971 55 485 3829',
+        status: admin.status,
+        isAdmin: true,
+        role: 'Admin',
+        loginPermission: 'Web & Mobile',
+        avatarImage: admin.avatar,
+      };
+      if (existingIdx >= 0) {
+        usersList[existingIdx] = { ...usersList[existingIdx], ...userObj };
+      } else {
+        usersList.unshift(userObj);
+      }
+    });
+
+    localStorage.setItem('cezcon_crm_users_list', JSON.stringify(usersList));
+  } catch (err) {
+    console.error('Failed to sync admins to cezcon users:', err);
+  }
+}
+
 function saveStoredAdmins(admins: AdminAccount[]): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(admins));
+    syncAdminsToCezcon(admins);
+    window.dispatchEvent(new Event('crm_admins_updated'));
+    window.dispatchEvent(new Event('crm_users_updated'));
+    window.dispatchEvent(new Event('storage'));
   } catch (err) {
     console.error('Failed to save admins to localStorage:', err);
   }

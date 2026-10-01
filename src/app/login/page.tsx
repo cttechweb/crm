@@ -162,33 +162,30 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setActivePreviewTab('overview')}
-                className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
-                  activePreviewTab === 'overview'
+                className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${activePreviewTab === 'overview'
                     ? 'bg-[#0284C7] text-white font-bold shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 Overview
               </button>
               <button
                 type="button"
                 onClick={() => setActivePreviewTab('sales')}
-                className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
-                  activePreviewTab === 'sales'
+                className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${activePreviewTab === 'sales'
                     ? 'bg-[#0284C7] text-white font-bold shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 Sales Funnel
               </button>
               <button
                 type="button"
                 onClick={() => setActivePreviewTab('pipeline')}
-                className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
-                  activePreviewTab === 'pipeline'
+                className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${activePreviewTab === 'pipeline'
                     ? 'bg-[#0284C7] text-white font-bold shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 Recent Deals
               </button>
@@ -535,7 +532,7 @@ export default function LoginPage() {
                 Your pre-configured test accounts are:
               </p>
             </div>
-            
+
             {/* Admin Credentials */}
             <div className="bg-sky-50/60 p-3 rounded-xl text-xs space-y-1.5 border border-sky-200/80">
               <div className="flex items-center justify-between pb-1 border-b border-sky-100 font-bold text-sky-900">
