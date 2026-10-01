@@ -378,6 +378,8 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         }
         if (loadedUsers.length > 0) {
           setUsers(loadedUsers);
+        } else {
+          setUsers(mockUsers);
         }
       } catch (e) {
         console.error('EnterpriseCrmContext loadAllData error:', e);

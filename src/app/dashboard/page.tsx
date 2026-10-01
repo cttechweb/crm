@@ -62,97 +62,167 @@ export default function DashboardPage() {
     }
   }, [router]);
 
+  // Dynamic filter helper
+  const matchesRep = (rep: string | undefined, filter: string) => {
+    if (filter === 'all') return true;
+    if (!rep) return false;
+    const r = rep.toLowerCase().trim();
+    const f = filter.toLowerCase().trim();
+    return r === f || r.includes(f) || f.includes(r);
+  };
+
+  const isStageMatch = (oppStage: string | undefined, targetStage: string) => {
+    const s = String(oppStage || '').toLowerCase().trim();
+    const t = targetStage.toLowerCase().trim();
+    if (t === 'opportunity') {
+      return (
+        s === 'opportunity' ||
+        s.includes('opp') ||
+        s.includes('enquiry') ||
+        s.includes('inquiry') ||
+        s.includes('lead') ||
+        s.includes('prospect') ||
+        s.includes('qualif') ||
+        s.includes('discover')
+      );
+    }
+    if (t === 'quotation') {
+      return s === 'quotation' || s.includes('quote') || s.includes('quotation') || s.includes('proposal');
+    }
+    if (t === 'order') {
+      return s === 'order' || s.includes('order') || s.includes('sales order') || s.includes('po') || s.includes('contract') || s.includes('won') || s.includes('close');
+    }
+    if (t === 'proforma invoice') {
+      return s.includes('proforma') || s === 'pi';
+    }
+    if (t === 'invoice') {
+      return s === 'invoice' || s.includes('invoice') || s.includes('tax invoice') || s.includes('bill');
+    }
+    if (t === 'delivery note') {
+      return s.includes('delivery') || s === 'dn' || s.includes('dispatch') || s.includes('fulfill');
+    }
+    return s === t;
+  };
+
   // Dynamic filter by executive/rep
   const filteredOpportunities = (salesOpportunities || []).filter((o) => {
     if (repFilter === 'all') return true;
-    return o.owner?.toLowerCase() === repFilter.toLowerCase();
+    return matchesRep(o.owner || (o as any).assignedTo || (o as any).executive, repFilter);
   });
 
   const filteredLeads = (leads || []).filter((l) => {
     if (repFilter === 'all') return true;
     return (
-      l.leadAssigned?.name?.toLowerCase() === repFilter.toLowerCase() ||
-      l.owner?.toLowerCase() === repFilter.toLowerCase() ||
-      l.assignedEmployee?.toLowerCase() === repFilter.toLowerCase()
+      matchesRep(l.leadAssigned?.name, repFilter) ||
+      matchesRep(l.owner, repFilter) ||
+      matchesRep(l.assignedEmployee, repFilter)
     );
   });
 
   const filteredTasks = (tasks || []).filter((t: CrmTask) => {
     if (repFilter === 'all') return true;
-    return t.assignee?.name?.toLowerCase() === repFilter.toLowerCase();
+    return matchesRep(t.assignee?.name, repFilter);
   });
 
   const filteredCustomers = (customers || []).filter((c) => {
     if (repFilter === 'all') return true;
-    return c.owner?.toLowerCase() === repFilter.toLowerCase();
+    return matchesRep(c.owner || (c as any).assignedTo, repFilter);
   });
 
   // Business calculations
   const totalPipelineFromDeals = filteredOpportunities.reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
   const totalQuotationsValue = (quotations || []).reduce((acc, q) => acc + (Number(q.totalAmount) || 0), 0);
-  const totalPipeline = totalPipelineFromDeals > 0 ? totalPipelineFromDeals : totalQuotationsValue;
+  const totalOrdersValue = (salesOrders || []).reduce((acc, o) => acc + (Number((o as any).totalAmount || (o as any).amount) || 0), 0);
+  const totalInvoicesValue = (invoices || []).reduce((acc, i) => acc + (Number(i.totalAmount || (i as any).amount) || 0), 0);
+  const totalPipeline = totalPipelineFromDeals > 0 ? totalPipelineFromDeals : totalQuotationsValue + totalOrdersValue + totalInvoicesValue;
 
   const hotLeadsCount = filteredLeads.filter((l) => l.rating === 'Hot' || l.rating === 'HOT').length;
   const overdueTasksCount = filteredTasks.filter((t) => t.status === 'Overdue').length;
   const urgentTasksCount = filteredTasks.filter((t) => t.priority === 'Urgent' || t.priority === 'High').length;
 
-  const quotationsCount = (quotations || []).length + filteredOpportunities.filter((o) => o.stage === 'Quotation' || o.stage === 'Opportunity').length;
+  const oppProposalDeals = filteredOpportunities.filter((o) => isStageMatch(o.stage, 'Quotation'));
+  const quotationsCount = (quotations || []).length > 0 ? (quotations || []).length : oppProposalDeals.length;
   const openQuotationsValue = totalQuotationsValue > 0
     ? totalQuotationsValue
-    : filteredOpportunities
-        .filter((o) => o.stage === 'Quotation' || o.stage === 'Opportunity')
-        .reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
+    : oppProposalDeals.reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
 
-  // Corporate pipeline breakdown
+  // Corporate pipeline breakdown with dynamic fallback and smart matching
   const pipelineStages: { stage: DealStage; count: number; value: number; prob: number; color: string }[] = [
     {
       stage: 'Opportunity',
-      count: filteredOpportunities.filter((o) => o.stage === 'Opportunity').length,
-      value: filteredOpportunities.filter((o) => o.stage === 'Opportunity').reduce((a, o) => a + (Number(o.amount) || 0), 0),
+      count: filteredOpportunities.filter((o) => isStageMatch(o.stage, 'Opportunity')).length,
+      value: filteredOpportunities
+        .filter((o) => isStageMatch(o.stage, 'Opportunity'))
+        .reduce((a, o) => a + (Number(o.amount) || 0), 0),
       prob: 30,
       color: 'bg-blue-600',
     },
     {
       stage: 'Quotation',
-      count: Math.max((quotations || []).length, filteredOpportunities.filter((o) => o.stage === 'Quotation').length),
+      count: Math.max(
+        (quotations || []).length,
+        filteredOpportunities.filter((o) => isStageMatch(o.stage, 'Quotation')).length
+      ),
       value: Math.max(
         totalQuotationsValue,
-        filteredOpportunities.filter((o) => o.stage === 'Quotation').reduce((a, o) => a + (Number(o.amount) || 0), 0)
+        filteredOpportunities
+          .filter((o) => isStageMatch(o.stage, 'Quotation'))
+          .reduce((a, o) => a + (Number(o.amount) || 0), 0)
       ),
       prob: 60,
       color: 'bg-indigo-600',
     },
     {
       stage: 'Order',
-      count: Math.max((salesOrders || []).length, filteredOpportunities.filter((o) => o.stage === 'Order').length),
+      count: Math.max(
+        (salesOrders || []).length,
+        filteredOpportunities.filter((o) => isStageMatch(o.stage, 'Order')).length
+      ),
       value: Math.max(
-        (salesOrders || []).reduce((a, s) => a + (Number(s.totalAmount || s.amount) || 0), 0),
-        filteredOpportunities.filter((o) => o.stage === 'Order').reduce((a, o) => a + (Number(o.amount) || 0), 0)
+        totalOrdersValue,
+        filteredOpportunities
+          .filter((o) => isStageMatch(o.stage, 'Order'))
+          .reduce((a, o) => a + (Number(o.amount) || 0), 0)
       ),
       prob: 80,
       color: 'bg-amber-600',
     },
     {
       stage: 'Proforma Invoice',
-      count: filteredOpportunities.filter((o) => o.stage === 'Proforma Invoice').length,
-      value: filteredOpportunities.filter((o) => o.stage === 'Proforma Invoice').reduce((a, o) => a + (Number(o.amount) || 0), 0),
+      count: filteredOpportunities.filter((o) => isStageMatch(o.stage, 'Proforma Invoice')).length,
+      value: filteredOpportunities
+        .filter((o) => isStageMatch(o.stage, 'Proforma Invoice'))
+        .reduce((a, o) => a + (Number(o.amount) || 0), 0),
       prob: 90,
       color: 'bg-purple-600',
     },
     {
       stage: 'Invoice',
-      count: Math.max((invoices || []).length, filteredOpportunities.filter((o) => o.stage === 'Invoice').length),
+      count: Math.max(
+        (invoices || []).length,
+        filteredOpportunities.filter((o) => isStageMatch(o.stage, 'Invoice')).length
+      ),
       value: Math.max(
-        (invoices || []).reduce((a, i) => a + (Number(i.totalAmount || i.amount) || 0), 0),
-        filteredOpportunities.filter((o) => o.stage === 'Invoice').reduce((a, o) => a + (Number(o.amount) || 0), 0)
+        totalInvoicesValue,
+        filteredOpportunities
+          .filter((o) => isStageMatch(o.stage, 'Invoice'))
+          .reduce((a, o) => a + (Number(o.amount) || 0), 0)
       ),
       prob: 95,
       color: 'bg-emerald-600',
     },
     {
       stage: 'Delivery Note',
-      count: Math.max((deliveryNotes || []).length, filteredOpportunities.filter((o) => o.stage === 'Delivery Note').length),
-      value: filteredOpportunities.filter((o) => o.stage === 'Delivery Note').reduce((a, o) => a + (Number(o.amount) || 0), 0),
+      count: Math.max(
+        (deliveryNotes || []).length,
+        filteredOpportunities.filter((o) => isStageMatch(o.stage, 'Delivery Note')).length
+      ),
+      value: Math.max(
+        (deliveryNotes || []).reduce((a, d) => a + (Number((d as any).totalAmount || (d as any).amount) || 0), 0),
+        filteredOpportunities
+          .filter((o) => isStageMatch(o.stage, 'Delivery Note'))
+          .reduce((a, o) => a + (Number(o.amount) || 0), 0)
+      ),
       prob: 100,
       color: 'bg-teal-600',
     },

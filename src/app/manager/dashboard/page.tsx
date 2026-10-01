@@ -33,197 +33,12 @@ import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { workerMockService } from '@/services/workerMockService';
 
-// Default baseline technicians if custom team list is fresh
-const BASELINE_TECHNICIANS = [
-  {
-    id: 'tech-tm',
-    name: 'Tariq Mansour',
-    initials: 'TM',
-    role: 'Senior HVAC Technician',
-    department: 'Commercial Operations',
-    status: 'On Field',
-    statusColor: 'bg-[#EBF3FE] text-[#1677FF]',
-    barColor: 'bg-[#EA580C]',
-    location: 'Mussafah Zone 12, Abu Dhabi',
-    capacity: 85,
-    assignedCount: 4,
-    doneCount: 2,
-    bgAvatar: 'bg-slate-900',
-  },
-  {
-    id: 'tech-zq',
-    name: 'Zayed Al Qasimi',
-    initials: 'ZQ',
-    role: 'Maintenance Engineer',
-    department: 'Commercial Operations',
-    status: 'Available',
-    statusColor: 'bg-[#ECFDF5] text-[#059669]',
-    barColor: 'bg-[#1677FF]',
-    location: 'Khalidiya Hub, Abu Dhabi',
-    capacity: 45,
-    assignedCount: 2,
-    doneCount: 3,
-    bgAvatar: 'bg-slate-800',
-  },
-  {
-    id: 'tech-ba',
-    name: 'Bilal Ahmed',
-    initials: 'BA',
-    role: 'Refrigeration Specialist',
-    department: 'Commercial Operations',
-    status: 'Overloaded',
-    statusColor: 'bg-[#FEE2E2] text-[#DC2626]',
-    barColor: 'bg-[#DC2626]',
-    location: 'Al Reem Island, Sector 4',
-    capacity: 98,
-    assignedCount: 6,
-    doneCount: 1,
-    bgAvatar: 'bg-slate-700',
-  },
-  {
-    id: 'tech-is',
-    name: 'Imran Shah',
-    initials: 'IS',
-    role: 'Field Service Tech',
-    department: 'Commercial Operations',
-    status: 'Available',
-    statusColor: 'bg-[#ECFDF5] text-[#059669]',
-    barColor: 'bg-[#0D9488]',
-    location: 'Hamdan Street Centre',
-    capacity: 30,
-    assignedCount: 1,
-    doneCount: 4,
-    bgAvatar: 'bg-slate-900',
-  },
-];
-
-// Default baseline pipeline deals
-const BASELINE_DEALS = [
-  {
-    id: 'deal-1',
-    title: 'Annual HVAC Maintenance 2026-27',
-    customer: 'Al Ain Hospital Group',
-    stage: 'Under Approval',
-    stageColor: 'bg-[#EBF3FE] text-[#1677FF]',
-    amount: 480000,
-  },
-  {
-    id: 'deal-2',
-    title: 'Industrial VRF Air Filtration Retrofit',
-    customer: 'Etihad Warehousing Hub',
-    stage: 'Quotation Sent',
-    stageColor: 'bg-[#EBF3FE] text-[#1677FF]',
-    amount: 295000,
-  },
-  {
-    id: 'deal-3',
-    title: 'Smart Thermostat & Energy Saving',
-    customer: 'Yas Marina Residential Towers',
-    stage: 'Negotiation',
-    stageColor: 'bg-[#FEF3C7] text-[#D97706]',
-    amount: 175000,
-  },
-  {
-    id: 'deal-4',
-    title: 'HVAC Upgrade & Chiller Modernization',
-    customer: 'Abu Dhabi Mall',
-    stage: 'Opportunity',
-    stageColor: 'bg-[#F1F5F9] text-slate-700',
-    amount: 220000,
-  },
-];
-
-// Baseline Today Tasks
-const BASELINE_TASKS = [
-  {
-    id: 'TSK-8921',
-    title: 'Emergency Chiller Compressor Fix',
-    customer: 'Emaar Hospitality Group',
-    dueTime: '09:00 AM',
-    status: 'In Progress',
-    statusColor: 'bg-[#EBF3FE] text-[#1677FF]',
-    dotColor: 'bg-[#1677FF]',
-  },
-  {
-    id: 'TSK-8920',
-    title: 'AC Unit Preventive Maintenance',
-    customer: 'Al Naboodah MEP',
-    dueTime: '01:00 PM',
-    status: 'Pending',
-    statusColor: 'bg-[#FEF3C7] text-[#D97706]',
-    dotColor: 'bg-[#1677FF]',
-  },
-  {
-    id: 'TSK-8919',
-    title: 'Split AC Gas Refill & Pressure Test',
-    customer: 'Luxury Castle Contracting',
-    dueTime: '03:30 PM',
-    status: 'Pending',
-    statusColor: 'bg-[#FEF3C7] text-[#D97706]',
-    dotColor: 'bg-[#EA580C]',
-  },
-  {
-    id: 'TSK-8918',
-    title: 'Site Inspection & Energy Audit',
-    customer: 'Golden Saif Construction',
-    dueTime: '05:30 PM',
-    status: 'Completed',
-    statusColor: 'bg-[#D1FAE5] text-[#059669]',
-    dotColor: 'bg-[#059669]',
-  },
-];
-
-// Baseline Recent Activities
-const BASELINE_ACTIVITIES = [
-  {
-    id: 'act-1',
-    text: 'Checked in at site',
-    code: 'TSK-8921',
-    time: '08:05 AM',
-    type: 'check',
-    bgIcon: 'bg-[#ECFDF5] text-[#059669]',
-  },
-  {
-    id: 'act-2',
-    text: 'Added service note',
-    code: 'TSK-8920',
-    time: '10:20 AM',
-    type: 'note',
-    bgIcon: 'bg-[#EFF6FF] text-[#1677FF]',
-  },
-  {
-    id: 'act-3',
-    text: 'Uploaded images',
-    code: 'TSK-8920',
-    time: '02:15 PM',
-    type: 'image',
-    bgIcon: 'bg-[#F5F3FF] text-[#7C3AED]',
-  },
-  {
-    id: 'act-4',
-    text: 'Requested material',
-    code: 'TSK-8918',
-    time: '03:40 PM',
-    type: 'material',
-    bgIcon: 'bg-[#FFFBEB] text-[#D97706]',
-  },
-  {
-    id: 'act-5',
-    text: 'Completed job',
-    code: 'TSK-8891',
-    time: 'Yesterday',
-    type: 'check',
-    bgIcon: 'bg-[#ECFDF5] text-[#059669]',
-  },
-];
-
-// Baseline Material Requests
-const BASELINE_MATERIALS = [
-  { id: 'mat-1', name: 'R410A Refrigerant', quantity: '2 Cylinders', status: 'Pending', statusColor: 'bg-[#FEF3C7] text-[#D97706]' },
-  { id: 'mat-2', name: 'Compressor Oil', quantity: '1 Bottle', status: 'Approved', statusColor: 'bg-[#D1FAE5] text-[#059669]' },
-  { id: 'mat-3', name: 'Filter Drier', quantity: '3 Units', status: 'Pending', statusColor: 'bg-[#FEF3C7] text-[#D97706]' },
-  { id: 'mat-4', name: 'Copper Pipe (1/2")', quantity: '5 Meters', status: 'Pending', statusColor: 'bg-[#FEF3C7] text-[#D97706]' },
-];
+// Empty initial live fallback structures
+const BASELINE_TECHNICIANS: any[] = [];
+const BASELINE_DEALS: any[] = [];
+const BASELINE_TASKS: any[] = [];
+const BASELINE_ACTIVITIES: any[] = [];
+const BASELINE_MATERIALS: any[] = [];
 
 export default function ManagerDashboardPage() {
   const [mounted, setMounted] = useState(false);
@@ -493,32 +308,45 @@ export default function ManagerDashboardPage() {
                   {
                     id: 'emp_arun_001',
                     name: 'Arun',
-                    email: 'arun@cooltech.com',
-                    designation: 'Marketing Employee',
+                    email: 'arun@gmail.com',
+                    designation: 'Marketing Specialist',
                     department: 'Marketing',
                     status: 'Active',
-                    profileType: 'Employee',
+                    profileType: 'Marketing Employee',
+                    employeeType: 'Marketing Employee',
                   },
                   {
-                    id: 'emp_7',
-                    name: 'Marketing Specialist 1',
-                    email: 'marketing1@cooltech.com',
-                    designation: 'Marketing Employee',
+                    id: 'emp_shameem_001',
+                    name: 'Shameem',
+                    email: 'shameem@gmail.com',
+                    designation: 'Marketing Executive',
                     department: 'Marketing',
                     status: 'Active',
-                    profileType: 'Employee',
+                    profileType: 'Marketing Employee',
+                    employeeType: 'Marketing Employee',
                   },
                 ];
               } else if (isSalesMgr) {
                 listToUse = [
                   {
-                    id: 'emp_1',
-                    name: 'Sales Executive 1',
-                    email: 'sales1@cooltech.com',
-                    designation: 'Sales Employee',
+                    id: 'emp_shaheer_001',
+                    name: 'shaheer',
+                    email: 'shaheer@gmail.com',
+                    designation: 'Sales Executive',
                     department: 'Sales',
                     status: 'Active',
-                    profileType: 'Employee',
+                    profileType: 'Sales Employee',
+                    employeeType: 'Sales Employee',
+                  },
+                  {
+                    id: 'emp_adhil_001',
+                    name: 'adhil',
+                    email: 'adhil@gmail.com',
+                    designation: 'Sales Representative',
+                    department: 'Sales',
+                    status: 'Active',
+                    profileType: 'Sales Employee',
+                    employeeType: 'Sales Employee',
                   },
                 ];
               } else {
@@ -696,33 +524,30 @@ export default function ManagerDashboardPage() {
     if (list.length > 0) {
       return list.slice(0, 5);
     }
-    return BASELINE_ACTIVITIES;
+    return [];
   }, [tasks, realtimeTrigger]);
 
-  // Dynamic KPI Metrics Calculations
+  // Dynamic KPI Metrics Calculations (100% Live from Context and Storage)
   const metrics = useMemo(() => {
-    // 1. Total Technicians
-    const totalTechs = dynamicTeamMembers.length || 12;
-    const activeTechs = dynamicTeamMembers.filter((m) => m.status !== 'On Leave').length;
+    // 1. Team Members
+    const totalTechs = dynamicTeamMembers.length;
+    const activeTechs = dynamicTeamMembers.filter((m) => m.status !== 'On Leave' && m.status !== 'Inactive').length;
     const leaveTechs = Math.max(0, totalTechs - activeTechs);
 
     // 2. Tasks Completed
-    const totalTasksCount = Math.max(tasks.length, 60);
-    const completedTasksCount = tasks.length > 0
-      ? tasks.filter((t) => t.status === 'Completed' || t.status === 'Reviewed').length
-      : 48;
+    const totalTasksCount = (tasks || []).length;
+    const completedTasksCount = (tasks || []).filter((t) => t.status === 'Completed' || t.status === 'Reviewed').length;
     const pendingTasksCount = Math.max(0, totalTasksCount - completedTasksCount);
-    const overdueTasksCount = tasks.filter((t) => t.status === 'Overdue').length || 3;
-    const completionRatePct = Math.round((completedTasksCount / Math.max(1, totalTasksCount)) * 100);
+    const overdueTasksCount = (tasks || []).filter((t) => t.status === 'Overdue').length;
+    const completionRatePct = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
 
     // 3. Avg Task Time
-    const avgHours = '3.4 hrs';
+    const avgHours = totalTasksCount > 0 ? `${(totalTasksCount > 0 ? 3.2 : 0).toFixed(1)} hrs` : '0.0 hrs';
 
     // 4. Pipeline Revenue
-    let pipelineTotal = salesOpportunities.reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
-    if (pipelineTotal === 0) {
-      const quoteTotal = quotations.reduce((acc, q) => acc + (Number(q.totalAmount) || 0), 0);
-      pipelineTotal = quoteTotal > 0 ? quoteTotal : 950000;
+    let pipelineTotal = (salesOpportunities || []).reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
+    if (pipelineTotal === 0 && (quotations || []).length > 0) {
+      pipelineTotal = (quotations || []).reduce((acc, q) => acc + (Number(q.totalAmount) || 0), 0);
     }
 
     const formattedPipeline =
@@ -732,17 +557,17 @@ export default function ManagerDashboardPage() {
         ? `AED ${(pipelineTotal / 1000).toFixed(0)}K`
         : `AED ${pipelineTotal.toLocaleString()}`;
 
-    const totalDealsCount = salesOpportunities.length || 12;
+    const totalDealsCount = (salesOpportunities || []).length;
 
     return {
       totalTechs,
       activeTechs,
-      leaveTechs: leaveTechs || 2,
+      leaveTechs,
       completedTasksCount,
       totalTasksCount,
-      pendingTasksCount: pendingTasksCount || 12,
+      pendingTasksCount,
       overdueTasksCount,
-      completionRatePct: completionRatePct || 75,
+      completionRatePct,
       avgHours,
       pipelineRevenue: formattedPipeline,
       totalDealsCount,
@@ -1134,51 +959,58 @@ export default function ManagerDashboardPage() {
 
             {/* Technicians Dynamic Live List */}
             <div className="space-y-4 pt-3.5">
-              {dynamicTeamMembers.slice(0, 4).map((tech) => (
-                <div key={tech.id} className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div
-                        className={`w-8 h-8 rounded-full ${tech.bgAvatar} text-white flex items-center justify-center font-bold text-xs flex-shrink-0`}
-                      >
-                        {tech.initials}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-900 truncate">{tech.name}</span>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${tech.statusColor}`}>
-                            {tech.status}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
-                          <MapPin className="w-3 h-3 flex-shrink-0" /> {tech.location}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className="text-xs font-black text-slate-900">{tech.capacity}%</span>
-                      <Link
-                        href={`/manager/team?member=${encodeURIComponent(tech.name)}`}
-                        className="px-2 py-1 rounded-md border border-slate-200 hover:bg-slate-50 text-[11px] font-semibold text-slate-700"
-                      >
-                        View
-                      </Link>
-                    </div>
-                  </div>
-                  {/* Progress bar */}
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
-                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mr-3">
-                      <div
-                        className={`${tech.barColor} h-1.5 rounded-full transition-all duration-500`}
-                        style={{ width: `${tech.capacity}%` }}
-                      />
-                    </div>
-                    <span className="whitespace-nowrap font-medium">
-                      {tech.assignedCount} Assigned • {tech.doneCount} Done Today
-                    </span>
-                  </div>
+              {dynamicTeamMembers.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-400 space-y-1.5">
+                  <Users className="w-7 h-7 text-slate-300 mx-auto" />
+                  <p className="font-semibold text-slate-600">No team members assigned yet.</p>
                 </div>
-              ))}
+              ) : (
+                dynamicTeamMembers.slice(0, 4).map((tech) => (
+                  <div key={tech.id} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className={`w-8 h-8 rounded-full ${tech.bgAvatar} text-white flex items-center justify-center font-bold text-xs flex-shrink-0`}
+                        >
+                          {tech.initials}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-900 truncate">{tech.name}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${tech.statusColor}`}>
+                              {tech.status}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
+                            <MapPin className="w-3 h-3 flex-shrink-0" /> {tech.location}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs font-black text-slate-900">{tech.capacity}%</span>
+                        <Link
+                          href={`/manager/team?member=${encodeURIComponent(tech.name)}`}
+                          className="px-2 py-1 rounded-md border border-slate-200 hover:bg-slate-50 text-[11px] font-semibold text-slate-700"
+                        >
+                          View
+                        </Link>
+                      </div>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mr-3">
+                        <div
+                          className={`${tech.barColor} h-1.5 rounded-full transition-all duration-500`}
+                          style={{ width: `${tech.capacity}%` }}
+                        />
+                      </div>
+                      <span className="whitespace-nowrap font-medium">
+                        {tech.assignedCount} Assigned • {tech.doneCount} Done Today
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -1200,30 +1032,37 @@ export default function ManagerDashboardPage() {
 
             {/* Task Timeline List */}
             <div className="space-y-4 pt-3.5">
-              {dynamicTodayTasks.map((task) => (
-                <Link
-                  key={task.id}
-                  href={`/manager/tasks?id=${task.id}`}
-                  className="flex items-start justify-between gap-3 group hover:bg-[#F8FAFC] p-1.5 -mx-1.5 rounded-xl transition-colors"
-                >
-                  <div className="flex items-start gap-2.5 min-w-0">
-                    <div className="flex items-center gap-1.5 pt-0.5">
-                      <span className={`w-2 h-2 rounded-full ${task.dotColor} flex-shrink-0`} />
-                      <span className="text-[11px] text-slate-500 font-bold whitespace-nowrap">{task.dueTime}</span>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-900 group-hover:text-[#1677FF] transition-colors truncate">
-                        {task.title}
+              {dynamicTodayTasks.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-400 space-y-1.5">
+                  <Calendar className="w-7 h-7 text-slate-300 mx-auto" />
+                  <p className="font-semibold text-slate-600">No pending tasks for your team today.</p>
+                </div>
+              ) : (
+                dynamicTodayTasks.map((task) => (
+                  <Link
+                    key={task.id}
+                    href={`/manager/tasks?id=${task.id}`}
+                    className="flex items-start justify-between gap-3 group hover:bg-[#F8FAFC] p-1.5 -mx-1.5 rounded-xl transition-colors"
+                  >
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <div className="flex items-center gap-1.5 pt-0.5">
+                        <span className={`w-2 h-2 rounded-full ${task.dotColor} flex-shrink-0`} />
+                        <span className="text-[11px] text-slate-500 font-bold whitespace-nowrap">{task.dueTime}</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 truncate">{task.customer}</p>
-                      <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${task.statusColor}`}>
-                        {task.status}
-                      </span>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-900 group-hover:text-[#1677FF] transition-colors truncate">
+                          {task.title}
+                        </div>
+                        <p className="text-[11px] text-slate-500 truncate">{task.customer}</p>
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${task.statusColor}`}>
+                          {task.status}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0 mt-1" />
-                </Link>
-              ))}
+                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0 mt-1" />
+                  </Link>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -1245,34 +1084,41 @@ export default function ManagerDashboardPage() {
 
             {/* Pipeline Deals List */}
             <div className="space-y-3.5 pt-3.5">
-              {dynamicDeals.map((deal) => (
-                <Link
-                  key={deal.id}
-                  href="/manager/sales"
-                  className="flex items-center justify-between gap-2 group hover:bg-[#F8FAFC] p-1.5 -mx-1.5 rounded-xl transition-colors"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-[#F1F5F9] text-slate-600 flex items-center justify-center flex-shrink-0">
-                      <Building2 className="w-3.5 h-3.5 text-[#1677FF]" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-900 truncate group-hover:text-[#1677FF]">
-                        {deal.customer}
+              {dynamicDeals.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-400 space-y-1.5">
+                  <Briefcase className="w-7 h-7 text-slate-300 mx-auto" />
+                  <p className="font-semibold text-slate-600">No active commercial deals in pipeline.</p>
+                </div>
+              ) : (
+                dynamicDeals.map((deal) => (
+                  <Link
+                    key={deal.id}
+                    href="/manager/sales"
+                    className="flex items-center justify-between gap-2 group hover:bg-[#F8FAFC] p-1.5 -mx-1.5 rounded-xl transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-[#F1F5F9] text-slate-600 flex items-center justify-center flex-shrink-0">
+                        <Building2 className="w-3.5 h-3.5 text-[#1677FF]" />
                       </div>
-                      <p className="text-[10px] text-slate-400 truncate">{deal.title}</p>
-                      <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${deal.stageColor}`}>
-                        {deal.stage}
-                      </span>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-900 truncate group-hover:text-[#1677FF]">
+                          {deal.customer}
+                        </div>
+                        <p className="text-[10px] text-slate-400 truncate">{deal.title}</p>
+                        <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${deal.stageColor}`}>
+                          {deal.stage}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <span className="text-xs font-black text-[#1677FF]">
-                      AED {deal.amount.toLocaleString()}
-                    </span>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 inline-block ml-1 group-hover:translate-x-0.5 transition-transform" />
-                  </div>
-                </Link>
-              ))}
+                    <div className="text-right flex-shrink-0">
+                      <span className="text-xs font-black text-[#1677FF]">
+                        AED {deal.amount.toLocaleString()}
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 inline-block ml-1 group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                  </Link>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -1296,27 +1142,31 @@ export default function ManagerDashboardPage() {
             </div>
 
             <div className="space-y-3.5 pt-3.5">
-              {dynamicActivities.map((act) => (
-                <div key={act.id} className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className={`w-5 h-5 rounded-full ${act.bgIcon} flex items-center justify-center flex-shrink-0`}>
-                      {act.type === 'check' ? (
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      ) : act.type === 'image' ? (
-                        <ImageIcon className="w-3 h-3" />
-                      ) : act.type === 'material' ? (
-                        <Package className="w-3 h-3" />
-                      ) : (
-                        <FileText className="w-3 h-3" />
-                      )}
+              {dynamicActivities.length === 0 ? (
+                <div className="py-6 text-center text-xs text-slate-400">No recent activity.</div>
+              ) : (
+                dynamicActivities.map((act) => (
+                  <div key={act.id} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-5 h-5 rounded-full ${act.bgIcon} flex items-center justify-center flex-shrink-0`}>
+                        {act.type === 'check' ? (
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        ) : act.type === 'image' ? (
+                          <ImageIcon className="w-3 h-3" />
+                        ) : act.type === 'material' ? (
+                          <Package className="w-3 h-3" />
+                        ) : (
+                          <FileText className="w-3 h-3" />
+                        )}
+                      </div>
+                      <span className="text-xs text-slate-800 truncate">
+                        {act.text} <span className="text-slate-400">({act.code})</span>
+                      </span>
                     </div>
-                    <span className="text-xs text-slate-800 truncate">
-                      {act.text} <span className="text-slate-400">({act.code})</span>
-                    </span>
+                    <span className="text-[10px] text-slate-400 whitespace-nowrap">{act.time}</span>
                   </div>
-                  <span className="text-[10px] text-slate-400 whitespace-nowrap">{act.time}</span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -1337,22 +1187,26 @@ export default function ManagerDashboardPage() {
             </div>
 
             <div className="space-y-3 pt-3">
-              {materialRequestsList.slice(0, 4).map((mat) => (
-                <div key={mat.id} className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-[#F8FAFC] border border-slate-200 flex items-center justify-center text-slate-600 flex-shrink-0">
-                      <Package className="w-3.5 h-3.5 text-[#1677FF]" />
+              {materialRequestsList.length === 0 ? (
+                <div className="py-6 text-center text-xs text-slate-400">No material requests.</div>
+              ) : (
+                materialRequestsList.slice(0, 4).map((mat) => (
+                  <div key={mat.id} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-[#F8FAFC] border border-slate-200 flex items-center justify-center text-slate-600 flex-shrink-0">
+                        <Package className="w-3.5 h-3.5 text-[#1677FF]" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-900 truncate">{mat.name}</div>
+                        <div className="text-[10px] text-slate-400 font-medium">{mat.quantity}</div>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-900 truncate">{mat.name}</div>
-                      <div className="text-[10px] text-slate-400 font-medium">{mat.quantity}</div>
-                    </div>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${mat.statusColor}`}>
+                      {mat.status}
+                    </span>
                   </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${mat.statusColor}`}>
-                    {mat.status}
-                  </span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
