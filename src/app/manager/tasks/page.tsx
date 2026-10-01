@@ -808,8 +808,25 @@ function ManagerTasksContent() {
     setTaskToDelete(null);
   };
 
+  // Immediate fallback hydration from localStorage to prevent empty-state flicker during hydration
+  const displayTasks = useMemo(() => {
+    if (tasks && tasks.length > 0) return tasks;
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('crm_tasks_data');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return tasks || [];
+  }, [tasks]);
+
   const filteredTasks = useMemo(() => {
-    return tasks.filter((t) => {
+    return displayTasks.filter((t) => {
       const title = t.taskDetails || t.title || '';
       const cust = t.customer || t.taskUnder || '';
       const rep = t.assignedEmployee || t.assignee?.name || '';
@@ -817,27 +834,39 @@ function ManagerTasksContent() {
       const loc = t.location || t.description || '';
       const taskType = t.taskType || '';
 
-      // Strict Domain Isolation for Manager Roles
-      if (!isSuperAdminOrAdmin) {
+      // Direct Creator / Assigner Ownership Guarantee:
+      // If task was assigned/created by this manager, ALWAYS display it to them
+      const isCreatedByMe =
+        Boolean(
+          currentUser?.name &&
+            ((t.assignedBy && t.assignedBy.toLowerCase().includes(nameStr)) ||
+              (t.createdBy && t.createdBy.toLowerCase().includes(nameStr)))
+        ) ||
+        (Boolean(currentUser?.id) &&
+          (String(t.assignedBy) === String(currentUser?.id) ||
+            String(t.createdBy) === String(currentUser?.id)));
+
+      // Strict Domain Isolation for Manager Roles (when not created by current manager)
+      if (!isSuperAdminOrAdmin && !isCreatedByMe) {
         if (isSalesManager) {
-          const isMarketing = dept.toLowerCase().includes('market') || taskType.toLowerCase().includes('campaign') || rep.toLowerCase().includes('marketing');
-          const isPurchase = dept.toLowerCase().includes('purchase') || rep.toLowerCase().includes('purchase');
-          const isOperations = dept.toLowerCase().includes('operation') || rep.toLowerCase().includes('operation');
+          const isMarketing = dept.toLowerCase().includes('marketing') || dept.toLowerCase().includes('digital marketing');
+          const isPurchase = dept.toLowerCase().includes('purchase') || dept.toLowerCase().includes('procurement');
+          const isOperations = dept.toLowerCase().includes('operations') || dept.toLowerCase().includes('technical maintenance');
           if (isMarketing || isPurchase || isOperations) return false;
         } else if (isMarketingManager) {
-          const isSales = dept.toLowerCase().includes('sale') || rep.toLowerCase().includes('sales');
-          const isPurchase = dept.toLowerCase().includes('purchase') || rep.toLowerCase().includes('purchase');
-          const isOperations = dept.toLowerCase().includes('operation') || rep.toLowerCase().includes('operation');
+          const isSales = dept.toLowerCase().includes('sales');
+          const isPurchase = dept.toLowerCase().includes('purchase') || dept.toLowerCase().includes('procurement');
+          const isOperations = dept.toLowerCase().includes('operations') || dept.toLowerCase().includes('technical maintenance');
           if (isSales || isPurchase || isOperations) return false;
         } else if (isPurchaseManager) {
-          const isSales = dept.toLowerCase().includes('sale') || rep.toLowerCase().includes('sales');
-          const isMarketing = dept.toLowerCase().includes('market') || rep.toLowerCase().includes('marketing');
-          const isOperations = dept.toLowerCase().includes('operation') || rep.toLowerCase().includes('operation');
+          const isSales = dept.toLowerCase().includes('sales');
+          const isMarketing = dept.toLowerCase().includes('marketing') || dept.toLowerCase().includes('digital marketing');
+          const isOperations = dept.toLowerCase().includes('operations') || dept.toLowerCase().includes('technical maintenance');
           if (isSales || isMarketing || isOperations) return false;
         } else if (isOperationsManager) {
-          const isSales = dept.toLowerCase().includes('sale') || rep.toLowerCase().includes('sales');
-          const isMarketing = dept.toLowerCase().includes('market') || rep.toLowerCase().includes('marketing');
-          const isPurchase = dept.toLowerCase().includes('purchase') || rep.toLowerCase().includes('purchase');
+          const isSales = dept.toLowerCase().includes('sales');
+          const isMarketing = dept.toLowerCase().includes('marketing') || dept.toLowerCase().includes('digital marketing');
+          const isPurchase = dept.toLowerCase().includes('purchase') || dept.toLowerCase().includes('procurement');
           if (isSales || isMarketing || isPurchase) return false;
         }
       }
@@ -862,7 +891,7 @@ function ManagerTasksContent() {
 
       return matchSearch && matchStatus && matchDept;
     });
-  }, [tasks, search, statusFilter, deptFilter, isSuperAdminOrAdmin, isSalesManager, isMarketingManager, isPurchaseManager, isOperationsManager]);
+  }, [displayTasks, search, statusFilter, deptFilter, isSuperAdminOrAdmin, isSalesManager, isMarketingManager, isPurchaseManager, isOperationsManager, currentUser, nameStr]);
 
   return (
     <ManagerShell

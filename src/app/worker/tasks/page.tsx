@@ -89,9 +89,25 @@ function WorkerTasksContent() {
     }
   };
 
-  // Convert rawTasks strictly using genuine manager data
+  // Convert rawTasks strictly using genuine manager data with fallback hydration
+  const effectiveRawTasks = useMemo(() => {
+    if (rawTasks && rawTasks.length > 0) return rawTasks;
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('crm_tasks_data');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return rawTasks || [];
+  }, [rawTasks]);
+
   const tasks: WorkerTask[] = useMemo(() => {
-    const validRaw = rawTasks.filter((t) => {
+    const validRaw = effectiveRawTasks.filter((t) => {
       const title = (t.taskDetails || t.title || '').trim().toLowerCase();
       const isGibberish =
         title.includes('qewrty') ||
