@@ -227,7 +227,34 @@ export function canAccessLead(
   const leadOwner = normalizeIdentifier(lead.owner || lead.leadAssigned?.name);
   const leadCreator = normalizeIdentifier(lead.createdBy);
   const leadAssignee = normalizeIdentifier(lead.assignedEmployee);
-  const leadDept = normalizeIdentifier(lead.department || lead.businessOpportunity);
+  const leadDept = normalizeIdentifier(lead.department);
+
+  // Detect exact lead origin department
+  const isMarketingLead =
+    leadDept.includes('market') ||
+    leadCreator.includes('arun') ||
+    leadOwner.includes('arun') ||
+    leadAssignee.includes('arun') ||
+    leadCreator.includes('shameem') ||
+    leadOwner.includes('shameem') ||
+    leadAssignee.includes('shameem') ||
+    leadCreator.includes('afsal') ||
+    leadOwner.includes('afsal') ||
+    leadAssignee.includes('afsal') ||
+    leadCreator === 'a' ||
+    leadOwner === 'a';
+
+  const isSalesLead =
+    leadDept.includes('sale') ||
+    leadCreator.includes('shibil') ||
+    leadOwner.includes('shibil') ||
+    leadAssignee.includes('shibil') ||
+    leadCreator.includes('shaheer') ||
+    leadOwner.includes('shaheer') ||
+    leadAssignee.includes('shaheer') ||
+    leadCreator.includes('adhil') ||
+    leadOwner.includes('adhil') ||
+    leadAssignee.includes('adhil');
 
   // 2. Employee Scope: Own records only
   if (scope === 'OWN') {
@@ -243,17 +270,31 @@ export function canAccessLead(
     const mgrDept = resolveUserDepartment(currentUser);
     const teamIdentifiers = resolveManagerTeamIdentifiers(currentUser, allUsers);
 
-    // Check if lead belongs to Arun (Marketing Employee)
-    const isArun =
-      leadCreator.includes('arun') ||
-      leadOwner.includes('arun') ||
-      leadAssignee.includes('arun') ||
-      leadCreator === 'a' ||
-      leadOwner === 'a';
-
-    if (isArun) {
+    // If marketing lead, only marketing manager can view
+    if (isMarketingLead) {
       return mgrDept === 'marketing';
     }
+
+    // If sales lead, only sales manager can view
+    if (isSalesLead) {
+      return mgrDept === 'sales';
+    }
+
+    // Direct match (Manager created/owns it)
+    const isSelf =
+      (leadOwner.length > 0 && (leadOwner === uName || leadOwner === uEmail || leadOwner === uId)) ||
+      (leadCreator.length > 0 && (leadCreator === uName || leadCreator === uEmail || leadCreator === uId)) ||
+      (leadAssignee.length > 0 && (leadAssignee === uName || leadAssignee === uEmail || leadAssignee === uId));
+
+    if (isSelf) return true;
+
+    // Team member match
+    const isTeam =
+      teamIdentifiers.has(leadOwner) ||
+      teamIdentifiers.has(leadCreator) ||
+      teamIdentifiers.has(leadAssignee);
+
+    if (isTeam) return true;
 
     // Check creator/owner department in users directory
     const actorName = leadCreator || leadOwner || leadAssignee;
@@ -271,33 +312,11 @@ export function canAccessLead(
 
     if (actorUser) {
       const actorDept = resolveUserDepartment(actorUser);
-      if (actorDept !== 'general' && actorDept !== mgrDept) {
-        return false;
-      }
-      if (actorDept === mgrDept) {
-        return true;
-      }
+      return actorDept === mgrDept;
     }
 
-    // Direct match (Manager created/owns it)
-    const isSelf =
-      (leadOwner.length > 0 && (leadOwner === uName || leadOwner === uEmail)) ||
-      (leadCreator.length > 0 && (leadCreator === uName || leadCreator === uEmail)) ||
-      (leadAssignee.length > 0 && (leadAssignee === uName || leadAssignee === uEmail));
-
-    if (isSelf) return true;
-
-    // Team member match
-    const isTeam =
-      teamIdentifiers.has(leadOwner) ||
-      teamIdentifiers.has(leadCreator) ||
-      teamIdentifiers.has(leadAssignee);
-
-    if (isTeam) return true;
-
-    // Department match
-    if (mgrDept === 'marketing' && (leadDept.includes('market') || leadCreator.includes('arun') || leadOwner.includes('arun'))) return true;
-    if (mgrDept === 'sales' && (leadDept.includes('sale') || leadDept.includes('hvac'))) return true;
+    if (mgrDept === 'marketing' && leadDept.includes('market')) return true;
+    if (mgrDept === 'sales' && leadDept.includes('sale')) return true;
     if (mgrDept === 'purchase' && leadDept.includes('purch')) return true;
     if (mgrDept === 'operations' && (leadDept.includes('operat') || leadDept.includes('service'))) return true;
 

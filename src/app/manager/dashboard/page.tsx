@@ -32,6 +32,7 @@ import {
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { workerMockService } from '@/services/workerMockService';
+import { filterLeadsByScope, filterTasksByScope } from '@/services/crmDataScopeService';
 
 // Empty initial live fallback structures
 const BASELINE_TECHNICIANS: any[] = [];
@@ -529,22 +530,32 @@ export default function ManagerDashboardPage() {
 
   // Dynamic KPI Metrics Calculations (100% Live from Context and Storage)
   const metrics = useMemo(() => {
+    let allCrmUsers: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('cezcon_crm_users_list');
+        if (raw) allCrmUsers = JSON.parse(raw);
+      } catch (e) {}
+    }
+
     // 1. Team Members / Employees
     const totalEmployees = dynamicTeamMembers.length;
     const activeEmployees = dynamicTeamMembers.filter((m) => m.status !== 'On Leave' && m.status !== 'Inactive').length;
     const leaveEmployees = Math.max(0, totalEmployees - activeEmployees);
 
-    // 2. Leads KPI (Live from Context)
-    const totalLeadsCount = (leads || []).length;
-    const convertedLeadsCount = (leads || []).filter((l) => l.status === 'Converted').length;
-    const pendingLeadsCount = (leads || []).filter((l) => l.status === 'Pending' || !l.status).length;
-    const hotLeadsCount = (leads || []).filter((l) => l.rating === 'Hot').length;
+    // 2. Leads KPI (Scoped strictly by role & department)
+    const scopedLeads = filterLeadsByScope(leads || [], currentUser, allCrmUsers);
+    const totalLeadsCount = scopedLeads.length;
+    const convertedLeadsCount = scopedLeads.filter((l) => l.status === 'Converted').length;
+    const pendingLeadsCount = scopedLeads.filter((l) => l.status === 'Pending' || !l.status).length;
+    const hotLeadsCount = scopedLeads.filter((l) => l.rating === 'Hot').length;
 
-    // 3. Tasks Completed
-    const totalTasksCount = (tasks || []).length;
-    const completedTasksCount = (tasks || []).filter((t) => t.status === 'Completed' || t.status === 'Reviewed').length;
+    // 3. Tasks Completed (Scoped strictly by role & department)
+    const scopedTasks = filterTasksByScope(tasks || [], currentUser, allCrmUsers);
+    const totalTasksCount = scopedTasks.length;
+    const completedTasksCount = scopedTasks.filter((t) => t.status === 'Completed' || t.status === 'Reviewed').length;
     const pendingTasksCount = Math.max(0, totalTasksCount - completedTasksCount);
-    const overdueTasksCount = (tasks || []).filter((t) => t.status === 'Overdue').length;
+    const overdueTasksCount = scopedTasks.filter((t) => t.status === 'Overdue').length;
     const completionRatePct = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
 
     // 4. Avg Task Time
@@ -585,7 +596,7 @@ export default function ManagerDashboardPage() {
       pipelineRevenue: formattedPipeline,
       totalDealsCount,
     };
-  }, [dynamicTeamMembers, tasks, salesOpportunities, quotations, leads]);
+  }, [dynamicTeamMembers, tasks, salesOpportunities, quotations, leads, currentUser]);
 
   // Handlers
   const handleQuickAddEmployee = (e: React.FormEvent) => {
