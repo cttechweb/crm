@@ -46,9 +46,38 @@ export const workerMockService = {
   getTasks(): WorkerTask[] {
     if (typeof window === 'undefined') return INITIAL_WORKER_TASKS;
     try {
+      const crmTasksRaw = localStorage.getItem('crm_tasks_data');
+      if (crmTasksRaw) {
+        const parsed = JSON.parse(crmTasksRaw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((t: any) => ({
+            id: t.id,
+            taskNumber: t.id,
+            title: t.taskDetails || t.title || `Task #${t.id}`,
+            serviceType: t.taskType || 'Service Order',
+            priority: (t.priority === 'Urgent' ? 'Urgent' : t.priority === 'High' ? 'High' : 'Normal') as any,
+            status: (t.status === 'In Progress' ? 'In Progress' : t.status === 'Accepted' ? 'Accepted' : t.status === 'Completed' ? 'Completed' : 'Pending') as any,
+            clientName: t.customer || t.taskUnder || 'Client Facility',
+            clientCompany: t.customer || t.taskUnder || 'Client Facility',
+            clientPhone: t.workerContact || '+971 50 123 4567',
+            clientEmail: 'service@cooltechuae.com',
+            address: t.location || t.siteLocation || t.description || 'Job Site Location',
+            cityArea: t.department || 'Operations Desk',
+            scheduledDate: t.dueDate || 'Today',
+            scheduledTime: t.dueTime || '04:00 PM',
+            assignedTime: t.createdAt || 'Today',
+            estimatedHours: 2.0,
+            assignedManager: t.assignedBy || t.createdBy || 'Manager',
+            department: t.department || 'Operations Desk',
+            description: t.description || t.taskDetails || '',
+            checklist: t.checklist || [],
+            partsUsed: t.partsUsed || [],
+            assignedWorkerName: t.assignedEmployee || t.assignee?.name || 'Assigned Employee',
+          }));
+        }
+      }
       const stored = localStorage.getItem('cool_worker_tasks');
       if (stored) return JSON.parse(stored);
-      localStorage.setItem('cool_worker_tasks', JSON.stringify(INITIAL_WORKER_TASKS));
       return INITIAL_WORKER_TASKS;
     } catch {
       return INITIAL_WORKER_TASKS;
