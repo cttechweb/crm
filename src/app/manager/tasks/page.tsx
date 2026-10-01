@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, Suspense, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
+import React, { useState, Suspense, useMemo, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Search,
   Plus,
@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { ManagerShell } from '@/components/layout/ManagerShell';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
-import { authMockService } from '@/services/authMockService';
+import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { CrmTask, TaskPriority, TaskStatus } from '@/types/enterprise-crm';
 
 const OFFICE_TERRITORIES = [
@@ -107,13 +107,15 @@ const FALLBACK_OPERATIONS_EMPLOYEES = [
 ];
 
 function ManagerTasksContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const statusParam = searchParams.get('status') || 'All';
+  const viewParam = searchParams.get('view');
   const { tasks, createTask, updateTask, deleteTask } = useEnterpriseCrm();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(statusParam);
   const [deptFilter, setDeptFilter] = useState('All');
-  const [isAssignViewOpen, setIsAssignViewOpen] = useState(false);
+  const [isAssignViewOpen, setIsAssignViewOpen] = useState(viewParam === 'assign');
 
   // Modals for View, Edit, Delete
   const [viewingTask, setViewingTask] = useState<CrmTask | null>(null);
@@ -123,8 +125,24 @@ function ManagerTasksContent() {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [usersVersion, setUsersVersion] = useState(0);
 
-  // Current Logged-in Manager Info
-  const currentUser = authMockService.getCurrentUser();
+  // Current Logged-in Manager Info with live client hydration
+  const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(() => authMockService.getCurrentUser());
+
+  useEffect(() => {
+    const user = authMockService.getCurrentUser();
+    if (user) {
+      setCurrentUser(user);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (viewParam === 'assign') {
+      setIsAssignViewOpen(true);
+    } else if (viewParam === 'all') {
+      setIsAssignViewOpen(false);
+    }
+  }, [viewParam]);
+
   const currentManagerId = currentUser?.id || 'mgr_1';
 
   // Comprehensive Manager Role & Domain Determination
@@ -698,6 +716,13 @@ function ManagerTasksContent() {
 
     setIsAssignViewOpen(false);
     showToast(`Task assigned to ${newTaskForm.assignedTo}!`);
+    try {
+      router.replace('/manager/tasks?view=all');
+      window.dispatchEvent(new Event('crm_tasks_updated'));
+      window.dispatchEvent(new Event('crm_data_updated'));
+    } catch (err) {
+      console.error(err);
+    }
     setNewTaskForm({
       title: '',
       customerName: '',
@@ -818,14 +843,22 @@ function ManagerTasksContent() {
       }
 
       const matchSearch =
+        !search.trim() ||
         title.toLowerCase().includes(search.toLowerCase()) ||
         cust.toLowerCase().includes(search.toLowerCase()) ||
         rep.toLowerCase().includes(search.toLowerCase()) ||
         dept.toLowerCase().includes(search.toLowerCase()) ||
         loc.toLowerCase().includes(search.toLowerCase());
 
-      const matchStatus = statusFilter === 'All' || t.status.toLowerCase() === statusFilter.toLowerCase();
-      const matchDept = deptFilter === 'All' || dept.toLowerCase() === deptFilter.toLowerCase();
+      const matchStatus =
+        !statusFilter ||
+        statusFilter.toLowerCase() === 'all' ||
+        (t.status || '').toLowerCase() === statusFilter.toLowerCase();
+
+      const matchDept =
+        !deptFilter ||
+        deptFilter.toLowerCase() === 'all' ||
+        (dept || '').toLowerCase() === deptFilter.toLowerCase();
 
       return matchSearch && matchStatus && matchDept;
     });

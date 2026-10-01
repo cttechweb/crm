@@ -11,6 +11,26 @@ interface ManagerShellProps {
 }
 
 export function ManagerShell({ children, title, subtitle }: ManagerShellProps) {
+  const [managerTitle, setManagerTitle] = React.useState('Manager');
+
+  React.useEffect(() => {
+    try {
+      const u = typeof window !== 'undefined' ? localStorage.getItem('cool_crm_auth') : null;
+      if (u) {
+        const parsed = JSON.parse(u);
+        const user = parsed.user || parsed;
+        const resolvedTitle =
+          user?.managerType ||
+          user?.profileType ||
+          (user?.department ? `${user.department} Manager` : '') ||
+          (user?.role === 'manager' ? 'Department Manager' : 'Manager');
+        if (resolvedTitle) setManagerTitle(resolvedTitle);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   return (
     <div className="w-full space-y-5 animate-in fade-in duration-150">
       {/* Dynamic Header for Manager Submodules */}
@@ -21,7 +41,7 @@ export function ManagerShell({ children, title, subtitle }: ManagerShellProps) {
               <h1 className="text-xl font-bold text-slate-900 tracking-tight">{title}</h1>
               <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 border border-blue-200">
                 <ShieldCheck className="w-3 h-3 text-blue-600" />
-                Operations Manager
+                {managerTitle}
               </span>
             </div>
             {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
