@@ -44,7 +44,7 @@ export default function ManagerDashboardPage() {
   const [mounted, setMounted] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('This Month');
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const { tasks, createTask, salesOpportunities, quotations } = useEnterpriseCrm();
+  const { tasks, createTask, salesOpportunities, quotations, leads } = useEnterpriseCrm();
 
   const [usersVersion, setUsersVersion] = useState(0);
   const [realtimeTrigger, setRealtimeTrigger] = useState(0);
@@ -529,22 +529,28 @@ export default function ManagerDashboardPage() {
 
   // Dynamic KPI Metrics Calculations (100% Live from Context and Storage)
   const metrics = useMemo(() => {
-    // 1. Team Members
-    const totalTechs = dynamicTeamMembers.length;
-    const activeTechs = dynamicTeamMembers.filter((m) => m.status !== 'On Leave' && m.status !== 'Inactive').length;
-    const leaveTechs = Math.max(0, totalTechs - activeTechs);
+    // 1. Team Members / Employees
+    const totalEmployees = dynamicTeamMembers.length;
+    const activeEmployees = dynamicTeamMembers.filter((m) => m.status !== 'On Leave' && m.status !== 'Inactive').length;
+    const leaveEmployees = Math.max(0, totalEmployees - activeEmployees);
 
-    // 2. Tasks Completed
+    // 2. Leads KPI (Live from Context)
+    const totalLeadsCount = (leads || []).length;
+    const convertedLeadsCount = (leads || []).filter((l) => l.status === 'Converted').length;
+    const pendingLeadsCount = (leads || []).filter((l) => l.status === 'Pending' || !l.status).length;
+    const hotLeadsCount = (leads || []).filter((l) => l.rating === 'Hot').length;
+
+    // 3. Tasks Completed
     const totalTasksCount = (tasks || []).length;
     const completedTasksCount = (tasks || []).filter((t) => t.status === 'Completed' || t.status === 'Reviewed').length;
     const pendingTasksCount = Math.max(0, totalTasksCount - completedTasksCount);
     const overdueTasksCount = (tasks || []).filter((t) => t.status === 'Overdue').length;
     const completionRatePct = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
 
-    // 3. Avg Task Time
+    // 4. Avg Task Time
     const avgHours = totalTasksCount > 0 ? `${(totalTasksCount > 0 ? 3.2 : 0).toFixed(1)} hrs` : '0.0 hrs';
 
-    // 4. Pipeline Revenue
+    // 5. Pipeline Revenue
     let pipelineTotal = (salesOpportunities || []).reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
     if (pipelineTotal === 0 && (quotations || []).length > 0) {
       pipelineTotal = (quotations || []).reduce((acc, q) => acc + (Number(q.totalAmount) || 0), 0);
@@ -560,9 +566,16 @@ export default function ManagerDashboardPage() {
     const totalDealsCount = (salesOpportunities || []).length;
 
     return {
-      totalTechs,
-      activeTechs,
-      leaveTechs,
+      totalEmployees,
+      activeEmployees,
+      leaveEmployees,
+      totalTechs: totalEmployees,
+      activeTechs: activeEmployees,
+      leaveTechs: leaveEmployees,
+      totalLeadsCount,
+      convertedLeadsCount,
+      pendingLeadsCount,
+      hotLeadsCount,
       completedTasksCount,
       totalTasksCount,
       pendingTasksCount,
@@ -572,7 +585,7 @@ export default function ManagerDashboardPage() {
       pipelineRevenue: formattedPipeline,
       totalDealsCount,
     };
-  }, [dynamicTeamMembers, tasks, salesOpportunities, quotations]);
+  }, [dynamicTeamMembers, tasks, salesOpportunities, quotations, leads]);
 
   // Handlers
   const handleQuickAddEmployee = (e: React.FormEvent) => {
@@ -817,25 +830,25 @@ export default function ManagerDashboardPage() {
         </div>
       </div>
 
-      {/* ── 2. TOP 4 METRIC CARDS WITH SPARKLINE WAVES ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-        {/* Metric 1: Total Technicians */}
+      {/* ── 2. TOP 5 METRIC CARDS WITH SPARKLINE WAVES ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 sm:gap-4">
+        {/* Metric 1: Total Employees */}
         <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-xs flex items-center justify-between gap-2 hover:border-blue-200 transition-colors">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <div className="w-9 h-9 rounded-xl bg-[#E8F1FD] text-[#1677FF] flex items-center justify-center">
                 <Users className="w-4 h-4" />
               </div>
-              <span className="text-xs font-bold text-slate-600">Total Technicians</span>
+              <span className="text-xs font-bold text-slate-600">Total Employees</span>
             </div>
             <div className="flex items-baseline gap-2 pt-1">
-              <span className="text-2xl font-black text-slate-900">{metrics.totalTechs}</span>
+              <span className="text-2xl font-black text-slate-900">{metrics.totalEmployees}</span>
               <span className="text-[11px] font-bold text-[#059669] bg-[#ECFDF5] px-1.5 py-0.5 rounded">
-                ↑ +2.5%
+                ↑ Live
               </span>
             </div>
             <p className="text-[11px] text-slate-400 font-medium">
-              {metrics.leaveTechs} on leave • {metrics.activeTechs} active
+              {metrics.leaveEmployees} on leave • {metrics.activeEmployees} active
             </p>
           </div>
           {/* Sparkline Wave */}
@@ -849,7 +862,37 @@ export default function ManagerDashboardPage() {
           </svg>
         </div>
 
-        {/* Metric 2: Tasks Completed */}
+        {/* Metric 2: Total Leads */}
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-xs flex items-center justify-between gap-2 hover:border-indigo-200 transition-colors">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-[#EEF2FF] text-[#4F46E5] flex items-center justify-center">
+                <TrendingUp className="w-4 h-4" />
+              </div>
+              <span className="text-xs font-bold text-slate-600">Total Leads</span>
+            </div>
+            <div className="flex items-baseline gap-2 pt-1">
+              <span className="text-2xl font-black text-slate-900">{metrics.totalLeadsCount}</span>
+              <span className="text-[11px] font-bold text-[#059669] bg-[#ECFDF5] px-1.5 py-0.5 rounded">
+                ↑ Live
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 font-medium">
+              {metrics.convertedLeadsCount} converted • {metrics.pendingLeadsCount} pending
+            </p>
+          </div>
+          {/* Sparkline Wave */}
+          <svg className="w-20 h-10 text-[#4F46E5]" viewBox="0 0 100 40" fill="none">
+            <path
+              d="M0 26 Q 30 6, 60 22 T 100 4"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        </div>
+
+        {/* Metric 3: Tasks Completed */}
         <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-xs flex items-center justify-between gap-2 hover:border-emerald-200 transition-colors">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -877,7 +920,7 @@ export default function ManagerDashboardPage() {
           </svg>
         </div>
 
-        {/* Metric 3: Avg. Task Time */}
+        {/* Metric 4: Avg. Task Time */}
         <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-xs flex items-center justify-between gap-2 hover:border-amber-200 transition-colors">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -905,7 +948,7 @@ export default function ManagerDashboardPage() {
           </svg>
         </div>
 
-        {/* Metric 4: Revenue in Pipeline */}
+        {/* Metric 5: Revenue in Pipeline */}
         <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 shadow-xs flex items-center justify-between gap-2 hover:border-purple-200 transition-colors">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -946,7 +989,7 @@ export default function ManagerDashboardPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Team &amp; Field Status</h3>
-                  <p className="text-[11px] text-slate-400">Live view of technician workload and capacity</p>
+                  <p className="text-[11px] text-slate-400">Live view of employee workload and capacity</p>
                 </div>
               </div>
               <Link
@@ -1379,14 +1422,14 @@ export default function ManagerDashboardPage() {
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block font-semibold text-slate-700">Assign Technician</label>
+                    <label className="block font-semibold text-slate-700">Assign Employee</label>
                     <button
                       type="button"
                       onClick={() => setIsQuickAddEmployeeOpen(true)}
                       className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 transition-colors cursor-pointer"
                     >
                       <Plus className="w-3 h-3" />
-                      <span>+ Add Tech</span>
+                      <span>+ Add Emp</span>
                     </button>
                   </div>
                   <select
@@ -1406,7 +1449,7 @@ export default function ManagerDashboardPage() {
                     }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500/20 focus:border-[#1677FF] cursor-pointer"
                   >
-                    <option value="">-- Select Technician / Rep --</option>
+                    <option value="">-- Select Employee / Rep --</option>
                     {dynamicTeamMembers.map((m) => (
                       <option key={m.id} value={m.name}>
                         {m.name} ({m.role})
@@ -1538,7 +1581,7 @@ export default function ManagerDashboardPage() {
                   <UserCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Add New Field Technician / Employee</h3>
+                  <h3 className="text-base font-bold text-slate-900">Add New Team Employee</h3>
                   <p className="text-[11px] text-slate-500">Register employee to your team and assign tasks immediately</p>
                 </div>
               </div>
