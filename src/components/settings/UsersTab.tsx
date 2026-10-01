@@ -716,12 +716,20 @@ export function UsersTab({
       }
     }
 
-    // When logged in as Admin: show Admins, Managers, Employees, and Workers, but do not display Super Admin accounts
+    // When logged in as Admin: do NOT show Super Admin or Admin accounts (Admin only manages subordinate Managers, Employees, Workers)
     if (isAdminSession) {
       const isSuper =
         (u.profileType || '').toLowerCase().includes('super') ||
         (u.role || '').toLowerCase().includes('super');
       if (isSuper) return false;
+
+      const isAdm =
+        (u.profileType || '').toLowerCase().trim() === 'admin' ||
+        (u.role || '').toLowerCase().trim() === 'admin' ||
+        u.isAdmin === true ||
+        (loggedInUser?.email && u.email && u.email.toLowerCase() === loggedInUser.email.toLowerCase()) ||
+        String(u.id) === String(loggedInUser?.id);
+      if (isAdm) return false;
     }
 
     const matchesSearch =
