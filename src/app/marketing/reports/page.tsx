@@ -22,10 +22,12 @@ import {
 import { BackButton } from '@/components/ui/BackButton';
 import { cn } from '@/lib/utils';
 
+import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
+
 interface CampaignRoiReport {
   id: string;
   name: string;
-  channel: 'Email' | 'WhatsApp' | 'SMS' | 'Website Inbound' | 'Directory';
+  channel: string;
   spend: number;
   reach: number;
   leads: number;
@@ -35,71 +37,8 @@ interface CampaignRoiReport {
   roi: string;
 }
 
-const INITIAL_REPORTS: CampaignRoiReport[] = [
-  {
-    id: 'RPT-01',
-    name: 'SIMPLE LIFE - 2025',
-    channel: 'Website Inbound',
-    spend: 15000,
-    reach: 18400,
-    leads: 184,
-    cpl: 81.5,
-    dealsWon: 42,
-    revenue: 285000,
-    roi: '+1,800%',
-  },
-  {
-    id: 'RPT-02',
-    name: 'Annual HVAC AMC Renewal Perks & Early VIP Discounts',
-    channel: 'Email',
-    spend: 4500,
-    reach: 3450,
-    leads: 112,
-    cpl: 40.1,
-    dealsWon: 38,
-    revenue: 410000,
-    roi: '+9,011%',
-  },
-  {
-    id: 'RPT-03',
-    name: 'Emergency Chiller Breakdown 24/7 Rapid Response',
-    channel: 'WhatsApp',
-    spend: 3200,
-    reach: 2450,
-    leads: 96,
-    cpl: 33.3,
-    dealsWon: 29,
-    revenue: 195000,
-    roi: '+5,993%',
-  },
-  {
-    id: 'RPT-04',
-    name: 'REACHUAE - 2025 Directory Campaign',
-    channel: 'Directory',
-    spend: 8500,
-    reach: 9600,
-    leads: 78,
-    cpl: 108.9,
-    dealsWon: 18,
-    revenue: 142000,
-    roi: '+1,570%',
-  },
-  {
-    id: 'RPT-05',
-    name: 'Technician Arrival & On-Call SMS Campaign',
-    channel: 'SMS',
-    spend: 2100,
-    reach: 6200,
-    leads: 45,
-    cpl: 46.6,
-    dealsWon: 16,
-    revenue: 88000,
-    roi: '+4,090%',
-  },
-];
-
 export function CampaignReportsContent() {
-  const [reports, setReports] = useState<CampaignRoiReport[]>(INITIAL_REPORTS);
+  const { campaigns, leads, salesOpportunities } = useEnterpriseCrm();
   const [channelFilter, setChannelFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [dateRange, setDateRange] = useState('This Quarter');
@@ -109,6 +48,38 @@ export function CampaignReportsContent() {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3500);
   };
+
+  const reports: CampaignRoiReport[] = useMemo(() => {
+    return campaigns.map((cmp, idx) => {
+      const cmpLeads = leads?.filter(
+        (l) => l.campaign === cmp.name || l.source === cmp.name
+      ).length || cmp.leadsGenerated || 0;
+
+      const wonDeals = salesOpportunities?.filter(
+        (o) => (o.campaign === cmp.name || o.source === cmp.name) && o.stage === 'Closed Won'
+      ) || [];
+      const dealsWonCount = wonDeals.length;
+      const dealsRevenue = wonDeals.reduce((sum, d) => sum + (d.amount || 0), 0);
+
+      const spend = cmp.budget || 0;
+      const reach = cmpLeads > 0 ? cmpLeads * 12 : (cmp.leadsGenerated ? cmp.leadsGenerated * 10 : 0);
+      const cpl = cmpLeads > 0 && spend > 0 ? spend / cmpLeads : 0;
+      const roiNum = spend > 0 ? (((dealsRevenue - spend) / spend) * 100) : 0;
+
+      return {
+        id: `RPT-${String(cmp.slNo || idx + 1).padStart(2, '0')}`,
+        name: cmp.name,
+        channel: cmp.channel || cmp.type || 'Email',
+        spend,
+        reach,
+        leads: cmpLeads,
+        cpl,
+        dealsWon: dealsWonCount,
+        revenue: dealsRevenue,
+        roi: `${roiNum >= 0 ? '+' : ''}${Math.round(roiNum).toLocaleString()}%`,
+      };
+    });
+  }, [campaigns, leads, salesOpportunities]);
 
   const filtered = useMemo(() => {
     return reports.filter((r) => {
@@ -127,6 +98,31 @@ export function CampaignReportsContent() {
   const totalRevenue = reports.reduce((sum, r) => sum + r.revenue, 0);
   const avgCpl = totalLeads > 0 ? (totalSpend / totalLeads).toFixed(1) : '0';
   const overallRoi = totalSpend > 0 ? (((totalRevenue - totalSpend) / totalSpend) * 100).toFixed(0) : '0';
+
+  const channelBreakdown = useMemo(() => {
+    const channelList = [
+      { key: 'Email', label: 'Email Marketing', bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-900', barBg: 'bg-blue-200', barFill: 'bg-blue-600', subText: 'text-blue-700' },
+      { key: 'Website Inbound', label: 'Website Inbound', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-900', barBg: 'bg-emerald-200', barFill: 'bg-emerald-600', subText: 'text-emerald-700' },
+      { key: 'WhatsApp', label: 'WhatsApp API', bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-900', barBg: 'bg-teal-200', barFill: 'bg-teal-600', subText: 'text-teal-700' },
+      { key: 'SMS', label: 'Direct Directory & SMS', bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-900', barBg: 'bg-purple-200', barFill: 'bg-purple-600', subText: 'text-purple-700' },
+    ];
+
+    return channelList.map((ch) => {
+      const chReports = reports.filter((r) => r.channel?.toLowerCase().includes(ch.key.toLowerCase()));
+      const rev = chReports.reduce((s, r) => s + r.revenue, 0);
+      const deals = chReports.reduce((s, r) => s + r.dealsWon, 0);
+      const reach = chReports.reduce((s, r) => s + r.reach, 0);
+      const pct = totalRevenue > 0 ? Math.min(100, Math.round((rev / totalRevenue) * 100)) : (reports.length > 0 ? 25 : 0);
+
+      return {
+        ...ch,
+        revenue: rev,
+        deals,
+        reach,
+        percentage: pct,
+      };
+    });
+  }, [reports, totalRevenue]);
 
   return (
     <div className="w-full space-y-4 sm:space-y-6 pb-16">
@@ -217,49 +213,20 @@ export function CampaignReportsContent() {
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-1.5">
-            <div className="flex justify-between items-center text-xs font-bold text-blue-900">
-              <span>Email Marketing</span>
-              <span>AED 410,000</span>
+          {channelBreakdown.map((ch) => (
+            <div key={ch.key} className={cn('p-4 border rounded-xl space-y-1.5', ch.bg, ch.border)}>
+              <div className={cn('flex justify-between items-center text-xs font-bold', ch.text)}>
+                <span>{ch.label}</span>
+                <span>AED {ch.revenue.toLocaleString()}</span>
+              </div>
+              <div className={cn('w-full rounded-full h-2', ch.barBg)}>
+                <div className={cn('h-2 rounded-full transition-all duration-300', ch.barFill)} style={{ width: `${ch.percentage}%` }} />
+              </div>
+              <p className={cn('text-[11px]', ch.subText)}>
+                {ch.deals} Deals Won • {ch.reach.toLocaleString()} Reach
+              </p>
             </div>
-            <div className="w-full bg-blue-200 rounded-full h-2">
-              <div className="bg-blue-600 h-2 rounded-full" style={{ width: '42%' }} />
-            </div>
-            <p className="text-[11px] text-blue-700">38 Deals Won • 3,450 Direct Reach</p>
-          </div>
-
-          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1.5">
-            <div className="flex justify-between items-center text-xs font-bold text-emerald-900">
-              <span>Website Inbound</span>
-              <span>AED 285,000</span>
-            </div>
-            <div className="w-full bg-emerald-200 rounded-full h-2">
-              <div className="bg-emerald-600 h-2 rounded-full" style={{ width: '31%' }} />
-            </div>
-            <p className="text-[11px] text-emerald-700">42 Deals Won • 18,400 Website Visits</p>
-          </div>
-
-          <div className="p-4 bg-teal-50 border border-teal-200 rounded-xl space-y-1.5">
-            <div className="flex justify-between items-center text-xs font-bold text-teal-900">
-              <span>WhatsApp API</span>
-              <span>AED 195,000</span>
-            </div>
-            <div className="w-full bg-teal-200 rounded-full h-2">
-              <div className="bg-teal-600 h-2 rounded-full" style={{ width: '22%' }} />
-            </div>
-            <p className="text-[11px] text-teal-700">29 Deals Won • 2,450 Messages</p>
-          </div>
-
-          <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl space-y-1.5">
-            <div className="flex justify-between items-center text-xs font-bold text-purple-900">
-              <span>Direct Directory &amp; SMS</span>
-              <span>AED 230,000</span>
-            </div>
-            <div className="w-full bg-purple-200 rounded-full h-2">
-              <div className="bg-purple-600 h-2 rounded-full" style={{ width: '25%' }} />
-            </div>
-            <p className="text-[11px] text-purple-700">34 Deals Won • 15,800 Contacts</p>
-          </div>
+          ))}
         </div>
       </div>
 
@@ -328,51 +295,59 @@ export function CampaignReportsContent() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-              {filtered.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-3.5 px-4 font-bold text-slate-900">
-                    <p>{item.name}</p>
-                    <p className="text-[11px] text-slate-400 font-normal">{item.id}</p>
-                  </td>
-
-                  <td className="py-3.5 px-3">
-                    <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                      {item.channel}
-                    </span>
-                  </td>
-
-                  <td className="py-3.5 px-3 text-right font-medium text-slate-700">
-                    AED {item.spend.toLocaleString()}
-                  </td>
-
-                  <td className="py-3.5 px-3 text-center font-bold text-slate-800">
-                    {item.reach.toLocaleString()}
-                  </td>
-
-                  <td className="py-3.5 px-3 text-center font-black text-blue-700">
-                    {item.leads}
-                  </td>
-
-                  <td className="py-3.5 px-3 text-right font-mono text-slate-600">
-                    AED {item.cpl.toFixed(1)}
-                  </td>
-
-                  <td className="py-3.5 px-3 text-center font-black text-emerald-700">
-                    {item.dealsWon}
-                  </td>
-
-                  <td className="py-3.5 px-3 text-right font-bold text-slate-900">
-                    AED {item.revenue.toLocaleString()}
-                  </td>
-
-                  <td className="py-3.5 px-4 text-right">
-                    <span className="inline-flex items-center gap-1 font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                      <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600" />
-                      {item.roi}
-                    </span>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-12 text-center text-slate-400 font-medium text-xs">
+                    No live campaign reports found.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-3.5 px-4 font-bold text-slate-900">
+                      <p>{item.name}</p>
+                      <p className="text-[11px] text-slate-400 font-normal">{item.id}</p>
+                    </td>
+
+                    <td className="py-3.5 px-3">
+                      <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                        {item.channel}
+                      </span>
+                    </td>
+
+                    <td className="py-3.5 px-3 text-right font-medium text-slate-700">
+                      AED {item.spend.toLocaleString()}
+                    </td>
+
+                    <td className="py-3.5 px-3 text-center font-bold text-slate-800">
+                      {item.reach.toLocaleString()}
+                    </td>
+
+                    <td className="py-3.5 px-3 text-center font-black text-blue-700">
+                      {item.leads}
+                    </td>
+
+                    <td className="py-3.5 px-3 text-right font-mono text-slate-600">
+                      AED {item.cpl.toFixed(1)}
+                    </td>
+
+                    <td className="py-3.5 px-3 text-center font-black text-emerald-700">
+                      {item.dealsWon}
+                    </td>
+
+                    <td className="py-3.5 px-3 text-right font-bold text-slate-900">
+                      AED {item.revenue.toLocaleString()}
+                    </td>
+
+                    <td className="py-3.5 px-4 text-right">
+                      <span className="inline-flex items-center gap-1 font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                        <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600" />
+                        {item.roi}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

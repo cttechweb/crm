@@ -262,7 +262,16 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         const storedTasks = localStorage.getItem('crm_tasks_data');
         if (storedTasks) {
           const parsed = JSON.parse(storedTasks);
-          setTasks(Array.isArray(parsed) ? parsed : []);
+          const sanitized = Array.isArray(parsed)
+            ? parsed.map((t: any) => ({
+                ...t,
+                assignee: {
+                  ...t.assignee,
+                  avatar: t.assignee?.avatar?.includes('unsplash.com') ? undefined : t.assignee?.avatar,
+                },
+              }))
+            : [];
+          setTasks(sanitized);
         } else {
           setTasks([]);
         }
@@ -452,7 +461,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       assignee: {
         name: assigneeName,
         role: 'Employee',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+        avatar: undefined,
       },
       ...taskData,
       id: uniqueId,

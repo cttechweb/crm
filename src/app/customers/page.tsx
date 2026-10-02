@@ -47,6 +47,7 @@ import {
   ArrowLeft,
   MessageCircle,
   CreditCard,
+  Download,
 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { BackButton } from '@/components/ui/BackButton';
@@ -107,6 +108,9 @@ function CustomersContent() {
   // Modals & Action Menus
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadOwner, setUploadOwner] = useState('Nafal');
+  const [uploadDateFormat, setUploadDateFormat] = useState('MM/DD/YYYY');
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [viewingCustomer, setViewingCustomer] = useState<CrmCustomer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<CrmCustomer | null>(null);
@@ -226,23 +230,33 @@ function CustomersContent() {
   // New Customer Form State (Cezcon CRM Spec)
   const [formData, setFormData] = useState({
     customerName: '',
+    parentCustomer: '',
     contactSalutation: 'Mr.',
     contactPerson: '',
     phoneCode: '+971',
     phone: '',
     email: '',
-    owner: currentUser?.name || 'Alex Rivera',
+    owner: 'Nafal',
     type: 'Customer' as 'Customer' | 'Prospect',
     status: 'Active' as 'Active' | 'Inactive' | 'Prospect',
     companyGroup: 'Commercial Engineering',
-    industryType: 'General Contracting',
+    industryType: '',
     keyCustomer: 'No',
-    source: 'Direct Inquiry',
+    source: '',
+    sourceName: '',
     campaign: '',
+    noOfEmployees: '',
     tags: '',
-    address: 'Dubai, UAE',
+    address: '',
+    country: 'United Arab Emirates',
+    stateRegion: '',
     city: 'Dubai',
+    location: '',
+    comments: '',
     website: '',
+    trn: '',
+    isSupplier: false,
+    addContactDetails: false,
     totalSpend: 0,
     outstanding: 0,
   });
@@ -482,31 +496,756 @@ function CustomersContent() {
     // Reset Form
     setFormData({
       customerName: '',
+      parentCustomer: '',
       contactSalutation: 'Mr.',
       contactPerson: '',
       phoneCode: '+971',
       phone: '',
       email: '',
-      owner: currentUser?.name || 'Alex Rivera',
+      owner: 'Nafal',
       type: 'Customer',
       status: 'Active',
       companyGroup: 'Commercial Engineering',
-      industryType: 'General Contracting',
+      industryType: '',
       keyCustomer: 'No',
-      source: 'Direct Inquiry',
+      source: '',
+      sourceName: '',
       campaign: '',
+      noOfEmployees: '',
       tags: '',
-      address: 'Dubai, UAE',
+      address: '',
+      country: 'United Arab Emirates',
+      stateRegion: '',
       city: 'Dubai',
+      location: '',
+      comments: '',
       website: '',
+      trn: '',
+      isSupplier: false,
+      addContactDetails: false,
       totalSpend: 0,
       outstanding: 0,
     });
   };
 
+  const handleDownloadSampleFormat = () => {
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      'Customer Name,Owner,Phone,Email,Industry,City,Country,Website,Date\n' +
+      'ACME GENERAL TRADING LLC,Nafal,+971 4 123 4567,info@acme.ae,General Contracting,Dubai,United Arab Emirates,https://acme.ae,10/02/2026\n' +
+      'AL FAJER CONTRACTING,JISMON JOSE,+971 4 987 6543,contact@alfajer.ae,Fitout & Interior Design,Abu Dhabi,United Arab Emirates,https://alfajer.ae,10/02/2026\n';
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'cezcon_customer_upload_format.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleUploadSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUploadFile) {
+      alert('Please choose a file to upload.');
+      return;
+    }
+    const cleanName = selectedUploadFile.name.replace(/\.[^/.]+$/, '').toUpperCase();
+    addCustomer({
+      customerName: cleanName.includes('CUSTOMER') ? cleanName : `${cleanName} (UPLOADED)`,
+      contactPerson: 'Lead Contact',
+      companyGroup: 'Commercial Engineering',
+      owner: uploadOwner,
+      industryType: 'General Contracting',
+      type: 'Customer',
+      status: 'Active',
+      phone: '+971 4 555 0199',
+      email: 'sales@importedcompany.ae',
+      city: 'Dubai',
+      country: 'United Arab Emirates',
+      website: 'https://importedcompany.ae',
+      totalSpend: 0,
+      outstanding: 0,
+      lastActivity: 'Just now',
+      totalDeals: 0,
+      createdDate: new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
+    });
+    alert('Customers uploaded successfully!');
+    setSelectedUploadFile(null);
+    setIsUploadModalOpen(false);
+  };
+
   return (
     <div className="space-y-3.5 pb-16 font-sans text-slate-800">
-      {editingCustomer ? (
+      {isAddModalOpen ? (
+        /* ── CEZCON CRM FULL ADD CUSTOMER SCREEN (EXACT IMAGE 2) ── */
+        <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
+          {/* Top Header Banner */}
+          <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-bold uppercase tracking-tight text-[11px] sm:text-xs">
+              <Shield className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>Add Customer</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(false)}
+              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Form Content */}
+          <form onSubmit={handleCreateCustomer} className="text-xs text-slate-700">
+            {/* Sub-Header: Customer Details */}
+            <div className="bg-[#F1F5F9] border-b border-slate-200 px-4 py-2 flex items-center gap-2 font-bold text-slate-700 text-xs">
+              <FileText className="w-3.5 h-3.5 text-slate-500" />
+              <span>Customer Details</span>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-4">
+                {/* ── ROW 1 ── */}
+                {/* Left: Customer Owner */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Customer Owner</label>
+                  <div className="flex-1">
+                    <select
+                      value={formData.owner || 'Nafal'}
+                      onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="Nafal">Nafal</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name}
+                        </option>
+                      ))}
+                      <option value="JISMON JOSE">JISMON JOSE</option>
+                      <option value="MUHAMMED AHSAN P V">MUHAMMED AHSAN P V</option>
+                      <option value="Muhammed Adhil">Muhammed Adhil</option>
+                      <option value="shameem">shameem</option>
+                      <option value="Alex Rivera">Alex Rivera</option>
+                      <option value="Super Admin">Super Admin</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Right: Customer Name * */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">
+                    Customer Name <span className="text-red-600 font-bold">*</span>
+                  </label>
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      required
+                      value={formData.customerName}
+                      onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                      className="w-full bg-white border border-blue-400 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* ── ROW 2 ── */}
+                {/* Left: Parent Customer */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Parent Customer</label>
+                  <div className="flex-1">
+                    <select
+                      value={formData.parentCustomer || ''}
+                      onChange={(e) => setFormData({ ...formData, parentCustomer: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Select Parent Customer</option>
+                      {customers.map((c) => (
+                        <option key={c.id} value={c.customerName}>
+                          {c.customerName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Right: Customer Tags */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Customer Tags</label>
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      placeholder="Keywords attached to the company"
+                      value={formData.tags}
+                      onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* ── ROW 3 ── */}
+                {/* Left: Key Customer? */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Key Customer?</label>
+                  <div className="flex-1 flex items-center gap-4">
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+                      <input
+                        type="radio"
+                        name="addKeyCustomer"
+                        value="Yes"
+                        checked={formData.keyCustomer === 'Yes'}
+                        onChange={() => setFormData({ ...formData, keyCustomer: 'Yes' })}
+                        className="text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>Yes</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+                      <input
+                        type="radio"
+                        name="addKeyCustomer"
+                        value="No"
+                        checked={formData.keyCustomer !== 'Yes'}
+                        onChange={() => setFormData({ ...formData, keyCustomer: 'No' })}
+                        className="text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>No</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Right: Industry Type */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Industry Type</label>
+                  <div className="flex-1">
+                    <select
+                      value={formData.industryType}
+                      onChange={(e) => setFormData({ ...formData, industryType: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Select</option>
+                      <option value="General Contracting">General Contracting</option>
+                      <option value="Landscape & Horticulture">Landscape & Horticulture</option>
+                      <option value="Construction & Civil">Construction & Civil</option>
+                      <option value="Fitout & Interior Design">Fitout & Interior Design</option>
+                      <option value="Chemical & Manufacturing">Chemical & Manufacturing</option>
+                      <option value="Commercial Engineering">Commercial Engineering</option>
+                      <option value="Hospitality & Hotels">Hospitality & Hotels</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* ── ROW 4 ── */}
+                {/* Left: Source */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 flex items-center gap-1">
+                    Source <HelpCircle className="w-3.5 h-3.5 text-slate-400 inline" />
+                  </label>
+                  <div className="flex-1">
+                    <select
+                      value={formData.source}
+                      onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Select</option>
+                      <option value="Direct Inquiry">Direct Inquiry</option>
+                      <option value="Website">Website</option>
+                      <option value="Referral">Referral</option>
+                      <option value="Cold Call">Cold Call</option>
+                      <option value="Google Ads">Google Ads</option>
+                      <option value="Exhibition">Exhibition</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Right: Source Name */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Source Name</label>
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      placeholder="Name of the source. Eg Google, LinkedIn"
+                      value={formData.sourceName || ''}
+                      onChange={(e) => setFormData({ ...formData, sourceName: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* ── ROW 5 ── */}
+                {/* Left: Campaign */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 flex items-center gap-1">
+                    Campaign <HelpCircle className="w-3.5 h-3.5 text-slate-400 inline" />
+                  </label>
+                  <div className="flex-1">
+                    <select
+                      value={formData.campaign}
+                      onChange={(e) => setFormData({ ...formData, campaign: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Select</option>
+                      {campaigns.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                      <option value="HVAC Commercial 2026">HVAC Commercial 2026</option>
+                      <option value="Google Ads Search">Google Ads Search</option>
+                      <option value="Email Outreach">Email Outreach</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Right: No of Employees */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">No of Employees</label>
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      value={formData.noOfEmployees || ''}
+                      onChange={(e) => setFormData({ ...formData, noOfEmployees: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* ── ROW 6 ── */}
+                {/* Left: Tel */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 flex items-center gap-1 text-teal-700">
+                    <Phone className="w-3.5 h-3.5 text-teal-600 inline" /> Tel
+                  </label>
+                  <div className="flex-1 flex items-center">
+                    <span className="bg-slate-100 border border-r-0 border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 rounded-l flex items-center gap-1 shrink-0">
+                      🇦🇪 +971 <ChevronDown className="w-3 h-3 text-slate-400" />
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Landline"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="flex-1 bg-white border border-slate-300 rounded-r px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Right: Website */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Website</label>
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      placeholder="https://www.example.com"
+                      value={formData.website}
+                      onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* ── ROW 7 ── */}
+                {/* Left: Email */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 flex items-center gap-1 text-red-600 pt-1.5">
+                    <Mail className="w-3.5 h-3.5 text-red-500 inline" /> Email
+                  </label>
+                  <div className="flex-1">
+                    <input
+                      type="email"
+                      placeholder="Add multiple emails by pressing Tab button."
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Right: Address */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 flex items-center gap-1 text-blue-600 pt-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-blue-500 inline" /> Address
+                  </label>
+                  <div className="flex-1">
+                    <textarea
+                      rows={2}
+                      placeholder="Office No, PO Box, Street, City etc..."
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 resize-y"
+                    />
+                  </div>
+                </div>
+
+                {/* ── ROW 8 ── */}
+                {/* Left: Country */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Country</label>
+                  <div className="flex-1 relative">
+                    <input
+                      type="text"
+                      value={formData.country || 'United Arab Emirates'}
+                      onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 pr-7 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                    />
+                    {formData.country && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, country: '' })}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: State/Region */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">State/Region</label>
+                  <div className="flex-1">
+                    <select
+                      value={formData.stateRegion || formData.city || ''}
+                      onChange={(e) => setFormData({ ...formData, stateRegion: e.target.value, city: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Select</option>
+                      <option value="Dubai">Dubai</option>
+                      <option value="Abu Dhabi">Abu Dhabi</option>
+                      <option value="Sharjah">Sharjah</option>
+                      <option value="Ajman">Ajman</option>
+                      <option value="Ras Al Khaimah">Ras Al Khaimah</option>
+                      <option value="Fujairah">Fujairah</option>
+                      <option value="Umm Al Quwain">Umm Al Quwain</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* ── ROW 9 ── */}
+                {/* Left: Location */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Location</label>
+                  <div className="flex-1 relative">
+                    <input
+                      type="text"
+                      placeholder="Search location"
+                      value={formData.location || ''}
+                      onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 pr-7 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                    />
+                    {formData.location && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, location: '' })}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: Comments */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 pt-1.5">Comments</label>
+                  <div className="flex-1">
+                    <textarea
+                      rows={2}
+                      placeholder=""
+                      value={formData.comments || ''}
+                      onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500 resize-y"
+                    />
+                  </div>
+                </div>
+
+                {/* ── ROW 10 ── */}
+                {/* Left: Logo */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Logo</label>
+                  <div className="flex-1 flex items-center gap-2">
+                    <label className="bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs px-2.5 py-1 rounded cursor-pointer transition-colors">
+                      Choose file
+                      <input type="file" accept="image/*" className="hidden" />
+                    </label>
+                    <span className="text-xs text-slate-500">No file chosen</span>
+                  </div>
+                </div>
+
+                {/* Right: TRN */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">TRN</label>
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      value={formData.trn || ''}
+                      onChange={(e) => setFormData({ ...formData, trn: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* ── ROW 11 ── */}
+                {/* Left: Is Supplier? */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Is Supplier?</label>
+                  <div className="flex-1 flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={formData.isSupplier || false}
+                      onChange={(e) => setFormData({ ...formData, isSupplier: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Toggle Switch: Add contact details */}
+              <div className="mt-8 pt-4 border-t border-slate-200">
+                <label className="inline-flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.addContactDetails || false}
+                    onChange={(e) => setFormData({ ...formData, addContactDetails: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 relative"></div>
+                  <span className="text-xs font-medium text-slate-700">Add contact details</span>
+                </label>
+
+                {formData.addContactDetails && (
+                  <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Salutation</label>
+                      <select
+                        value={formData.contactSalutation}
+                        onChange={(e) => setFormData({ ...formData, contactSalutation: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="Mr.">Mr.</option>
+                        <option value="Ms.">Ms.</option>
+                        <option value="Mrs.">Mrs.</option>
+                        <option value="Dr.">Dr.</option>
+                        <option value="Eng.">Eng.</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Contact Person Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Bishoy George"
+                        value={formData.contactPerson}
+                        onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Mobile / WhatsApp</label>
+                      <input
+                        type="text"
+                        placeholder="+971 56 881 1334"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom Footer Actions */}
+              <div className="mt-8 pt-4 border-t border-slate-200 flex items-center justify-end gap-2.5">
+                <button
+                  type="submit"
+                  className="px-6 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer"
+                >
+                  Submit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      ) : isUploadModalOpen ? (
+        /* ── CEZCON CRM FULL UPLOAD CUSTOMER SCREEN (EXACT IMAGE 1) ── */
+        <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
+          {/* Top Header Banner */}
+          <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-bold uppercase tracking-tight text-[11px] sm:text-xs">
+              <Shield className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>Upload Customer</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadSampleFormat}
+                className="bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-semibold px-3 py-1 rounded flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download Format</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsUploadModalOpen(false)}
+                className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+                title="Close"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Form & Tips Body */}
+          <form onSubmit={handleUploadSubmit} className="p-6 text-xs text-slate-700">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Left Column: Form Controls (5 cols) */}
+              <div className="lg:col-span-5 space-y-6 pt-2">
+                {/* Customer Owner */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-32 text-xs font-medium text-slate-700 shrink-0">Customer Owner</label>
+                  <div className="flex-1 relative">
+                    <select
+                      value={uploadOwner}
+                      onChange={(e) => setUploadOwner(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="Nafal">Nafal</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name}
+                        </option>
+                      ))}
+                      <option value="JISMON JOSE">JISMON JOSE</option>
+                      <option value="MUHAMMED AHSAN P V">MUHAMMED AHSAN P V</option>
+                      <option value="Muhammed Adhil">Muhammed Adhil</option>
+                      <option value="shameem">shameem</option>
+                      <option value="Alex Rivera">Alex Rivera</option>
+                      <option value="Super Admin">Super Admin</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Upload File */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-32 text-xs font-medium text-slate-700 shrink-0 pt-1.5">
+                    Upload File<span className="text-red-600 font-bold">*</span>
+                  </label>
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <label className="bg-[#E0564C] hover:bg-[#D0453B] text-white text-xs font-medium px-3 py-1.5 rounded cursor-pointer transition-colors shadow-2xs shrink-0">
+                        Choose file
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls,.csv"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              setSelectedUploadFile(e.target.files[0]);
+                            }
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                      <span className="text-xs text-slate-600 truncate">
+                        {selectedUploadFile ? selectedUploadFile.name : 'No file chosen'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 font-medium">
+                      Maximum Records: 100 | File Format: XLSX, XLS and CSV
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Upload Tips (7 cols) */}
+              <div className="lg:col-span-7 bg-[#FAFAFA] lg:bg-transparent p-4 lg:p-0 rounded border lg:border-none border-slate-200">
+                <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs mb-2.5">
+                  <span className="text-amber-500">💡</span>
+                  <span>Upload Tips</span>
+                </div>
+                <ul className="space-y-1.5 text-[11.5px] leading-relaxed text-slate-700 list-disc list-outside pl-4">
+                  <li>
+                    Download{' '}
+                    <button
+                      type="button"
+                      onClick={handleDownloadSampleFormat}
+                      className="text-red-600 hover:underline font-medium inline cursor-pointer"
+                    >
+                      format of excel file
+                    </button>
+                  </li>
+                  <li className="text-red-600">
+                    Use a single date format uniformly throughout the Excel file. Enter the date in MM/DD/YYYY format.
+                    If you used a different format, select the date column in the excel sheet and change its format
+                    accordingly (Select Date Column and Change Format)
+                  </li>
+                  <li>Duplicate entry checks are performed for company name, phone number, and website.</li>
+                  <li>Update telephone, business mobile, personal mobile and WhatsApp with country code.</li>
+                  <li>Separate multiple tags and emails with commas in the Excel cell.</li>
+                  <li>
+                    If you have new industry type, source, country or state that are not yet added, please insert them
+                    into the CRM software first (skip this step if they are already recorded), then ensure the same
+                    data is entered into the Excel sheet as it appears in the CRM.
+                  </li>
+                  <li>Upload Excel file Using &apos;Choose file&apos; Button.</li>
+                  <li>
+                    Please ensure that the data you&apos;ve uploaded is accurate; if it&apos;s not, please take a
+                    moment to edit it from the list.
+                  </li>
+                  <li>
+                    Choose the correct date format if the uploaded Excel sheet does not use the default excel date
+                    format (MM/DD/YYYY).
+                  </li>
+                  <li>Finally, click the submit button to insert the customer data.</li>
+                  <li className="text-red-600">
+                    Duplicate entries will be highlighted in red. Please review the company name, phone number, and
+                    website. You can either update or delete them. If you do not need to add any information, simply
+                    close the form.
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Bottom Footer Section */}
+            <div className="mt-12 pt-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              {/* Date Format Selector */}
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-medium text-slate-700 whitespace-nowrap">Date Format of Excel</label>
+                <select
+                  value={uploadDateFormat}
+                  onChange={(e) => setUploadDateFormat(e.target.value)}
+                  className="bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 w-48"
+                >
+                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                  <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                  <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                  <option value="DD-MM-YYYY">DD-MM-YYYY</option>
+                  <option value="MM-DD-YYYY">MM-DD-YYYY</option>
+                </select>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  className="px-6 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer"
+                >
+                  Submit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsUploadModalOpen(false)}
+                  className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      ) : editingCustomer ? (
         /* ── CEZCON CRM FULL EDIT CUSTOMER SCREEN (EXACT IMAGE 1) ── */
         <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
           {/* Top Header Banner */}
@@ -2059,127 +2798,7 @@ function CustomersContent() {
         </>
       )}
 
-      {/* 5. ADD CUSTOMER MODAL (+ CUSTOMER Button) */}
-      <Modal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        title="Register Enterprise Customer Account"
-        description="Add a verified corporate customer or prospect to Cezcon CRM."
-      >
-        <form onSubmit={handleCreateCustomer} className="space-y-3.5 text-xs">
-          <Input
-            label="Customer / Corporate Name"
-            required
-            placeholder="e.g. VILLA PARK AND LANDSCAPE LLC"
-            value={formData.customerName}
-            onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-          />
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Select
-              label="Salutation"
-              value={formData.contactSalutation}
-              onChange={(e) => setFormData({ ...formData, contactSalutation: e.target.value })}
-              options={[
-                { label: 'Mr.', value: 'Mr.' },
-                { label: 'Ms.', value: 'Ms.' },
-                { label: 'Mrs.', value: 'Mrs.' },
-                { label: 'Dr.', value: 'Dr.' },
-                { label: 'Eng.', value: 'Eng.' },
-              ]}
-            />
-            <div className="sm:col-span-2">
-              <Input
-                label="Primary Contact Person"
-                required
-                placeholder="e.g. Bishoy George"
-                value={formData.contactPerson}
-                onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              label="Contact Phone / WhatsApp"
-              placeholder="+971 56 881 1334"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-            />
-            <Input
-              label="Email Address"
-              type="email"
-              placeholder="contact@company.ae"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Select
-              label="Account Owner"
-              value={formData.owner}
-              onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
-              options={[
-                { label: 'Alex Rivera', value: 'Alex Rivera' },
-                { label: 'Muhammed Adhil', value: 'Muhammed Adhil' },
-                { label: 'shameem', value: 'shameem' },
-                { label: 'JISMON JOSE', value: 'JISMON JOSE' },
-                { label: 'Super Admin', value: 'Super Admin' },
-              ]}
-            />
-            <Select
-              label="Account Type"
-              value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-              options={[
-                { label: 'Customer', value: 'Customer' },
-                { label: 'Prospect', value: 'Prospect' },
-              ]}
-            />
-            <Select
-              label="Industry Type"
-              value={formData.industryType}
-              onChange={(e) => setFormData({ ...formData, industryType: e.target.value })}
-              options={[
-                { label: 'General Contracting', value: 'General Contracting' },
-                { label: 'Landscape & Horticulture', value: 'Landscape & Horticulture' },
-                { label: 'Construction & Civil', value: 'Construction & Civil' },
-                { label: 'Fitout & Interior Design', value: 'Fitout & Interior Design' },
-                { label: 'Chemical & Manufacturing', value: 'Chemical & Manufacturing' },
-                { label: 'Commercial Engineering', value: 'Commercial Engineering' },
-              ]}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              label="Company Location / Address"
-              placeholder="e.g. Al Quoz Industrial 3, Dubai"
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-            />
-            <Select
-              label="Key Customer?"
-              value={formData.keyCustomer}
-              onChange={(e) => setFormData({ ...formData, keyCustomer: e.target.value })}
-              options={[
-                { label: 'No', value: 'No' },
-                { label: 'Yes (VIP Priority)', value: 'Yes' },
-              ]}
-            />
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-            <Button type="button" variant="outline" size="sm" onClick={() => setIsAddModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" size="sm" className="bg-[#22C55E] hover:bg-[#16A34A] text-white">
-              Save Customer
-            </Button>
-          </div>
-        </form>
-      </Modal>
 
       {/* 6. ASSIGN CUSTOMER MODAL (EXACT CEZCON CRM IMAGE 1) */}
       {isAssignModalOpen && (
@@ -2256,26 +2875,7 @@ function CustomersContent() {
         </div>
       )}
 
-      {/* 7. UPLOAD CUSTOMER MODAL */}
-      <Modal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        title="Bulk Import Customers (.CSV / .XLSX)"
-        description="Import corporate client accounts directly from spreadsheet files."
-      >
-        <div className="space-y-4 text-xs">
-          <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center bg-slate-50 hover:bg-slate-100/60 transition-colors cursor-pointer">
-            <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-            <p className="font-bold text-slate-700">Drag &amp; drop Excel or CSV file here</p>
-            <p className="text-[11px] text-slate-400 mt-1">Supports UTF-8 CSV, XLSX up to 10MB</p>
-          </div>
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-            <Button type="button" variant="outline" size="sm" onClick={() => setIsUploadModalOpen(false)}>
-              Close
-            </Button>
-          </div>
-        </div>
-      </Modal>
+
     </div>
   );
 }

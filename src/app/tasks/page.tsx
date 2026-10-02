@@ -33,6 +33,11 @@ import {
   Edit,
   Filter,
   MapPin,
+  Wrench,
+  List,
+  User,
+  DollarSign,
+  FileText,
 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -48,7 +53,7 @@ function TasksContent() {
   const searchParams = useSearchParams();
   const initialView = (searchParams.get('view') || 'all') as TaskTab;
 
-  const { tasks, addTask, updateTask, toggleTaskStatus, deleteTask, users } = useEnterpriseCrm();
+  const { tasks, addTask, updateTask, toggleTaskStatus, deleteTask, users, leads, customers, salesOpportunities, campaigns, invoices } = useEnterpriseCrm();
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<TaskTab>(initialView);
@@ -114,11 +119,55 @@ function TasksContent() {
     createdBy: 'Super Admin',
   });
 
-  // Assign Task Form
+  // Assign Task Form & Screen State
   const [assignForm, setAssignForm] = useState({
     targetAssignee: 'Alex Rivera',
     selectedTaskIds: [] as string[],
   });
+  const [assignSortBy, setAssignSortBy] = useState('All Task');
+  const [assignAssigneeFilter, setAssignAssigneeFilter] = useState('All Owners');
+  const [assignTypeFilter, setAssignTypeFilter] = useState('All');
+  const [assignCreatedByFilter, setAssignCreatedByFilter] = useState('All');
+  const [assignStatusFilter, setAssignStatusFilter] = useState('All');
+  const [assignDueDateFilter, setAssignDueDateFilter] = useState('');
+  const [assignSearch, setAssignSearch] = useState('');
+  const [assignPageSize, setAssignPageSize] = useState(10);
+  const [assignCurrentPage, setAssignCurrentPage] = useState(1);
+  const [assignTargetAssignee, setAssignTargetAssignee] = useState('');
+  const [assignSelectedIds, setAssignSelectedIds] = useState<string[]>([]);
+  const [isTaskDropdownOpen, setIsTaskDropdownOpen] = useState(false);
+  const [isAddGenericOpen, setIsAddGenericOpen] = useState(false);
+  const [genericTemplate, setGenericTemplate] = useState('');
+  const [isAddLeadTaskOpen, setIsAddLeadTaskOpen] = useState(false);
+  const [selectedLeadId, setSelectedLeadId] = useState('');
+  const [leadTemplate, setLeadTemplate] = useState('');
+  const [isAddCustomerTaskOpen, setIsAddCustomerTaskOpen] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [customerTemplate, setCustomerTemplate] = useState('');
+  const [isAddOppTaskOpen, setIsAddOppTaskOpen] = useState(false);
+  const [selectedOppId, setSelectedOppId] = useState('');
+  const [oppTemplate, setOppTemplate] = useState('');
+  const [isAddContactTaskOpen, setIsAddContactTaskOpen] = useState(false);
+  const [selectedContactId, setSelectedContactId] = useState('');
+  const [contactTemplate, setContactTemplate] = useState('');
+  const [isAddCampaignTaskOpen, setIsAddCampaignTaskOpen] = useState(false);
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [campaignTemplate, setCampaignTemplate] = useState('');
+  const [isAddInvoiceTaskOpen, setIsAddInvoiceTaskOpen] = useState(false);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
+  const [invoiceTemplate, setInvoiceTemplate] = useState('');
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setActionMenuTaskId(null);
+      setIsTaskDropdownOpen(false);
+    };
+    if (actionMenuTaskId || isTaskDropdownOpen) {
+      window.addEventListener('click', handleClickOutside);
+      return () => window.removeEventListener('click', handleClickOutside);
+    }
+  }, [actionMenuTaskId, isTaskDropdownOpen]);
 
   // Reset Filters
   const handleResetFilters = () => {
@@ -511,6 +560,428 @@ function TasksContent() {
     setIsAssignModalOpen(false);
     setAssignForm({ targetAssignee: 'Alex Rivera', selectedTaskIds: [] });
   };
+
+  // ── FULL PAGE ASSIGN TASKS VIEW (Matches Cezcon CRM Reference) ───────
+  if (isAssignModalOpen) {
+    const assignFilteredTasks = tasks.filter((task) => {
+      if (assignAssigneeFilter !== 'All Owners' && task.assignee.name !== assignAssigneeFilter) return false;
+      if (assignTypeFilter !== 'All' && task.taskType !== assignTypeFilter) return false;
+      if (assignCreatedByFilter !== 'All' && task.createdBy !== assignCreatedByFilter) return false;
+      if (assignStatusFilter !== 'All' && task.status !== assignStatusFilter) return false;
+      if (assignDueDateFilter && task.dueDate !== assignDueDateFilter) return false;
+      if (assignSearch) {
+        const q = assignSearch.toLowerCase();
+        const match =
+          task.taskDetails?.toLowerCase().includes(q) ||
+          task.taskUnder?.toLowerCase().includes(q) ||
+          task.assignee?.name?.toLowerCase().includes(q) ||
+          task.slNo?.toString().includes(q);
+        if (!match) return false;
+      }
+      return true;
+    });
+
+    const assignTotalPages = Math.ceil(assignFilteredTasks.length / assignPageSize) || 1;
+    const assignPaginatedTasks = assignFilteredTasks.slice(
+      (assignCurrentPage - 1) * assignPageSize,
+      assignCurrentPage * assignPageSize
+    );
+
+    const isAllAssignSelected =
+      assignPaginatedTasks.length > 0 &&
+      assignPaginatedTasks.every((t) => assignSelectedIds.includes(t.id));
+
+    return (
+      <div className="space-y-3 pb-28 font-sans text-slate-800 animate-in fade-in duration-150">
+        <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
+          {/* Top Header Banner */}
+          <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-bold uppercase tracking-tight text-[11px] sm:text-xs">
+              <Menu className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>Assign Tasks</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAssignModalOpen(false)}
+              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="p-4 sm:p-6 space-y-4">
+            {/* Filter Card */}
+            <div className="border border-slate-200 rounded p-4 bg-white shadow-2xs space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-3">
+                {/* Row 1, Col 1: Sort By */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <label className="sm:w-24 text-xs font-medium text-slate-700 shrink-0">Sort By</label>
+                  <select
+                    value={assignSortBy}
+                    onChange={(e) => setAssignSortBy(e.target.value)}
+                    className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+                  >
+                    <option value="All Task">All Task</option>
+                    <option value="Due Date Asc">Due Date (Earliest)</option>
+                    <option value="Due Date Desc">Due Date (Latest)</option>
+                    <option value="Priority">Priority</option>
+                  </select>
+                </div>
+
+                {/* Row 1, Col 2: Assignee */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <label className="sm:w-24 text-xs font-medium text-slate-700 shrink-0">Assignee</label>
+                  <select
+                    value={assignAssigneeFilter}
+                    onChange={(e) => setAssignAssigneeFilter(e.target.value)}
+                    className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+                  >
+                    <option value="All Owners">All Owners</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Row 1, Col 3: Task Type */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <label className="sm:w-24 text-xs font-medium text-slate-700 shrink-0">Task Type</label>
+                  <select
+                    value={assignTypeFilter}
+                    onChange={(e) => setAssignTypeFilter(e.target.value)}
+                    className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+                  >
+                    <option value="All">All</option>
+                    <option value="Follow-up">Followup</option>
+                    <option value="Call">Call</option>
+                    <option value="Meeting">Meeting</option>
+                    <option value="Lead">Lead</option>
+                    <option value="Customer">Customer</option>
+                    <option value="Opportunity">Opportunity</option>
+                    <option value="Campaign">Campaign</option>
+                  </select>
+                </div>
+
+                {/* Row 2, Col 1: Created By */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <label className="sm:w-24 text-xs font-medium text-slate-700 shrink-0">Created By</label>
+                  <select
+                    value={assignCreatedByFilter}
+                    onChange={(e) => setAssignCreatedByFilter(e.target.value)}
+                    className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+                  >
+                    <option value="All">All</option>
+                    <option value="Super Admin">Super Admin</option>
+                    <option value="Operations Manager">Operations Manager</option>
+                    <option value="Admin">Admin</option>
+                  </select>
+                </div>
+
+                {/* Row 2, Col 2: Task Status */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <label className="sm:w-24 text-xs font-medium text-slate-700 shrink-0">Task Status</label>
+                  <select
+                    value={assignStatusFilter}
+                    onChange={(e) => setAssignStatusFilter(e.target.value)}
+                    className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+                  >
+                    <option value="All">All</option>
+                    <option value="Pending">Pending</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Overdue">Overdue</option>
+                  </select>
+                </div>
+
+                {/* Row 2, Col 3: Task Due */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <label className="sm:w-24 text-xs font-medium text-slate-700 shrink-0">Task Due</label>
+                  <div className="flex-1 relative">
+                    <input
+                      type="date"
+                      value={assignDueDateFilter}
+                      onChange={(e) => setAssignDueDateFilter(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Load Button */}
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAssignCurrentPage(1)}
+                  className="px-4 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <Search className="w-3 h-3" />
+                  <span>Load</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Table Controls */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 text-slate-600 font-medium">
+                <span>Shows</span>
+                <select
+                  value={assignPageSize}
+                  onChange={(e) => {
+                    setAssignPageSize(Number(e.target.value));
+                    setAssignCurrentPage(1);
+                  }}
+                  className="bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                </select>
+                <span>Rows</span>
+              </div>
+
+              <div className="relative w-full sm:w-64">
+                <input
+                  type="text"
+                  placeholder="Search Task"
+                  value={assignSearch}
+                  onChange={(e) => {
+                    setAssignSearch(e.target.value);
+                    setAssignCurrentPage(1);
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 pr-8 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
+                />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Tasks Data Table */}
+            <div className="overflow-x-auto border border-slate-200 rounded">
+              <table className="w-full text-left text-xs border-collapse min-w-[1000px]">
+                <thead className="bg-[#FAFBFD] border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                  <tr>
+                    <th className="py-2.5 px-3 w-14 text-center whitespace-nowrap">SL.NO</th>
+                    <th className="py-2.5 px-2 w-20 text-center whitespace-nowrap">ASSIGNEE</th>
+                    <th className="py-2.5 px-3 min-w-[260px]">TASK DETAILS</th>
+                    <th className="py-2.5 px-3 min-w-[220px]">TASK UNDER</th>
+                    <th className="py-2.5 px-3 w-28 whitespace-nowrap">TASK TYPE</th>
+                    <th className="py-2.5 px-3 w-32 whitespace-nowrap text-left sm:text-center">DUE DATE</th>
+                    <th className="py-2.5 px-2 w-20 text-center whitespace-nowrap">PRIORITY</th>
+                    <th className="py-2.5 px-2 w-20 text-center whitespace-nowrap">STATUS</th>
+                    <th className="py-2.5 px-3 w-24 text-center whitespace-nowrap">
+                      <label className="inline-flex items-center gap-1 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={isAllAssignSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              const newIds = Array.from(
+                                new Set([...assignSelectedIds, ...assignPaginatedTasks.map((t) => t.id)])
+                              );
+                              setAssignSelectedIds(newIds);
+                            } else {
+                              setAssignSelectedIds(
+                                assignSelectedIds.filter((id) => !assignPaginatedTasks.some((t) => t.id === id))
+                              );
+                            }
+                          }}
+                          className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span className="text-[10px] uppercase font-bold text-slate-600">SELECT ALL</span>
+                      </label>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {assignPaginatedTasks.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-12 text-center text-slate-400 font-medium">
+                        No records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    assignPaginatedTasks.map((task, idx) => {
+                      const slNo = (assignCurrentPage - 1) * assignPageSize + idx + 1;
+                      const isSelected = assignSelectedIds.includes(task.id);
+                      return (
+                        <tr
+                          key={task.id}
+                          className={`hover:bg-slate-50/80 transition-colors ${
+                            isSelected ? 'bg-blue-50/30' : ''
+                          }`}
+                        >
+                          <td className="py-2.5 px-3 text-center font-semibold text-slate-600">{slNo}</td>
+                          <td className="py-2.5 px-2 text-center">
+                            <div className="flex items-center justify-center">
+                              <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 font-bold text-[10px] flex items-center justify-center shadow-2xs">
+                                {task.assignee.name ? task.assignee.name[0] : 'U'}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-start gap-1.5">
+                              <p
+                                className="text-[#0284C7] hover:underline font-normal leading-snug flex-1 cursor-pointer text-xs"
+                                onClick={() => setViewingTaskInfo(task)}
+                              >
+                                {task.taskDetails}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setViewingTaskInfo(task)}
+                                className="text-[#0284C7] hover:text-[#0369A1] p-0.5 flex-shrink-0 cursor-pointer"
+                                title="View Details"
+                              >
+                                <Info className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-700 text-xs">{task.taskUnder || '—'}</td>
+                          <td className="py-2.5 px-3 whitespace-nowrap text-slate-700 font-medium text-xs">
+                            {task.taskType === 'Follow-up' ? 'Followup' : task.taskType}
+                          </td>
+                          <td className="py-2.5 px-3 whitespace-nowrap text-slate-700 font-medium text-[11px] text-left sm:text-center">
+                            <div>{task.dueDate}</div>
+                            <div className="text-[10px] text-slate-500">{task.dueTime}</div>
+                          </td>
+                          <td className="py-2.5 px-2 text-center whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#F5A623] text-white shadow-2xs">
+                              <Edit2 className="w-2.5 h-2.5" />
+                              <span>{task.priority === 'High' ? 'High' : 'Mid'}</span>
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-2 text-center whitespace-nowrap">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F5A623] text-white shadow-2xs">
+                              {task.status}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setAssignSelectedIds([...assignSelectedIds, task.id]);
+                                } else {
+                                  setAssignSelectedIds(assignSelectedIds.filter((id) => id !== task.id));
+                                }
+                              }}
+                              className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination / Count */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-slate-500 pt-1">
+              <div>
+                Showing {assignFilteredTasks.length > 0 ? (assignCurrentPage - 1) * assignPageSize + 1 : 0} to{' '}
+                {Math.min(assignCurrentPage * assignPageSize, assignFilteredTasks.length)} of {assignFilteredTasks.length} entries
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={assignCurrentPage === 1}
+                  onClick={() => setAssignCurrentPage((p) => Math.max(1, p - 1))}
+                  className="px-2.5 py-1 border border-slate-200 rounded text-xs font-semibold hover:bg-slate-50 disabled:opacity-40 cursor-pointer shadow-2xs"
+                >
+                  «
+                </button>
+                {Array.from({ length: Math.min(5, assignTotalPages) }, (_, i) => i + 1).map((pg) => (
+                  <button
+                    key={pg}
+                    type="button"
+                    onClick={() => setAssignCurrentPage(pg)}
+                    className={`px-2.5 py-1 border rounded text-xs font-semibold cursor-pointer shadow-2xs ${
+                      assignCurrentPage === pg
+                        ? 'bg-[#007EA7] border-[#007EA7] text-white'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {pg}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  disabled={assignCurrentPage === assignTotalPages}
+                  onClick={() => setAssignCurrentPage((p) => Math.min(assignTotalPages, p + 1))}
+                  className="px-2.5 py-1 border border-slate-200 rounded text-xs font-semibold hover:bg-slate-50 disabled:opacity-40 cursor-pointer shadow-2xs"
+                >
+                  »
+                </button>
+              </div>
+            </div>
+
+            {/* Bottom Assign Bar */}
+            <div className="pt-6 border-t border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              {/* Assign To Dropdown */}
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-medium text-slate-700 shrink-0">
+                  Assign To <span className="text-red-600 font-bold">*</span>
+                </label>
+                <select
+                  value={assignTargetAssignee}
+                  onChange={(e) => setAssignTargetAssignee(e.target.value)}
+                  className="w-64 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="">Select</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.name}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!assignTargetAssignee) {
+                      alert('Please select an assignee from the dropdown');
+                      return;
+                    }
+                    if (assignSelectedIds.length === 0) {
+                      alert('Please select at least one task using the checkboxes');
+                      return;
+                    }
+                    assignSelectedIds.forEach((id) => {
+                      updateTask(id, { assignee: { name: assignTargetAssignee } });
+                    });
+                    alert(`${assignSelectedIds.length} tasks successfully reassigned to ${assignTargetAssignee}!`);
+                    setAssignSelectedIds([]);
+                    setAssignTargetAssignee('');
+                    setIsAssignModalOpen(false);
+                  }}
+                  className="px-4 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Assign</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAssignModalOpen(false)}
+                  className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer inline-flex items-center gap-1"
+                >
+                  <span>←</span>
+                  <span>Back</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── FULL PAGE EDIT TASK VIEW (Matches Cezcon CRM Reference) ─────────
   if (editingTask) {
@@ -1123,6 +1594,865 @@ function TasksContent() {
         {/* Postpone Task Modal inside viewingTaskInfo */}
         {renderPostponeModal()}
 
+      </div>
+    );
+  }
+
+  if (isAddGenericOpen) {
+    return (
+      <div className="space-y-3 pb-28 font-sans text-slate-800">
+        <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
+          {/* Top Header Banner */}
+          <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-bold uppercase tracking-tight text-[11px] sm:text-xs">
+              <Menu className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>Add Generic Task</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAddGenericOpen(false)}
+              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Form Content */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!genericTemplate) {
+                alert('Please select a template');
+                return;
+              }
+              addTask({
+                title: `${genericTemplate.toUpperCase()} TASK`,
+                taskDetails: `Generic task created using ${genericTemplate}`,
+                taskUnder: 'GENERIC TASK / GENERAL ASSIGNMENT',
+                taskType: 'Follow-up',
+                dueDate: new Date().toISOString().split('T')[0],
+                dueTime: '06:00 PM',
+                priority: 'Medium',
+                status: 'Pending',
+                assignee: { name: 'Alex Rivera' },
+                createdBy: 'Super Admin',
+              });
+              alert('Generic task created successfully!');
+              setGenericTemplate('');
+              setIsAddGenericOpen(false);
+            }}
+            className="p-6 text-xs text-slate-700"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 max-w-xl">
+              <label className="sm:w-28 text-xs font-medium text-slate-700 shrink-0">
+                Template <span className="text-red-600 font-bold">*</span>
+              </label>
+              <div className="flex-1">
+                <select
+                  value={genericTemplate}
+                  onChange={(e) => setGenericTemplate(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  <option value="">Select Template</option>
+                  <option value="Follow-up Template">Follow-up Template</option>
+                  <option value="Customer Meeting">Customer Meeting</option>
+                  <option value="Payment Reminder">Payment Reminder</option>
+                  <option value="Product Demo">Product Demo</option>
+                  <option value="Delivery Coordination">Delivery Coordination</option>
+                  <option value="Service Request">Service Request</option>
+                  <option value="General Enquiry">General Enquiry</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Bottom Footer Buttons */}
+            <div className="mt-20 pt-4 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAddGenericOpen(false)}
+                className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Submit
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAddLeadTaskOpen) {
+    return (
+      <div className="space-y-3 pb-28 font-sans text-slate-800">
+        <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
+          {/* Top Header Banner */}
+          <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-bold uppercase tracking-tight text-[11px] sm:text-xs">
+              <Menu className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>Add Lead Task</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAddLeadTaskOpen(false)}
+              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Form Content */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!selectedLeadId) {
+                alert('Please select a lead');
+                return;
+              }
+              const matchedLead = leads?.find((l) => l.id === selectedLeadId || String(l.slNo) === selectedLeadId);
+              const leadName = matchedLead
+                ? matchedLead.contactDetails?.company || matchedLead.contactDetails?.name || `Lead #${matchedLead.slNo}`
+                : selectedLeadId;
+              addTask({
+                title: `${leadTemplate ? leadTemplate.toUpperCase() : 'LEAD FOLLOWUP'} - ${leadName}`,
+                taskDetails: `Lead task for ${leadName} using ${leadTemplate || 'Follow-up Template'}`,
+                taskUnder: `LEAD / ${leadName}`,
+                taskType: 'Lead',
+                dueDate: new Date().toISOString().split('T')[0],
+                dueTime: '06:00 PM',
+                priority: 'High',
+                status: 'Pending',
+                assignee: { name: 'Alex Rivera' },
+                createdBy: 'Super Admin',
+              });
+              alert('Lead task created successfully!');
+              setSelectedLeadId('');
+              setLeadTemplate('');
+              setIsAddLeadTaskOpen(false);
+            }}
+            className="p-6 text-xs text-slate-700"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+              {/* Lead Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
+                  Lead <span className="text-red-600 font-bold">*</span>
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={selectedLeadId}
+                    onChange={(e) => setSelectedLeadId(e.target.value)}
+                    required
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Select Lead</option>
+                    {leads && leads.length > 0 ? (
+                      leads.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          LEAD#{l.slNo || l.id} - {l.contactDetails?.company || l.contactDetails?.name || 'Inquiry'}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="LEAD#1082 - DAMAC PROPERTIES">LEAD#1082 - DAMAC PROPERTIES</option>
+                        <option value="LEAD#1083 - EMAAR DEVELOPMENT">LEAD#1083 - EMAAR DEVELOPMENT</option>
+                        <option value="LEAD#1084 - SOBHA REALTY LLC">LEAD#1084 - SOBHA REALTY LLC</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Template Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
+                  Template <span className="text-red-600 font-bold">*</span>
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={leadTemplate}
+                    onChange={(e) => setLeadTemplate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Select Template</option>
+                    <option value="Follow-up Template">Follow-up Template</option>
+                    <option value="Lead Qualification">Lead Qualification</option>
+                    <option value="Site Inspection Call">Site Inspection Call</option>
+                    <option value="Quotation Discussion">Quotation Discussion</option>
+                    <option value="Demo Scheduling">Demo Scheduling</option>
+                    <option value="Closing Followup">Closing Followup</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Footer Buttons */}
+            <div className="mt-20 pt-4 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAddLeadTaskOpen(false)}
+                className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Submit
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAddCustomerTaskOpen) {
+    return (
+      <div className="space-y-3 pb-28 font-sans text-slate-800">
+        <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
+          {/* Top Header Banner */}
+          <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-bold uppercase tracking-tight text-[11px] sm:text-xs">
+              <Menu className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>Add Customer Task</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAddCustomerTaskOpen(false)}
+              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Form Content */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!selectedCustomerId) {
+                alert('Please select a customer');
+                return;
+              }
+              const matchedCustomer = customers?.find(
+                (c) => c.id === selectedCustomerId || String(c.slNo) === selectedCustomerId
+              );
+              const custName = matchedCustomer ? matchedCustomer.customerName : selectedCustomerId;
+              addTask({
+                title: `${customerTemplate ? customerTemplate.toUpperCase() : 'CUSTOMER TASK'} - ${custName}`,
+                taskDetails: `Customer task for ${custName} using ${customerTemplate || 'Follow-up Template'}`,
+                taskUnder: `CUSTOMER / ${custName}`,
+                taskType: 'Customer',
+                dueDate: new Date().toISOString().split('T')[0],
+                dueTime: '06:00 PM',
+                priority: 'High',
+                status: 'Pending',
+                assignee: { name: 'Alex Rivera' },
+                createdBy: 'Super Admin',
+              });
+              alert('Customer task created successfully!');
+              setSelectedCustomerId('');
+              setCustomerTemplate('');
+              setIsAddCustomerTaskOpen(false);
+            }}
+            className="p-6 text-xs text-slate-700"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+              {/* Customer Name Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-28 text-xs font-medium text-slate-700 shrink-0">
+                  Customer Name <span className="text-red-600 font-bold">*</span>
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={selectedCustomerId}
+                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    required
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Select Customer</option>
+                    {customers && customers.length > 0 ? (
+                      customers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.customerName}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="EMAAR PROPERTIES PJSC">EMAAR PROPERTIES PJSC</option>
+                        <option value="DAMAC PROPERTIES LLC">DAMAC PROPERTIES LLC</option>
+                        <option value="AL HABTOOR GROUP">AL HABTOOR GROUP</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Template Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-28 text-xs font-medium text-slate-700 shrink-0">
+                  Template <span className="text-red-600 font-bold">*</span>
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={customerTemplate}
+                    onChange={(e) => setCustomerTemplate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Select Template</option>
+                    <option value="Follow-up Template">Follow-up Template</option>
+                    <option value="Customer Meeting">Customer Meeting</option>
+                    <option value="Payment Reminder">Payment Reminder</option>
+                    <option value="Product Demo">Product Demo</option>
+                    <option value="Delivery Coordination">Delivery Coordination</option>
+                    <option value="Service Request">Service Request</option>
+                    <option value="General Enquiry">General Enquiry</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Footer Buttons */}
+            <div className="mt-20 pt-4 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAddCustomerTaskOpen(false)}
+                className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Submit
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAddOppTaskOpen) {
+    return (
+      <div className="space-y-3 pb-28 font-sans text-slate-800">
+        <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
+          {/* Top Header Banner */}
+          <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-bold uppercase tracking-tight text-[11px] sm:text-xs">
+              <Menu className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>Add Opportunity / Order Task</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAddOppTaskOpen(false)}
+              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Form Content */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!selectedOppId) {
+                alert('Please select an opportunity or order');
+                return;
+              }
+              const matchedOpp = salesOpportunities?.find(
+                (o) => o.id === selectedOppId || String(o.slNo) === selectedOppId || o.opportunityCode === selectedOppId
+              );
+              const oppTitle = matchedOpp
+                ? `${matchedOpp.opportunityCode || `OPP#${matchedOpp.slNo || matchedOpp.id}`} - ${matchedOpp.title || matchedOpp.customer}`
+                : selectedOppId;
+              addTask({
+                title: `${oppTemplate ? oppTemplate.toUpperCase() : 'OPPORTUNITY TASK'} - ${oppTitle}`,
+                taskDetails: `Task for ${oppTitle} using ${oppTemplate || 'Follow-up Template'}`,
+                taskUnder: `OPPORTUNITY / ${oppTitle}`,
+                taskType: 'Opportunity',
+                dueDate: new Date().toISOString().split('T')[0],
+                dueTime: '06:00 PM',
+                priority: 'High',
+                status: 'Pending',
+                assignee: { name: 'Alex Rivera' },
+                createdBy: 'Super Admin',
+              });
+              alert('Opportunity / Order task created successfully!');
+              setSelectedOppId('');
+              setOppTemplate('');
+              setIsAddOppTaskOpen(false);
+            }}
+            className="p-6 text-xs text-slate-700"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+              {/* Opportunity / Order Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">
+                  Opportunity / Order <span className="text-red-600 font-bold">*</span>
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={selectedOppId}
+                    onChange={(e) => setSelectedOppId(e.target.value)}
+                    required
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Select Opportunity</option>
+                    {salesOpportunities && salesOpportunities.length > 0 ? (
+                      salesOpportunities.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.opportunityCode || `OPP#${o.slNo || o.id}`} - {o.title || o.customer}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="CTEQ#1041 770KG ICE MACHINE / FOCUS EMC">CTEQ#1041 770KG ICE MACHINE / FOCUS EMC</option>
+                        <option value="OPP#1042 CHILLER SYSTEM / DAMAC PROPERTIES">OPP#1042 CHILLER SYSTEM / DAMAC PROPERTIES</option>
+                        <option value="ORD#2019 HVAC DUCTING / SOBHA REALTY">ORD#2019 HVAC DUCTING / SOBHA REALTY</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Template Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
+                  Template <span className="text-red-600 font-bold">*</span>
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={oppTemplate}
+                    onChange={(e) => setOppTemplate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Select Template</option>
+                    <option value="Follow-up Template">Follow-up Template</option>
+                    <option value="Price Quotation Call">Price Quotation Call</option>
+                    <option value="Technical Compliance Review">Technical Compliance Review</option>
+                    <option value="Commercial Negotiation">Commercial Negotiation</option>
+                    <option value="Payment Collection">Payment Collection</option>
+                    <option value="Delivery Followup">Delivery Followup</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Footer Buttons */}
+            <div className="mt-20 pt-4 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAddOppTaskOpen(false)}
+                className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Submit
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAddContactTaskOpen) {
+    return (
+      <div className="space-y-3 pb-28 font-sans text-slate-800">
+        <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
+          {/* Top Header Banner */}
+          <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-bold uppercase tracking-tight text-[11px] sm:text-xs">
+              <Menu className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>Add Contact Task</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAddContactTaskOpen(false)}
+              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Form Content */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!selectedContactId) {
+                alert('Please select a contact');
+                return;
+              }
+              const matchedCustomer = customers?.find((c) => c.contactPerson === selectedContactId || c.id === selectedContactId);
+              const contactName = matchedCustomer ? `${matchedCustomer.contactPerson} (${matchedCustomer.customerName})` : selectedContactId;
+              addTask({
+                title: `${contactTemplate ? contactTemplate.toUpperCase() : 'CONTACT TASK'} - ${contactName}`,
+                taskDetails: `Task for contact ${contactName} using ${contactTemplate || 'Follow-up Template'}`,
+                taskUnder: `CONTACT / ${contactName}`,
+                taskType: 'Call',
+                dueDate: new Date().toISOString().split('T')[0],
+                dueTime: '06:00 PM',
+                priority: 'Medium',
+                status: 'Pending',
+                assignee: { name: 'Alex Rivera' },
+                createdBy: 'Super Admin',
+              });
+              alert('Contact task created successfully!');
+              setSelectedContactId('');
+              setContactTemplate('');
+              setIsAddContactTaskOpen(false);
+            }}
+            className="p-6 text-xs text-slate-700"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+              {/* Contact Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-24 text-xs font-medium text-slate-700 shrink-0">
+                  Contact <span className="text-red-600 font-bold">*</span>
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={selectedContactId}
+                    onChange={(e) => setSelectedContactId(e.target.value)}
+                    required
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Select Contact</option>
+                    {customers && customers.length > 0 ? (
+                      customers
+                        .filter((c) => c.contactPerson)
+                        .map((c) => (
+                          <option key={c.id} value={c.contactPerson}>
+                            {c.contactPerson} - {c.customerName}
+                          </option>
+                        ))
+                    ) : (
+                      <>
+                        <option value="Bishoy George">Bishoy George - EMAAR PROPERTIES</option>
+                        <option value="Ahmed Al Mansoori">Ahmed Al Mansoori - DAMAC</option>
+                        <option value="Sarah Jenkins">Sarah Jenkins - SOBHA REALTY</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Template Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
+                  Template <span className="text-red-600 font-bold">*</span>
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={contactTemplate}
+                    onChange={(e) => setContactTemplate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Select Template</option>
+                    <option value="Follow-up Template">Follow-up Template</option>
+                    <option value="Relationship Building Call">Relationship Building Call</option>
+                    <option value="Executive Meeting">Executive Meeting</option>
+                    <option value="Technical Consultation">Technical Consultation</option>
+                    <option value="Service Follow-up">Service Follow-up</option>
+                    <option value="General Enquiry">General Enquiry</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Footer Buttons */}
+            <div className="mt-20 pt-4 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAddContactTaskOpen(false)}
+                className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Submit
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAddCampaignTaskOpen) {
+    return (
+      <div className="space-y-3 pb-28 font-sans text-slate-800">
+        <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
+          {/* Top Header Banner */}
+          <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-bold uppercase tracking-tight text-[11px] sm:text-xs">
+              <Menu className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>Add Campaign Task</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAddCampaignTaskOpen(false)}
+              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Form Content */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!selectedCampaignId) {
+                alert('Please select a campaign');
+                return;
+              }
+              const matchedCampaign = campaigns?.find(
+                (c) => c.id === selectedCampaignId || String(c.slNo) === selectedCampaignId || c.name === selectedCampaignId
+              );
+              const cmpName = matchedCampaign ? matchedCampaign.name : selectedCampaignId;
+              addTask({
+                title: `${campaignTemplate ? campaignTemplate.toUpperCase() : 'CAMPAIGN TASK'} - ${cmpName}`,
+                taskDetails: `Campaign task for ${cmpName} using ${campaignTemplate || 'Follow-up Template'}`,
+                taskUnder: `CAMPAIGN / ${cmpName}`,
+                taskType: 'Campaign',
+                dueDate: new Date().toISOString().split('T')[0],
+                dueTime: '06:00 PM',
+                priority: 'Medium',
+                status: 'Pending',
+                assignee: { name: 'Alex Rivera' },
+                createdBy: 'Super Admin',
+              });
+              alert('Campaign task created successfully!');
+              setSelectedCampaignId('');
+              setCampaignTemplate('');
+              setIsAddCampaignTaskOpen(false);
+            }}
+            className="p-6 text-xs text-slate-700"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+              {/* Campaign Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-24 text-xs font-medium text-slate-700 shrink-0">
+                  Campaign <span className="text-red-600 font-bold">*</span>
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={selectedCampaignId}
+                    onChange={(e) => setSelectedCampaignId(e.target.value)}
+                    required
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Select Campaign</option>
+                    {campaigns && campaigns.length > 0 ? (
+                      campaigns.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="HVAC Commercial Campaign 2026">HVAC Commercial Campaign 2026</option>
+                        <option value="Google Ads Search Q3">Google Ads Search Q3</option>
+                        <option value="Email Outreach - Architects">Email Outreach - Architects</option>
+                        <option value="Social Media Promo 2026">Social Media Promo 2026</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Template Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
+                  Template <span className="text-red-600 font-bold">*</span>
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={campaignTemplate}
+                    onChange={(e) => setCampaignTemplate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Select Template</option>
+                    <option value="Follow-up Template">Follow-up Template</option>
+                    <option value="Campaign Outreach Call">Campaign Outreach Call</option>
+                    <option value="Email Marketing Review">Email Marketing Review</option>
+                    <option value="Lead Response Follow-up">Lead Response Follow-up</option>
+                    <option value="Promo Launch Action">Promo Launch Action</option>
+                    <option value="General Enquiry">General Enquiry</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Footer Buttons */}
+            <div className="mt-20 pt-4 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAddCampaignTaskOpen(false)}
+                className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Submit
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAddInvoiceTaskOpen) {
+    return (
+      <div className="space-y-3 pb-28 font-sans text-slate-800">
+        <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
+          {/* Top Header Banner */}
+          <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-slate-700 font-bold uppercase tracking-tight text-[11px] sm:text-xs">
+              <Menu className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>Add Invoice Task</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAddInvoiceTaskOpen(false)}
+              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Form Content */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!selectedInvoiceId) {
+                alert('Please select an invoice');
+                return;
+              }
+              const matchedInvoice = invoices?.find(
+                (inv) => inv.id === selectedInvoiceId || String(inv.slNo) === selectedInvoiceId || inv.invoiceNumber === selectedInvoiceId
+              );
+              const invTitle = matchedInvoice
+                ? `${matchedInvoice.invoiceNumber} - ${matchedInvoice.customer}`
+                : selectedInvoiceId;
+              addTask({
+                title: `${invoiceTemplate ? invoiceTemplate.toUpperCase() : 'INVOICE TASK'} - ${invTitle}`,
+                taskDetails: `Invoice task for ${invTitle} using ${invoiceTemplate || 'Follow-up Template'}`,
+                taskUnder: `INVOICE / ${invTitle}`,
+                taskType: 'Follow-up',
+                dueDate: new Date().toISOString().split('T')[0],
+                dueTime: '06:00 PM',
+                priority: 'High',
+                status: 'Pending',
+                assignee: { name: 'Alex Rivera' },
+                createdBy: 'Super Admin',
+              });
+              alert('Invoice task created successfully!');
+              setSelectedInvoiceId('');
+              setInvoiceTemplate('');
+              setIsAddInvoiceTaskOpen(false);
+            }}
+            className="p-6 text-xs text-slate-700"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+              {/* Invoice Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
+                  Invoice <span className="text-red-600 font-bold">*</span>
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={selectedInvoiceId}
+                    onChange={(e) => setSelectedInvoiceId(e.target.value)}
+                    required
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Select Invoice</option>
+                    {invoices && invoices.length > 0 ? (
+                      invoices.map((inv) => (
+                        <option key={inv.id} value={inv.id}>
+                          {inv.invoiceNumber} - {inv.customer}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="INV-2026-001 - EMAAR PROPERTIES PJSC">INV-2026-001 - EMAAR PROPERTIES PJSC</option>
+                        <option value="INV-2026-002 - DAMAC PROPERTIES LLC">INV-2026-002 - DAMAC PROPERTIES LLC</option>
+                        <option value="INV-2026-003 - SOBHA REALTY LLC">INV-2026-003 - SOBHA REALTY LLC</option>
+                        <option value="INV-2026-004 - FOCUS EMC KITCHENS">INV-2026-004 - FOCUS EMC KITCHENS</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Template Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
+                  Template <span className="text-red-600 font-bold">*</span>
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={invoiceTemplate}
+                    onChange={(e) => setInvoiceTemplate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">Select Template</option>
+                    <option value="Follow-up Template">Follow-up Template</option>
+                    <option value="Payment Reminder Call">Payment Reminder Call</option>
+                    <option value="Tax Invoice Submission">Tax Invoice Submission</option>
+                    <option value="Payment Collection Follow-up">Payment Collection Follow-up</option>
+                    <option value="Overdue Invoice Escalation">Overdue Invoice Escalation</option>
+                    <option value="General Enquiry">General Enquiry</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Footer Buttons */}
+            <div className="mt-20 pt-4 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAddInvoiceTaskOpen(false)}
+                className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Submit
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     );
   }
@@ -1767,7 +3097,8 @@ function TasksContent() {
                 </button>
               </div>
 
-              <div className="flex items-center gap-1.5 text-xs flex-wrap sm:flex-nowrap">
+              <div className="flex items-center gap-1.5 text-xs flex-wrap sm:flex-nowrap relative">
+                {/* 1. Assign Task Button */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1777,31 +3108,77 @@ function TasksContent() {
                     });
                     setIsAssignModalOpen(true);
                   }}
-                  className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded bg-[#0F2844] hover:bg-[#0A1D33] text-white font-semibold transition-colors cursor-pointer shadow-xs text-[11px] whitespace-nowrap flex-1 sm:flex-none"
+                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded bg-[#0B2A4A] hover:bg-[#071D33] text-white font-semibold transition-colors cursor-pointer shadow-2xs text-xs whitespace-nowrap"
                 >
-                  <Edit2 className="w-3 h-3 text-white" />
-                  <span>Assign</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-white" />
+                  <span>Assign Task</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded bg-[#22C55E] hover:bg-[#16A34A] text-white font-bold transition-colors cursor-pointer shadow-xs text-[11px] whitespace-nowrap flex-1 sm:flex-none"
-                >
-                  <span className="font-extrabold text-xs leading-none">+</span>
-                  <span>+ TASK</span>
-                  <ChevronDown className="w-3 h-3 ml-0.5" />
-                </button>
+                {/* 2. ++ TASK Dropdown Button */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsTaskDropdownOpen((prev) => !prev);
+                    }}
+                    className="flex items-center justify-center gap-1 px-3 py-1.5 rounded bg-[#22C55E] hover:bg-[#16A34A] text-white font-bold transition-colors cursor-pointer shadow-2xs text-xs whitespace-nowrap"
+                  >
+                    <span>++ TASK</span>
+                    <ChevronDown className={cn("w-3.5 h-3.5 ml-0.5 transition-transform duration-150", isTaskDropdownOpen && "rotate-180")} />
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded bg-[#22C55E] hover:bg-[#16A34A] text-white font-bold transition-colors cursor-pointer shadow-xs text-[11px] whitespace-nowrap flex-1 sm:flex-none"
-                >
-                  <span className="font-extrabold text-xs leading-none">+</span>
-                  <span>TASK</span>
-                  <ChevronDown className="w-3 h-3 ml-0.5" />
-                </button>
+                  {/* Task Type Dropdown Menu (Exact Cezcon CRM Image 2) */}
+                  {isTaskDropdownOpen && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded border border-slate-200 shadow-xl py-1 z-50 text-slate-700 animate-in fade-in zoom-in-95 duration-100"
+                    >
+                      {[
+                        { label: 'Generic', icon: Wrench, type: 'Follow-up' },
+                        { label: 'Lead', icon: List, type: 'Lead' },
+                        { label: 'Customer', icon: Shield, type: 'Customer' },
+                        { label: 'Opportunity / Order', icon: Key, type: 'Opportunity' },
+                        { label: 'Contact', icon: User, type: 'Contact' },
+                        { label: 'Campaign', icon: DollarSign, type: 'Campaign' },
+                        { label: 'Invoice', icon: FileText, type: 'Invoice' },
+                      ].map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <button
+                            key={item.label}
+                            type="button"
+                            onClick={() => {
+                              setIsTaskDropdownOpen(false);
+                              if (item.label === 'Generic') {
+                                setIsAddGenericOpen(true);
+                              } else if (item.label === 'Lead') {
+                                setIsAddLeadTaskOpen(true);
+                              } else if (item.label === 'Customer') {
+                                setIsAddCustomerTaskOpen(true);
+                              } else if (item.label === 'Opportunity / Order') {
+                                setIsAddOppTaskOpen(true);
+                              } else if (item.label === 'Contact') {
+                                setIsAddContactTaskOpen(true);
+                              } else if (item.label === 'Campaign') {
+                                setIsAddCampaignTaskOpen(true);
+                              } else if (item.label === 'Invoice') {
+                                setIsAddInvoiceTaskOpen(true);
+                              } else {
+                                setFormData((prev) => ({ ...prev, taskType: item.type as any }));
+                                setIsAddModalOpen(true);
+                              }
+                            }}
+                            className="w-full text-left px-3.5 py-2 text-xs hover:bg-slate-50 flex items-center gap-2.5 text-slate-700 hover:text-slate-900 font-medium transition-colors cursor-pointer"
+                          >
+                            <Icon className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                            <span>{item.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1927,34 +3304,34 @@ function TasksContent() {
                             <span>{task.priority === 'High' ? 'Mid' : task.priority}</span>
                           </span>
 
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setActionMenuTaskId(actionMenuTaskId === task.id ? null : task.id)
-                            }
-                            className="flex items-center gap-1 px-2 py-1 rounded bg-[#006f8e] text-white text-[10px] font-medium cursor-pointer shadow-xs"
-                          >
-                            <Settings className="w-3 h-3" />
-                            <ChevronDown className="w-2.5 h-2.5" />
-                          </button>
+                          <div className="relative inline-block text-left">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActionMenuTaskId(actionMenuTaskId === task.id ? null : task.id);
+                              }}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-[3px] bg-[#006f8e] hover:bg-[#005f7a] text-white text-[11px] font-medium cursor-pointer shadow-xs transition-colors"
+                            >
+                              <Settings className="w-3 h-3" />
+                              <ChevronDown className="w-2.5 h-2.5" />
+                            </button>
 
-                          {/* Mobile Dropdown Menu */}
-                          {actionMenuTaskId === task.id && (
-                            <>
+                            {/* Mobile Dropdown Menu */}
+                            {actionMenuTaskId === task.id && (
                               <div
-                                className="fixed inset-0 z-40"
-                                onClick={() => setActionMenuTaskId(null)}
-                              />
-                              <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-slate-200 rounded-[4px] shadow-lg z-50 py-1 text-left text-xs text-[#212529]">
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-[4px] shadow-xl z-50 py-1 text-left text-[13px] text-slate-800 animate-in fade-in zoom-in-95 duration-100"
+                              >
                                 <button
                                   type="button"
                                   onClick={() => {
                                     setViewingTaskInfo(task);
                                     setActionMenuTaskId(null);
                                   }}
-                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
                                 >
-                                  <Book className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
+                                  <Book className="w-4 h-4 text-slate-700 shrink-0 stroke-[1.75]" />
                                   <span>View</span>
                                 </button>
 
@@ -1964,9 +3341,9 @@ function TasksContent() {
                                     setEditingTask(task);
                                     setActionMenuTaskId(null);
                                   }}
-                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
                                 >
-                                  <Edit2 className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
+                                  <Edit2 className="w-4 h-4 text-slate-700 shrink-0 stroke-[1.75]" />
                                   <span>Edit</span>
                                 </button>
 
@@ -1976,9 +3353,9 @@ function TasksContent() {
                                     handleOpenPostpone(task);
                                     setActionMenuTaskId(null);
                                   }}
-                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
                                 >
-                                  <Calendar className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
+                                  <Calendar className="w-4 h-4 text-slate-700 shrink-0 stroke-[1.75]" />
                                   <span>Postpone</span>
                                 </button>
 
@@ -1988,9 +3365,9 @@ function TasksContent() {
                                     updateTask(task.id, { status: 'Completed', progress: 100 });
                                     setActionMenuTaskId(null);
                                   }}
-                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
                                 >
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
+                                  <CheckCircle2 className="w-4 h-4 text-slate-700 shrink-0 stroke-[1.75]" />
                                   <span>Mark as Completed</span>
                                 </button>
 
@@ -2002,14 +3379,14 @@ function TasksContent() {
                                     }
                                     setActionMenuTaskId(null);
                                   }}
-                                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
+                                  <Trash2 className="w-4 h-4 text-slate-700 shrink-0 stroke-[1.75]" />
                                   <span>Delete</span>
                                 </button>
                               </div>
-                            </>
-                          )}
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -2196,13 +3573,14 @@ function TasksContent() {
                           </td>
 
                           {/* Action: Gear Dropdown */}
-                          <td className="py-2.5 px-2 text-center whitespace-nowrap relative">
-                            <div className="flex items-center justify-center">
+                          <td className="py-2.5 px-2 text-center whitespace-nowrap">
+                            <div className="relative inline-block text-left">
                               <button
                                 type="button"
-                                onClick={() =>
-                                  setActionMenuTaskId(actionMenuTaskId === task.id ? null : task.id)
-                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActionMenuTaskId(actionMenuTaskId === task.id ? null : task.id);
+                                }}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-[3px] bg-[#006f8e] hover:bg-[#005f7a] text-white transition-colors cursor-pointer shadow-xs text-[11px] font-medium"
                                 title="Actions"
                               >
@@ -2210,82 +3588,79 @@ function TasksContent() {
                                 <ChevronDown className="w-3 h-3" />
                               </button>
 
-                              {/* Dropdown Menu matching Cezcon CRM Screenshot */}
+                              {/* Dropdown Menu matching Cezcon CRM Screenshot 2 */}
                               {actionMenuTaskId === task.id && (
-                                <>
-                                  <div
-                                    className="fixed inset-0 z-40"
-                                    onClick={() => setActionMenuTaskId(null)}
-                                  />
-                                  <div className="absolute right-0 top-full mt-1.5 w-44 bg-white border border-slate-200 rounded-[4px] shadow-lg z-50 py-1 text-left text-[13px] text-[#212529]">
-                                    {/* 1. View */}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setViewingTaskInfo(task);
-                                        setActionMenuTaskId(null);
-                                      }}
-                                      className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
-                                    >
-                                      <Book className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
-                                      <span>View</span>
-                                    </button>
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-[4px] shadow-xl z-50 py-1 text-left text-[13px] text-slate-800 animate-in fade-in zoom-in-95 duration-100"
+                                >
+                                  {/* 1. View */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setViewingTaskInfo(task);
+                                      setActionMenuTaskId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                  >
+                                    <Book className="w-4 h-4 text-slate-700 shrink-0 stroke-[1.75]" />
+                                    <span>View</span>
+                                  </button>
 
-                                    {/* 2. Edit */}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setEditingTask(task);
-                                        setActionMenuTaskId(null);
-                                      }}
-                                      className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
-                                    >
-                                      <Edit2 className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
-                                      <span>Edit</span>
-                                    </button>
+                                  {/* 2. Edit */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingTask(task);
+                                      setActionMenuTaskId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                  >
+                                    <Edit2 className="w-4 h-4 text-slate-700 shrink-0 stroke-[1.75]" />
+                                    <span>Edit</span>
+                                  </button>
 
-                                    {/* 3. Postpone */}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        handleOpenPostpone(task);
-                                        setActionMenuTaskId(null);
-                                      }}
-                                      className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
-                                    >
-                                      <Calendar className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
-                                      <span>Postpone</span>
-                                    </button>
+                                  {/* 3. Postpone */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleOpenPostpone(task);
+                                      setActionMenuTaskId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                  >
+                                    <Calendar className="w-4 h-4 text-slate-700 shrink-0 stroke-[1.75]" />
+                                    <span>Postpone</span>
+                                  </button>
 
-                                    {/* 4. Mark as Completed */}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        updateTask(task.id, { status: 'Completed', progress: 100 });
-                                        setActionMenuTaskId(null);
-                                      }}
-                                      className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
-                                    >
-                                      <CheckCircle2 className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
-                                      <span>Mark as Completed</span>
-                                    </button>
+                                  {/* 4. Mark as Completed */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      updateTask(task.id, { status: 'Completed', progress: 100 });
+                                      setActionMenuTaskId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4 text-slate-700 shrink-0 stroke-[1.75]" />
+                                    <span>Mark as Completed</span>
+                                  </button>
 
-                                    {/* 5. Delete */}
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (confirm(`Are you sure you want to delete this task?`)) {
-                                          deleteTask(task.id);
-                                        }
-                                        setActionMenuTaskId(null);
-                                      }}
-                                      className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5 text-slate-700 shrink-0 stroke-[1.75]" />
-                                      <span>Delete</span>
-                                    </button>
-                                  </div>
-                                </>
+                                  {/* 5. Delete */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (confirm(`Are you sure you want to delete this task?`)) {
+                                        deleteTask(task.id);
+                                      }
+                                      setActionMenuTaskId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                  >
+                                    <Trash2 className="w-4 h-4 text-slate-700 shrink-0 stroke-[1.75]" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </td>
@@ -2478,41 +3853,6 @@ function TasksContent() {
               </Button>
               <Button type="submit" variant="primary" size="sm" icon={<Check className="w-4 h-4" />}>
                 Create Task
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* ── MODAL 2: Assign Task ─────────────────────────────────────── */}
-      {isAssignModalOpen && (
-        <Modal
-          isOpen={isAssignModalOpen}
-          onClose={() => setIsAssignModalOpen(false)}
-          title="Reassign Task Ownership"
-          description="Batch assign selected operational milestones to a team member."
-          icon={<UserCheck className="w-5 h-5 text-indigo-600" />}
-        >
-          <form onSubmit={handleBulkAssign} className="space-y-4 text-xs">
-            <Select
-              label="Select Assignee *"
-              value={assignForm.targetAssignee}
-              options={users.map((u) => ({ label: `${u.name} — ${u.role}`, value: u.name }))}
-              onChange={(e) => setAssignForm({ ...assignForm, targetAssignee: e.target.value })}
-            />
-            <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl text-xs text-blue-900 flex items-center gap-2">
-              <Info className="w-4 h-4 text-blue-600 flex-shrink-0" />
-              <span>
-                Will reassign <strong className="font-bold">{assignForm.selectedTaskIds.length} tasks</strong> to{' '}
-                <strong className="font-bold">{assignForm.targetAssignee}</strong>.
-              </span>
-            </div>
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-              <Button type="button" variant="outline" size="sm" onClick={() => setIsAssignModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" size="sm">
-                Confirm Assignment
               </Button>
             </div>
           </form>

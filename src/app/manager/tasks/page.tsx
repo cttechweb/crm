@@ -25,6 +25,16 @@ import {
   AlertTriangle,
   FileText,
   Tag,
+  Paperclip,
+  UploadCloud,
+  Folder,
+  Info,
+  RotateCcw,
+  Shield,
+  Wrench,
+  List as ListIcon,
+  LayoutGrid,
+  ChevronDown,
 } from 'lucide-react';
 import { ManagerShell } from '@/components/layout/ManagerShell';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
@@ -121,23 +131,43 @@ function ManagerTasksContent() {
   const [deptFilter, setDeptFilter] = useState('All');
   const [isAssignViewOpen, setIsAssignViewOpen] = useState(viewParam === 'assign');
 
-  // Modals for View, Edit, Delete
+  // Modals & Full Page Views for View, Edit, Delete
   const [viewingTask, setViewingTask] = useState<CrmTask | null>(null);
   const [editingTask, setEditingTask] = useState<CrmTask | null>(null);
   const [taskToDelete, setTaskToDelete] = useState<CrmTask | null>(null);
+  const [actionMenuTaskId, setActionMenuTaskId] = useState<string | null>(null);
+
+  // Cezcon UI state for Task Details
+  const [taskDetailTab, setTaskDetailTab] = useState<'details' | 'history'>('details');
+  const [showCreatedNotice, setShowCreatedNotice] = useState(true);
+  const [attachmentViewMode, setAttachmentViewMode] = useState<'list' | 'slider'>('list');
+  const [taskAttachments, setTaskAttachments] = useState<Array<{ name: string; size: string; type: string }>>([]);
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [usersVersion, setUsersVersion] = useState(0);
   const [tasksVersion, setTasksVersion] = useState(0);
 
-  // Current Logged-in Manager Info with live client hydration
+  // Current Logged-in Manager Info with live client hydration & real-time listeners
   const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(() => authMockService.getCurrentUser());
 
   useEffect(() => {
-    const user = authMockService.getCurrentUser();
-    if (user) {
-      setCurrentUser(user);
-    }
+    const syncUser = () => {
+      const u = authMockService.getCurrentUser();
+      if (u) setCurrentUser(u);
+    };
+    syncUser();
+    const unsub = authMockService.onAuthStateChanged((u) => {
+      if (u) setCurrentUser(u);
+    });
+    window.addEventListener('storage', syncUser);
+    window.addEventListener('crm_auth_updated', syncUser);
+    window.addEventListener('crm_users_updated', syncUser);
+    return () => {
+      unsub();
+      window.removeEventListener('storage', syncUser);
+      window.removeEventListener('crm_auth_updated', syncUser);
+      window.removeEventListener('crm_users_updated', syncUser);
+    };
   }, []);
 
   useEffect(() => {
@@ -172,6 +202,7 @@ function ManagerTasksContent() {
   const desigStr = String(currentUser?.designation || '').toLowerCase();
   const emailStr = String(currentUser?.email || '').toLowerCase();
   const nameStr = String(currentUser?.name || '').toLowerCase();
+  const curMgrId = String(currentUser?.id || '').toLowerCase();
 
   const isSuperAdminOrAdmin =
     roleStr === 'super_admin' ||
@@ -190,9 +221,12 @@ function ManagerTasksContent() {
       deptStr.includes('market') ||
       desigStr.includes('market') ||
       profileStr.includes('market') ||
+      emailStr.includes('afsal') ||
       emailStr.includes('manager3') ||
       nameStr.includes('afsal') ||
-      currentManagerId === 'mgr_3'
+      curMgrId === 'mgr_3' ||
+      curMgrId === 'usr_afsal_001' ||
+      curMgrId.includes('afsal')
     ) {
       isMarketingManager = true;
     } else if (
@@ -201,7 +235,7 @@ function ManagerTasksContent() {
       desigStr.includes('purchase') ||
       profileStr.includes('purchase') ||
       emailStr.includes('manager2') ||
-      currentManagerId === 'mgr_2'
+      curMgrId === 'mgr_2'
     ) {
       isPurchaseManager = true;
     } else if (
@@ -210,29 +244,44 @@ function ManagerTasksContent() {
       desigStr.includes('operation') ||
       profileStr.includes('operation') ||
       emailStr.includes('manager4') ||
-      currentManagerId === 'mgr_4'
+      curMgrId === 'mgr_4'
     ) {
       isOperationsManager = true;
+    } else if (
+      typeStr.includes('sales') ||
+      deptStr.includes('sales') ||
+      desigStr.includes('sales') ||
+      profileStr.includes('sales') ||
+      emailStr.includes('shibil') ||
+      nameStr.includes('shibil') ||
+      curMgrId === 'mgr_1' ||
+      curMgrId.includes('shibil')
+    ) {
+      isSalesManager = true;
     } else {
-      isSalesManager = true; // Default to Sales Manager (e.g. Muhammed shibil, mgr_1)
+      if (desigStr.includes('market') || profileStr.includes('market') || deptStr.includes('market')) {
+        isMarketingManager = true;
+      } else {
+        isSalesManager = true; // Default fallback to Sales Manager
+      }
     }
   }
 
-  const domainLabel = isSalesManager
-    ? 'Sales'
-    : isMarketingManager
-      ? 'Marketing'
-      : isPurchaseManager
-        ? 'Purchase'
-        : isOperationsManager
-          ? 'Operations'
+  const domainLabel = isMarketingManager
+    ? 'Marketing'
+    : isPurchaseManager
+      ? 'Purchase'
+      : isOperationsManager
+        ? 'Operations'
+        : isSalesManager
+          ? 'Sales'
           : 'Enterprise';
 
   const taskCategories = useMemo(() => {
-    if (isSalesManager) return SALES_CATEGORIES;
     if (isMarketingManager) return MARKETING_CATEGORIES;
     if (isPurchaseManager) return PURCHASE_CATEGORIES;
     if (isOperationsManager) return OPERATIONS_CATEGORIES;
+    if (isSalesManager) return SALES_CATEGORIES;
     return DEFAULT_CATEGORIES;
   }, [isSalesManager, isMarketingManager, isPurchaseManager, isOperationsManager]);
 
@@ -381,7 +430,7 @@ function ManagerTasksContent() {
     instructions: '',
   });
 
-  // Ensure department form value matches manager domain
+  // Auto-sync Quick Employee form and Task form defaults with active manager domain
   React.useEffect(() => {
     setNewTaskForm((prev) => {
       if (!prev.department || !prev.department.toLowerCase().includes(domainLabel.toLowerCase())) {
@@ -389,7 +438,19 @@ function ManagerTasksContent() {
       }
       return prev;
     });
-  }, [domainLabel]);
+
+    setQuickEmpForm((prev) => ({
+      ...prev,
+      designation: isMarketingManager
+        ? 'Marketing Executive'
+        : isPurchaseManager
+          ? 'Purchase Officer'
+          : isOperationsManager
+            ? 'Operations Technician'
+            : 'Sales Representative',
+      department: `${domainLabel} Department`,
+    }));
+  }, [domainLabel, isMarketingManager, isPurchaseManager, isOperationsManager]);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -454,6 +515,10 @@ function ManagerTasksContent() {
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed) && parsed.length > 0) {
+            const curMgrId = String(currentManagerId || '').toLowerCase();
+            const curMgrEmail = String(currentUser?.email || '').toLowerCase();
+            const curMgrName = String(currentUser?.name || '').toLowerCase();
+
             const filteredUsers = parsed.filter((u: any) => {
               const uEmpType = String(u.employeeType || '').toLowerCase();
               const uProfile = String(u.profileType || '').toLowerCase();
@@ -463,6 +528,7 @@ function ManagerTasksContent() {
               const uName = String(u.name || '').toLowerCase();
               const uEmail = String(u.email || '').toLowerCase();
               const uId = String(u.id || '').toLowerCase();
+              const uMgrId = String(u.managerId || u.reportingManagerId || '').toLowerCase();
 
               const isEmp =
                 uProfile === 'employee' ||
@@ -477,7 +543,20 @@ function ManagerTasksContent() {
 
               if (!isEmp) return false;
 
-              // Categorize employee
+              // Manager direct hierarchy match
+              const matchesDirectManager =
+                uMgrId.length > 0 &&
+                (uMgrId === curMgrId ||
+                  `usr_${uMgrId}` === curMgrId ||
+                  uMgrId === curMgrId.replace('usr_', '') ||
+                  uMgrId === curMgrEmail ||
+                  uMgrId === curMgrName ||
+                  (isMarketingManager && (uMgrId.includes('afsal') || uMgrId === 'mgr_3' || uMgrId === '3' || uMgrId.includes('manager3'))) ||
+                  (isSalesManager && (uMgrId.includes('shibil') || uMgrId === 'mgr_1' || uMgrId === '1' || uMgrId.includes('manager1'))) ||
+                  (isPurchaseManager && (uMgrId.includes('manager2') || uMgrId === 'mgr_2' || uMgrId === '2')) ||
+                  (isOperationsManager && (uMgrId.includes('manager4') || uMgrId === 'mgr_4' || uMgrId === '4')));
+
+              // Strict Department Categorization
               const isEmpMarketing =
                 uEmpType.includes('market') ||
                 uDept.includes('market') ||
@@ -485,40 +564,51 @@ function ManagerTasksContent() {
                 uProfile.includes('market') ||
                 uId === 'emp_7' ||
                 uId === 'emp_8' ||
+                uId === 'emp_arun_001' ||
+                uId === 'emp_shameem_001' ||
                 uId.includes('arun') ||
+                uId.includes('shameem') ||
                 uName.includes('arun') ||
+                uName.includes('shameem') ||
                 uName.includes('marketing') ||
                 uEmail.includes('arun') ||
+                uEmail.includes('shameem') ||
                 uEmail.includes('employee7') ||
-                uEmail.includes('employee8');
+                uEmail.includes('employee8') ||
+                (isMarketingManager && matchesDirectManager);
 
               const isEmpPurchase =
-                uEmpType.includes('purchase') ||
-                uDept.includes('purchase') ||
-                uDesig.includes('purchase') ||
-                uProfile.includes('purchase') ||
-                uId === 'emp_4' ||
-                uId === 'emp_5' ||
-                uId === 'emp_6' ||
-                uName.includes('purchase') ||
-                uEmail.includes('employee4') ||
-                uEmail.includes('employee5') ||
-                uEmail.includes('employee6');
+                !isEmpMarketing &&
+                (uEmpType.includes('purchase') ||
+                  uDept.includes('purchase') ||
+                  uDesig.includes('purchase') ||
+                  uProfile.includes('purchase') ||
+                  uId === 'emp_4' ||
+                  uId === 'emp_5' ||
+                  uId === 'emp_6' ||
+                  uName.includes('purchase') ||
+                  uEmail.includes('employee4') ||
+                  uEmail.includes('employee5') ||
+                  uEmail.includes('employee6') ||
+                  (isPurchaseManager && matchesDirectManager));
 
               const isEmpOperations =
-                uEmpType.includes('operation') ||
-                uEmpType.includes('service') ||
-                uDept.includes('operation') ||
-                uDept.includes('service') ||
-                uDesig.includes('operation') ||
-                uDesig.includes('service') ||
-                uProfile.includes('operation') ||
-                uProfile.includes('service') ||
-                uId === 'emp_9' ||
-                uId === 'emp_10' ||
-                uName.includes('operation') ||
-                uEmail.includes('employee9') ||
-                uEmail.includes('employee10');
+                !isEmpMarketing &&
+                !isEmpPurchase &&
+                (uEmpType.includes('operation') ||
+                  uEmpType.includes('service') ||
+                  uDept.includes('operation') ||
+                  uDept.includes('service') ||
+                  uDesig.includes('operation') ||
+                  uDesig.includes('service') ||
+                  uProfile.includes('operation') ||
+                  uProfile.includes('service') ||
+                  uId === 'emp_9' ||
+                  uId === 'emp_10' ||
+                  uName.includes('operation') ||
+                  uEmail.includes('employee9') ||
+                  uEmail.includes('employee10') ||
+                  (isOperationsManager && matchesDirectManager));
 
               const isEmpSales =
                 !isEmpMarketing &&
@@ -531,16 +621,22 @@ function ManagerTasksContent() {
                   uId === 'emp_1' ||
                   uId === 'emp_2' ||
                   uId === 'emp_3' ||
+                  uId === 'emp_shaheer_001' ||
+                  uId === 'emp_adhil_001' ||
+                  uName.includes('shaheer') ||
+                  uName.includes('adhil') ||
+                  uEmail.includes('shaheer') ||
+                  uEmail.includes('adhil') ||
                   uEmail.includes('employee1') ||
                   uEmail.includes('employee2') ||
                   uEmail.includes('employee3') ||
-                  true);
+                  (isSalesManager && matchesDirectManager));
 
               if (isSuperAdminOrAdmin) return true;
-              if (isSalesManager) return isEmpSales && !isEmpMarketing && !isEmpPurchase && !isEmpOperations;
-              if (isMarketingManager) return isEmpMarketing && !isEmpSales && !isEmpPurchase && !isEmpOperations;
-              if (isPurchaseManager) return isEmpPurchase && !isEmpSales && !isEmpMarketing && !isEmpOperations;
-              if (isOperationsManager) return isEmpOperations && !isEmpSales && !isEmpMarketing && !isEmpPurchase;
+              if (isMarketingManager) return isEmpMarketing;
+              if (isSalesManager) return isEmpSales;
+              if (isPurchaseManager) return isEmpPurchase;
+              if (isOperationsManager) return isEmpOperations;
 
               return false;
             });
@@ -568,8 +664,8 @@ function ManagerTasksContent() {
       return dynamicList;
     }
 
-    if (isSalesManager) return FALLBACK_SALES_EMPLOYEES;
     if (isMarketingManager) return FALLBACK_MARKETING_EMPLOYEES;
+    if (isSalesManager) return FALLBACK_SALES_EMPLOYEES;
     if (isPurchaseManager) return FALLBACK_PURCHASE_EMPLOYEES;
     if (isOperationsManager) return FALLBACK_OPERATIONS_EMPLOYEES;
 
@@ -582,6 +678,8 @@ function ManagerTasksContent() {
     isPurchaseManager,
     isOperationsManager,
     domainLabel,
+    currentManagerId,
+    currentUser,
   ]);
 
   const handleEmployeeSelect = (empName: string) => {
@@ -863,8 +961,8 @@ function ManagerTasksContent() {
       const isCreatedByMe =
         Boolean(
           currentUser?.name &&
-            ((assignedBy && assignedBy.toLowerCase().includes(nameStr)) ||
-              (createdBy && createdBy.toLowerCase().includes(nameStr)))
+          ((assignedBy && assignedBy.toLowerCase().includes(nameStr)) ||
+            (createdBy && createdBy.toLowerCase().includes(nameStr)))
         ) ||
         (Boolean(currentUser?.id) &&
           (String(assignedBy) === String(currentUser?.id) ||
@@ -923,12 +1021,25 @@ function ManagerTasksContent() {
 
   return (
     <ManagerShell
-      title={isAssignViewOpen ? `Assign ${domainLabel} Task` : `${domainLabel} Tasks & Team Allocation`}
-      subtitle={
-        isAssignViewOpen
-          ? `Create and allocate a task strictly to your active ${domainLabel.toLowerCase()} employees`
-          : `Manage, view, edit, and assign tasks to ${domainLabel.toLowerCase()} team members`
+      title={
+        viewingTask
+          ? `Task Details`
+          : editingTask
+            ? `Edit Task`
+            : isAssignViewOpen
+              ? `Assign ${domainLabel} Task`
+              : `${domainLabel} Tasks & Team Allocation`
       }
+      subtitle={
+        viewingTask
+          ? `Comprehensive operational details, schedule, and team allocation for ${viewingTask.id || 'Task'}`
+          : editingTask
+            ? `Modify task specifications, employee allocation, deadlines, and scope`
+            : isAssignViewOpen
+              ? `Create and allocate a task strictly to your active ${domainLabel.toLowerCase()} employees`
+              : `Manage, view, edit, and assign tasks to ${domainLabel.toLowerCase()} team members`
+      }
+      showAssignButton={false}
     >
       {toastMsg && (
         <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-2 text-xs font-medium animate-in slide-in-from-bottom-5 duration-150">
@@ -938,36 +1049,665 @@ function ManagerTasksContent() {
       )}
 
       {/* ─────────────────────────────────────────────────────────────
-          CLEAN, COMPACT & PROFESSIONAL FULL-PAGE ASSIGNMENT FORM
+          1. FULL-PAGE TASK DETAILS VIEW (Exact Cezcon CRM UI)
       ───────────────────────────────────────────────────────────── */}
-      {isAssignViewOpen ? (
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-sm overflow-hidden">
-          {/* Header Action Bar */}
-          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between">
+      {viewingTask ? (
+        <div className="space-y-4 animate-in fade-in duration-150">
+          {/* Top Notice Banner with Red Close Button */}
+          <div className="bg-[#f1f3f5] border border-slate-300/80 rounded-[3px] px-3.5 py-2.5 flex items-center justify-between text-[11px] font-bold text-slate-700 uppercase tracking-wide">
+            <div className="flex items-start gap-2.5">
+              <FileText className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
+              <div className="space-y-0.5 text-[11px] leading-tight text-slate-700">
+                <p>
+                  TASK CREATED BY{' '}
+                  <span className="text-slate-900 font-extrabold">
+                    {(viewingTask.createdBy || viewingTask.assignedBy || currentUser?.name || `${domainLabel} Manager`).toUpperCase()}
+                  </span>{' '}
+                  ON {viewingTask.createdAt ? new Date(viewingTask.createdAt).toLocaleDateString('en-GB') : 'THU 04-09-2025 9:04:19 AM'}
+                </p>
+                <p>
+                  TASK LAST MODIFIED BY{' '}
+                  <span className="text-slate-900 font-extrabold">
+                    {(viewingTask.assignedBy || viewingTask.createdBy || currentUser?.name || `${domainLabel} Manager`).toUpperCase()}
+                  </span>{' '}
+                  ON {viewingTask.updatedAt ? new Date(viewingTask.updatedAt).toLocaleDateString('en-GB') : 'MON 13-10-2025 5:18:53 PM'}
+                </p>
+              </div>
+            </div>
             <button
               type="button"
-              onClick={() => setIsAssignViewOpen(false)}
-              className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 hover:text-blue-600 transition-colors cursor-pointer"
+              onClick={() => setViewingTask(null)}
+              className="w-6 h-6 bg-[#d9534f] hover:bg-[#c9302c] active:scale-95 text-white rounded-[4px] flex items-center justify-center cursor-pointer transition-all shrink-0 shadow-xs"
+              title="Close Task Details"
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back to Task List</span>
+              <X className="w-3.5 h-3.5 stroke-[2.5]" />
             </button>
+          </div>
 
-            <div className="flex items-center gap-3">
+          {/* Tab Navigation */}
+          <div className="flex items-center border-b border-slate-200 bg-transparent gap-1">
+            <button
+              type="button"
+              onClick={() => setTaskDetailTab('details')}
+              className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${taskDetailTab === 'details'
+                  ? 'bg-white text-slate-800 border-t-2 border-t-rose-600 border-x border-slate-200 -mb-px rounded-t-xs shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800 bg-transparent'
+                }`}
+            >
+              <ListIcon className="w-3.5 h-3.5 text-slate-600" />
+              <span>Task Details</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTaskDetailTab('history')}
+              className={`px-4 py-2 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${taskDetailTab === 'history'
+                  ? 'bg-white text-slate-800 border-t-2 border-t-rose-600 border-x border-slate-200 -mb-px rounded-t-xs shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800 bg-transparent'
+                }`}
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+              <span>Task History Details</span>
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          {taskDetailTab === 'details' ? (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+              {/* Left Column: Task Details Table (7 Cols) */}
+              <div className="lg:col-span-6 xl:col-span-6 bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden flex flex-col justify-between">
+                <div>
+                  <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center gap-2">
+                    <ListIcon className="w-3.5 h-3.5 text-slate-600" />
+                    <span className="text-xs font-bold text-slate-700">Task Details</span>
+                  </div>
+
+                  <div className="divide-y divide-slate-200 text-xs">
+                    {/* Assignee */}
+                    <div className="grid grid-cols-12">
+                      <div className="col-span-4 sm:col-span-3 bg-slate-50/40 p-3 font-semibold text-slate-600 border-r border-slate-200 flex items-center">
+                        Assignee
+                      </div>
+                      <div className="col-span-8 sm:col-span-9 p-3 flex items-center gap-2.5">
+                        <div className="w-6 h-6 rounded-full bg-slate-800 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
+                          {(viewingTask.assignedEmployee || viewingTask.assignee?.name || 'MH').slice(0, 2).toUpperCase()}
+                        </div>
+                        <span className="font-bold text-slate-900 uppercase">
+                          {viewingTask.assignedEmployee || viewingTask.assignee?.name || 'MUHAMMAD HAMZA'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Task */}
+                    <div className="grid grid-cols-12">
+                      <div className="col-span-4 sm:col-span-3 bg-slate-50/40 p-3 font-semibold text-slate-600 border-r border-slate-200 flex items-start">
+                        Task
+                      </div>
+                      <div className="col-span-8 sm:col-span-9 p-3 text-slate-900 font-medium leading-relaxed">
+                        {viewingTask.taskDetails || viewingTask.title || 'Follow up with the customer about the requirements'}
+                        {viewingTask.description && viewingTask.description !== viewingTask.taskDetails && (
+                          <p className="text-xs text-slate-500 mt-1 font-normal">{viewingTask.description}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Due Date */}
+                    <div className="grid grid-cols-12">
+                      <div className="col-span-4 sm:col-span-3 bg-slate-50/40 p-3 font-semibold text-slate-600 border-r border-slate-200 flex items-center">
+                        Due Date
+                      </div>
+                      <div className="col-span-8 sm:col-span-9 p-3 text-slate-900 font-medium">
+                        {viewingTask.dueDate || '20-10-2025'}
+                      </div>
+                    </div>
+
+                    {/* Time */}
+                    <div className="grid grid-cols-12">
+                      <div className="col-span-4 sm:col-span-3 bg-slate-50/40 p-3 font-semibold text-slate-600 border-r border-slate-200 flex items-center">
+                        Time
+                      </div>
+                      <div className="col-span-8 sm:col-span-9 p-3 text-slate-900 font-medium">
+                        {viewingTask.dueTime || '06:00 PM'}
+                      </div>
+                    </div>
+
+                    {/* Status */}
+                    <div className="grid grid-cols-12">
+                      <div className="col-span-4 sm:col-span-3 bg-slate-50/40 p-3 font-semibold text-slate-600 border-r border-slate-200 flex items-center">
+                        Status
+                      </div>
+                      <div className="col-span-8 sm:col-span-9 p-3">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-white rounded shadow-2xs ${viewingTask.status === 'Completed' || viewingTask.status === 'Reviewed'
+                              ? 'bg-emerald-600'
+                              : viewingTask.status === 'In Progress'
+                                ? 'bg-[#0ea5e9]'
+                                : 'bg-[#0284c7]'
+                            }`}
+                        >
+                          <Edit2 className="w-2.5 h-2.5" />
+                          <span>{viewingTask.status === 'In Progress' ? 'Progress' : viewingTask.status}</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Task Under */}
+                    <div className="grid grid-cols-12">
+                      <div className="col-span-4 sm:col-span-3 bg-slate-50/40 p-3 font-semibold text-slate-600 border-r border-slate-200 flex items-start">
+                        Task Under
+                      </div>
+                      <div className="col-span-8 sm:col-span-9 p-3 space-y-1.5">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-[#0284c7]">
+                          <Wrench className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                          <span>
+                            {viewingTask.equipmentTag || 'CTEQ#3426 Ice machine repair- compressor change'}
+                          </span>
+                          <Info className="w-3.5 h-3.5 text-sky-500 shrink-0 cursor-pointer" />
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                          <Shield className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                          <span>
+                            {viewingTask.customer || viewingTask.taskUnder || 'ROBT. STONE (ME) LLC'}
+                          </span>
+                          <Info className="w-3.5 h-3.5 text-sky-500 shrink-0 cursor-pointer" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Task Type */}
+                    <div className="grid grid-cols-12">
+                      <div className="col-span-4 sm:col-span-3 bg-slate-50/40 p-3 font-semibold text-slate-600 border-r border-slate-200 flex items-center">
+                        Task Type
+                      </div>
+                      <div className="col-span-8 sm:col-span-9 p-3 text-slate-900 font-medium">
+                        {viewingTask.taskType || 'Followup'}
+                      </div>
+                    </div>
+
+                    {/* Priority */}
+                    <div className="grid grid-cols-12">
+                      <div className="col-span-4 sm:col-span-3 bg-slate-50/40 p-3 font-semibold text-slate-600 border-r border-slate-200 flex items-center">
+                        Priority
+                      </div>
+                      <div className="col-span-8 sm:col-span-9 p-3">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-white bg-[#f59e0b] rounded shadow-2xs">
+                          <Edit2 className="w-2.5 h-2.5" />
+                          <span>
+                            {viewingTask.priority === 'Medium' ? 'Mid' : viewingTask.priority}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Action Buttons inside Left Card */}
+                <div className="p-3 bg-white border-t border-slate-200 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      showToast('Task schedule postponed by 24 hours.');
+                    }}
+                    className="px-3.5 py-1.5 bg-[#1e293b] hover:bg-[#0f172a] text-white text-xs font-bold rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Calendar className="w-3 h-3" />
+                    <span>Postpone</span>
+                  </button>
+
+                  {viewingTask.status !== 'Completed' && viewingTask.status !== 'Reviewed' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateTask(viewingTask.id, { status: 'Completed' });
+                        setViewingTask((prev) => (prev ? { ...prev, status: 'Completed' } : null));
+                        showToast('Task marked as Completed!');
+                      }}
+                      className="px-3.5 py-1.5 bg-[#334155] hover:bg-[#1e293b] text-white text-xs font-bold rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>Mark as Completed</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateTask(viewingTask.id, { status: 'In Progress' });
+                        setViewingTask((prev) => (prev ? { ...prev, status: 'In Progress' } : null));
+                        showToast('Task status updated to Progress.');
+                      }}
+                      className="px-3.5 py-1.5 bg-[#0ea5e9] hover:bg-[#0284c7] text-white text-xs font-bold rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Clock className="w-3 h-3" />
+                      <span>Reopen / Progress</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const t = viewingTask;
+                      setViewingTask(null);
+                      handleOpenEditModal(t);
+                    }}
+                    className="px-3.5 py-1.5 bg-[#3b82f6] hover:bg-[#2563eb] text-white text-xs font-bold rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    <span>Edit</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const t = viewingTask;
+                      setViewingTask(null);
+                      setTaskToDelete(t);
+                    }}
+                    className="px-3.5 py-1.5 bg-[#ef4444] hover:bg-[#dc2626] text-white text-xs font-bold rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Delete</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Column: Attachments Card (5 Cols) */}
+              <div className="lg:col-span-6 xl:col-span-6 bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden flex flex-col justify-between">
+                <div>
+                  <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-sky-600 uppercase">
+                      <Paperclip className="w-3.5 h-3.5 text-sky-600" />
+                      <span>ATTACHMENTS</span>
+                    </div>
+
+                    <div className="flex items-center border border-slate-300 rounded overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setAttachmentViewMode('list')}
+                        className={`px-2.5 py-0.5 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer ${attachmentViewMode === 'list'
+                            ? 'bg-[#2563eb] text-white'
+                            : 'bg-white text-slate-600 hover:bg-slate-50'
+                          }`}
+                      >
+                        <ListIcon className="w-3 h-3" />
+                        <span>List</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAttachmentViewMode('slider')}
+                        className={`px-2.5 py-0.5 text-xs font-bold flex items-center gap-1 transition-colors border-l border-slate-200 cursor-pointer ${attachmentViewMode === 'slider'
+                            ? 'bg-[#2563eb] text-white'
+                            : 'bg-white text-slate-600 hover:bg-slate-50'
+                          }`}
+                      >
+                        <LayoutGrid className="w-3 h-3" />
+                        <span>Slider</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Attachment Content Body */}
+                  <div className="p-8 flex flex-col items-center justify-center min-h-[160px] text-center border-b border-slate-100">
+                    {taskAttachments.length > 0 ? (
+                      <div className="w-full space-y-2">
+                        {taskAttachments.map((f, i) => (
+                          <div
+                            key={i}
+                            className="p-2.5 rounded bg-slate-50 border border-slate-200 flex items-center justify-between text-xs"
+                          >
+                            <span className="font-semibold text-slate-800">{f.name}</span>
+                            <span className="text-slate-400">{f.size}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                        <Folder className="w-12 h-12 text-slate-300 stroke-[1.2] mb-2" />
+                        <p className="text-xs text-slate-400 font-medium">No attachments yet</p>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Add More Attachments Section */}
+                  <div className="p-4 space-y-3">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-sky-600 uppercase">
+                      <Plus className="w-3.5 h-3.5 text-sky-600" />
+                      <span>ADD MORE ATTACHMENTS</span>
+                    </div>
+
+                    <label className="block border-2 border-dashed border-sky-200 rounded-sm p-6 bg-sky-50/20 hover:bg-sky-50/60 transition-colors text-center cursor-pointer">
+                      <input
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                          const files = e.target.files;
+                          if (files && files.length > 0) {
+                            const newFiles = Array.from(files).map((f) => ({
+                              name: f.name,
+                              size: `${(f.size / 1024).toFixed(1)} KB`,
+                              type: f.type,
+                            }));
+                            setTaskAttachments((prev) => [...prev, ...newFiles]);
+                            showToast(`${files.length} file(s) attached to task.`);
+                          }
+                        }}
+                      />
+                      <UploadCloud className="w-8 h-8 text-sky-500 mx-auto mb-1 stroke-[1.5]" />
+                      <p className="text-xs text-slate-600 font-medium">
+                        Drop files here or <span className="text-sky-600 underline">click to browse</span>
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Multiple files supported</p>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Task History Details Tab Content */
+            <div className="bg-white border border-slate-200 rounded-sm p-6 space-y-4">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Task Modification &amp; Activity Log
+              </h3>
+              <div className="divide-y divide-slate-100 text-xs">
+                <div className="py-2.5 flex items-center justify-between">
+                  <span className="text-slate-500">Created:</span>
+                  <span className="font-semibold text-slate-800">
+                    {viewingTask.createdAt ? new Date(viewingTask.createdAt).toLocaleString('en-GB') : '04-09-2025 09:04 AM'}{' '}
+                    by {viewingTask.createdBy || `${domainLabel} Manager`}
+                  </span>
+                </div>
+                <div className="py-2.5 flex items-center justify-between">
+                  <span className="text-slate-500">Last Status Update:</span>
+                  <span className="font-semibold text-slate-800">
+                    {viewingTask.status} (by {viewingTask.assignedBy || 'Manager'})
+                  </span>
+                </div>
+                <div className="py-2.5 flex items-center justify-between">
+                  <span className="text-slate-500">Target Deadline:</span>
+                  <span className="font-semibold text-slate-800">
+                    {viewingTask.dueDate || '20-10-2025'} at {viewingTask.dueTime || '06:00 PM'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : editingTask ? (
+        /* ─────────────────────────────────────────────────────────────
+            2. FULL-PAGE EDIT TASK VIEW (Unified Cezcon CRM Form)
+        ───────────────────────────────────────────────────────────── */
+        <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden animate-in fade-in duration-150">
+          {/* Header Action Bar */}
+          <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex items-center justify-between">
+            <h1 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+              Edit Task Details <span className="text-slate-400 font-normal">({editingTask.id})</span>
+            </h1>
+
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setIsAssignViewOpen(false)}
-                className="px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
+                onClick={handleSaveEditTask}
+                className="px-4 py-1.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white text-xs font-bold rounded cursor-pointer shadow-2xs flex items-center gap-1.5 transition-colors"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Save Changes</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingTask(null)}
+                className="w-6 h-6 bg-[#d9534f] hover:bg-[#c9302c] active:scale-95 text-white rounded-[4px] flex items-center justify-center cursor-pointer transition-all shrink-0 shadow-xs ml-1"
+                title="Close"
+              >
+                <X className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
+            </div>
+          </div>
+
+          {/* Edit Form Body */}
+          <form onSubmit={handleSaveEditTask} className="p-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left Column: Core Task Details */}
+              <div className="space-y-4">
+                <div className="pb-2 border-b border-slate-100">
+                  <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Task Objective &amp; Details
+                  </h2>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Task Title / Objective <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    required
+                    value={editFormData.title}
+                    onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                    className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded p-2.5 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all leading-relaxed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Detailed Scope of Work &amp; Instructions
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={editFormData.instructions}
+                    onChange={(e) => setEditFormData({ ...editFormData, instructions: e.target.value })}
+                    placeholder="Enter key deliverables, instructions, or operational notes..."
+                    className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded p-2.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all leading-relaxed"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Customer / Client Account</label>
+                    <input
+                      type="text"
+                      value={editFormData.customerName}
+                      onChange={(e) => setEditFormData({ ...editFormData, customerName: e.target.value })}
+                      placeholder="e.g. ROBT. STONE (ME) LLC"
+                      className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded px-2.5 py-1.5 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Deal Reference / Tag</label>
+                    <input
+                      type="text"
+                      value={editFormData.dealReference}
+                      onChange={(e) => setEditFormData({ ...editFormData, dealReference: e.target.value })}
+                      placeholder="e.g. CTEQ#3426"
+                      className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded px-2.5 py-1.5 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Office / Branch Territory</label>
+                  <select
+                    value={editFormData.location}
+                    onChange={(e) => setEditFormData({ ...editFormData, location: e.target.value })}
+                    className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded px-2.5 py-1.5 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer"
+                  >
+                    {OFFICE_TERRITORIES.map((loc) => (
+                      <option key={loc} value={loc}>
+                        {loc}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Right Column: Assignment & Scheduling */}
+              <div className="space-y-4">
+                <div className="pb-2 border-b border-slate-100">
+                  <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Allocation &amp; Schedule
+                  </h2>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Assign {domainLabel} Employee <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={editFormData.assignedTo}
+                    required
+                    onChange={(e) => {
+                      const selected = availableEmployees.find((w) => w.name === e.target.value);
+                      setEditFormData({
+                        ...editFormData,
+                        assignedTo: e.target.value,
+                        employeeRole: selected?.role || editFormData.employeeRole,
+                        employeePhone: selected?.phone || editFormData.employeePhone,
+                      });
+                    }}
+                    className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer"
+                  >
+                    <option value="">-- Select {domainLabel} Employee --</option>
+                    {availableEmployees.map((w) => (
+                      <option key={w.name} value={w.name}>
+                        {w.name} — {w.role}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Department</label>
+                    <select
+                      value={editFormData.department}
+                      required
+                      onChange={(e) => setEditFormData({ ...editFormData, department: e.target.value })}
+                      className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded px-2.5 py-1.5 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer"
+                    >
+                      {activeDepartments.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Task Category</label>
+                    <select
+                      value={editFormData.category}
+                      onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
+                      className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded px-2.5 py-1.5 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer"
+                    >
+                      <option value="">-- Select Category --</option>
+                      {taskCategories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Status</label>
+                    <select
+                      value={editFormData.status}
+                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as any })}
+                      className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded px-2.5 py-1.5 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer"
+                    >
+                      <option value="Assigned">Assigned</option>
+                      <option value="In Progress">In Progress</option>
+                      <option value="Completed">Completed</option>
+                      <option value="Reviewed">Reviewed</option>
+                      <option value="Overdue">Overdue</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Priority</label>
+                    <select
+                      value={editFormData.priority}
+                      onChange={(e) => setEditFormData({ ...editFormData, priority: e.target.value as any })}
+                      className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded px-2.5 py-1.5 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer"
+                    >
+                      <option value="Urgent">🚨 Urgent</option>
+                      <option value="High">⚡ High</option>
+                      <option value="Medium">🔹 Medium</option>
+                      <option value="Low">⚪ Low</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Target Due Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={editFormData.dueDate}
+                      onChange={(e) => setEditFormData({ ...editFormData, dueDate: e.target.value })}
+                      className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded px-2.5 py-1.5 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Target Time Slot</label>
+                    <input
+                      type="text"
+                      value={editFormData.dueTime}
+                      onChange={(e) => setEditFormData({ ...editFormData, dueTime: e.target.value })}
+                      placeholder="e.g. 04:00 PM"
+                      className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded px-2.5 py-1.5 text-xs font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Form Actions */}
+            <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setEditingTask(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded cursor-pointer transition-colors"
               >
                 Cancel
               </button>
               <button
+                type="submit"
+                className="px-5 py-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white text-xs font-bold rounded cursor-pointer shadow-2xs flex items-center gap-1.5 transition-colors"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Save Changes</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : isAssignViewOpen ? (
+        <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden animate-in fade-in duration-150">
+          {/* Header Action Bar */}
+          <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex items-center justify-between">
+            <h1 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+              Assign Task to {domainLabel} Team
+            </h1>
+
+            <div className="flex items-center gap-2">
+              <button
                 type="button"
                 onClick={handleCreateTask}
-                className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-xs font-bold text-white shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-1.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white text-xs font-bold rounded cursor-pointer shadow-2xs flex items-center gap-1.5 transition-colors"
               >
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>Assign Task</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAssignViewOpen(false)}
+                className="w-6 h-6 bg-[#d9534f] hover:bg-[#c9302c] active:scale-95 text-white rounded-[4px] flex items-center justify-center cursor-pointer transition-all shrink-0 shadow-xs ml-1"
+                title="Close"
+              >
+                <X className="w-3.5 h-3.5 stroke-[2.5]" />
               </button>
             </div>
           </div>
@@ -1304,12 +2044,12 @@ function ManagerTasksContent() {
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Assign Task to Employee</span>
+              <span>Assign Task to Employee</span>
             </button>
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto min-h-[240px]">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-600 text-[11px] font-bold border-b border-slate-200 uppercase tracking-wider">
                 <tr>
@@ -1361,10 +2101,10 @@ function ManagerTasksContent() {
                       <td className="py-3.5 px-3">
                         <span
                           className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${t.priority === 'Urgent'
-                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                              : t.priority === 'High'
-                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                : 'bg-slate-50 text-slate-700 border border-slate-200'
+                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                            : t.priority === 'High'
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-slate-50 text-slate-700 border border-slate-200'
                             }`}
                         >
                           {t.priority}
@@ -1373,10 +2113,10 @@ function ManagerTasksContent() {
                       <td className="py-3.5 px-3">
                         <span
                           className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${t.status === 'Completed' || t.status === 'Reviewed'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : t.status === 'In Progress'
-                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                : 'bg-blue-50 text-blue-700 border border-blue-200'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : t.status === 'In Progress'
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-blue-50 text-blue-700 border border-blue-200'
                             }`}
                         >
                           {t.status}
@@ -1386,32 +2126,83 @@ function ManagerTasksContent() {
                       <td className="py-3.5 px-3 text-slate-700">{t.dueTime || '04:00 PM'}</td>
 
                       {/* Action / Settings Column */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="inline-flex items-center justify-center gap-1.5">
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                        <div className="relative inline-block text-left">
                           <button
                             type="button"
-                            onClick={() => setViewingTask(t)}
-                            className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-blue-600 transition-colors cursor-pointer"
-                            title="View Task Details"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setActionMenuTaskId((prev) => (prev === t.id ? null : t.id));
+                            }}
+                            className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-[4px] bg-[#002f4a] hover:bg-[#002338] text-white transition-colors cursor-pointer shadow-xs active:scale-95"
+                            title="Actions"
                           >
-                            <Eye className="w-4 h-4" />
+                            <Settings className="w-3.5 h-3.5 text-white stroke-[2.2]" />
+                            <span className="text-[8px] text-white leading-none">▼</span>
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(t)}
-                            className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-amber-600 transition-colors cursor-pointer"
-                            title="Edit Task"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setTaskToDelete(t)}
-                            className="p-1.5 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                            title="Delete Task"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+
+                          {/* Dropdown Menu */}
+                          {actionMenuTaskId === t.id && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-40"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setActionMenuTaskId(null);
+                                }}
+                              />
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-0 top-full mt-1 w-36 bg-white border border-slate-200 rounded-[4px] shadow-2xl z-50 py-1 text-left text-xs text-slate-800 animate-in fade-in zoom-in-95 duration-100"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setActionMenuTaskId(null);
+                                    setViewingTask(t);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-100 transition-colors text-slate-700 hover:text-slate-900 cursor-pointer text-left text-xs font-medium"
+                                >
+                                  <Eye className="w-4 h-4 text-slate-500 shrink-0 stroke-[1.75]" />
+                                  <span>View</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setActionMenuTaskId(null);
+                                    handleOpenEditModal(t);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-100 transition-colors text-slate-700 hover:text-slate-900 cursor-pointer text-left text-xs font-medium"
+                                >
+                                  <Edit2 className="w-4 h-4 text-slate-500 shrink-0 stroke-[1.75]" />
+                                  <span>Edit</span>
+                                </button>
+
+                                <div className="border-t border-slate-100 my-1" />
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setActionMenuTaskId(null);
+                                    setTaskToDelete(t);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-rose-50 transition-colors text-rose-600 cursor-pointer text-left text-xs font-medium"
+                                >
+                                  <Trash2 className="w-4 h-4 text-rose-600 shrink-0 stroke-[1.75]" />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1423,330 +2214,7 @@ function ManagerTasksContent() {
         </div>
       )}
 
-      {/* ─────────────────────────────────────────────────────────────
-          1. VIEW TASK DETAILS MODAL
-      ───────────────────────────────────────────────────────────── */}
-      {viewingTask && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/80">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs">
-                  <FileText className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Task Details</h3>
-                  <p className="text-[11px] text-slate-500">{viewingTask.id}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setViewingTask(null)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            <div className="p-6 space-y-4 text-xs text-slate-700 max-h-[75vh] overflow-y-auto">
-              <div>
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
-                  Subject / Objective
-                </label>
-                <p className="text-sm font-bold text-slate-900">{viewingTask.taskDetails || viewingTask.title}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 py-2 border-y border-slate-100">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Category
-                  </label>
-                  <p className="font-semibold text-slate-800">{viewingTask.taskType || 'General Task'}</p>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Status
-                  </label>
-                  <span className="inline-block px-2 py-0.5 mt-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                    {viewingTask.status}
-                  </span>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Priority
-                  </label>
-                  <span className="font-semibold text-slate-800">{viewingTask.priority}</span>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Target Deadline
-                  </label>
-                  <p className="font-semibold text-slate-800">{viewingTask.dueDate} at {viewingTask.dueTime || '04:00 PM'}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pb-2 border-b border-slate-100">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Assigned Employee
-                  </label>
-                  <p className="font-bold text-slate-900">{viewingTask.assignedEmployee || viewingTask.assignee?.name || 'Unassigned'}</p>
-                  <p className="text-[11px] text-slate-500">{viewingTask.assignee?.role || `${domainLabel} Employee`}</p>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Department
-                  </label>
-                  <p className="font-semibold text-slate-800">{viewingTask.department || `${domainLabel} Department`}</p>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Customer &amp; Location
-                </label>
-                <p className="font-semibold text-slate-800">{viewingTask.customer || viewingTask.taskUnder || 'Client Account'}</p>
-                <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                  <MapPin className="w-3 h-3 text-slate-400" />
-                  <span>{viewingTask.location || 'Dubai Corporate HQ'}</span>
-                </p>
-                {viewingTask.equipmentTag && (
-                  <p className="text-[11px] text-slate-500 mt-1">Ref: <strong>{viewingTask.equipmentTag}</strong></p>
-                )}
-              </div>
-
-              {viewingTask.description && (
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                    Instructions / Scope of Work
-                  </label>
-                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs leading-relaxed text-slate-800">
-                    {viewingTask.description}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const task = viewingTask;
-                    setViewingTask(null);
-                    setTaskToDelete(task);
-                  }}
-                  className="px-3 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 font-semibold cursor-pointer"
-                >
-                  Delete Task
-                </button>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const task = viewingTask;
-                      setViewingTask(null);
-                      handleOpenEditModal(task);
-                    }}
-                    className="px-4 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold cursor-pointer"
-                  >
-                    Edit Task
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewingTask(null)}
-                    className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold cursor-pointer"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          2. EDIT TASK MODAL
-      ───────────────────────────────────────────────────────────── */}
-      {editingTask && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xl max-w-xl w-full overflow-hidden animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/80">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-xs">
-                  <Edit2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Edit Task Settings</h3>
-                  <p className="text-[11px] text-slate-500">{editingTask.id}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingTask(null)}
-                className="text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEditTask} className="p-6 space-y-4 text-xs text-slate-700 max-h-[75vh] overflow-y-auto">
-              <div>
-                <label className="block font-bold text-slate-800 mb-1">
-                  Task Title <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  rows={2}
-                  required
-                  value={editFormData.title}
-                  onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
-                  className="w-full bg-slate-50/60 hover:bg-white focus:bg-white border-2 border-slate-300 focus:border-blue-600 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/15"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-800 mb-1">Category</label>
-                  <select
-                    value={editFormData.category}
-                    onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
-                    className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none cursor-pointer"
-                  >
-                    <option value="">-- Select Category --</option>
-                    {taskCategories.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-800 mb-1">Status</label>
-                  <select
-                    value={editFormData.status}
-                    onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as any })}
-                    className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none cursor-pointer"
-                  >
-                    <option value="Assigned">Assigned</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Completed">Completed</option>
-                    <option value="Reviewed">Reviewed</option>
-                    <option value="Overdue">Overdue</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-800 mb-1">
-                    Assign {domainLabel} Employee <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={editFormData.assignedTo}
-                    required
-                    onChange={(e) => {
-                      const selected = availableEmployees.find((w) => w.name === e.target.value);
-                      setEditFormData({
-                        ...editFormData,
-                        assignedTo: e.target.value,
-                        employeeRole: selected?.role || editFormData.employeeRole,
-                        employeePhone: selected?.phone || editFormData.employeePhone,
-                      });
-                    }}
-                    className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none cursor-pointer"
-                  >
-                    <option value="">-- Select Employee --</option>
-                    {availableEmployees.map((w) => (
-                      <option key={w.name} value={w.name}>
-                        {w.name} — {w.role}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-800 mb-1">Department</label>
-                  <select
-                    value={editFormData.department}
-                    onChange={(e) => setEditFormData({ ...editFormData, department: e.target.value })}
-                    className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none cursor-pointer"
-                  >
-                    {activeDepartments.map((d) => (
-                      <option key={d} value={d}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-800 mb-1">Priority</label>
-                  <select
-                    value={editFormData.priority}
-                    onChange={(e) => setEditFormData({ ...editFormData, priority: e.target.value as any })}
-                    className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none cursor-pointer"
-                  >
-                    <option value="Urgent">🚨 Urgent</option>
-                    <option value="High">⚡ High</option>
-                    <option value="Medium">🔹 Medium</option>
-                    <option value="Low">⚪ Low</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-800 mb-1">Due Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={editFormData.dueDate}
-                    onChange={(e) => setEditFormData({ ...editFormData, dueDate: e.target.value })}
-                    className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-800 mb-1">Customer / Client Account</label>
-                <input
-                  type="text"
-                  value={editFormData.customerName}
-                  onChange={(e) => setEditFormData({ ...editFormData, customerName: e.target.value })}
-                  className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-800 mb-1">Instructions / Scope of Work</label>
-                <textarea
-                  rows={3}
-                  value={editFormData.instructions}
-                  onChange={(e) => setEditFormData({ ...editFormData, instructions: e.target.value })}
-                  className="w-full bg-white border border-slate-300 focus:border-blue-600 rounded-lg p-3 text-xs text-slate-900 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingTask(null)}
-                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Save Changes</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ─────────────────────────────────────────────────────────────
           3. DELETE TASK CONFIRMATION MODAL

@@ -8,9 +8,19 @@ interface ManagerShellProps {
   children: React.ReactNode;
   title?: string;
   subtitle?: string;
+  actions?: React.ReactNode;
+  showAssignButton?: boolean;
+  onClose?: () => void;
 }
 
-export function ManagerShell({ children, title, subtitle }: ManagerShellProps) {
+export function ManagerShell({
+  children,
+  title,
+  subtitle,
+  actions,
+  showAssignButton = false,
+  onClose,
+}: ManagerShellProps) {
   const [managerTitle, setManagerTitle] = React.useState('Manager');
 
   React.useEffect(() => {
@@ -48,13 +58,25 @@ export function ManagerShell({ children, title, subtitle }: ManagerShellProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
-              href="/manager/tasks?view=assign"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Assign Task</span>
-            </Link>
+            {actions ? (
+              actions
+            ) : onClose ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                <span>✕ Close</span>
+              </button>
+            ) : showAssignButton ? (
+              <Link
+                href="/manager/tasks?view=assign"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Assign Task</span>
+              </Link>
+            ) : null}
           </div>
         </div>
       )}

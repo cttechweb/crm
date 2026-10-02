@@ -52,6 +52,7 @@ export default function DashboardPage() {
 
   const [dateFilter, setDateFilter] = useState('month');
   const [repFilter, setRepFilter] = useState('all');
+  const [allRegisteredUsers, setAllRegisteredUsers] = useState<Array<{ id: string; name: string; role?: string; department?: string }>>([]);
 
   React.useEffect(() => {
     const user = authMockService.getCurrentUser();
@@ -62,12 +63,63 @@ export default function DashboardPage() {
     }
   }, [router]);
 
+  React.useEffect(() => {
+    const loadAllUsers = () => {
+      const userMap = new Map<string, { id: string; name: string; role?: string; department?: string }>();
+
+      // 1. From context
+      (users || []).forEach((u) => {
+        if (u.name) {
+          userMap.set(u.name.toLowerCase().trim(), {
+            id: u.id,
+            name: u.name,
+            role: u.role || 'Executive',
+            department: u.department,
+          });
+        }
+      });
+
+      // 2. From localStorage cezcon_crm_users_list
+      try {
+        const stored = typeof window !== 'undefined' ? localStorage.getItem('cezcon_crm_users_list') : null;
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((u: any) => {
+              const name = u.name || u.fullName || u.username;
+              if (name && !userMap.has(name.toLowerCase().trim())) {
+                userMap.set(name.toLowerCase().trim(), {
+                  id: u.id || `u_${name}`,
+                  name: name,
+                  role: u.designation || u.role || u.employeeType || 'Executive',
+                  department: u.department || u.profileType,
+                });
+              }
+            });
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+
+      setAllRegisteredUsers(Array.from(userMap.values()));
+    };
+
+    loadAllUsers();
+    window.addEventListener('storage', loadAllUsers);
+    window.addEventListener('crm_users_updated', loadAllUsers);
+    return () => {
+      window.removeEventListener('storage', loadAllUsers);
+      window.removeEventListener('crm_users_updated', loadAllUsers);
+    };
+  }, [users]);
+
   // Dynamic filter helper
-  const matchesRep = (rep: string | undefined, filter: string) => {
-    if (filter === 'all') return true;
+  const matchesRep = (rep: string | undefined | null, filter: string) => {
+    if (!filter || filter === 'all') return true;
     if (!rep) return false;
-    const r = rep.toLowerCase().trim();
-    const f = filter.toLowerCase().trim();
+    const r = String(rep).toLowerCase().trim();
+    const f = String(filter).toLowerCase().trim();
     return r === f || r.includes(f) || f.includes(r);
   };
 
@@ -105,43 +157,110 @@ export default function DashboardPage() {
   };
 
   // Dynamic filter by executive/rep
-  const filteredOpportunities = (salesOpportunities || []).filter((o) => {
+  const filteredOpportunities = (salesOpportunities || []).filter((o: any) => {
     if (repFilter === 'all') return true;
-    return matchesRep(o.owner || (o as any).assignedTo || (o as any).executive, repFilter);
+    return (
+      matchesRep(o.owner, repFilter) ||
+      matchesRep(o.assignedTo, repFilter) ||
+      matchesRep(o.executive, repFilter) ||
+      matchesRep(o.salesExecutive, repFilter) ||
+      matchesRep(o.assignedEmployee, repFilter) ||
+      matchesRep(o.createdBy, repFilter)
+    );
   });
 
-  const filteredLeads = (leads || []).filter((l) => {
+  const filteredLeads = (leads || []).filter((l: any) => {
     if (repFilter === 'all') return true;
     return (
       matchesRep(l.leadAssigned?.name, repFilter) ||
       matchesRep(l.owner, repFilter) ||
-      matchesRep(l.assignedEmployee, repFilter)
+      matchesRep(l.assignedEmployee, repFilter) ||
+      matchesRep(l.executive, repFilter) ||
+      matchesRep(l.assignedTo, repFilter) ||
+      matchesRep(l.salesExecutive, repFilter) ||
+      matchesRep(l.createdBy, repFilter)
     );
   });
 
-  const filteredTasks = (tasks || []).filter((t: CrmTask) => {
+  const filteredTasks = (tasks || []).filter((t: any) => {
     if (repFilter === 'all') return true;
-    return matchesRep(t.assignee?.name, repFilter);
+    return (
+      matchesRep(t.assignee?.name, repFilter) ||
+      matchesRep(t.assignedEmployee, repFilter) ||
+      matchesRep(t.assignedTo, repFilter) ||
+      matchesRep(t.employee, repFilter) ||
+      matchesRep(t.owner, repFilter) ||
+      matchesRep(t.createdBy, repFilter) ||
+      matchesRep(t.assignedBy, repFilter)
+    );
   });
 
-  const filteredCustomers = (customers || []).filter((c) => {
+  const filteredCustomers = (customers || []).filter((c: any) => {
     if (repFilter === 'all') return true;
-    return matchesRep(c.owner || (c as any).assignedTo, repFilter);
+    return (
+      matchesRep(c.owner, repFilter) ||
+      matchesRep(c.assignedTo, repFilter) ||
+      matchesRep(c.salesExecutive, repFilter) ||
+      matchesRep(c.assignedEmployee, repFilter) ||
+      matchesRep(c.createdBy, repFilter)
+    );
+  });
+
+  const filteredQuotations = (quotations || []).filter((q: any) => {
+    if (repFilter === 'all') return true;
+    return (
+      matchesRep(q.salesExecutive, repFilter) ||
+      matchesRep(q.owner, repFilter) ||
+      matchesRep(q.assignedTo, repFilter) ||
+      matchesRep(q.createdBy, repFilter) ||
+      matchesRep(q.preparedBy, repFilter)
+    );
+  });
+
+  const filteredOrders = (salesOrders || []).filter((o: any) => {
+    if (repFilter === 'all') return true;
+    return (
+      matchesRep(o.salesExecutive, repFilter) ||
+      matchesRep(o.owner, repFilter) ||
+      matchesRep(o.assignedTo, repFilter) ||
+      matchesRep(o.createdBy, repFilter)
+    );
+  });
+
+  const filteredInvoices = (invoices || []).filter((i: any) => {
+    if (repFilter === 'all') return true;
+    return (
+      matchesRep(i.salesExecutive, repFilter) ||
+      matchesRep(i.owner, repFilter) ||
+      matchesRep(i.assignedTo, repFilter) ||
+      matchesRep(i.createdBy, repFilter)
+    );
+  });
+
+  const filteredReceipts = (receipts || []).filter((r: any) => {
+    if (repFilter === 'all') return true;
+    return (
+      matchesRep(r.salesExecutive, repFilter) ||
+      matchesRep(r.owner, repFilter) ||
+      matchesRep(r.assignedTo, repFilter) ||
+      matchesRep(r.createdBy, repFilter) ||
+      matchesRep(r.collectedBy, repFilter)
+    );
   });
 
   // Business calculations
   const totalPipelineFromDeals = filteredOpportunities.reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
-  const totalQuotationsValue = (quotations || []).reduce((acc, q) => acc + (Number(q.totalAmount) || 0), 0);
-  const totalOrdersValue = (salesOrders || []).reduce((acc, o) => acc + (Number((o as any).totalAmount || (o as any).amount) || 0), 0);
-  const totalInvoicesValue = (invoices || []).reduce((acc, i) => acc + (Number(i.totalAmount || (i as any).amount) || 0), 0);
+  const totalQuotationsValue = filteredQuotations.reduce((acc, q) => acc + (Number(q.totalAmount) || 0), 0);
+  const totalOrdersValue = filteredOrders.reduce((acc, o) => acc + (Number((o as any).totalAmount || (o as any).amount) || 0), 0);
+  const totalInvoicesValue = filteredInvoices.reduce((acc, i) => acc + (Number(i.totalAmount || (i as any).amount) || 0), 0);
   const totalPipeline = totalPipelineFromDeals > 0 ? totalPipelineFromDeals : totalQuotationsValue + totalOrdersValue + totalInvoicesValue;
 
-  const hotLeadsCount = filteredLeads.filter((l) => l.rating === 'Hot' || l.rating === 'HOT').length;
+  const hotLeadsCount = filteredLeads.filter((l) => String(l.rating || '').toLowerCase() === 'hot').length;
   const overdueTasksCount = filteredTasks.filter((t) => t.status === 'Overdue').length;
   const urgentTasksCount = filteredTasks.filter((t) => t.priority === 'Urgent' || t.priority === 'High').length;
 
   const oppProposalDeals = filteredOpportunities.filter((o) => isStageMatch(o.stage, 'Quotation'));
-  const quotationsCount = (quotations || []).length > 0 ? (quotations || []).length : oppProposalDeals.length;
+  const quotationsCount = filteredQuotations.length > 0 ? filteredQuotations.length : oppProposalDeals.length;
   const openQuotationsValue = totalQuotationsValue > 0
     ? totalQuotationsValue
     : oppProposalDeals.reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
@@ -160,7 +279,7 @@ export default function DashboardPage() {
     {
       stage: 'Quotation',
       count: Math.max(
-        (quotations || []).length,
+        filteredQuotations.length,
         filteredOpportunities.filter((o) => isStageMatch(o.stage, 'Quotation')).length
       ),
       value: Math.max(
@@ -175,7 +294,7 @@ export default function DashboardPage() {
     {
       stage: 'Order',
       count: Math.max(
-        (salesOrders || []).length,
+        filteredOrders.length,
         filteredOpportunities.filter((o) => isStageMatch(o.stage, 'Order')).length
       ),
       value: Math.max(
@@ -199,7 +318,7 @@ export default function DashboardPage() {
     {
       stage: 'Invoice',
       count: Math.max(
-        (invoices || []).length,
+        filteredInvoices.length,
         filteredOpportunities.filter((o) => isStageMatch(o.stage, 'Invoice')).length
       ),
       value: Math.max(
@@ -229,8 +348,8 @@ export default function DashboardPage() {
   ];
 
   // Calculate actual realized monthly revenue
-  const totalInvoicedRevenue = (invoices || []).reduce((sum, inv) => sum + (Number(inv.totalAmount || inv.amount) || 0), 0);
-  const totalReceiptsRevenue = (receipts || []).reduce((sum, rec) => sum + (Number(rec.amount) || 0), 0);
+  const totalInvoicedRevenue = filteredInvoices.reduce((sum, inv) => sum + (Number(inv.totalAmount || (inv as any).amount) || 0), 0);
+  const totalReceiptsRevenue = filteredReceipts.reduce((sum, rec) => sum + (Number(rec.amount) || 0), 0);
   const currentMonthRevenue = Math.max(totalInvoicedRevenue, totalReceiptsRevenue);
 
   const currentMonthName = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -255,11 +374,21 @@ export default function DashboardPage() {
             <Briefcase className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-none">
-              Sales & Commercial Operations Dashboard
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-none">
+                Sales & Commercial Operations Dashboard
+              </h1>
+              {repFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                  <UserCheck className="w-3 h-3 text-blue-600" />
+                  {repFilter} (Live Filter)
+                </span>
+              )}
+            </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              Cool Technologies Enterprise CRM • Real-time Executive Overview &amp; Pipeline Intelligence
+              {repFilter === 'all'
+                ? 'Cool Technologies Enterprise CRM • Real-time Executive Overview & Pipeline Intelligence'
+                : `Showing live operational metrics, deals, tasks, and revenue for executive "${repFilter}"`}
             </p>
           </div>
         </div>
@@ -287,13 +416,24 @@ export default function DashboardPage() {
               className="bg-transparent text-slate-700 font-medium focus:outline-none cursor-pointer"
             >
               <option value="all">All Executives</option>
-              {(users || []).map((u) => (
+              {(allRegisteredUsers.length > 0 ? allRegisteredUsers : users || []).map((u) => (
                 <option key={u.id} value={u.name}>
-                  {u.name} ({u.role})
+                  {u.name} {u.role ? `(${u.role})` : ''}
                 </option>
               ))}
             </select>
           </div>
+
+          {repFilter !== 'all' && (
+            <button
+              type="button"
+              onClick={() => setRepFilter('all')}
+              className="px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold transition-colors cursor-pointer"
+              title="Reset to All Executives"
+            >
+              ✕ Reset
+            </button>
+          )}
 
           <Link href="/leads">
             <Button
