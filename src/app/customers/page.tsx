@@ -22,6 +22,7 @@ import {
   Tag,
   Eye,
   Edit2,
+  BookOpen,
   FileText,
   ShoppingCart,
   MapPin,
@@ -736,7 +737,7 @@ function CustomersContent() {
         </div>
 
         {/* 4. CEZCON DESKTOP DATA TABLE */}
-        <div className="overflow-x-auto w-full">
+        <div className="overflow-x-auto w-full min-h-[380px]">
           <table className="w-full text-left text-xs border-collapse min-w-[1050px]">
             <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
               <tr>
@@ -861,78 +862,82 @@ function CustomersContent() {
                       <td className="py-3 px-3 text-center relative">
                         <div className="relative inline-block text-left">
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setActionMenuId(isMenuOpen ? null : cust.id);
                             }}
-                            className="bg-[#0F2844] hover:bg-[#1E3A8A] text-white px-2 py-1 rounded text-xs flex items-center justify-center gap-1 shadow-2xs transition-colors"
+                            className="bg-[#008080] hover:bg-[#006666] text-white px-2 py-1 rounded text-xs flex items-center justify-center gap-1 shadow-2xs transition-colors cursor-pointer"
                           >
-                            <Settings className="w-3 h-3" />
-                            <ChevronDown className="w-2.5 h-2.5" />
+                            <Settings className="w-3.5 h-3.5" />
+                            <ChevronDown className="w-3 h-3" />
                           </button>
 
                           {isMenuOpen && (
                             <div
                               onClick={(e) => e.stopPropagation()}
-                              className="absolute right-0 top-full mt-1 w-44 bg-white rounded-md shadow-lg border border-slate-200 z-50 py-1 text-xs text-left"
+                              className="absolute right-0 top-full mt-1 w-56 bg-white rounded-md shadow-xl border border-slate-200 z-50 py-1.5 text-xs text-left"
                             >
                               <button
+                                type="button"
+                                onClick={() => {
+                                  setActionMenuId(null);
+                                  window.open(`/customers?id=${cust.id}`, '_blank');
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
+                              >
+                                <BookOpen className="w-4 h-4 text-slate-800 shrink-0" />
+                                <span>Open in new tab</span>
+                              </button>
+
+                              <button
+                                type="button"
                                 onClick={() => {
                                   setActionMenuId(null);
                                   setViewingCustomer(cust);
                                 }}
-                                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 text-slate-700"
+                                className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
                               >
-                                <Info className="w-3.5 h-3.5 text-blue-500" />
-                                <span>View Details</span>
+                                <BookOpen className="w-4 h-4 text-slate-800 shrink-0" />
+                                <span>View</span>
                               </button>
 
                               <button
+                                type="button"
+                                onClick={() => {
+                                  setActionMenuId(null);
+                                  setIsAssignModalOpen(true);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
+                              >
+                                <ExternalLink className="w-4 h-4 text-slate-800 shrink-0" />
+                                <span>Assign Customer/Prospect</span>
+                              </button>
+
+                              <button
+                                type="button"
                                 onClick={() => {
                                   setActionMenuId(null);
                                   setEditingCustomer(cust);
                                 }}
-                                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 text-slate-700"
+                                className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
                               >
-                                <Edit2 className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Edit Customer</span>
+                                <Edit2 className="w-4 h-4 text-slate-800 shrink-0" />
+                                <span>Edit</span>
                               </button>
 
                               <button
-                                onClick={() => {
-                                  setActionMenuId(null);
-                                  router.push(`/sales?action=new_quotation&customer=${encodeURIComponent(cust.customerName)}`);
-                                }}
-                                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 text-slate-700"
-                              >
-                                <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                                <span>Add Quotation</span>
-                              </button>
-
-                              <button
-                                onClick={() => {
-                                  setActionMenuId(null);
-                                  router.push(`/sales?tab=orders&action=new_order&customer=${encodeURIComponent(cust.customerName)}`);
-                                }}
-                                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 text-slate-700"
-                              >
-                                <ShoppingCart className="w-3.5 h-3.5 text-amber-600" />
-                                <span>Add Sales Order</span>
-                              </button>
-
-                              <div className="border-t border-slate-100 my-1" />
-
-                              <button
+                                type="button"
                                 onClick={() => {
                                   setActionMenuId(null);
                                   if (confirm(`Are you sure you want to delete customer "${cust.customerName}"?`)) {
                                     deleteCustomer(cust.id);
                                   }
                                 }}
-                                className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rose-50 text-rose-600 font-medium"
+                                className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                <span>Delete Customer</span>
+                                <Trash2 className="w-4 h-4 text-slate-800 shrink-0" />
+                                <span>Delete</span>
                               </button>
                             </div>
                           )}
