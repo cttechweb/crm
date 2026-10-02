@@ -178,6 +178,14 @@ export interface CrmCustomer {
   activeJobsCount?: number;
   slaLevel?: string;
   createdFromLeadId?: string;
+  parentCustomer?: string;
+  sourceName?: string;
+  employees?: string | number;
+  country?: string;
+  location?: string;
+  trn?: string;
+  comments?: string;
+  isSupplier?: boolean;
 }
 
 export interface CrmSalesOpportunity {
