@@ -45,6 +45,9 @@ import {
   Check,
   AlertCircle,
   TrendingUp,
+  Settings,
+  HelpCircle,
+  ArrowLeft,
 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import {
@@ -91,7 +94,7 @@ function SalesPipelineInner() {
                   ? 'delivery'
                   : rawTab;
 
-  const { salesOpportunities, addOpportunity } = useEnterpriseCrm();
+  const { salesOpportunities, addOpportunity, customers, campaigns, users } = useEnterpriseCrm();
 
   // Mobile Filter Accordion States
   const [showQuoteFiltersMobile, setShowQuoteFiltersMobile] = useState(false);
@@ -221,26 +224,41 @@ function SalesPipelineInner() {
   const [selectedOpportunity, setSelectedOpportunity] = useState<CrmSalesOpportunity | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Form State for Add Opportunity
+  // Form State for Add Opportunity (Matching Cezcon CRM spec)
   const [oppFormData, setOppFormData] = useState({
-    opportunityCode: 'CTEQ#' + Math.floor(7000 + Math.random() * 900),
-    title: '',
-    subtitle: '',
+    opportunityCode: 'CTEQ#' + Math.floor(7100 + Math.random() * 800),
+    opportunityDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
     customer: '',
     contactPerson: '',
     phone: '',
-    amount: 5000,
-    stage: 'Offer Sent' as DealStage,
-    probability: 50,
-    owner: 'Alex Rivera',
-    opportunityDate: '23-09-2026',
-    expectedClose: '30-09-2026',
-    classification: 'Corporate',
-    rating: 'Warm',
-    businessOpportunity: 'Water Coolers',
-    campaign: 'SIMPLE LIFE - 2025',
-    createdBy: 'Super Admin',
+    owner: 'Nafal',
+    title: '',
+    source: '',
+    sourceName: '',
+    rating: 'COLD' as 'COLD' | 'WARM' | 'HOT',
+    stage: 'Enquiry' as DealStage,
+    expectedClose: '',
+    amount: '' as any,
+    discount: '' as any,
+    vatType: 'With VAT' as 'With VAT' | 'Without VAT' | 'Zero VAT',
+    vatRate: 5,
+    adjustment: '' as any,
+    campaign: '',
+    businessOpportunity: '',
     tags: '',
+    deliveryDate: '',
+    lpoNumber: '',
+    lpoDate: '',
+    nextAction: '',
+    competitorsDetails: '',
+    probability: 10,
+    type: '',
+    comments: '',
+    location: '',
+    enquiryForm: false,
+    subtitle: '',
+    classification: 'Corporate',
+    createdBy: 'Super Admin',
   });
 
   // Form State for Quotation
@@ -347,31 +365,46 @@ function SalesPipelineInner() {
     e.preventDefault();
     if (!oppFormData.title || !oppFormData.customer) return;
 
+    const amt = Number(oppFormData.amount) || 0;
+    const disc = Number(oppFormData.discount) || 0;
+    const subtotal = Math.max(0, amt - disc);
+    const vatVal = oppFormData.vatType === 'With VAT' ? Math.round(subtotal * (Number(oppFormData.vatRate) / 100)) : 0;
+    const finalAmount = subtotal + vatVal + (Number(oppFormData.adjustment) || 0);
+
     addOpportunity({
+      opportunityCode: oppFormData.opportunityCode,
       title: oppFormData.title,
-      subtitle: oppFormData.subtitle,
+      subtitle: oppFormData.businessOpportunity || oppFormData.type || '',
       customer: oppFormData.customer,
       contactPerson: oppFormData.contactPerson,
       phone: oppFormData.phone,
-      amount: Number(oppFormData.amount),
+      amount: finalAmount > 0 ? finalAmount : amt,
       stage: oppFormData.stage,
-      probability: Number(oppFormData.probability),
-      owner: oppFormData.owner,
-      opportunityDate: oppFormData.opportunityDate,
+      probability: Number(oppFormData.probability) || 10,
+      owner: oppFormData.owner || 'Nafal',
+      opportunityDate: oppFormData.opportunityDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
       opportunityDateDaysAgo: '0 days',
-      expectedClose: oppFormData.expectedClose,
+      expectedClose: oppFormData.expectedClose || 'Pending',
       closeDateRemaining: '7 days',
       lastActivity: `${oppFormData.opportunityDate} 12:00:00 PM`,
       lastActivityRelative: 'Today',
-      classification: oppFormData.classification,
-      rating: oppFormData.rating,
+      classification: oppFormData.classification || 'Corporate',
+      rating: oppFormData.rating === 'COLD' ? 'Cold' : oppFormData.rating === 'WARM' ? 'Warm' : 'Hot',
       businessOpportunity: oppFormData.businessOpportunity,
       campaign: oppFormData.campaign,
       createdBy: oppFormData.createdBy,
       tags: oppFormData.tags ? oppFormData.tags.split(',').map((t) => t.trim()) : [],
     });
 
+    closeAddOpportunity();
+  };
+
+  const isAddOpen = isAddModalOpen || searchParams.get('action') === 'add';
+  const closeAddOpportunity = () => {
     setIsAddModalOpen(false);
+    if (searchParams.get('action') === 'add') {
+      router.push('/sales?tab=opportunities');
+    }
   };
 
   const handleCreateQuotation = (e: React.FormEvent) => {
@@ -408,51 +441,675 @@ function SalesPipelineInner() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans">
       {/* ========================================================================= */}
-      {/* VIEW 1: OPPORTUNITY TAB (Cezcon CRM Open Opportunities UI) */}
+      {/* VIEW 1: OPPORTUNITY TAB (Cezcon CRM Open Opportunities UI & Full Page Add Opportunity) */}
       {/* ========================================================================= */}
       {activeTab === 'opportunities' && (
         <div className="flex flex-col flex-1">
-          {/* Sub-Tabs Pills */}
-          <div className="bg-white border-b border-[#E2E8F0] px-4 py-2 flex items-center justify-between shadow-xs sticky top-0 z-30 overflow-x-auto">
-            <div className="flex items-center gap-1 min-w-max">
-              {subTabs.map((tab) => {
-                const isActive = activeSubTab === tab.id;
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => {
-                      setActiveSubTab(tab.id);
-                      setCurrentPage(1);
-                    }}
-                    className={cn(
-                      'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer border',
-                      isActive
-                        ? 'bg-[#E11D48] text-white border-[#E11D48] shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-                    )}
-                  >
-                    <Icon className={cn('w-3.5 h-3.5', isActive ? 'text-white' : 'text-slate-500')} />
-                    <span>{tab.label}</span>
-                    {tab.count !== undefined && (
-                      <span
+          {isAddOpen ? (
+            /* ── FULL PAGE ADD OPPORTUNITY VIEW (EXACT CEZCON CRM IMAGE 1) ── */
+            <div className="p-2 sm:p-4 flex-1 flex flex-col min-w-0 w-full">
+              <div className="bg-white border border-slate-200 rounded-sm shadow-xs overflow-hidden flex flex-col flex-1 text-xs font-sans">
+                {/* 1. Header Bar with Search/Add Opportunity title and + Customer / X buttons */}
+                <div className="bg-[#F8FAFC] border-b border-slate-200 px-4 py-2.5 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Search className="w-4 h-4 text-slate-500" />
+                    <span className="font-bold text-slate-800 text-[13px]">Add Opportunity</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href="/customers"
+                      className="bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-semibold px-2.5 py-1 rounded flex items-center gap-1 shadow-2xs transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Customer
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={closeAddOpportunity}
+                      className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-6 h-6 rounded flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
+                      title="Close"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Main Form Body (2-Column Grid) */}
+                <form onSubmit={handleCreateOpportunity} className="p-4 sm:p-6 flex-1 space-y-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-3.5 text-[11px]">
+                    {/* ── LEFT COLUMN ── */}
+                    <div className="space-y-3.5">
+                      {/* Customer Name */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">
+                          Customer Name <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          required
+                          value={oppFormData.customer}
+                          onChange={(e) => {
+                            const custName = e.target.value;
+                            const found = customers.find(
+                              (c) => (c.customerName || c.companyName) === custName
+                            );
+                            setOppFormData({
+                              ...oppFormData,
+                              customer: custName,
+                              contactPerson: found?.contactPerson || oppFormData.contactPerson,
+                              phone: found?.phone || oppFormData.phone,
+                            });
+                          }}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Select Customer</option>
+                          {customers.map((c) => (
+                            <option key={c.id} value={c.customerName || c.companyName}>
+                              {c.customerName || c.companyName}
+                            </option>
+                          ))}
+                          <option value="AL HABTOOR ENGINEERING">AL HABTOOR ENGINEERING</option>
+                          <option value="EMAAR PROPERTIES">EMAAR PROPERTIES</option>
+                          <option value="SMART GROUP OF COMPANIES">SMART GROUP OF COMPANIES</option>
+                        </select>
+                      </div>
+
+                      {/* Opportunity Owner */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">
+                          Opportunity Owner <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex-1 relative">
+                          <select
+                            required
+                            value={oppFormData.owner}
+                            onChange={(e) => setOppFormData({ ...oppFormData, owner: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded pl-7 pr-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="Nafal">Nafal</option>
+                            <option value="Muhammed Shemin">Muhammed Shemin</option>
+                            <option value="Muhammed Shibil">Muhammed Shibil</option>
+                            <option value="Afsal">Afsal</option>
+                            <option value="Shaheer">Shaheer</option>
+                            <option value="Muhammed Adhil">Muhammed Adhil</option>
+                            <option value="shameem">shameem</option>
+                            <option value="Arun">Arun</option>
+                            <option value="System Super Admin">System Super Admin</option>
+                          </select>
+                          <User className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      {/* Opportunity Title */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">
+                          Opportunity Title <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={oppFormData.title}
+                          onChange={(e) => setOppFormData({ ...oppFormData, title: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      {/* Source */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0 flex items-center gap-1">
+                          Source <HelpCircle className="w-3.5 h-3.5 text-slate-800 fill-slate-800 text-white" />
+                        </label>
+                        <select
+                          value={oppFormData.source}
+                          onChange={(e) => setOppFormData({ ...oppFormData, source: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Select Source</option>
+                          <option value="Direct Inquiry">Direct Inquiry</option>
+                          <option value="Google">Google</option>
+                          <option value="LinkedIn">LinkedIn</option>
+                          <option value="Referral">Referral</option>
+                          <option value="Cold Call">Cold Call</option>
+                          <option value="Website">Website</option>
+                          <option value="Exhibition">Exhibition</option>
+                          <option value="WhatsApp">WhatsApp</option>
+                        </select>
+                      </div>
+
+                      {/* Rating */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0 flex items-center gap-1">
+                          Rating <HelpCircle className="w-3.5 h-3.5 text-slate-800 fill-slate-800 text-white" />
+                        </label>
+                        <div className="flex-1 flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setOppFormData({ ...oppFormData, rating: 'COLD' })}
+                            className={cn(
+                              'px-3 py-1 text-[11px] font-bold rounded cursor-pointer transition-colors',
+                              oppFormData.rating === 'COLD'
+                                ? 'bg-[#0284C7] text-white shadow-2xs'
+                                : 'bg-slate-100 text-slate-600 border border-slate-300 hover:bg-slate-200'
+                            )}
+                          >
+                            COLD
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOppFormData({ ...oppFormData, rating: 'WARM' })}
+                            className={cn(
+                              'px-3 py-1 text-[11px] font-bold rounded cursor-pointer transition-colors',
+                              oppFormData.rating === 'WARM'
+                                ? 'bg-[#F59E0B] text-white shadow-2xs'
+                                : 'bg-slate-100 text-slate-600 border border-slate-300 hover:bg-slate-200'
+                            )}
+                          >
+                            WARM
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOppFormData({ ...oppFormData, rating: 'HOT' })}
+                            className={cn(
+                              'px-3 py-1 text-[11px] font-bold rounded cursor-pointer transition-colors',
+                              oppFormData.rating === 'HOT'
+                                ? 'bg-[#DC2626] text-white shadow-2xs'
+                                : 'bg-slate-100 text-slate-600 border border-slate-300 hover:bg-slate-200'
+                            )}
+                          >
+                            HOT
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Close Date */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">
+                          Close Date <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex-1 relative">
+                          <input
+                            type="text"
+                            required
+                            placeholder="Expected Closing Date"
+                            value={oppFormData.expectedClose}
+                            onChange={(e) => setOppFormData({ ...oppFormData, expectedClose: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded px-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                          <Calendar className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      {/* Discount */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Discount</label>
+                        <input
+                          type="number"
+                          value={oppFormData.discount}
+                          onChange={(e) => setOppFormData({ ...oppFormData, discount: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      {/* VAT */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">VAT</label>
+                        <div className="flex-1 grid grid-cols-2 gap-2">
+                          <div className="flex items-center border border-slate-300 rounded overflow-hidden bg-white">
+                            <input
+                              type="number"
+                              value={oppFormData.vatRate}
+                              onChange={(e) => setOppFormData({ ...oppFormData, vatRate: Number(e.target.value) })}
+                              className="w-full px-2 py-1.5 text-xs text-slate-800 focus:outline-none"
+                            />
+                            <span className="px-2 text-xs text-slate-500 font-semibold bg-slate-100 border-l border-slate-300 py-1.5">
+                              %
+                            </span>
+                          </div>
+                          <input
+                            type="text"
+                            readOnly
+                            placeholder="VAT Amount"
+                            value={
+                              oppFormData.vatType === 'With VAT' && oppFormData.amount
+                                ? `AED ${Math.round(
+                                    Math.max(0, (Number(oppFormData.amount) || 0) - (Number(oppFormData.discount) || 0)) *
+                                      ((Number(oppFormData.vatRate) || 5) / 100)
+                                  ).toLocaleString()}`
+                                : ''
+                            }
+                            className="bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-600 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Total Amount */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Total Amount</label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={
+                            oppFormData.amount
+                              ? `AED ${(
+                                  Math.max(0, (Number(oppFormData.amount) || 0) - (Number(oppFormData.discount) || 0)) +
+                                  (oppFormData.vatType === 'With VAT'
+                                    ? Math.round(
+                                        Math.max(0, (Number(oppFormData.amount) || 0) - (Number(oppFormData.discount) || 0)) *
+                                          ((Number(oppFormData.vatRate) || 5) / 100)
+                                      )
+                                    : 0) +
+                                  (Number(oppFormData.adjustment) || 0)
+                                ).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                              : ''
+                          }
+                          className="flex-1 bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none"
+                        />
+                      </div>
+
+                      {/* Business Opportunity */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Business Opportunity</label>
+                        <select
+                          value={oppFormData.businessOpportunity}
+                          onChange={(e) => setOppFormData({ ...oppFormData, businessOpportunity: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Select Business Opportunity</option>
+                          <option value="Water Coolers">Water Coolers</option>
+                          <option value="HVAC Units">HVAC Units</option>
+                          <option value="Chillers & VRF">Chillers & VRF</option>
+                          <option value="Cold Storage">Cold Storage</option>
+                          <option value="Duct Cleaning">Duct Cleaning</option>
+                          <option value="Maintenance AMC">Maintenance AMC</option>
+                          <option value="Spare Parts">Spare Parts</option>
+                          <option value="Commercial Contracting">Commercial Contracting</option>
+                        </select>
+                      </div>
+
+                      {/* Delivery Date */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Delivery Date</label>
+                        <div className="flex-1 relative">
+                          <input
+                            type="text"
+                            placeholder="DD-MM-YYYY"
+                            value={oppFormData.deliveryDate}
+                            onChange={(e) => setOppFormData({ ...oppFormData, deliveryDate: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded px-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                          <Calendar className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      {/* LPO Date */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">LPO Date</label>
+                        <div className="flex-1 relative">
+                          <input
+                            type="text"
+                            placeholder="DD-MM-YYYY"
+                            value={oppFormData.lpoDate}
+                            onChange={(e) => setOppFormData({ ...oppFormData, lpoDate: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded px-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                          <Calendar className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      {/* Competitors Details */}
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0 pt-1.5">Competitors Details</label>
+                        <textarea
+                          rows={2}
+                          value={oppFormData.competitorsDetails}
+                          onChange={(e) => setOppFormData({ ...oppFormData, competitorsDetails: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
+                        />
+                      </div>
+
+                      {/* Type */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Type</label>
+                        <select
+                          value={oppFormData.type}
+                          onChange={(e) => setOppFormData({ ...oppFormData, type: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Select Type</option>
+                          <option value="New Business">New Business</option>
+                          <option value="Existing Customer">Existing Customer</option>
+                          <option value="Renewal">Renewal</option>
+                          <option value="Project Tender">Project Tender</option>
+                          <option value="AMC">AMC</option>
+                        </select>
+                      </div>
+
+                      {/* Location */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Location</label>
+                        <div className="flex-1 relative">
+                          <input
+                            type="text"
+                            placeholder="Search location"
+                            value={oppFormData.location}
+                            onChange={(e) => setOppFormData({ ...oppFormData, location: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded px-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                          {oppFormData.location ? (
+                            <button
+                              type="button"
+                              onClick={() => setOppFormData({ ...oppFormData, location: '' })}
+                              className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2 pointer-events-none" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── RIGHT COLUMN ── */}
+                    <div className="space-y-3.5">
+                      {/* Opportunity Number */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">
+                          Opportunity Number <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex-1 flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            required
+                            value={oppFormData.opportunityCode}
+                            onChange={(e) => setOppFormData({ ...oppFormData, opportunityCode: e.target.value })}
+                            className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:border-blue-500"
+                          />
+                          <button
+                            type="button"
+                            title="Opportunity Number Settings"
+                            onClick={() =>
+                              setOppFormData({
+                                ...oppFormData,
+                                opportunityCode: 'CTEQ#' + Math.floor(7100 + Math.random() * 800),
+                              })
+                            }
+                            className="p-1.5 bg-cyan-50 border border-cyan-200 text-cyan-600 rounded hover:bg-cyan-100 transition-colors cursor-pointer"
+                          >
+                            <Settings className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Opportunity Date */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Opportunity Date</label>
+                        <div className="flex-1 relative">
+                          <input
+                            type="text"
+                            value={oppFormData.opportunityDate}
+                            onChange={(e) => setOppFormData({ ...oppFormData, opportunityDate: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded px-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                          <Calendar className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      {/* Point of Contact */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Point of Contact</label>
+                        <select
+                          value={oppFormData.contactPerson}
+                          onChange={(e) => setOppFormData({ ...oppFormData, contactPerson: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">{oppFormData.customer ? 'Select Point of Contact' : 'Select Customer First'}</option>
+                          {oppFormData.contactPerson && (
+                            <option value={oppFormData.contactPerson}>{oppFormData.contactPerson}</option>
+                          )}
+                          <option value="Primary Contact">Primary Contact</option>
+                          <option value="Managing Director">Managing Director</option>
+                          <option value="Procurement Head">Procurement Head</option>
+                          <option value="Facility Manager">Facility Manager</option>
+                        </select>
+                      </div>
+
+                      {/* Source Name */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Source Name</label>
+                        <input
+                          type="text"
+                          placeholder="Name of the source. Eg Google, LinkedIn"
+                          value={oppFormData.sourceName}
+                          onChange={(e) => setOppFormData({ ...oppFormData, sourceName: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      {/* Stage */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Stage</label>
+                        <select
+                          value={oppFormData.stage}
+                          onChange={(e) => setOppFormData({ ...oppFormData, stage: e.target.value as DealStage })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="Enquiry">Enquiry</option>
+                          <option value="Qualification">Qualification</option>
+                          <option value="Offer Sent">Offer Sent</option>
+                          <option value="Negotiation">Negotiation</option>
+                          <option value="Won">Won</option>
+                          <option value="Lost">Lost</option>
+                        </select>
+                      </div>
+
+                      {/* Amount */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Amount</label>
+                        <input
+                          type="number"
+                          placeholder="Proposed Amount"
+                          value={oppFormData.amount}
+                          onChange={(e) => setOppFormData({ ...oppFormData, amount: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      {/* VAT Type */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">VAT Type</label>
+                        <select
+                          value={oppFormData.vatType}
+                          onChange={(e) => setOppFormData({ ...oppFormData, vatType: e.target.value as any })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="With VAT">With VAT</option>
+                          <option value="Without VAT">Without VAT</option>
+                          <option value="Zero VAT">Zero VAT</option>
+                        </select>
+                      </div>
+
+                      {/* Adjustment */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Adjustment</label>
+                        <input
+                          type="number"
+                          value={oppFormData.adjustment}
+                          onChange={(e) => setOppFormData({ ...oppFormData, adjustment: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      {/* Campaign */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0 flex items-center gap-1">
+                          Campaign <HelpCircle className="w-3.5 h-3.5 text-slate-800 fill-slate-800 text-white" />
+                        </label>
+                        <select
+                          value={oppFormData.campaign}
+                          onChange={(e) => setOppFormData({ ...oppFormData, campaign: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="">Select Campaign</option>
+                          {campaigns.map((c) => (
+                            <option key={c.id} value={c.name}>
+                              {c.name}
+                            </option>
+                          ))}
+                          <option value="HVAC Commercial 2026">HVAC Commercial 2026</option>
+                          <option value="Google Ads Search">Google Ads Search</option>
+                          <option value="Email Outreach">Email Outreach</option>
+                        </select>
+                      </div>
+
+                      {/* Opportunity Tags */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Opportunity Tags</label>
+                        <input
+                          type="text"
+                          placeholder="Keywords attached to the opportunity"
+                          value={oppFormData.tags}
+                          onChange={(e) => setOppFormData({ ...oppFormData, tags: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      {/* LPO Number */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">LPO Number</label>
+                        <input
+                          type="text"
+                          value={oppFormData.lpoNumber}
+                          onChange={(e) => setOppFormData({ ...oppFormData, lpoNumber: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      {/* Next Action */}
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0 pt-1.5">Next Action</label>
+                        <textarea
+                          rows={2}
+                          value={oppFormData.nextAction}
+                          onChange={(e) => setOppFormData({ ...oppFormData, nextAction: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
+                        />
+                      </div>
+
+                      {/* Win Probability */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Win Probability</label>
+                        <div className="flex-1 flex items-center gap-3">
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="5"
+                            value={oppFormData.probability}
+                            onChange={(e) => setOppFormData({ ...oppFormData, probability: Number(e.target.value) })}
+                            className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#F97316]"
+                          />
+                          <span className="px-2.5 py-0.5 bg-[#F97316] text-white text-[11px] font-bold rounded min-w-[42px] text-center shadow-2xs">
+                            {oppFormData.probability}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Comments */}
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0 pt-1.5">Comments</label>
+                        <textarea
+                          rows={2}
+                          value={oppFormData.comments}
+                          onChange={(e) => setOppFormData({ ...oppFormData, comments: e.target.value })}
+                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Bottom Action Bar */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 mt-2 border-t border-slate-200">
+                    <div className="flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setOppFormData({ ...oppFormData, enquiryForm: !oppFormData.enquiryForm })}
                         className={cn(
-                          'text-[10px] px-1.5 py-0.2 rounded-full font-bold',
-                          isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                          'w-9 h-5 rounded-full transition-colors relative cursor-pointer',
+                          oppFormData.enquiryForm ? 'bg-blue-600' : 'bg-slate-300'
                         )}
                       >
-                        {tab.count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+                        <span
+                          className={cn(
+                            'w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform shadow-2xs',
+                            oppFormData.enquiryForm ? 'left-4.5' : 'left-0.5'
+                          )}
+                        />
+                      </button>
+                      <span className="text-xs font-bold text-blue-600">Enquiry Form</span>
+                    </div>
 
-          {/* Main Content with Filter Sidebar */}
-          <div className="flex flex-col lg:flex-row flex-1 p-3 sm:p-4 gap-4 items-start w-full min-w-0">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="submit"
+                        className="px-6 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-semibold rounded shadow-xs cursor-pointer transition-colors"
+                      >
+                        Submit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={closeAddOpportunity}
+                        className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded flex items-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" /> Back
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </div>
+          ) : (
+            /* ── NORMAL OPPORTUNITY LIST VIEW ── */
+            <>
+              {/* Sub-Tabs Pills */}
+              <div className="bg-white border-b border-[#E2E8F0] px-4 py-2 flex items-center justify-between shadow-xs sticky top-0 z-30 overflow-x-auto">
+                <div className="flex items-center gap-1 min-w-max">
+                  {subTabs.map((tab) => {
+                    const isActive = activeSubTab === tab.id;
+                    const Icon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveSubTab(tab.id);
+                          setCurrentPage(1);
+                        }}
+                        className={cn(
+                          'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer border',
+                          isActive
+                            ? 'bg-[#E11D48] text-white border-[#E11D48] shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                        )}
+                      >
+                        <Icon className={cn('w-3.5 h-3.5', isActive ? 'text-white' : 'text-slate-500')} />
+                        <span>{tab.label}</span>
+                        {tab.count !== undefined && (
+                          <span
+                            className={cn(
+                              'text-[10px] px-1.5 py-0.2 rounded-full font-bold',
+                              isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                            )}
+                          >
+                            {tab.count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Main Content with Filter Sidebar */}
+              <div className="flex flex-col lg:flex-row flex-1 p-3 sm:p-4 gap-4 items-start w-full min-w-0">
             {/* Left Collapsible Filter Panel */}
             {showFilterPanel && (
               <aside className="w-full lg:w-64 shrink-0 bg-white border border-[#E2E8F0] rounded-sm p-3 shadow-xs text-xs space-y-3">
@@ -645,7 +1302,10 @@ function SalesPipelineInner() {
 
                   <button
                     type="button"
-                    onClick={() => setIsAddModalOpen(true)}
+                    onClick={() => {
+                      setIsAddModalOpen(true);
+                      router.push('/sales?tab=opportunities&action=add');
+                    }}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -1001,8 +1661,10 @@ function SalesPipelineInner() {
               </div>
             </div>
           </div>
-        </div>
+        </>
       )}
+    </div>
+  )}
 
       {/* ========================================================================= */}
       {/* VIEW 2: QUOTATIONS TAB (Exact Cezcon CRM Quotation Layout) */}
@@ -4948,112 +5610,6 @@ function SalesPipelineInner() {
         </Modal>
       )}
 
-      {/* CREATE OPPORTUNITY MODAL */}
-      <Modal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        title="Create New Sales Opportunity"
-        maxWidth="lg"
-      >
-        <form onSubmit={handleCreateOpportunity} className="space-y-4 text-xs">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Opportunity Code</label>
-              <input
-                type="text"
-                value={oppFormData.opportunityCode}
-                disabled
-                className="w-full px-3 py-1.5 border border-slate-300 rounded bg-slate-100 text-slate-600 font-bold"
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Opportunity Title *</label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. WATER COOLERS 500L"
-                value={oppFormData.title}
-                onChange={(e) => setOppFormData({ ...oppFormData, title: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Customer / Company *</label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. SMART GROUP OF COMPANIES"
-                value={oppFormData.customer}
-                onChange={(e) => setOppFormData({ ...oppFormData, customer: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Contact Person</label>
-              <input
-                type="text"
-                placeholder="e.g. Ms. SUSHMITA"
-                value={oppFormData.contactPerson}
-                onChange={(e) => setOppFormData({ ...oppFormData, contactPerson: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Phone / WhatsApp</label>
-              <input
-                type="text"
-                placeholder="+971565475071"
-                value={oppFormData.phone}
-                onChange={(e) => setOppFormData({ ...oppFormData, phone: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Amount (AED) *</label>
-              <input
-                type="number"
-                required
-                value={oppFormData.amount}
-                onChange={(e) => setOppFormData({ ...oppFormData, amount: Number(e.target.value) })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Win Probability (%)</label>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={oppFormData.probability}
-                onChange={(e) => setOppFormData({ ...oppFormData, probability: Number(e.target.value) })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-            <button
-              type="button"
-              onClick={() => setIsAddModalOpen(false)}
-              className="px-4 py-2 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded font-bold cursor-pointer shadow-xs"
-            >
-              Create Opportunity
-            </button>
-          </div>
-        </form>
-      </Modal>
     </div>
   );
 }
