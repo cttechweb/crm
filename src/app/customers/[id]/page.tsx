@@ -1264,38 +1264,77 @@ export default function CustomerDetailPage({ params }: PageProps) {
     </>
   )}
 
-      {/* ── ASSIGN CUSTOMER MODAL ── */}
+      {/* ── ASSIGN CUSTOMER MODAL (EXACT CEZCON CRM IMAGE 1) ── */}
       {isAssignModalOpen && (
-        <Modal
-          isOpen={isAssignModalOpen}
-          onClose={() => setIsAssignModalOpen(false)}
-          title={`Assign Customer: ${customer.customerName}`}
-        >
-          <div className="space-y-4 text-xs">
-            <Select
-              label="Select Assigned Account Executive"
-              value={assignUser}
-              onChange={(e) => setAssignUser(e.target.value)}
-              options={[
-                { label: 'MUHAMMED AHSAN P V', value: 'MUHAMMED AHSAN P V' },
-                { label: 'Nafal', value: 'Nafal' },
-                { label: 'Muhammed Shemin', value: 'Muhammed Shemin' },
-                { label: 'Muhammed Shibil', value: 'Muhammed Shibil' },
-                { label: 'Afsal', value: 'Afsal' },
-                { label: 'Shaheer', value: 'Shaheer' },
-                { label: 'Alex Rivera', value: 'Alex Rivera' },
-              ]}
-            />
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <Button type="button" variant="outline" size="sm" onClick={() => setIsAssignModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="button" variant="primary" size="sm" className="bg-[#0B2A4A] text-white" onClick={handleAssign}>
-                Confirm Assignment
-              </Button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-md shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between bg-white">
+              <h3 className="text-sm font-bold text-slate-800 tracking-tight">
+                Assign Customer/Prospect
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsAssignModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 bg-white">
+              <div className="flex items-center gap-4 text-xs">
+                <label className="w-24 text-xs font-semibold text-slate-700 shrink-0">
+                  Assign To
+                </label>
+                <div className="flex-1 relative">
+                  <select
+                    value={assignUser}
+                    onChange={(e) => setAssignUser(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs cursor-pointer"
+                  >
+                    {users.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name}
+                      </option>
+                    ))}
+                    <option value="JISMON JOSE">JISMON JOSE</option>
+                    <option value="MUHAMMED AHSAN P V">MUHAMMED AHSAN P V</option>
+                    <option value="Muhammed Adhil">Muhammed Adhil</option>
+                    <option value="shameem">shameem</option>
+                    <option value="Alex Rivera">Alex Rivera</option>
+                    <option value="Nafal">Nafal</option>
+                    <option value="Super Admin">Super Admin</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3 bg-[#F8FAFC] border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsAssignModalOpen(false)}
+                className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (customer) {
+                    updateCustomer(customer.id, { owner: assignUser });
+                  }
+                  setIsAssignModalOpen(false);
+                }}
+                className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Update
+              </button>
             </div>
           </div>
-        </Modal>
+        </div>
       )}
     </div>
   );
