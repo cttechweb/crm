@@ -135,8 +135,23 @@ export function UsersTab({
     'Field Service Technician',
   ];
 
+  const [profileOptionsList, setProfileOptionsList] = useState<string[]>(PROFILE_OPTIONS);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
+  const [isAddingNewProfile, setIsAddingNewProfile] = useState(false);
+  const [newProfileInput, setNewProfileInput] = useState('');
+
+  const INITIAL_BUSINESS_OPPORTUNITIES = [
+    'None selected',
+    'All Works',
+    'HVAC Systems',
+    'Chiller Maintenance',
+    'Duct Cleaning',
+    'Facility Management',
+  ];
+  const [businessOpportunitiesList, setBusinessOpportunitiesList] = useState<string[]>(INITIAL_BUSINESS_OPPORTUNITIES);
+  const [isAddingNewOpportunity, setIsAddingNewOpportunity] = useState(false);
+  const [newOpportunityInput, setNewOpportunityInput] = useState('');
 
   const [designationsList, setDesignationsList] = useState<string[]>(INITIAL_DESIGNATIONS);
   const [isDesignationDropdownOpen, setIsDesignationDropdownOpen] = useState(false);
@@ -343,6 +358,12 @@ export function UsersTab({
   }, [isManagerSession, managerDeptType]);
 
   const [profilesList, setProfilesList] = useState(CEZCON_PROFILES_DATA);
+
+  const filteredProfileOptions = useMemo(() => {
+    if (!profileSearchQuery.trim()) return profileOptionsList;
+    const q = profileSearchQuery.toLowerCase();
+    return profileOptionsList.filter((p) => p.toLowerCase().includes(q));
+  }, [profileSearchQuery, profileOptionsList]);
 
   const availableManagers = useMemo(() => {
     return cezconUsersList
@@ -1654,9 +1675,79 @@ export function UsersTab({
               {/* Right Column */}
               <div className="space-y-3.5">
                 <div className="relative">
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    Profile <span className="text-red-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-medium text-slate-700">
+                      Profile <span className="text-red-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingNewProfile(true);
+                        setNewProfileInput('');
+                      }}
+                      className="text-xs text-[#1677FF] hover:underline font-semibold cursor-pointer flex items-center gap-0.5"
+                    >
+                      + Add New
+                    </button>
+                  </div>
+
+                  {isAddingNewProfile && (
+                    <div className="mb-2 p-2 bg-slate-50 border border-slate-300 rounded text-xs space-y-1.5 animate-in fade-in">
+                      <span className="text-[11px] font-semibold text-slate-700">Add New Profile:</span>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={newProfileInput}
+                          onChange={(e) => setNewProfileInput(e.target.value)}
+                          placeholder="e.g. Finance Specialist"
+                          className="flex-1 bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (newProfileInput.trim()) {
+                                const val = newProfileInput.trim();
+                                if (!profileOptionsList.includes(val)) {
+                                  setProfileOptionsList([...profileOptionsList, val]);
+                                }
+                                setUserFormData({ ...userFormData, profile: val });
+                                setIsAddingNewProfile(false);
+                                setNewProfileInput('');
+                              }
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newProfileInput.trim()) {
+                              const val = newProfileInput.trim();
+                              if (!profileOptionsList.includes(val)) {
+                                setProfileOptionsList([...profileOptionsList, val]);
+                              }
+                              setUserFormData({ ...userFormData, profile: val });
+                              setIsAddingNewProfile(false);
+                              setNewProfileInput('');
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-[#1677FF] hover:bg-[#0958d9] text-white rounded font-semibold text-xs transition-colors cursor-pointer"
+                        >
+                          Add
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingNewProfile(false);
+                            setNewProfileInput('');
+                          }}
+                          className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1833,25 +1924,96 @@ export function UsersTab({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-medium text-slate-700">Business Opportunity</span>
-                    <label className="text-xs text-slate-600 flex items-center gap-1 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={userFormData.businessOpportunityAll}
-                        onChange={(e) => setUserFormData({ ...userFormData, businessOpportunityAll: e.target.checked })}
-                        className="w-3.5 h-3.5 rounded border-slate-300 text-sky-600"
-                      />
-                      <span>All</span>
-                    </label>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingNewOpportunity(true);
+                          setNewOpportunityInput('');
+                        }}
+                        className="text-xs text-[#1677FF] hover:underline font-semibold cursor-pointer flex items-center gap-0.5"
+                      >
+                        + Add New
+                      </button>
+                      <label className="text-xs text-slate-600 flex items-center gap-1 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={userFormData.businessOpportunityAll}
+                          onChange={(e) => setUserFormData({ ...userFormData, businessOpportunityAll: e.target.checked })}
+                          className="w-3.5 h-3.5 rounded border-slate-300 text-sky-600"
+                        />
+                        <span>All</span>
+                      </label>
+                    </div>
                   </div>
+
+                  {isAddingNewOpportunity && (
+                    <div className="mb-2 p-2 bg-slate-50 border border-slate-300 rounded text-xs space-y-1.5 animate-in fade-in">
+                      <span className="text-[11px] font-semibold text-slate-700">Add New Business Opportunity:</span>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={newOpportunityInput}
+                          onChange={(e) => setNewOpportunityInput(e.target.value)}
+                          placeholder="e.g. Fire Fighting Systems"
+                          className="flex-1 bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (newOpportunityInput.trim()) {
+                                const val = newOpportunityInput.trim();
+                                if (!businessOpportunitiesList.includes(val)) {
+                                  setBusinessOpportunitiesList([...businessOpportunitiesList, val]);
+                                }
+                                setUserFormData({ ...userFormData, businessOpportunity: val });
+                                setIsAddingNewOpportunity(false);
+                                setNewOpportunityInput('');
+                              }
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newOpportunityInput.trim()) {
+                              const val = newOpportunityInput.trim();
+                              if (!businessOpportunitiesList.includes(val)) {
+                                setBusinessOpportunitiesList([...businessOpportunitiesList, val]);
+                              }
+                              setUserFormData({ ...userFormData, businessOpportunity: val });
+                              setIsAddingNewOpportunity(false);
+                              setNewOpportunityInput('');
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-[#1677FF] hover:bg-[#0958d9] text-white rounded font-semibold text-xs transition-colors cursor-pointer"
+                        >
+                          Add
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingNewOpportunity(false);
+                            setNewOpportunityInput('');
+                          }}
+                          className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <select
                     value={userFormData.businessOpportunity}
                     onChange={(e) => setUserFormData({ ...userFormData, businessOpportunity: e.target.value })}
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-700 cursor-pointer"
                   >
-                    <option value="None">None selected</option>
-                    <option value="All Works">All Works</option>
-                    <option value="HVAC Systems">HVAC Systems</option>
-                    <option value="Chiller Maintenance">Chiller Maintenance</option>
+                    {businessOpportunitiesList.map((opp) => (
+                      <option key={opp} value={opp}>
+                        {opp}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
