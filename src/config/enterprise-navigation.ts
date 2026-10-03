@@ -28,6 +28,7 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
     path: '/tasks',
     iconName: 'CheckSquare',
   },
+  /* Temporarily hidden: Marketing
   {
     id: 'marketing',
     label: 'Marketing',
@@ -43,6 +44,7 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Campaign Reports', href: '/marketing?tab=reports', iconName: 'FileText' },
     ],
   },
+  */
   {
     id: 'leads',
     label: 'Lead',
@@ -82,6 +84,7 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Delivery Note', href: '/sales?tab=delivery', iconName: 'Table' },
     ],
   },
+  /* Temporarily hidden: Purchase
   {
     id: 'purchase',
     label: 'Purchase',
@@ -99,6 +102,7 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Manufacturing', href: '/purchase?tab=manufacturing', iconName: 'Factory' },
     ],
   },
+  */
   {
     id: 'reports',
     label: 'Report',
@@ -215,6 +219,7 @@ export const MANAGER_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Task Reports', href: '/manager/reports?type=tasks', iconName: 'FileText' },
     ],
   },
+  /* Temporarily hidden: Marketing
   {
     id: 'manager-marketing',
     label: 'Marketing',
@@ -230,6 +235,7 @@ export const MANAGER_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Campaign Reports', href: '/manager/marketing?tab=reports', iconName: 'FileText' },
     ],
   },
+  */
   {
     id: 'manager-leads',
     label: 'Lead',
@@ -281,6 +287,7 @@ export const MANAGER_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Sales Reports', href: '/manager/reports?type=sales', iconName: 'BarChart3' },
     ],
   },
+  /* Temporarily hidden: Purchase
   {
     id: 'manager-purchase',
     label: 'Purchase',
@@ -298,6 +305,7 @@ export const MANAGER_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Purchase Reports', href: '/manager/reports?type=purchase', iconName: 'FileText' },
     ],
   },
+  */
   {
     id: 'manager-reports',
     label: 'Report',

@@ -36,6 +36,7 @@ import { Modal } from '@/components/ui/Modal';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { CezconUserItem, CezconProfileItem } from '@/types/settings';
 import { CEZCON_PROFILES_DATA } from '@/data/settingsMockData';
+import { createFirebaseAuthUser } from '@/services/firebaseAuthService';
 
 const COUNTRY_CODES = [
   { code: '+971', country: 'United Arab Emirates', flag: '🇦🇪', iso: 'AE', minDigits: 9, maxDigits: 9, placeholder: '50 123 4567' },
@@ -75,6 +76,7 @@ export function UsersTab({
   const [assignWorkerUser, setAssignWorkerUser] = useState<CezconUserItem | null>(null);
   const [assignWorkerTab, setAssignWorkerTab] = useState<'NEW' | 'EXISTING'>('NEW');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isCreatingFirebaseUser, setIsCreatingFirebaseUser] = useState(false);
 
   const [workerFormData, setWorkerFormData] = useState({
     workerCode: '',
@@ -928,9 +930,14 @@ export function UsersTab({
     setIsAddUserModalOpen(true);
   };
 
-  const handleCezconAddUser = (e: React.FormEvent) => {
+  const handleCezconAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userFormData.name.trim() || !userFormData.username.trim() || !userFormData.password.trim()) {
+      return;
+    }
+
+    if (userFormData.password.trim().length < 6) {
+      alert('Validation Error: Password must be at least 6 characters for Firebase Authentication.');
       return;
     }
 
@@ -1011,6 +1018,30 @@ export function UsersTab({
       }
     }
 
+    // Automatically create user in Firebase Auth if it's a new user registration
+    let firebaseUid: string | undefined = undefined;
+    if (!editingUserId) {
+      setIsCreatingFirebaseUser(true);
+      try {
+        const fbResult = await createFirebaseAuthUser(
+          userEmail,
+          userFormData.password.trim(),
+          userFormData.name.trim()
+        );
+        if (fbResult.success) {
+          firebaseUid = fbResult.uid;
+        } else if (fbResult.alreadyExists) {
+          console.info('User already registered in Firebase Auth, linking CRM profile.');
+        } else if (fbResult.error) {
+          console.warn('Firebase Auth Registration Warning:', fbResult.error);
+        }
+      } catch (fbErr: any) {
+        console.error('Firebase user creation failed:', fbErr);
+      } finally {
+        setIsCreatingFirebaseUser(false);
+      }
+    }
+
     if (editingUserId) {
       let currentList: CezconUserItem[] = [];
       try {
@@ -1069,6 +1100,7 @@ export function UsersTab({
         email: userEmail,
         username: fullUsername,
         password: userFormData.password.trim(),
+        firebaseUid: firebaseUid,
         profileType: profileName,
         managerType: isManager ? userFormData.managerType : undefined,
         employeeType: isEmployee ? resolvedEmployeeType : undefined,
@@ -1616,27 +1648,7 @@ export function UsersTab({
                   <p className="text-[10px] text-slate-400 mt-1">Select date of birth (Format: DD-MM-YYYY)</p>
                 </div>
 
-                <div className="space-y-2 pt-2">
-                  <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 font-medium">
-                    <input
-                      type="checkbox"
-                      checked={userFormData.isWorker}
-                      onChange={(e) => setUserFormData({ ...userFormData, isWorker: e.target.checked })}
-                      className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-0"
-                    />
-                    <span>Is He/She is a worker?</span>
-                  </label>
 
-                  <label className="flex items-center gap-2 cursor-pointer select-none text-slate-700 font-medium">
-                    <input
-                      type="checkbox"
-                      checked={userFormData.monthlyTargets}
-                      onChange={(e) => setUserFormData({ ...userFormData, monthlyTargets: e.target.checked })}
-                      className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-0"
-                    />
-                    <span>Monthly Targets</span>
-                  </label>
-                </div>
               </div>
 
               {/* Right Column */}
@@ -1970,69 +1982,7 @@ export function UsersTab({
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1 flex items-center gap-1">
-                    <span className="w-3.5 h-3.5 rounded-full border border-slate-400 text-slate-400 inline-flex items-center justify-center text-[9px] font-bold">i</span> Change Seal &amp; Signature
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <div className="w-14 h-16 bg-[#F8FAFC] border border-slate-300 rounded flex items-center justify-center text-slate-400">
-                      <FileText className="w-6 h-6 text-slate-400" />
-                    </div>
-                    <label className="px-3 py-1.5 rounded bg-[#737373] hover:bg-[#525252] text-white text-xs font-medium cursor-pointer shadow-xs transition-colors">
-                      Choose Image
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = () => {
-                              setUserFormData((prev) => ({ ...prev, signatureImage: reader.result as string }));
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1 flex items-center gap-1">
-                    <span className="w-3.5 h-3.5 rounded-full border border-slate-400 text-slate-400 inline-flex items-center justify-center text-[9px] font-bold">i</span> Login Permission
-                  </label>
-                  <div className="flex items-center gap-4 text-xs text-slate-700 pt-0.5">
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="loginPerm"
-                        checked={userFormData.loginPermission === 'Web Only'}
-                        onChange={() => setUserFormData({ ...userFormData, loginPermission: 'Web Only' })}
-                      />
-                      <span>Web Only</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="loginPerm"
-                        checked={userFormData.loginPermission === 'Mobile Only'}
-                        onChange={() => setUserFormData({ ...userFormData, loginPermission: 'Mobile Only' })}
-                      />
-                      <span>Mobile Only</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="loginPerm"
-                        checked={userFormData.loginPermission === 'Web & Mobile'}
-                        onChange={() => setUserFormData({ ...userFormData, loginPermission: 'Web & Mobile' })}
-                      />
-                      <span>Web &amp; Mobile</span>
-                    </label>
-                  </div>
-                </div>
 
                 <div className="flex items-center justify-between py-1">
                   <span className="text-xs font-medium text-slate-700">Sales Visit Add Permission</span>
@@ -2377,9 +2327,19 @@ export function UsersTab({
               <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 col-span-1 lg:col-span-2">
                 <button
                   type="submit"
-                  className="px-5 py-1.5 rounded bg-[#002B49] hover:bg-[#001D33] text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                  disabled={isCreatingFirebaseUser}
+                  className={`px-5 py-1.5 rounded bg-[#002B49] hover:bg-[#001D33] text-white text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    isCreatingFirebaseUser ? 'opacity-70 cursor-not-allowed' : ''
+                  }`}
                 >
-                  Submit
+                  {isCreatingFirebaseUser ? (
+                    <>
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Saving & Registering in Firebase...</span>
+                    </>
+                  ) : (
+                    <span>Submit</span>
+                  )}
                 </button>
                 <button
                   type="button"
