@@ -595,13 +595,10 @@ export function UsersTab({
       const mergedUsers = Array.from(userMap.values());
       setCezconUsersList(mergedUsers);
 
-      // Only write to localStorage if there are new merged items to avoid race conditions
       try {
-        if (mergedUsers.length > cezconList.length) {
-          localStorage.setItem('cezcon_crm_users_list', JSON.stringify(mergedUsers));
-        }
+        localStorage.setItem('cezcon_crm_users_list', JSON.stringify(mergedUsers));
       } catch (err) {
-        console.error(err);
+        console.error('Error saving merged users:', err);
       }
     } catch (e) {
       console.error('Error loading unified users:', e);
@@ -717,15 +714,20 @@ export function UsersTab({
     // When logged in as Manager: only display team members (Employees, Workers) under their department
     if (isManagerSession) {
       const isTeam =
-        u.profileType?.toLowerCase().includes('employee') ||
-        u.profileType?.toLowerCase().includes('worker') ||
-        u.profileType?.toLowerCase().includes('service');
+        (u.profileType || '').toLowerCase().includes('employee') ||
+        (u.profileType || '').toLowerCase().includes('worker') ||
+        (u.profileType || '').toLowerCase().includes('service') ||
+        (u.profileType || '').toLowerCase().includes('sales') ||
+        (u.profileType || '').toLowerCase().includes('marketing') ||
+        (u.role || '').toLowerCase() === 'employee' ||
+        (u.role || '').toLowerCase() === 'worker' ||
+        !!u.employeeType;
       if (!isTeam) return false;
 
-      // STRICT: Only show employees whose department matches this manager's department
+      // Only show employees whose department matches this manager's department
       if (managerDeptType) {
-        const uType = (u.employeeType || u.profileType || '').toLowerCase();
-        const deptKey = managerDeptType.toLowerCase().replace(' employee', '');
+        const uType = (u.employeeType || u.profileType || u.department || '').toLowerCase();
+        const deptKey = managerDeptType.toLowerCase().replace(' employee', '').trim();
         if (!uType.includes(deptKey)) return false;
       }
     }
@@ -756,7 +758,12 @@ export function UsersTab({
       userStatusFilter === 'All' ? true : u.status.toLowerCase() === userStatusFilter.toLowerCase();
 
     const matchesProfile =
-      userProfileFilter === 'All' ? true : u.profileType.toLowerCase() === userProfileFilter.toLowerCase();
+      userProfileFilter === 'All'
+        ? true
+        : (u.profileType && u.profileType.toLowerCase().includes(userProfileFilter.toLowerCase())) ||
+          (u.employeeType && u.employeeType.toLowerCase().includes(userProfileFilter.toLowerCase())) ||
+          (u.managerType && u.managerType.toLowerCase().includes(userProfileFilter.toLowerCase())) ||
+          (u.role && u.role.toLowerCase() === userProfileFilter.toLowerCase());
 
     return matchesSearch && matchesStatus && matchesProfile;
   });
@@ -944,7 +951,13 @@ export function UsersTab({
 
   const handleCezconAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userFormData.name.trim() || !userFormData.username.trim() || !userFormData.password.trim()) {
+    if (!userFormData.name.trim()) {
+      alert('Validation Error: Please enter user name.');
+      return;
+    }
+
+    if (!userFormData.password.trim()) {
+      alert('Validation Error: Please enter a password.');
       return;
     }
 
@@ -964,7 +977,9 @@ export function UsersTab({
     }
 
     const enteredEmail = userFormData.email.trim();
-    const rawUsername = userFormData.username.trim();
+    const rawUsername =
+      userFormData.username.trim() ||
+      (enteredEmail ? enteredEmail.split('@')[0] : userFormData.name.trim().toLowerCase().replace(/\s+/g, '.'));
     const fullUsername = rawUsername.includes('@')
       ? rawUsername
       : `${rawUsername}@cooltechuae.com`;
