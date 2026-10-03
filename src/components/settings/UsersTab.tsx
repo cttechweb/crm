@@ -359,12 +359,6 @@ export function UsersTab({
 
   const [profilesList, setProfilesList] = useState(CEZCON_PROFILES_DATA);
 
-  const filteredProfileOptions = useMemo(() => {
-    if (!profileSearchQuery.trim()) return profileOptionsList;
-    const q = profileSearchQuery.toLowerCase();
-    return profileOptionsList.filter((p) => p.toLowerCase().includes(q));
-  }, [profileSearchQuery, profileOptionsList]);
-
   const availableManagers = useMemo(() => {
     return cezconUsersList
       .filter((u) => {
@@ -675,11 +669,8 @@ export function UsersTab({
   const availableProfileOptions = useMemo(() => {
     const base = ['Select Profile', 'Manager', 'Employee'];
     const dynamic = profilesList.map((p) => p.name).filter(Boolean);
-    const combined = Array.from(new Set([...base, ...PROFILE_OPTIONS, ...dynamic]));
+    const combined = Array.from(new Set([...base, ...profileOptionsList, ...dynamic]));
 
-    if (isSuperAdminSession) {
-      return combined;
-    }
     if (isSuperAdminSession) {
       return combined;
     }
@@ -706,7 +697,7 @@ export function UsersTab({
       const l = p.toLowerCase().trim();
       return !l.includes('admin') && !l.includes('manager') && !l.includes('super');
     });
-  }, [isSuperAdminSession, isAdminSession, isManagerSession, profilesList]);
+  }, [isSuperAdminSession, isAdminSession, isManagerSession, profilesList, profileOptionsList]);
 
   const filteredProfileOptions = useMemo(() => {
     if (!profileSearchQuery.trim()) return availableProfileOptions;
