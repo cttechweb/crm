@@ -4,6 +4,7 @@ export interface CezconUserItem {
   email: string;
   username?: string;
   password?: string;
+  firebaseUid?: string;
   role?: string;
   department?: string;
   branch?: string;
