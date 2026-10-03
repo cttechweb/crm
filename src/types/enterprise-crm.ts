@@ -147,6 +147,7 @@ export interface CrmCustomer {
   contactPerson: string;
   salutation?: string;
   phone: string;
+  mobile?: string;
   email: string;
   owner: string;
   ownerAvatar?: string;
@@ -263,6 +264,7 @@ export interface CrmUser {
   role: UserRole;
   phone: string;
   department: string;
+  designation?: string;
   status: 'Active' | 'Inactive';
   lastLogin: string;
   avatar?: string;
@@ -279,28 +281,115 @@ export interface PermissionRule {
   export: boolean;
 }
 
+export interface CrmQuotationItem {
+  id: string;
+  productId?: string;
+  itemCode?: string;
+  sku?: string;
+  name?: string;
+  productName?: string;
+  description?: string;
+  quantity: number;
+  unit?: string;
+  unitPrice: number;
+  discount?: number;
+  discountType?: 'percentage' | 'fixed';
+  discountValue?: number;
+  discountPercentage?: number;
+  discountAmount?: number;
+  taxRate?: number;
+  taxAmount?: number;
+  vatRate?: number;
+  vatAmount?: number;
+  total?: number;
+  lineTotal?: number;
+  totalAmount?: number;
+}
+
+export interface CrmQuotationHistoryEntry {
+  id?: string;
+  date?: string;
+  action: string;
+  user?: string;
+  role?: string;
+  remarks?: string;
+  performedBy?: string;
+  performedByRole?: string;
+  timestamp?: string;
+  notes?: string;
+}
+
 export interface CrmQuotation {
   id: string;
-  slNo: number;
+  slNo?: number;
   quotationNumber: string;
-  opportunityCode?: string;
+  customerId?: string;
   customer: string;
-  contactPerson: string;
+  contactPerson?: string;
   phone?: string;
+  email?: string;
+  billingAddress?: string;
+  shippingAddress?: string;
+  opportunityId?: string;
+  opportunityCode?: string;
   subject: string;
   quoteDate: string;
   validUntil: string;
+  createdDate?: string;
+  currency?: string;
+  items?: CrmQuotationItem[];
+  itemsCount?: number;
+  grossAmount?: number;
   subtotal: number;
+  discountTotal?: number;
+  discountAmount?: number;
+  taxableAmount?: number;
+  vatRate?: number;
   vatAmount: number;
+  shippingCharges?: number;
   totalAmount: number;
-  status: 'Draft' | 'Sent' | 'Approved' | 'Rejected' | 'Expired';
-  owner: string;
-  itemsCount: number;
+  status:
+    | 'Draft'
+    | 'Pending Approval'
+    | 'Approved'
+    | 'Sent'
+    | 'Viewed'
+    | 'Accepted'
+    | 'Rejected'
+    | 'Expired'
+    | 'Cancelled'
+    | 'Converted';
+  owner?: string;
+  ownerId?: string;
+  assignedTo?: string;
+  assignedEmployeeId?: string;
+  managerId?: string;
+  departmentId?: string;
+  department?: string;
+  createdBy?: string;
+  approvedBy?: string;
+  approvalDate?: string;
+  rejectionReason?: string;
+  paymentTerms?: string;
+  deliveryTerms?: string;
+  warranty?: string;
+  warrantyTerms?: string;
+  validityTerms?: string;
+  notes?: string;
+  customerNotes?: string;
+  internalNotes?: string;
+  convertedOrderId?: string;
+  salesOrderId?: string;
+  salesOrderNumber?: string;
+  convertedAt?: string;
+  history?: CrmQuotationHistoryEntry[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CrmSalesOrder {
   id: string;
-  slNo: number;
+  slNo?: number;
   orderNumber: string;
   quotationRef?: string;
   opportunityRef?: string;
@@ -309,6 +398,8 @@ export interface CrmSalesOrder {
   contactPerson?: string;
   phone?: string;
   email?: string;
+  billingAddress?: string;
+  shippingAddress?: string;
   poReference?: string;
   orderDate: string;
   deliveryDueDate?: string;
@@ -320,6 +411,9 @@ export interface CrmSalesOrder {
   status: string;
   assignedTo?: string;
   category?: string;
+  notes?: string;
+  paymentTerms?: string;
+  deliveryTerms?: string;
 }
 
 export interface CrmProformaInvoice {

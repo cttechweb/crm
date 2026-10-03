@@ -8,7 +8,7 @@
  * Employee -> Own assigned / created records only
  */
 
-import { CrmLead, CrmCustomer, CrmTask, CrmCampaign } from '@/types/enterprise-crm';
+import { CrmLead, CrmCustomer, CrmTask, CrmCampaign, CrmQuotation } from '@/types/enterprise-crm';
 
 export type DataScopeLevel = 'COMPANY' | 'TEAM' | 'OWN';
 export type DepartmentType = 'sales' | 'marketing' | 'purchase' | 'operations' | 'executive' | 'administration' | 'general';
@@ -506,3 +506,95 @@ export function filterCampaignsByScope(
   if (getDataScopeLevel(currentUser) === 'COMPANY') return campaigns;
   return campaigns.filter((c) => canAccessCampaign(c, currentUser));
 }
+
+/**
+ * Checks if the current user can access a specific Quotation
+ */
+export function canAccessQuotation(
+  quotation: CrmQuotation,
+  currentUser?: UserContext | null,
+  allUsers: UserContext[] = []
+): boolean {
+  if (!currentUser) return false;
+  const scope = getDataScopeLevel(currentUser);
+
+  if (scope === 'COMPANY') return true;
+
+  const uName = normalizeIdentifier(currentUser.name);
+  const uEmail = normalizeIdentifier(currentUser.email);
+  const uId = normalizeIdentifier(currentUser.id);
+
+  const assigned = normalizeIdentifier(quotation.assignedTo || quotation.assignedEmployeeId || quotation.owner);
+  const createdBy = normalizeIdentifier(quotation.createdBy);
+  const quoteDept = normalizeIdentifier(quotation.department);
+
+  if (scope === 'OWN') {
+    return Boolean(
+      (assigned.length > 0 && (assigned === uName || assigned === uEmail || assigned === uId)) ||
+      (createdBy.length > 0 && (createdBy === uName || createdBy === uEmail || createdBy === uId)) ||
+      (quotation.owner && (normalizeIdentifier(quotation.owner) === uName || normalizeIdentifier(quotation.owner) === uEmail))
+    );
+  }
+
+  if (scope === 'TEAM') {
+    const mgrDept = resolveUserDepartment(currentUser);
+    const teamIdentifiers = resolveManagerTeamIdentifiers(currentUser, allUsers);
+
+    const isSelf =
+      (assigned.length > 0 && (assigned === uName || assigned === uEmail)) ||
+      (createdBy.length > 0 && (createdBy === uName || createdBy === uEmail));
+    if (isSelf) return true;
+
+    const isTeam = teamIdentifiers.has(assigned) || teamIdentifiers.has(createdBy);
+    if (isTeam) return true;
+
+    if (mgrDept === 'sales' || quoteDept.includes('sale') || quoteDept.includes('commercial')) return true;
+    if (mgrDept === 'operations' && (quoteDept.includes('operat') || quoteDept.includes('project'))) return true;
+
+    return false;
+  }
+
+  return false;
+}
+
+/**
+ * Filters a list of Quotations according to user's role and data scope
+ */
+export function filterQuotationsByScope(
+  quotations: CrmQuotation[],
+  currentUser?: UserContext | null,
+  allUsers: UserContext[] = []
+): CrmQuotation[] {
+  if (!currentUser) return [];
+  if (getDataScopeLevel(currentUser) === 'COMPANY') return quotations;
+  return quotations.filter((q) => canAccessQuotation(q, currentUser, allUsers));
+}
+
+/**
+ * Checks if user has permission to approve quotations
+ */
+export function canApproveQuotation(currentUser?: UserContext | null): boolean {
+  if (!currentUser) return false;
+  const scope = getDataScopeLevel(currentUser);
+  if (scope === 'COMPANY') return true;
+  const role = normalizeIdentifier(currentUser.role);
+  return role.includes('manager') || role.includes('admin') || Boolean(currentUser.managerType);
+}
+
+/**
+ * Checks if user has permission to convert quotation to sales order
+ */
+export function canConvertQuotation(currentUser?: UserContext | null): boolean {
+  if (!currentUser) return false;
+  const scope = getDataScopeLevel(currentUser);
+  if (scope === 'COMPANY') return true;
+  const role = normalizeIdentifier(currentUser.role);
+  return (
+    role.includes('manager') ||
+    role.includes('admin') ||
+    role.includes('sales') ||
+    role.includes('employee') ||
+    role.includes('worker')
+  );
+}
+

@@ -26,7 +26,8 @@ import {
 } from 'lucide-react';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
-import { CrmTask, CrmLead, CrmCustomer } from '@/types/enterprise-crm';
+import { filterQuotationsByScope } from '@/services/crmDataScopeService';
+import { CrmTask, CrmLead, CrmCustomer, CrmQuotation } from '@/types/enterprise-crm';
 
 export default function EmployeeDashboardPage() {
   const {
@@ -34,6 +35,8 @@ export default function EmployeeDashboardPage() {
     leads: allLeads,
     customers: allCustomers,
     salesOpportunities: allDeals,
+    quotations: allQuotations,
+    users,
     updateTask,
   } = useEnterpriseCrm();
 
@@ -125,6 +128,7 @@ export default function EmployeeDashboardPage() {
   );
 
   const userCustomers = (allCustomers || []).slice(0, 4);
+  const userQuotations = filterQuotationsByScope(allQuotations || [], currentUser, users);
 
   const handleStartTask = (taskId: string) => {
     updateTask(taskId, { status: 'In Progress', progress: 30 });
@@ -508,8 +512,8 @@ export default function EmployeeDashboardPage() {
         </div>
       </div>
 
-      {/* ── 4. BOTTOM LIVE WIDGETS ROW ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+      {/* ── 4. BOTTOM LIVE WIDGETS ROW (LEADS, CUSTOMERS, DEALS, QUOTATIONS) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {/* Widget 1: Assigned Leads */}
         <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between">
           <div>
@@ -598,7 +602,7 @@ export default function EmployeeDashboardPage() {
           </div>
         </div>
 
-        {/* Widget 3: Active Deals & Milestones */}
+        {/* Widget 3: Active Deals & Opportunities */}
         <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
@@ -635,6 +639,65 @@ export default function EmployeeDashboardPage() {
                     </div>
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
                       {deal.stage || 'Open'}
+                    </span>
+                  </Link>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Widget 4: My Commercial Quotations */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+                  <FileText className="w-3.5 h-3.5" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900">My Quotations</h3>
+              </div>
+              <Link href="/worker/quotations" className="text-xs font-bold text-purple-600 hover:text-purple-700">
+                View All ({userQuotations.length})
+              </Link>
+            </div>
+
+            <div className="space-y-3 pt-3.5">
+              {userQuotations.length === 0 ? (
+                <div className="text-center py-6 text-xs text-slate-400">
+                  <p>No quotations created yet.</p>
+                  <Link
+                    href="/worker/quotations?create=true"
+                    className="inline-block mt-2 text-[11px] font-bold text-purple-600 hover:underline"
+                  >
+                    + Create Quotation
+                  </Link>
+                </div>
+              ) : (
+                userQuotations.slice(0, 4).map((q: CrmQuotation) => (
+                  <Link
+                    key={q.id}
+                    href="/worker/quotations"
+                    className="flex items-center justify-between group hover:bg-slate-50 p-1.5 -mx-1.5 rounded-xl transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-900 truncate group-hover:text-purple-600 transition-colors">
+                        {q.quotationNumber}
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-medium truncate">
+                        {q.customer} • AED {(q.totalAmount || 0).toLocaleString()}
+                      </div>
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                        q.status === 'Approved' || q.status === 'Accepted'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : q.status === 'Pending Approval'
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
+                          : 'bg-slate-100 text-slate-700 border border-slate-200'
+                      }`}
+                    >
+                      {q.status}
                     </span>
                   </Link>
                 ))

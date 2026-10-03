@@ -93,8 +93,9 @@ interface EnterpriseCrmContextType {
 
   // Quotation Actions
   addQuotation: (quote: Omit<CrmQuotation, 'id'>) => void;
-  updateQuotation: (id: string, updated: Partial<CrmQuotation>) => void;
+  updateQuotation: (idOrObj: string | CrmQuotation, updated?: Partial<CrmQuotation>) => void;
   deleteQuotation: (id: string) => void;
+  convertQuotationToSalesOrder: (quotationId: string) => CrmSalesOrder | null;
 
   // Sales Order Actions
   addSalesOrder: (order: Omit<CrmSalesOrder, 'id'>) => void;
@@ -264,12 +265,12 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           const parsed = JSON.parse(storedTasks);
           const sanitized = Array.isArray(parsed)
             ? parsed.map((t: any) => ({
-                ...t,
-                assignee: {
-                  ...t.assignee,
-                  avatar: t.assignee?.avatar?.includes('unsplash.com') ? undefined : t.assignee?.avatar,
-                },
-              }))
+              ...t,
+              assignee: {
+                ...t.assignee,
+                avatar: t.assignee?.avatar?.includes('unsplash.com') ? undefined : t.assignee?.avatar,
+              },
+            }))
             : [];
           setTasks(sanitized);
         } else {
@@ -869,8 +870,13 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     persist('crm_quotations_data', updated);
   };
 
-  const updateQuotation = (id: string, updated: Partial<CrmQuotation>) => {
-    const list = quotations.map((q) => (q.id === id ? { ...q, ...updated } : q));
+  const updateQuotation = (idOrObj: string | CrmQuotation, updated?: Partial<CrmQuotation>) => {
+    const list = quotations.map((q) => {
+      if (typeof idOrObj === 'object' && idOrObj !== null) {
+        return q.id === idOrObj.id ? { ...q, ...idOrObj } : q;
+      }
+      return q.id === idOrObj ? { ...q, ...updated } : q;
+    });
     setQuotations(list);
     persist('crm_quotations_data', list);
   };
@@ -879,6 +885,68 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const list = quotations.filter((q) => q.id !== id);
     setQuotations(list);
     persist('crm_quotations_data', list);
+  };
+
+  const convertQuotationToSalesOrder = (quotationId: string): CrmSalesOrder | null => {
+    const quote = quotations.find((q) => q.id === quotationId);
+    if (!quote) return null;
+
+    const orderNumber = `SO-${Date.now().toString().slice(-4)}`;
+    const newOrder: CrmSalesOrder = {
+      id: `ord-${Date.now()}`,
+      slNo: (salesOrders?.length || 0) + 1,
+      orderNumber: orderNumber,
+      quotationRef: quote.quotationNumber,
+      opportunityRef: quote.opportunityCode || '',
+      customer: quote.customer,
+      contactPerson: quote.contactPerson || '',
+      orderDate: new Date().toISOString().split('T')[0],
+      amount: quote.subtotal || quote.totalAmount || 0,
+      vatAmount: quote.vatAmount || 0,
+      totalAmount: quote.totalAmount || 0,
+      status: 'Confirmed',
+      assignedTo: quote.assignedTo || quote.owner || '',
+      billingAddress: quote.billingAddress || '',
+      shippingAddress: quote.shippingAddress || '',
+      notes: quote.customerNotes || '',
+      paymentTerms: quote.paymentTerms || '',
+      deliveryTerms: quote.deliveryTerms || '',
+    };
+
+    const updatedOrders = [newOrder, ...(salesOrders || [])];
+    setSalesOrders(updatedOrders);
+    persist('crm_sales_orders_data', updatedOrders);
+
+    // Update Quotation Status to Converted
+    const now = new Date().toISOString();
+    const updatedQuotes = quotations.map((q) => {
+      if (q.id === quotationId) {
+        return {
+          ...q,
+          status: 'Converted' as const,
+          salesOrderId: newOrder.id,
+          salesOrderNumber: newOrder.orderNumber,
+          convertedOrderId: newOrder.id,
+          convertedAt: now,
+          history: [
+            ...(q.history || []),
+            {
+              id: `hist-${Date.now()}`,
+              action: `Converted to Sales Order ${orderNumber}`,
+              date: now,
+              user: 'System',
+              role: 'User',
+              remarks: `Generated Sales Order Ref: ${orderNumber}`,
+            },
+          ],
+        };
+      }
+      return q;
+    });
+    setQuotations(updatedQuotes);
+    persist('crm_quotations_data', updatedQuotes);
+
+    return newOrder;
   };
 
   // Sales Order Handlers
@@ -1082,6 +1150,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         addQuotation,
         updateQuotation,
         deleteQuotation,
+        convertQuotationToSalesOrder,
         addSalesOrder,
         updateSalesOrder,
         deleteSalesOrder,

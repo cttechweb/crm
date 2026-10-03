@@ -69,6 +69,7 @@ import {
   mockDeliveryNotes,
 } from '@/data/mockEnterpriseData';
 import { Modal } from '@/components/ui/Modal';
+import { CezconQuotationModule } from '@/components/sales/CezconQuotationModule';
 import { cn } from '@/lib/utils';
 
 function SalesPipelineInner() {
@@ -670,9 +671,9 @@ function SalesPipelineInner() {
                             value={
                               oppFormData.vatType === 'With VAT' && oppFormData.amount
                                 ? `AED ${Math.round(
-                                    Math.max(0, (Number(oppFormData.amount) || 0) - (Number(oppFormData.discount) || 0)) *
-                                      ((Number(oppFormData.vatRate) || 5) / 100)
-                                  ).toLocaleString()}`
+                                  Math.max(0, (Number(oppFormData.amount) || 0) - (Number(oppFormData.discount) || 0)) *
+                                  ((Number(oppFormData.vatRate) || 5) / 100)
+                                ).toLocaleString()}`
                                 : ''
                             }
                             className="bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-600 focus:outline-none"
@@ -689,15 +690,15 @@ function SalesPipelineInner() {
                           value={
                             oppFormData.amount
                               ? `AED ${(
-                                  Math.max(0, (Number(oppFormData.amount) || 0) - (Number(oppFormData.discount) || 0)) +
-                                  (oppFormData.vatType === 'With VAT'
-                                    ? Math.round(
-                                        Math.max(0, (Number(oppFormData.amount) || 0) - (Number(oppFormData.discount) || 0)) *
-                                          ((Number(oppFormData.vatRate) || 5) / 100)
-                                      )
-                                    : 0) +
-                                  (Number(oppFormData.adjustment) || 0)
-                                ).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                                Math.max(0, (Number(oppFormData.amount) || 0) - (Number(oppFormData.discount) || 0)) +
+                                (oppFormData.vatType === 'With VAT'
+                                  ? Math.round(
+                                    Math.max(0, (Number(oppFormData.amount) || 0) - (Number(oppFormData.discount) || 0)) *
+                                    ((Number(oppFormData.vatRate) || 5) / 100)
+                                  )
+                                  : 0) +
+                                (Number(oppFormData.adjustment) || 0)
+                              ).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
                               : ''
                           }
                           className="flex-1 bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none"
@@ -1110,459 +1111,272 @@ function SalesPipelineInner() {
 
               {/* Main Content with Filter Sidebar */}
               <div className="flex flex-col lg:flex-row flex-1 p-3 sm:p-4 gap-4 items-start w-full min-w-0">
-            {/* Left Collapsible Filter Panel */}
-            {showFilterPanel && (
-              <aside className="w-full lg:w-64 shrink-0 bg-white border border-[#E2E8F0] rounded-sm p-3 shadow-xs text-xs space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <span className="font-bold text-slate-800 tracking-tight flex items-center gap-1.5">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600" /> Filter Criteria
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowFilterPanel(false)}
-                    className="text-slate-400 hover:text-red-500 p-0.5 rounded cursor-pointer"
-                    title="Close Filter"
-                  >
-                    <X className="w-4 h-4 text-red-500" />
-                  </button>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Customer/ Prospect</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Select Customer/Prospect"
-                      value={filterCustomer}
-                      onChange={(e) => setFilterCustomer(e.target.value)}
-                      className="w-full pl-2 pr-6 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
-                    />
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2" />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Classification</label>
-                  <select
-                    value={filterClassification}
-                    onChange={(e) => setFilterClassification(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                  >
-                    <option value="All">All Classification</option>
-                    <option value="Direct">Direct</option>
-                    <option value="Partner">Partner</option>
-                    <option value="Government">Government</option>
-                    <option value="Wholesale">Wholesale</option>
-                    <option value="Corporate">Corporate</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Stage</label>
-                  <select
-                    value={filterStage}
-                    onChange={(e) => setFilterStage(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                  >
-                    <option value="All">All Stages</option>
-                    <option value="Offer Sent">Offer Sent</option>
-                    <option value="On Review">On Review</option>
-                    <option value="Allocated To Inhouse">Allocated To Inhouse</option>
-                    <option value="Quotation">Quotation</option>
-                    <option value="Order">Order</option>
-                    <option value="Lost">Lost</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Rating</label>
-                  <select
-                    value={filterRating}
-                    onChange={(e) => setFilterRating(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                  >
-                    <option value="All">All</option>
-                    <option value="Hot">Hot</option>
-                    <option value="Warm">Warm</option>
-                    <option value="Cold">Cold</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Business Opportunity</label>
-                  <select
-                    value={filterBizOpp}
-                    onChange={(e) => setFilterBizOpp(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                  >
-                    <option value="All">Select Type</option>
-                    <option value="Water Coolers">Water Coolers</option>
-                    <option value="Industrial Coolers">Industrial Coolers</option>
-                    <option value="HVAC Split AC">HVAC Split AC</option>
-                    <option value="Cold Storage">Cold Storage</option>
-                    <option value="Maintenance">Maintenance</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Opportunity Owner</label>
-                  <select
-                    value={filterOwner}
-                    onChange={(e) => setFilterOwner(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                  >
-                    <option value="All">All Owners</option>
-                    <option value="Alex Rivera">Alex Rivera</option>
-                    <option value="SUPER ADMIN">SUPER ADMIN</option>
-                    <option value="HANY IBRAHIM">HANY IBRAHIM</option>
-                    <option value="COOL TECH">COOL TECH</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Campaign</label>
-                  <select
-                    value={filterCampaign}
-                    onChange={(e) => setFilterCampaign(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                  >
-                    <option value="All">Select Campaign</option>
-                    <option value="SIMPLE LIFE - 2025">SIMPLE LIFE - 2025</option>
-                    <option value="Summer Cooling Promo 2026">Summer Cooling Promo 2026</option>
-                    <option value="UAE Industrial Cooling Expo">UAE Industrial Cooling Expo</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Created By</label>
-                  <select
-                    value={filterCreatedBy}
-                    onChange={(e) => setFilterCreatedBy(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                  >
-                    <option value="All">All</option>
-                    <option value="Super Admin">Super Admin</option>
-                    <option value="Admin">Admin</option>
-                    <option value="Worker">Worker</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Tags</label>
-                  <input
-                    type="text"
-                    placeholder="Select tags"
-                    value={filterTags}
-                    onChange={(e) => setFilterTags(e.target.value)}
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
-                  />
-                </div>
-              </aside>
-            )}
-
-            {/* Opportunities Table & Cards Card */}
-            <div className="flex-1 w-full min-w-0 bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden">
-              <div className="p-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 bg-white">
-                <div className="flex items-center gap-2">
-                  {!showFilterPanel && (
-                    <button
-                      type="button"
-                      onClick={() => setShowFilterPanel(true)}
-                      className="p-1.5 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
-                      title="Show Filters"
-                    >
-                      <SlidersHorizontal className="w-4 h-4 text-blue-600" />
-                    </button>
-                  )}
-                  <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                    <Star className="w-4 h-4 text-amber-500 fill-amber-500" /> Open Opportunities
-                  </h2>
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => setIsUploadModalOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Upload Opportunity</span>
-                    <span className="sm:hidden">Upload</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsAssignModalOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition"
-                  >
-                    <UserCheck className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Assign Opportunity</span>
-                    <span className="sm:hidden">Assign</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddModalOpen(true);
-                      router.push('/sales?tab=opportunities&action=add');
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ OPPORTUNITY</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Table Controls */}
-              <div className="p-2.5 bg-slate-50/50 border-b border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 text-xs text-slate-600">
-                <div className="flex items-center gap-1.5">
-                  <span>Shows</span>
-                  <select
-                    value={rowsPerPage}
-                    onChange={(e) => {
-                      setRowsPerPage(Number(e.target.value));
-                      setCurrentPage(1);
-                    }}
-                    className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 font-medium focus:outline-none focus:border-blue-500"
-                  >
-                    <option value={10}>10</option>
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                  </select>
-                  <span>Rows</span>
-                </div>
-
-                <div className="relative w-full sm:w-64">
-                  <input
-                    type="text"
-                    placeholder="Search Opportunity"
-                    value={tableSearch}
-                    onChange={(e) => {
-                      setTableSearch(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
-                  />
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
-                </div>
-              </div>
-
-              {/* ── Mobile Card View (Phones & Tablets < lg) ── */}
-              <div className="block lg:hidden space-y-3 p-3">
-                {paginatedOpportunities.length === 0 ? (
-                  <div className="text-center py-8 text-xs text-slate-500 bg-white rounded border border-slate-200">
-                    No opportunities found matching your criteria.
-                  </div>
-                ) : (
-                  paginatedOpportunities.map((opp, idx) => {
-                    const isSelected = selectedIds.includes(opp.id);
-                    const slNumber = (currentPage - 1) * rowsPerPage + idx + 1;
-                    return (
-                      <div
-                        key={opp.id}
-                        className={cn(
-                          'bg-white border rounded-lg p-3.5 shadow-sm space-y-2.5 transition',
-                          isSelected ? 'border-blue-500 bg-blue-50/20' : 'border-slate-200'
-                        )}
+                {/* Left Collapsible Filter Panel */}
+                {showFilterPanel && (
+                  <aside className="w-full lg:w-64 shrink-0 bg-white border border-[#E2E8F0] rounded-sm p-3 shadow-xs text-xs space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                      <span className="font-bold text-slate-800 tracking-tight flex items-center gap-1.5">
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600" /> Filter Criteria
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowFilterPanel(false)}
+                        className="text-slate-400 hover:text-red-500 p-0.5 rounded cursor-pointer"
+                        title="Close Filter"
                       >
-                        {/* Top row: Checkbox, Star, Code, Stage */}
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => handleSelectOne(opp.id)}
-                              className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer w-4 h-4"
-                            />
-                            <Star className={cn('w-4 h-4', opp.starred ? 'text-amber-400 fill-amber-400' : 'text-slate-300')} />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedOpportunity(opp);
-                                setIsDetailModalOpen(true);
-                              }}
-                              className="text-[#2563EB] hover:underline font-bold text-xs"
-                            >
-                              {opp.opportunityCode || 'CTEQ#7016'}
-                            </button>
-                          </div>
-                          <span className="px-2 py-0.5 bg-[#2563EB] text-white rounded text-[10px] font-bold">
-                            {opp.stage}
-                          </span>
-                        </div>
+                        <X className="w-4 h-4 text-red-500" />
+                      </button>
+                    </div>
 
-                        {/* Title & Subtitle */}
-                        <div>
-                          <h4 className="font-bold text-slate-800 uppercase text-xs">{opp.title}</h4>
-                          {opp.subtitle && (
-                            <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                              <Package className="w-3 h-3 text-amber-600 shrink-0" />
-                              <span>{opp.subtitle}</span>
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Customer Box */}
-                        <div className="bg-slate-50 p-2.5 rounded border border-slate-100 space-y-1 text-xs">
-                          <div className="flex items-center gap-1.5 font-bold text-[#2563EB]">
-                            <Shield className="w-3.5 h-3.5 text-red-500 fill-red-100 shrink-0" />
-                            <span className="truncate">{opp.customer}</span>
-                          </div>
-                          {opp.contactPerson && (
-                            <div className="text-[11px] text-slate-600 flex items-center gap-1">
-                              <User className="w-3 h-3 text-slate-400 shrink-0" />
-                              <span>{opp.contactPerson}</span>
-                            </div>
-                          )}
-                          {opp.phone && (
-                            <div className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-                              <span>🟢</span>
-                              <a href={`tel:${opp.phone}`} className="hover:underline">{opp.phone}</a>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Metrics Grid */}
-                        <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100">
-                          <div>
-                            <span className="text-[10px] text-slate-400 uppercase font-medium block">Amount</span>
-                            <span className="font-bold text-slate-900 text-sm">
-                              AED {opp.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-[10px] text-slate-400 uppercase font-medium block">Win Probability</span>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-                                <div
-                                  className="h-full bg-amber-500 rounded-full"
-                                  style={{ width: `${opp.probability}%` }}
-                                />
-                              </div>
-                              <span className="text-[11px] font-bold text-slate-700">{opp.probability}%</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Footer row: Dates & Owner */}
-                        <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100 gap-2">
-                          <div className="flex items-center gap-1.5">
-                            <span className="px-1.5 py-0.5 bg-[#06B6D4] text-white rounded text-[10px] font-bold">
-                              {opp.opportunityDateDaysAgo || '0 days'}
-                            </span>
-                            <span>Close: {opp.expectedClose || '30-09-2026'}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            {opp.ownerBadge === 'COOL' ? (
-                              <span className="px-1.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded text-[9px] font-bold">
-                                COOL
-                              </span>
-                            ) : (
-                              <img
-                                src={opp.ownerAvatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'}
-                                alt={opp.owner}
-                                className="w-5 h-5 rounded-full object-cover border border-slate-200"
-                              />
-                            )}
-                            <span className="font-medium text-slate-700 text-xs">{opp.owner}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* ── Desktop Table View (lg and up) ── */}
-              <div className="hidden lg:block overflow-x-auto w-full">
-                <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
-                  <thead>
-                    <tr className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-semibold select-none">
-                      <th className="p-2.5 w-8 text-center">
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Customer/ Prospect</label>
+                      <div className="relative">
                         <input
-                          type="checkbox"
-                          checked={
-                            paginatedOpportunities.length > 0 &&
-                            selectedIds.length === paginatedOpportunities.length
-                          }
-                          onChange={handleSelectAll}
-                          className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
+                          type="text"
+                          placeholder="Select Customer/Prospect"
+                          value={filterCustomer}
+                          onChange={(e) => setFilterCustomer(e.target.value)}
+                          className="w-full pl-2 pr-6 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
                         />
-                      </th>
-                      <th className="p-2.5 w-12 text-slate-600 text-center">SL.No</th>
-                      <th className="p-2.5 w-16 text-slate-600 text-center">Owner</th>
-                      <th className="p-2.5 w-28 text-slate-600">Opportunity Date</th>
-                      <th className="p-2.5 w-24 text-slate-600">Opportunity Assigned</th>
-                      <th className="p-2.5 min-w-[190px] text-slate-600">Opportunity</th>
-                      <th className="p-2.5 min-w-[220px] text-slate-600">Customer</th>
-                      <th className="p-2.5 w-28 text-slate-600">Last Activity</th>
-                      <th className="p-2.5 w-24 text-slate-600">Close Date</th>
-                      <th className="p-2.5 w-32 text-slate-600">Stage & Win Probability</th>
-                      <th className="p-2.5 w-28 text-right text-slate-600">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
-                    {paginatedOpportunities.map((opp, idx) => {
-                      const isSelected = selectedIds.includes(opp.id);
-                      const slNumber = (currentPage - 1) * rowsPerPage + idx + 1;
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2" />
+                      </div>
+                    </div>
 
-                      return (
-                        <tr
-                          key={opp.id}
-                          className={cn(
-                            'hover:bg-[#F0FDF4]/40 transition-colors',
-                            isSelected ? 'bg-blue-50/50' : ''
-                          )}
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Classification</label>
+                      <select
+                        value={filterClassification}
+                        onChange={(e) => setFilterClassification(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                      >
+                        <option value="All">All Classification</option>
+                        <option value="Direct">Direct</option>
+                        <option value="Partner">Partner</option>
+                        <option value="Government">Government</option>
+                        <option value="Wholesale">Wholesale</option>
+                        <option value="Corporate">Corporate</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Stage</label>
+                      <select
+                        value={filterStage}
+                        onChange={(e) => setFilterStage(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                      >
+                        <option value="All">All Stages</option>
+                        <option value="Offer Sent">Offer Sent</option>
+                        <option value="On Review">On Review</option>
+                        <option value="Allocated To Inhouse">Allocated To Inhouse</option>
+                        <option value="Quotation">Quotation</option>
+                        <option value="Order">Order</option>
+                        <option value="Lost">Lost</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Rating</label>
+                      <select
+                        value={filterRating}
+                        onChange={(e) => setFilterRating(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                      >
+                        <option value="All">All</option>
+                        <option value="Hot">Hot</option>
+                        <option value="Warm">Warm</option>
+                        <option value="Cold">Cold</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Business Opportunity</label>
+                      <select
+                        value={filterBizOpp}
+                        onChange={(e) => setFilterBizOpp(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                      >
+                        <option value="All">Select Type</option>
+                        <option value="Water Coolers">Water Coolers</option>
+                        <option value="Industrial Coolers">Industrial Coolers</option>
+                        <option value="HVAC Split AC">HVAC Split AC</option>
+                        <option value="Cold Storage">Cold Storage</option>
+                        <option value="Maintenance">Maintenance</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Opportunity Owner</label>
+                      <select
+                        value={filterOwner}
+                        onChange={(e) => setFilterOwner(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                      >
+                        <option value="All">All Owners</option>
+                        <option value="Alex Rivera">Alex Rivera</option>
+                        <option value="SUPER ADMIN">SUPER ADMIN</option>
+                        <option value="HANY IBRAHIM">HANY IBRAHIM</option>
+                        <option value="COOL TECH">COOL TECH</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Campaign</label>
+                      <select
+                        value={filterCampaign}
+                        onChange={(e) => setFilterCampaign(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                      >
+                        <option value="All">Select Campaign</option>
+                        <option value="SIMPLE LIFE - 2025">SIMPLE LIFE - 2025</option>
+                        <option value="Summer Cooling Promo 2026">Summer Cooling Promo 2026</option>
+                        <option value="UAE Industrial Cooling Expo">UAE Industrial Cooling Expo</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Created By</label>
+                      <select
+                        value={filterCreatedBy}
+                        onChange={(e) => setFilterCreatedBy(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                      >
+                        <option value="All">All</option>
+                        <option value="Super Admin">Super Admin</option>
+                        <option value="Admin">Admin</option>
+                        <option value="Worker">Worker</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Tags</label>
+                      <input
+                        type="text"
+                        placeholder="Select tags"
+                        value={filterTags}
+                        onChange={(e) => setFilterTags(e.target.value)}
+                        className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                      />
+                    </div>
+                  </aside>
+                )}
+
+                {/* Opportunities Table & Cards Card */}
+                <div className="flex-1 w-full min-w-0 bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden">
+                  <div className="p-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 bg-white">
+                    <div className="flex items-center gap-2">
+                      {!showFilterPanel && (
+                        <button
+                          type="button"
+                          onClick={() => setShowFilterPanel(true)}
+                          className="p-1.5 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
+                          title="Show Filters"
                         >
-                          <td className="p-2.5 text-center">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => handleSelectOne(opp.id)}
-                              className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
-                            />
-                          </td>
-                          <td className="p-2.5 text-slate-600 font-medium text-center">
-                            {opp.slNo || slNumber}
-                          </td>
-                          <td className="p-2.5 text-center">
-                            {opp.ownerBadge === 'COOL' ? (
-                              <span className="px-1.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded text-[10px] font-bold">
-                                COOL
-                              </span>
-                            ) : (
-                              <div className="w-6 h-6 rounded-full overflow-hidden bg-slate-200 mx-auto">
-                                <img
-                                  src={
-                                    opp.ownerAvatar ||
-                                    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
-                                  }
-                                  alt={opp.owner}
-                                  className="w-full h-full object-cover"
+                          <SlidersHorizontal className="w-4 h-4 text-blue-600" />
+                        </button>
+                      )}
+                      <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                        <Star className="w-4 h-4 text-amber-500 fill-amber-500" /> Open Opportunities
+                      </h2>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setIsUploadModalOpen(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Upload Opportunity</span>
+                        <span className="sm:hidden">Upload</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsAssignModalOpen(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Assign Opportunity</span>
+                        <span className="sm:hidden">Assign</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddModalOpen(true);
+                          router.push('/sales?tab=opportunities&action=add');
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ OPPORTUNITY</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Table Controls */}
+                  <div className="p-2.5 bg-slate-50/50 border-b border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 text-xs text-slate-600">
+                    <div className="flex items-center gap-1.5">
+                      <span>Shows</span>
+                      <select
+                        value={rowsPerPage}
+                        onChange={(e) => {
+                          setRowsPerPage(Number(e.target.value));
+                          setCurrentPage(1);
+                        }}
+                        className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 font-medium focus:outline-none focus:border-blue-500"
+                      >
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                      </select>
+                      <span>Rows</span>
+                    </div>
+
+                    <div className="relative w-full sm:w-64">
+                      <input
+                        type="text"
+                        placeholder="Search Opportunity"
+                        value={tableSearch}
+                        onChange={(e) => {
+                          setTableSearch(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
+                      />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
+                    </div>
+                  </div>
+
+                  {/* ── Mobile Card View (Phones & Tablets < lg) ── */}
+                  <div className="block lg:hidden space-y-3 p-3">
+                    {paginatedOpportunities.length === 0 ? (
+                      <div className="text-center py-8 text-xs text-slate-500 bg-white rounded border border-slate-200">
+                        No opportunities found matching your criteria.
+                      </div>
+                    ) : (
+                      paginatedOpportunities.map((opp, idx) => {
+                        const isSelected = selectedIds.includes(opp.id);
+                        const slNumber = (currentPage - 1) * rowsPerPage + idx + 1;
+                        return (
+                          <div
+                            key={opp.id}
+                            className={cn(
+                              'bg-white border rounded-lg p-3.5 shadow-sm space-y-2.5 transition',
+                              isSelected ? 'border-blue-500 bg-blue-50/20' : 'border-slate-200'
+                            )}
+                          >
+                            {/* Top row: Checkbox, Star, Code, Stage */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleSelectOne(opp.id)}
+                                  className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer w-4 h-4"
                                 />
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-2.5 whitespace-nowrap">
-                            <div className="text-slate-800 font-medium">{opp.opportunityDate || '23-09-2026'}</div>
-                            <span className="inline-block mt-0.5 px-2 py-0.2 bg-[#06B6D4] text-white rounded text-[10px] font-bold">
-                              {opp.opportunityDateDaysAgo || '0 days'}
-                            </span>
-                          </td>
-                          <td className="p-2.5">
-                            {opp.opportunityAssigned ? (
-                              <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[11px] font-medium">
-                                {opp.opportunityAssigned}
-                              </span>
-                            ) : (
-                              <span className="text-slate-300">—</span>
-                            )}
-                          </td>
-                          <td className="p-2.5">
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <Star className={cn('w-3.5 h-3.5', opp.starred ? 'text-amber-400 fill-amber-400' : 'text-slate-300')} />
+                                <Star className={cn('w-4 h-4', opp.starred ? 'text-amber-400 fill-amber-400' : 'text-slate-300')} />
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1573,630 +1387,292 @@ function SalesPipelineInner() {
                                 >
                                   {opp.opportunityCode || 'CTEQ#7016'}
                                 </button>
-                                <span className="font-bold text-slate-800 uppercase text-[11px]">{opp.title}</span>
-                                <Info
-                                  className="w-3.5 h-3.5 text-blue-500 cursor-pointer"
-                                  onClick={() => {
-                                    setSelectedOpportunity(opp);
-                                    setIsDetailModalOpen(true);
-                                  }}
-                                />
                               </div>
+                              <span className="px-2 py-0.5 bg-[#2563EB] text-white rounded text-[10px] font-bold">
+                                {opp.stage}
+                              </span>
+                            </div>
+
+                            {/* Title & Subtitle */}
+                            <div>
+                              <h4 className="font-bold text-slate-800 uppercase text-xs">{opp.title}</h4>
                               {opp.subtitle && (
-                                <div className="text-[11px] text-slate-500 flex items-center gap-1">
-                                  <Package className="w-3 h-3 text-amber-600" />
+                                <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                                  <Package className="w-3 h-3 text-amber-600 shrink-0" />
                                   <span>{opp.subtitle}</span>
-                                </div>
+                                </p>
                               )}
                             </div>
-                          </td>
-                          <td className="p-2.5">
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-1.5">
+
+                            {/* Customer Box */}
+                            <div className="bg-slate-50 p-2.5 rounded border border-slate-100 space-y-1 text-xs">
+                              <div className="flex items-center gap-1.5 font-bold text-[#2563EB]">
                                 <Shield className="w-3.5 h-3.5 text-red-500 fill-red-100 shrink-0" />
-                                <span className="text-[#2563EB] font-bold text-xs">{opp.customer}</span>
+                                <span className="truncate">{opp.customer}</span>
                               </div>
                               {opp.contactPerson && (
                                 <div className="text-[11px] text-slate-600 flex items-center gap-1">
-                                  <User className="w-3 h-3 text-slate-400" />
+                                  <User className="w-3 h-3 text-slate-400 shrink-0" />
                                   <span>{opp.contactPerson}</span>
                                 </div>
                               )}
                               {opp.phone && (
-                                <div className="text-[11px] text-emerald-600 font-medium">
-                                  🟢 {opp.phone}
+                                <div className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
+                                  <span>🟢</span>
+                                  <a href={`tel:${opp.phone}`} className="hover:underline">{opp.phone}</a>
                                 </div>
                               )}
                             </div>
-                          </td>
-                          <td className="p-2.5 whitespace-nowrap">
-                            <div className="text-slate-700 text-[11px]">{opp.lastActivity || '23-09-2026'}</div>
-                            <span className="inline-block mt-0.5 px-2 py-0.2 bg-[#06B6D4] text-white rounded text-[10px] font-bold">
-                              {opp.lastActivityRelative || 'Today'}
-                            </span>
-                          </td>
-                          <td className="p-2.5 whitespace-nowrap">
-                            <div className="text-slate-700 text-[11px]">{opp.expectedClose || '30-09-2026'}</div>
-                            <span className="inline-block mt-0.5 px-2 py-0.2 bg-[#06B6D4] text-white rounded text-[10px] font-bold">
-                              {opp.closeDateRemaining || '7 days'}
-                            </span>
-                          </td>
-                          <td className="p-2.5">
-                            <div className="space-y-1">
-                              <span className="px-2 py-0.5 bg-[#2563EB] text-white rounded text-[10px] font-bold inline-block">
-                                {opp.stage}
-                              </span>
-                              <div className="flex items-center gap-1">
-                                <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-                                  <div
-                                    className="h-full bg-amber-500 rounded-full"
-                                    style={{ width: `${opp.probability}%` }}
-                                  ></div>
+
+                            {/* Metrics Grid */}
+                            <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100">
+                              <div>
+                                <span className="text-[10px] text-slate-400 uppercase font-medium block">Amount</span>
+                                <span className="font-bold text-slate-900 text-sm">
+                                  AED {opp.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-400 uppercase font-medium block">Win Probability</span>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                                    <div
+                                      className="h-full bg-amber-500 rounded-full"
+                                      style={{ width: `${opp.probability}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-[11px] font-bold text-slate-700">{opp.probability}%</span>
                                 </div>
-                                <span className="text-[10px] font-bold text-slate-600">{opp.probability}%</span>
                               </div>
                             </div>
-                          </td>
-                          <td className="p-2.5 text-right whitespace-nowrap">
-                            <span className="font-bold text-slate-900 text-xs">
-                              {opp.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
 
-              <div className="p-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-600 bg-white">
-                <div>Showing 1 to {paginatedOpportunities.length} of {filteredOpportunities.length} entries (Total: 2,691)</div>
-                <div className="flex items-center gap-1">
-                  <button type="button" className="px-2.5 py-1 border border-slate-300 rounded font-semibold bg-[#008080] text-white">
-                    1
-                  </button>
-                  <button type="button" className="px-2.5 py-1 border border-slate-300 rounded hover:bg-slate-50">2</button>
-                  <button type="button" className="px-2.5 py-1 border border-slate-300 rounded hover:bg-slate-50">3</button>
+                            {/* Footer row: Dates & Owner */}
+                            <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100 gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="px-1.5 py-0.5 bg-[#06B6D4] text-white rounded text-[10px] font-bold">
+                                  {opp.opportunityDateDaysAgo || '0 days'}
+                                </span>
+                                <span>Close: {opp.expectedClose || '30-09-2026'}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {opp.ownerBadge === 'COOL' ? (
+                                  <span className="px-1.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded text-[9px] font-bold">
+                                    COOL
+                                  </span>
+                                ) : (
+                                  <img
+                                    src={opp.ownerAvatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'}
+                                    alt={opp.owner}
+                                    className="w-5 h-5 rounded-full object-cover border border-slate-200"
+                                  />
+                                )}
+                                <span className="font-medium text-slate-700 text-xs">{opp.owner}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* ── Desktop Table View (lg and up) ── */}
+                  <div className="hidden lg:block overflow-x-auto w-full">
+                    <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
+                      <thead>
+                        <tr className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-semibold select-none">
+                          <th className="p-2.5 w-8 text-center">
+                            <input
+                              type="checkbox"
+                              checked={
+                                paginatedOpportunities.length > 0 &&
+                                selectedIds.length === paginatedOpportunities.length
+                              }
+                              onChange={handleSelectAll}
+                              className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
+                            />
+                          </th>
+                          <th className="p-2.5 w-12 text-slate-600 text-center">SL.No</th>
+                          <th className="p-2.5 w-16 text-slate-600 text-center">Owner</th>
+                          <th className="p-2.5 w-28 text-slate-600">Opportunity Date</th>
+                          <th className="p-2.5 w-24 text-slate-600">Opportunity Assigned</th>
+                          <th className="p-2.5 min-w-[190px] text-slate-600">Opportunity</th>
+                          <th className="p-2.5 min-w-[220px] text-slate-600">Customer</th>
+                          <th className="p-2.5 w-28 text-slate-600">Last Activity</th>
+                          <th className="p-2.5 w-24 text-slate-600">Close Date</th>
+                          <th className="p-2.5 w-32 text-slate-600">Stage & Win Probability</th>
+                          <th className="p-2.5 w-28 text-right text-slate-600">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 bg-white">
+                        {paginatedOpportunities.map((opp, idx) => {
+                          const isSelected = selectedIds.includes(opp.id);
+                          const slNumber = (currentPage - 1) * rowsPerPage + idx + 1;
+
+                          return (
+                            <tr
+                              key={opp.id}
+                              className={cn(
+                                'hover:bg-[#F0FDF4]/40 transition-colors',
+                                isSelected ? 'bg-blue-50/50' : ''
+                              )}
+                            >
+                              <td className="p-2.5 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleSelectOne(opp.id)}
+                                  className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
+                                />
+                              </td>
+                              <td className="p-2.5 text-slate-600 font-medium text-center">
+                                {opp.slNo || slNumber}
+                              </td>
+                              <td className="p-2.5 text-center">
+                                {opp.ownerBadge === 'COOL' ? (
+                                  <span className="px-1.5 py-0.5 bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] rounded text-[10px] font-bold">
+                                    COOL
+                                  </span>
+                                ) : (
+                                  <div className="w-6 h-6 rounded-full overflow-hidden bg-slate-200 mx-auto">
+                                    <img
+                                      src={
+                                        opp.ownerAvatar ||
+                                        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
+                                      }
+                                      alt={opp.owner}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                )}
+                              </td>
+                              <td className="p-2.5 whitespace-nowrap">
+                                <div className="text-slate-800 font-medium">{opp.opportunityDate || '23-09-2026'}</div>
+                                <span className="inline-block mt-0.5 px-2 py-0.2 bg-[#06B6D4] text-white rounded text-[10px] font-bold">
+                                  {opp.opportunityDateDaysAgo || '0 days'}
+                                </span>
+                              </td>
+                              <td className="p-2.5">
+                                {opp.opportunityAssigned ? (
+                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[11px] font-medium">
+                                    {opp.opportunityAssigned}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300">—</span>
+                                )}
+                              </td>
+                              <td className="p-2.5">
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <Star className={cn('w-3.5 h-3.5', opp.starred ? 'text-amber-400 fill-amber-400' : 'text-slate-300')} />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedOpportunity(opp);
+                                        setIsDetailModalOpen(true);
+                                      }}
+                                      className="text-[#2563EB] hover:underline font-bold text-xs"
+                                    >
+                                      {opp.opportunityCode || 'CTEQ#7016'}
+                                    </button>
+                                    <span className="font-bold text-slate-800 uppercase text-[11px]">{opp.title}</span>
+                                    <Info
+                                      className="w-3.5 h-3.5 text-blue-500 cursor-pointer"
+                                      onClick={() => {
+                                        setSelectedOpportunity(opp);
+                                        setIsDetailModalOpen(true);
+                                      }}
+                                    />
+                                  </div>
+                                  {opp.subtitle && (
+                                    <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                                      <Package className="w-3 h-3 text-amber-600" />
+                                      <span>{opp.subtitle}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-2.5">
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <Shield className="w-3.5 h-3.5 text-red-500 fill-red-100 shrink-0" />
+                                    <span className="text-[#2563EB] font-bold text-xs">{opp.customer}</span>
+                                  </div>
+                                  {opp.contactPerson && (
+                                    <div className="text-[11px] text-slate-600 flex items-center gap-1">
+                                      <User className="w-3 h-3 text-slate-400" />
+                                      <span>{opp.contactPerson}</span>
+                                    </div>
+                                  )}
+                                  {opp.phone && (
+                                    <div className="text-[11px] text-emerald-600 font-medium">
+                                      🟢 {opp.phone}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-2.5 whitespace-nowrap">
+                                <div className="text-slate-700 text-[11px]">{opp.lastActivity || '23-09-2026'}</div>
+                                <span className="inline-block mt-0.5 px-2 py-0.2 bg-[#06B6D4] text-white rounded text-[10px] font-bold">
+                                  {opp.lastActivityRelative || 'Today'}
+                                </span>
+                              </td>
+                              <td className="p-2.5 whitespace-nowrap">
+                                <div className="text-slate-700 text-[11px]">{opp.expectedClose || '30-09-2026'}</div>
+                                <span className="inline-block mt-0.5 px-2 py-0.2 bg-[#06B6D4] text-white rounded text-[10px] font-bold">
+                                  {opp.closeDateRemaining || '7 days'}
+                                </span>
+                              </td>
+                              <td className="p-2.5">
+                                <div className="space-y-1">
+                                  <span className="px-2 py-0.5 bg-[#2563EB] text-white rounded text-[10px] font-bold inline-block">
+                                    {opp.stage}
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                                      <div
+                                        className="h-full bg-amber-500 rounded-full"
+                                        style={{ width: `${opp.probability}%` }}
+                                      ></div>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-600">{opp.probability}%</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-2.5 text-right whitespace-nowrap">
+                                <span className="font-bold text-slate-900 text-xs">
+                                  {opp.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="p-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-600 bg-white">
+                    <div>Showing 1 to {paginatedOpportunities.length} of {filteredOpportunities.length} entries (Total: 2,691)</div>
+                    <div className="flex items-center gap-1">
+                      <button type="button" className="px-2.5 py-1 border border-slate-300 rounded font-semibold bg-[#008080] text-white">
+                        1
+                      </button>
+                      <button type="button" className="px-2.5 py-1 border border-slate-300 rounded hover:bg-slate-50">2</button>
+                      <button type="button" className="px-2.5 py-1 border border-slate-300 rounded hover:bg-slate-50">3</button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        </>
+            </>
+          )}
+        </div>
       )}
-    </div>
-  )}
 
-      {/* ========================================================================= */}
-      {/* VIEW 2: QUOTATIONS TAB (Exact Cezcon CRM Quotation Layout) */}
-      {/* ========================================================================= */}
       {/* ========================================================================= */}
       {/* VIEW 2: QUOTATIONS TAB (Exact Cezcon CRM Quotation Layout) */}
       {/* ========================================================================= */}
       {activeTab === 'quotations' && (
-        <div className="flex-1 p-3 sm:p-4 space-y-3 w-full font-sans">
-          {/* TOP FILTER CRITERIA CARD */}
-          <div className="bg-white border border-[#E2E8F0] rounded-sm p-3 sm:p-4 shadow-xs space-y-3 text-xs">
-            {/* Mobile Filter Header Toggle Button */}
-            <div className="flex md:hidden items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setShowQuoteFiltersMobile(!showQuoteFiltersMobile)}
-                className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer w-full justify-between"
-              >
-                <div className="flex items-center gap-1.5 text-blue-600">
-                  <Filter className="w-3.5 h-3.5" />
-                  <span>Filter Quotations</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 font-medium">
-                    {showQuoteFiltersMobile ? 'Hide Filters' : 'Tap to filter'}
-                  </span>
-                </div>
-                <ChevronDown className={cn('w-4 h-4 text-slate-500 transition-transform', showQuoteFiltersMobile ? 'rotate-180' : '')} />
-              </button>
-            </div>
-
-            <div className={cn('space-y-3', showQuoteFiltersMobile ? 'block' : 'hidden md:block')}>
-              {/* Filter Row 1 */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Select Owner</label>
-                  <select
-                    value={filterOwner}
-                    onChange={(e) => setFilterOwner(e.target.value)}
-                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                  >
-                    <option value="All">All Owners</option>
-                    <option value="Alex Rivera">Alex Rivera</option>
-                    <option value="SUPER ADMIN">SUPER ADMIN</option>
-                    <option value="HANY IBRAHIM">HANY IBRAHIM</option>
-                    <option value="COOL TECH">COOL TECH</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Quotation Date</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      defaultValue="25-08-2026 - 23-09-2026"
-                      className="w-full pl-8 pr-7 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 font-medium"
-                    />
-                    <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
-                    <RotateCcw className="w-3.5 h-3.5 text-slate-400 hover:text-slate-600 cursor-pointer absolute right-2.5 top-2" />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Select Quotation Type</label>
-                  <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
-                    <option value="">Select Quotation Type</option>
-                    <option value="standard">Standard Proposal</option>
-                    <option value="project">Project Tender</option>
-                    <option value="maintenance">Maintenance Contract</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Status</label>
-                  <select
-                    value={quotationFilterStatus}
-                    onChange={(e) => setQuotationFilterStatus(e.target.value)}
-                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                  >
-                    <option value="All">All</option>
-                    <option value="Approved">Approved</option>
-                    <option value="Sent">Sent</option>
-                    <option value="Draft">Draft</option>
-                    <option value="Expired">Expired</option>
-                    <option value="Rejected">Rejected</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Filter Row 2 */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Business Opportunity</label>
-                  <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
-                    <option value="">Select</option>
-                    <option value="Water Coolers">Water Coolers</option>
-                    <option value="Industrial Coolers">Industrial Coolers</option>
-                    <option value="HVAC Split AC">HVAC Split AC</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Customer</label>
-                  <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
-                    <option value="">Select Customer</option>
-                    <option value="SMART GROUP OF CAPANIES">SMART GROUP OF CAPANIES</option>
-                    <option value="ZUBLIN CONSTRUCTION L.L.C">ZUBLIN CONSTRUCTION L.L.C</option>
-                    <option value="DESERT MAN TRANSPORTING">DESERT MAN TRANSPORTING</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Select Opportunity</label>
-                  <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
-                    <option value="">Select Opportunity</option>
-                    <option value="WATER COOLERS">WATER COOLERS</option>
-                    <option value="WATER DISPENSER">WATER DISPENSER</option>
-                    <option value="2TR SPLIT AC">2TR SPLIT AC</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Product/Service</label>
-                  <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
-                    <option value="">Select Product/Service</option>
-                    <option value="Water Cooler 500L">Water Cooler 500L</option>
-                    <option value="Split AC 2 Ton">Split AC 2 Ton</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Filter Row 3 */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Opportunity Stage</label>
-                  <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
-                    <option value="All Stages">All Stages</option>
-                    <option value="Offer Sent">Offer Sent</option>
-                    <option value="On Review">On Review</option>
-                    <option value="Allocated To Inhouse">Allocated To Inhouse</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* MAIN QUOTATION TABLE SECTION */}
-          <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden">
-            {/* Header with Title and + QUOTATION Button */}
-            <div className="p-3 border-b border-slate-200 flex items-center justify-between bg-white">
-              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                <FileText className="w-4 h-4 text-slate-500" /> Quotation
-              </h2>
-
-              <button
-                type="button"
-                onClick={() => setIsCreateQuoteModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>QUOTATION</span>
-              </button>
-            </div>
-
-            {/* Table Controls (Rows and Search) */}
-            <div className="p-2.5 bg-slate-50/50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
-              <div className="flex items-center gap-1.5">
-                <span>Shows</span>
-                <select
-                  value={rowsPerPage}
-                  onChange={(e) => {
-                    setRowsPerPage(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 font-medium focus:outline-none focus:border-blue-500"
-                >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                </select>
-                <span>Rows</span>
-              </div>
-
-              <div className="relative w-64">
-                <input
-                  type="text"
-                  placeholder="Search Quotation"
-                  value={quotationSearch}
-                  onChange={(e) => setQuotationSearch(e.target.value)}
-                  className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
-                />
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
-              </div>
-            </div>
-
-            {/* Native Mobile Quotations Cards (Phone Viewports) */}
-            <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
-              {quotations
-                .filter((q) => {
-                  if (quotationFilterStatus !== 'All' && q.status !== quotationFilterStatus) return false;
-                  if (quotationSearch) {
-                    const s = quotationSearch.toLowerCase();
-                    return (
-                      q.quotationNumber.toLowerCase().includes(s) ||
-                      q.customer.toLowerCase().includes(s) ||
-                      q.subject.toLowerCase().includes(s) ||
-                      (q.opportunityCode || '').toLowerCase().includes(s)
-                    );
-                  }
-                  return true;
-                })
-                .map((q) => (
-                  <div key={q.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
-                    <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center text-red-600 text-[10px] font-bold shrink-0">
-                          📄
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedQuote(q)}
-                          className="text-[#2563EB] font-bold text-xs hover:underline text-left"
-                        >
-                          {q.quotationNumber}
-                        </button>
-                      </div>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#0284C7] text-white rounded text-[10px] font-bold">
-                        Approved
-                      </span>
-                    </div>
-
-                    <div>
-                      <div className="text-[11px] font-bold text-slate-900 uppercase">
-                        {q.subject}
-                      </div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">Date: {q.quoteDate}</div>
-                    </div>
-
-                    <div className="bg-slate-50 rounded p-2 border border-slate-100 space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <Shield className="w-3.5 h-3.5 text-red-500 fill-red-100 shrink-0" />
-                        <span className="text-[#2563EB] font-bold text-xs">{q.customer}</span>
-                      </div>
-                      {q.contactPerson && (
-                        <div className="text-[11px] text-slate-600 flex items-center gap-1">
-                          <User className="w-3 h-3 text-slate-400" />
-                          <span>{q.contactPerson}</span>
-                        </div>
-                      )}
-                      {q.phone && (
-                        <div className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                          <span>{q.phone}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 py-1 border-t border-b border-slate-100 text-center">
-                      <div>
-                        <div className="text-[10px] text-slate-500">Amount</div>
-                        <div className="font-semibold text-slate-700">
-                          {q.subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-slate-500">VAT (5%)</div>
-                        <div className="font-semibold text-slate-600">
-                          {q.vatAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-slate-500">Total</div>
-                        <div className="font-bold text-slate-900">
-                          {q.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-5 rounded-full overflow-hidden bg-slate-200 shrink-0">
-                          <img
-                            src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
-                            alt="Alex Rivera"
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <span className="text-[11px] text-slate-600 font-medium">Alex Rivera</span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setSelectedQuote(q)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
-                      >
-                        <Eye className="w-3 h-3" />
-                        <span>View Details</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-            </div>
-
-            {/* Cezcon Quotations Table (Desktop Viewports) */}
-            <div className="hidden md:block overflow-x-auto w-full">
-              <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
-                <thead>
-                  <tr className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-semibold select-none">
-                    <th className="p-2.5 w-12 text-center text-slate-600">SL.No</th>
-                    <th className="p-2.5 min-w-[120px] text-slate-600">Quotation#</th>
-                    <th className="p-2.5 w-16 text-slate-600">Owner</th>
-                    <th className="p-2.5 w-28 text-slate-600">
-                      <div className="flex items-center gap-1 cursor-pointer hover:text-blue-600">
-                        <span>Date</span>
-                        <ChevronDown className="w-3 h-3 text-blue-600" />
-                      </div>
-                    </th>
-                    <th className="p-2.5 min-w-[200px] text-slate-600">Opportunity</th>
-                    <th className="p-2.5 min-w-[240px] text-slate-600">Customer</th>
-                    <th className="p-2.5 w-24 text-right text-slate-600">Amount</th>
-                    <th className="p-2.5 w-20 text-right text-slate-600">VAT</th>
-                    <th className="p-2.5 w-24 text-right text-slate-600">Total</th>
-                    <th className="p-2.5 w-24 text-center text-slate-600">Status</th>
-                    <th className="p-2.5 w-20 text-center text-slate-600">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 bg-white">
-                  {quotations
-                    .filter((q) => {
-                      if (quotationFilterStatus !== 'All' && q.status !== quotationFilterStatus) return false;
-                      if (quotationSearch) {
-                        const s = quotationSearch.toLowerCase();
-                        return (
-                          q.quotationNumber.toLowerCase().includes(s) ||
-                          q.customer.toLowerCase().includes(s) ||
-                          q.subject.toLowerCase().includes(s) ||
-                          (q.opportunityCode || '').toLowerCase().includes(s)
-                        );
-                      }
-                      return true;
-                    })
-                    .map((q) => (
-                      <tr key={q.id} className="hover:bg-[#F0FDF4]/40 transition-colors">
-                        {/* SL.No */}
-                        <td className="p-2.5 text-center text-slate-600 font-medium">
-                          {q.slNo}
-                        </td>
-
-                        {/* Quotation# */}
-                        <td className="p-2.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center text-red-600 text-[10px] font-bold shrink-0">
-                              📄
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedQuote(q)}
-                              className="text-[#2563EB] hover:underline font-bold text-xs"
-                            >
-                              {q.quotationNumber}
-                            </button>
-                          </div>
-                        </td>
-
-                        {/* Owner Avatar */}
-                        <td className="p-2.5">
-                          <div className="w-6 h-6 rounded-full overflow-hidden bg-slate-200 shrink-0">
-                            <img
-                              src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
-                              alt="Alex Rivera"
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        </td>
-
-                        {/* Date */}
-                        <td className="p-2.5 whitespace-nowrap text-slate-800 font-medium">
-                          {q.quoteDate}
-                        </td>
-
-                        {/* Opportunity */}
-                        <td className="p-2.5">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[#2563EB] font-bold text-xs uppercase hover:underline cursor-pointer">
-                                {q.subject}
-                              </span>
-                              <Info className="w-3.5 h-3.5 text-blue-500 cursor-pointer shrink-0" />
-                            </div>
-                            <span
-                              className={cn(
-                                'inline-block px-2 py-0.2 rounded text-[10px] font-bold text-white',
-                                q.subject.includes('WATERCOOLER') || q.subject.includes('1.5TR')
-                                  ? 'bg-[#0284C7]'
-                                  : 'bg-[#2563EB]'
-                              )}
-                            >
-                              {q.subject.includes('WATERCOOLER') || q.subject.includes('1.5TR')
-                                ? 'On Review'
-                                : 'Offer Sent'}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Customer */}
-                        <td className="p-2.5">
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-1.5">
-                              <Shield className="w-3.5 h-3.5 text-red-500 fill-red-100 shrink-0" />
-                              <span className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer">
-                                {q.customer}
-                              </span>
-                              <Info className="w-3 h-3 text-blue-500 cursor-pointer shrink-0" />
-                            </div>
-
-                            {q.contactPerson && (
-                              <div className="text-[11px] text-slate-600 flex items-center gap-1">
-                                <User className="w-3 h-3 text-slate-400" />
-                                <span>{q.contactPerson}</span>
-                                <Info className="w-2.5 h-2.5 text-blue-400 cursor-pointer" />
-                              </div>
-                            )}
-
-                            {q.phone && (
-                              <div className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                                <span>{q.phone}</span>
-                              </div>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Amount (Subtotal) */}
-                        <td className="p-2.5 text-right font-medium text-slate-800 whitespace-nowrap">
-                          {q.subtotal.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-
-                        {/* VAT (5%) */}
-                        <td className="p-2.5 text-right font-medium text-slate-600 whitespace-nowrap">
-                          {q.vatAmount.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-
-                        {/* Total */}
-                        <td className="p-2.5 text-right font-bold text-slate-900 whitespace-nowrap">
-                          {q.totalAmount.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-
-                        {/* Status (Approved Pill Button) */}
-                        <td className="p-2.5 text-center">
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-[#0284C7] hover:bg-[#0369A1] text-white rounded text-[10px] font-bold shadow-xs cursor-pointer"
-                          >
-                            <Edit2 className="w-2.5 h-2.5" />
-                            <span>Approved</span>
-                          </button>
-                        </td>
-
-                        {/* Actions (Eye + Dropdown) */}
-                        <td className="p-2.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedQuote(q)}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
-                            title="View Quotation"
-                          >
-                            <Eye className="w-3 h-3" />
-                            <ChevronDown className="w-2.5 h-2.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Table Footer / Pagination */}
-            <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
-              <div>Showing 1 to 8 of 237 entries</div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="px-2 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
-                >
-                  &lt;
-                </button>
-                <button
-                  type="button"
-                  className="px-2.5 py-1 rounded font-semibold bg-[#008080] text-white cursor-pointer"
-                >
-                  1
-                </button>
-                <button
-                  type="button"
-                  className="px-2.5 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 cursor-pointer"
-                >
-                  2
-                </button>
-                <button
-                  type="button"
-                  className="px-2.5 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 cursor-pointer"
-                >
-                  3
-                </button>
-                <button
-                  type="button"
-                  className="px-2.5 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 cursor-pointer"
-                >
-                  4
-                </button>
-                <button
-                  type="button"
-                  className="px-2.5 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 cursor-pointer"
-                >
-                  5
-                </button>
-                <button
-                  type="button"
-                  className="px-2 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
-                >
-                  &gt;
-                </button>
-              </div>
-            </div>
-          </div>
+        <div className="flex-1 p-3 sm:p-4 w-full font-sans">
+          <CezconQuotationModule />
         </div>
       )}
 

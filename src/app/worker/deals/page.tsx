@@ -125,15 +125,14 @@ export default function EmployeeDealsPage() {
                     </div>
 
                     <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        deal.stage === 'Closed Won'
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${deal.stage === 'Closed Won'
                           ? 'bg-emerald-100 text-emerald-800'
                           : deal.stage === 'Order'
-                          ? 'bg-blue-100 text-blue-800'
-                          : deal.stage === 'In Progress'
-                          ? 'bg-purple-100 text-purple-800'
-                          : 'bg-amber-100 text-amber-800'
-                      }`}
+                            ? 'bg-blue-100 text-blue-800'
+                            : deal.stage === 'In Progress'
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-amber-100 text-amber-800'
+                        }`}
                     >
                       {deal.stage}
                     </span>

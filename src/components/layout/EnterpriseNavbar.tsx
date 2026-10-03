@@ -95,8 +95,12 @@ const WORKER_NAV_ITEMS: EnterpriseNavItem[] = [
     path: '/worker/deals',
     iconName: 'Briefcase',
   },
-
-
+  {
+    id: 'employee-quotations',
+    label: 'My Quotations',
+    path: '/worker/quotations',
+    iconName: 'FileText',
+  },
   {
     id: 'employee-timesheet',
     label: 'Timesheet',
