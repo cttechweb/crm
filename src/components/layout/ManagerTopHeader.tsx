@@ -28,9 +28,9 @@ export function ManagerTopHeader({
   const router = useRouter();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const currentUser = authMockService.getCurrentUser() || {
-    name: 'Alex Rivera',
-    email: 'manager@cooltechuae.com',
-    designation: 'Operations Manager',
+    name: 'Muhammed Shibil',
+    email: 'shibil@gmail.com',
+    designation: 'Sales Manager',
   };
 
   const handleSignOut = async () => {

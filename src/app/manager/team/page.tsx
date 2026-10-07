@@ -52,11 +52,20 @@ export default function ManagerTeamPage() {
 
     try {
       const stored = localStorage.getItem('cezcon_crm_users_list');
+      const deletedRaw = localStorage.getItem('cezcon_crm_deleted_user_ids');
+      const deletedSet = new Set<string>(deletedRaw ? JSON.parse(deletedRaw) : []);
+
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
           dynamicList = parsed.filter(
             (u: any) => {
+              if (!u) return false;
+              const uid = String(u.id || '').toLowerCase();
+              const uemail = String(u.email || '').toLowerCase();
+              const uuser = String(u.username || '').toLowerCase();
+              if (deletedSet.has(uid) || deletedSet.has(uemail) || deletedSet.has(uuser)) return false;
+
               const uMgrId = String(u.managerId || u.reportingManagerId || '').toLowerCase();
               const isEmployeeOrWorker =
                 u.profileType === 'Employee' ||
@@ -64,8 +73,8 @@ export default function ManagerTeamPage() {
                 u.isWorker ||
                 (!u.isAdmin && !u.profileType?.toLowerCase().includes('manager') && !u.profileType?.toLowerCase().includes('admin'));
 
-              const matches =
-                (uMgrId.length > 0 &&
+              const matchesId =
+                uMgrId.length > 0 &&
                 (uMgrId === curMgrId ||
                   `usr_${uMgrId}` === curMgrId ||
                   uMgrId === curMgrId.replace('usr_', '') ||
@@ -73,25 +82,28 @@ export default function ManagerTeamPage() {
                   uMgrId === curMgrName ||
                   (curMgrEmail.includes('afsal') && (uMgrId.includes('afsal') || uMgrId === 'mgr_3' || uMgrId === '3')) ||
                   (curMgrEmail.includes('shibil') && (uMgrId.includes('shibil') || uMgrId === 'mgr_1' || uMgrId === '1')) ||
-                  (curMgrEmail.startsWith('manager') && uMgrId === curMgrId.replace('mgr_', '')))) ||
-                (mgrType.includes('marketing') && ((u.employeeType && u.employeeType.toLowerCase().includes('market')) || (u.department && u.department.toLowerCase().includes('market')))) ||
+                  (curMgrEmail.startsWith('manager') && uMgrId === curMgrId.replace('mgr_', '')));
+
+              const matchesDept =
+                !uMgrId &&
+                ((mgrType.includes('marketing') && ((u.employeeType && u.employeeType.toLowerCase().includes('market')) || (u.department && u.department.toLowerCase().includes('market')))) ||
                 (mgrType.includes('sales') && ((u.employeeType && u.employeeType.toLowerCase().includes('sales')) || (u.department && u.department.toLowerCase().includes('sales')))) ||
                 (mgrType.includes('purchase') && ((u.employeeType && u.employeeType.toLowerCase().includes('purchase')) || (u.department && u.department.toLowerCase().includes('purchase')))) ||
-                (mgrType.includes('operation') && ((u.employeeType && u.employeeType.toLowerCase().includes('operation')) || (u.department && u.department.toLowerCase().includes('operation'))));
+                (mgrType.includes('operation') && ((u.employeeType && u.employeeType.toLowerCase().includes('operation')) || (u.department && u.department.toLowerCase().includes('operation')))));
 
-              return isEmployeeOrWorker && matches;
+              return isEmployeeOrWorker && (matchesId || matchesDept);
             }
           ).map((u: any) => ({
             id: String(u.id).startsWith('usr_') ? u.id : `usr_${u.id}`,
             name: u.name,
-            role: u.designation || u.employeeType || u.profileType || 'Marketing Specialist',
+            role: u.designation || u.employeeType || u.profileType || 'Team Specialist',
             email: u.email || `${u.username}@company.com`,
             phone: u.phone || '+971 50 123 4567',
             zone: 'Regional Desk',
-            specialization: u.employeeType ? `${u.employeeType} Specialist` : 'Campaign Operations & Growth',
+            specialization: u.employeeType ? `${u.employeeType} Specialist` : 'Operations',
             capacity: 65,
-            assignedTasks: 2,
-            completedMonth: 18,
+            assignedTasks: 0,
+            completedMonth: 0,
             status: 'Active',
             avatar: u.avatarImage || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120',
           }));
@@ -101,22 +113,7 @@ export default function ManagerTeamPage() {
       console.error(e);
     }
 
-    const staticAssigned = ALL_EMPLOYEES.filter((e) => {
-      if (e.managerId === currentManagerId) return true;
-      if (currentManagerId.startsWith('usr_') || currentManagerId.startsWith('mgr_') || curMgrEmail.includes('afsal') || curMgrEmail.includes('shibil')) {
-        if (mgrType.includes('sales') && (e.managerId === 'mgr_1' || e.role?.toLowerCase().includes('sales'))) return true;
-        if (mgrType.includes('purchase') && (e.managerId === 'mgr_2' || e.role?.toLowerCase().includes('purchase'))) return true;
-        if (mgrType.includes('marketing') && (e.managerId === 'mgr_3' || e.role?.toLowerCase().includes('market'))) return true;
-        if (mgrType.includes('operation') && (e.managerId === 'mgr_4' || e.role?.toLowerCase().includes('operation'))) return true;
-      }
-      return false;
-    });
-
-    const mergedMap = new Map<string, any>();
-    staticAssigned.forEach((s) => mergedMap.set((s.email || s.id).toLowerCase(), s));
-    dynamicList.forEach((d) => mergedMap.set((d.email || d.id).toLowerCase(), d));
-
-    return Array.from(mergedMap.values());
+    return dynamicList;
   }, [currentManagerId, currentUser, usersVersion]);
 
   const filtered = teamMembers.filter((m) =>

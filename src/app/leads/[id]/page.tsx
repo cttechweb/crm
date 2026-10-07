@@ -34,7 +34,13 @@ import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import {
+  ChangeLeadStatusModal,
+  getRatingBadgeClass,
+  getStatusBadgeClass,
+} from '@/components/leads/ChangeLeadStatusModal';
 import { CrmLead, LeadRating, LeadStatus } from '@/types/enterprise-crm';
+import { authMockService } from '@/services/authMockService';
 import { cn } from '@/lib/utils';
 
 interface PageProps {
@@ -218,6 +224,48 @@ export default function LeadDetailPage({ params }: PageProps) {
   const [isAddVisitModalOpen, setIsAddVisitModalOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
+  // Change Status and Rating modal state
+  const [isChangeStatusModalOpen, setIsChangeStatusModalOpen] = useState(false);
+
+  const handleUpdateStatusAndRating = (data: {
+    status: LeadStatus;
+    rating: LeadRating;
+    comments: string;
+    addNote: boolean;
+  }) => {
+    const now = new Date();
+    const formattedDate = `${now.toLocaleDateString('en-GB').replace(/\//g, '-')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    let updatedNotes = leadNotes;
+    if (data.addNote) {
+      const noteContent = data.comments.trim()
+        ? `Status changed to ${data.status} (${String(data.rating).toUpperCase()}). Comment: ${data.comments.trim()}`
+        : `Status changed to ${data.status} (${String(data.rating).toUpperCase()}).`;
+
+      const newNote = {
+        id: `note-${Date.now()}`,
+        author: lead.owner || 'JISMON JOSE',
+        avatar: lead.ownerAvatar || '',
+        date: formattedDate,
+        content: noteContent,
+      };
+      updatedNotes = [newNote, ...leadNotes];
+      setLeadNotes(updatedNotes);
+    }
+
+    updateLead(lead.id, {
+      status: data.status,
+      rating: data.rating,
+      comments: data.comments,
+      lastActivity: `Status updated to ${data.status}`,
+      lastActivityDate: formattedDate,
+      lastActivityTimeAgo: 'Just now',
+      notes: updatedNotes,
+    });
+
+    setIsChangeStatusModalOpen(false);
+  };
+
   // Chat message state
   const [chatMessages, setChatMessages] = useState<Array<{ id: string; sender: string; time: string; text: string; isSelf: boolean }>>([
     {
@@ -229,7 +277,7 @@ export default function LeadDetailPage({ params }: PageProps) {
     },
     {
       id: '2',
-      sender: 'Alex Rivera',
+      sender: authMockService.getCurrentUser()?.name || 'shaheer',
       time: '2:18 PM',
       text: `Checking with European supplier catalog for alternative compatible model.`,
       isSelf: true,
@@ -297,7 +345,7 @@ export default function LeadDetailPage({ params }: PageProps) {
     if (!newTaskData.title.trim()) return;
     addTask({
       assignee: {
-        name: lead.owner || 'Alex Rivera',
+        name: lead.owner || authMockService.getCurrentUser()?.name || 'shaheer',
         avatar: lead.ownerAvatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
       },
       taskDetails: newTaskData.title,
@@ -364,7 +412,7 @@ export default function LeadDetailPage({ params }: PageProps) {
     if (!newChatText.trim()) return;
     const msg = {
       id: `chat-${Date.now()}`,
-      sender: 'Alex Rivera',
+      sender: authMockService.getCurrentUser()?.name || 'shaheer',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       text: newChatText.trim(),
       isSelf: true,
@@ -539,10 +587,18 @@ export default function LeadDetailPage({ params }: PageProps) {
               <div className="flex flex-col sm:flex-row sm:items-center">
                 <span className="text-slate-600 sm:w-36 flex-shrink-0 font-normal">Rating</span>
                 <div className="mt-0.5 sm:mt-0">
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded bg-[#337ab7] text-white text-[11px] font-bold uppercase tracking-wider shadow-xs">
+                  <button
+                    type="button"
+                    onClick={() => setIsChangeStatusModalOpen(true)}
+                    className={cn(
+                      'inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-white text-[11px] font-bold uppercase tracking-wider shadow-xs cursor-pointer transition-colors',
+                      getRatingBadgeClass(lead.rating)
+                    )}
+                    title="Click to change status & rating"
+                  >
                     <Tag className="w-3 h-3" />
                     <span>{lead.rating.toUpperCase()}</span>
-                  </span>
+                  </button>
                 </div>
               </div>
 
@@ -550,10 +606,18 @@ export default function LeadDetailPage({ params }: PageProps) {
               <div className="flex flex-col sm:flex-row sm:items-center">
                 <span className="text-slate-600 sm:w-36 flex-shrink-0 font-normal">Status</span>
                 <div className="mt-0.5 sm:mt-0">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded bg-[#337ab7] text-white text-[11px] font-medium shadow-xs">
+                  <button
+                    type="button"
+                    onClick={() => setIsChangeStatusModalOpen(true)}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-0.5 rounded text-white text-[11px] font-medium shadow-xs cursor-pointer transition-colors',
+                      getStatusBadgeClass(lead.status)
+                    )}
+                    title="Click to change status & rating"
+                  >
                     <Edit className="w-3 h-3" />
                     <span>{lead.status}</span>
-                  </span>
+                  </button>
                 </div>
               </div>
 
@@ -968,10 +1032,9 @@ export default function LeadDetailPage({ params }: PageProps) {
                       ))
                     ) : (
                       <>
+                        <option value="Shaheer">Shaheer</option>
+                        <option value="Muhammed Shibil">Muhammed Shibil</option>
                         <option value="JISMON JOSE">JISMON JOSE</option>
-                        <option value="Alex Rivera">Alex Rivera</option>
-                        <option value="Elena Rostova">Elena Rostova</option>
-                        <option value="Jordan Hayes">Jordan Hayes</option>
                         <option value="Mohammed Rashid">Mohammed Rashid</option>
                       </>
                     )}
@@ -1045,7 +1108,7 @@ export default function LeadDetailPage({ params }: PageProps) {
                     contactPerson: lead.contactDetails.name,
                     phone: lead.contactDetails.phone,
                     email: lead.contactDetails.email || '',
-                    owner: lead.owner || 'Alex Rivera',
+                    owner: lead.owner || authMockService.getCurrentUser()?.name || 'shaheer',
                     status: 'Active',
                     lastActivity: 'Just converted from Lead',
                     companyGroup: 'Key Corporate Accounts',
@@ -1057,7 +1120,7 @@ export default function LeadDetailPage({ params }: PageProps) {
                     customer: lead.contactDetails.company,
                     amount: lead.value || 45000,
                     stage: 'Opportunity',
-                    owner: lead.owner || 'Alex Rivera',
+                    owner: lead.owner || authMockService.getCurrentUser()?.name || 'shaheer',
                     probability: 75,
                     expectedClose: '2026-10-15',
                   });
@@ -1243,6 +1306,14 @@ export default function LeadDetailPage({ params }: PageProps) {
           </div>
         </Modal>
       )}
+
+      {/* 9. Change Lead Status and Rating Modal */}
+      <ChangeLeadStatusModal
+        isOpen={isChangeStatusModalOpen}
+        lead={lead}
+        onClose={() => setIsChangeStatusModalOpen(false)}
+        onUpdate={handleUpdateStatusAndRating}
+      />
     </div>
   );
 }

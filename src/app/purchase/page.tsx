@@ -37,6 +37,7 @@ import {
   Phone,
 } from 'lucide-react';
 import { mockCezconStockItems, mockStockTransfers } from '@/data/mockEnterpriseData';
+import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { CrmCezconStock, CrmStockTransfer } from '@/types/enterprise-crm';
 import { cn } from '@/lib/utils';
 
@@ -195,6 +196,7 @@ const mockStoresList: any[] = [];
 const mockManufacturingOrders: any[] = [];
 
 function PurchasePageInner() {
+  const { users } = useEnterpriseCrm();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -513,9 +515,19 @@ function PurchasePageInner() {
                       className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                     >
                       <option value="All Owners">All Owners</option>
-                      <option value="Muhammad Ali">Muhammad Ali</option>
-                      <option value="Super Admin">Super Admin</option>
-                      <option value="Alex Rivera">Alex Rivera</option>
+                      {users && users.length > 0 ? (
+                        users.map((u) => (
+                          <option key={u.id} value={u.name}>
+                            {u.name}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="Muhammad Ali">Muhammad Ali</option>
+                          <option value="Super Admin">Super Admin</option>
+                          <option value="Shaheer">Shaheer</option>
+                        </>
+                      )}
                     </select>
                   </div>
 
@@ -737,11 +749,10 @@ function PurchasePageInner() {
                         <td className="p-2.5 text-center text-slate-400 border-r border-slate-100">{po.invoiceReceived || ''}</td>
                         <td className="p-2.5 text-center border-r border-slate-100">
                           <span
-                            className={`px-2.5 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap shadow-2xs ${
-                              po.approval === 'Waiting for Final Approval'
+                            className={`px-2.5 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap shadow-2xs ${po.approval === 'Waiting for Final Approval'
                                 ? 'bg-[#1E5128]'
                                 : 'bg-[#2E7D32]'
-                            }`}
+                              }`}
                           >
                             {po.approval}
                           </span>
@@ -2101,9 +2112,19 @@ function PurchasePageInner() {
                           className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                         >
                           <option value="Select">Select</option>
-                          <option value="Muhammad Ali">Muhammad Ali</option>
-                          <option value="Alex Rivera">Alex Rivera</option>
-                          <option value="Super Admin">Super Admin</option>
+                          {users && users.length > 0 ? (
+                            users.map((u) => (
+                              <option key={u.id} value={u.name}>
+                                {u.name}
+                              </option>
+                            ))
+                          ) : (
+                            <>
+                              <option value="Muhammad Ali">Muhammad Ali</option>
+                              <option value="Shaheer">Shaheer</option>
+                              <option value="Super Admin">Super Admin</option>
+                            </>
+                          )}
                         </select>
                       </div>
 

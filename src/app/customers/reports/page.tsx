@@ -81,7 +81,7 @@ const CUSTOMER_REPORT_DATA: CustomerReportItem[] = [
     lifetimeSpend: 750000,
     healthScore: 'Healthy',
     retentionProbability: '96%',
-    accountManager: 'Alex Rivera',
+    accountManager: 'Muhammed Shibil',
   },
   {
     id: 'CR-05',
@@ -92,7 +92,7 @@ const CUSTOMER_REPORT_DATA: CustomerReportItem[] = [
     lifetimeSpend: 980000,
     healthScore: 'Healthy',
     retentionProbability: '97%',
-    accountManager: 'Alex Rivera',
+    accountManager: 'Shaheer',
   },
   {
     id: 'CR-06',

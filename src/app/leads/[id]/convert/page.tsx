@@ -433,10 +433,9 @@ export default function ConvertLeadPage({ params }: PageProps) {
                   ))
                 ) : (
                   <>
+                    <option value="Shaheer">Shaheer</option>
+                    <option value="Muhammed Shibil">Muhammed Shibil</option>
                     <option value="JISMON JOSE">JISMON JOSE</option>
-                    <option value="Alex Rivera">Alex Rivera</option>
-                    <option value="Elena Rostova">Elena Rostova</option>
-                    <option value="Jordan Hayes">Jordan Hayes</option>
                     <option value="Mohammed Rashid">Mohammed Rashid</option>
                   </>
                 )}

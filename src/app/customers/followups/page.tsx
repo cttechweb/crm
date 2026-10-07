@@ -47,6 +47,7 @@ interface CustomerFollowupItem {
 const INITIAL_FOLLOWUPS: CustomerFollowupItem[] = [];
 
 function CustomerFollowupsContent() {
+  const { users } = useEnterpriseCrm();
   const [followups, setFollowups] = useState<CustomerFollowupItem[]>(INITIAL_FOLLOWUPS);
   const [filterTab, setFilterTab] = useState<'All' | 'Overdue' | 'Today' | 'Renewals' | 'Completed'>('All');
   const [search, setSearch] = useState('');
@@ -245,9 +246,18 @@ function CustomerFollowupsContent() {
             className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none shadow-2xs cursor-pointer"
           >
             <option value="All">All Account Reps</option>
-            <option value="Mohammed Rashid">Mohammed Rashid</option>
-            <option value="Alex Rivera">Alex Rivera</option>
-            <option value="Sarah Al-Mansoor">Sarah Al-Mansoor</option>
+            {users && users.length > 0 ? (
+              users.map((u) => (
+                <option key={u.id} value={u.name}>
+                  {u.name}
+                </option>
+              ))
+            ) : (
+              <>
+                <option value="Shaheer">Shaheer</option>
+                <option value="Muhammed Shibil">Muhammed Shibil</option>
+              </>
+            )}
           </select>
 
           <div className="relative w-full sm:w-64">

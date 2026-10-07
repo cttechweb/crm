@@ -24,13 +24,13 @@ import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 
 export default function CreateCampaignPage() {
   const router = useRouter();
-  const { addCampaign } = useEnterpriseCrm();
+  const { addCampaign, users } = useEnterpriseCrm();
 
   const [formData, setFormData] = useState({
     name: '',
     type: 'Inbound Portal',
     channel: 'Website Inbound',
-    ownerName: 'Mohammed Rashid',
+    ownerName: users[0]?.name || 'Shaheer',
     budget: 10000,
     targetLeads: 120,
     startDate: '2026-01-01',
@@ -209,10 +209,19 @@ export default function CreateCampaignPage() {
                   onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
                 >
-                  <option value="Mohammed Rashid">Mohammed Rashid</option>
-                  <option value="Alex Rivera">Alex Rivera</option>
-                  <option value="Sarah Al-Mansoor">Sarah Al-Mansoor</option>
-                  <option value="Karim Benali">Karim Benali</option>
+                  {users && users.length > 0 ? (
+                    users.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="Afsal">Afsal</option>
+                      <option value="Shaheer">Shaheer</option>
+                      <option value="Mohammed Rashid">Mohammed Rashid</option>
+                    </>
+                  )}
                 </select>
               </div>
 

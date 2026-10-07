@@ -144,3 +144,68 @@ export const mockRbacRules: PermissionRule[] = [
   { module: 'Reports & Exporting', view: true, create: true, edit: true, delete: true, assign: true, approve: true, export: true },
   { module: 'System & Security Settings', view: true, create: true, edit: true, delete: true, assign: true, approve: true, export: true },
 ];
+
+export function getEmployeePhoto(name?: string): string {
+  if (!name || typeof window === 'undefined') return '';
+  const clean = name.toLowerCase().trim();
+
+  try {
+    // Check cool_crm_auth
+    const authRaw = localStorage.getItem('cool_crm_auth');
+    if (authRaw) {
+      const authUser = JSON.parse(authRaw);
+      if (
+        authUser &&
+        (authUser.name?.trim().toLowerCase() === clean || authUser.username?.trim().toLowerCase() === clean)
+      ) {
+        const av = authUser.avatar || authUser.avatarImage || authUser.avatarUrl;
+        if (av && !av.includes('unsplash.com') && !av.includes('photo-')) {
+          return av;
+        }
+      }
+    }
+
+    // Check cezcon_crm_users_list
+    const storedUsersRaw = localStorage.getItem('cezcon_crm_users_list');
+    if (storedUsersRaw) {
+      const parsed = JSON.parse(storedUsersRaw);
+      if (Array.isArray(parsed)) {
+        const found = parsed.find(
+          (u: any) =>
+            (u.name && u.name.trim().toLowerCase() === clean) ||
+            (u.username && u.username.trim().toLowerCase() === clean) ||
+            (u.email && u.email.trim().toLowerCase() === clean)
+        );
+        if (found) {
+          const av = found.avatarImage || found.avatarUrl || found.avatar;
+          if (av && !av.includes('unsplash.com') && !av.includes('photo-')) {
+            return av;
+          }
+        }
+      }
+    }
+
+    // Check crm_admin_accounts_list
+    const storedAdminsRaw = localStorage.getItem('crm_admin_accounts_list');
+    if (storedAdminsRaw) {
+      const parsedAdmins = JSON.parse(storedAdminsRaw);
+      if (Array.isArray(parsedAdmins)) {
+        const foundAdmin = parsedAdmins.find(
+          (a: any) =>
+            (a.name && a.name.trim().toLowerCase() === clean) ||
+            (a.email && a.email.trim().toLowerCase() === clean)
+        );
+        if (foundAdmin) {
+          const av = foundAdmin.avatar || foundAdmin.avatarUrl || foundAdmin.avatarImage;
+          if (av && !av.includes('unsplash.com') && !av.includes('photo-')) {
+            return av;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  return '';
+}

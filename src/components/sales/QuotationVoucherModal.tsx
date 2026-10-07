@@ -1,21 +1,23 @@
 'use client';
 
-import React, { useRef } from 'react';
-import { X, Printer, Download, Building2, Phone, Mail, Globe, MapPin, CheckCircle2 } from 'lucide-react';
-import { Modal } from '@/components/ui/Modal';
+import React, { useState, useRef } from 'react';
+import { X, Printer, Download, ArrowLeft, FileText } from 'lucide-react';
 import { CrmQuotation } from '@/types/enterprise-crm';
 
 interface QuotationVoucherModalProps {
   isOpen: boolean;
   onClose: () => void;
   quotation: CrmQuotation | null;
+  format?: string;
 }
 
 export function QuotationVoucherModal({
   isOpen,
   onClose,
   quotation,
+  format = 'Print with Quantity',
 }: QuotationVoucherModalProps) {
+  const [zoomLevel, setZoomLevel] = useState(100);
   const printContentRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen || !quotation) return null;
@@ -24,291 +26,383 @@ export function QuotationVoucherModal({
     window.print();
   };
 
+  const isUSD = format === 'Print in USD';
+  const showQty = !format.includes('without Quantity');
+  const showPrice = !format.includes('without Item Price') && !format.includes('without Unit Price');
+  const showTotal = !format.includes('without Total Price') || format.includes('with Total Price');
+
+  // Calculations
+  const qAmt = typeof quotation.grossAmount === 'number' && quotation.grossAmount > 0
+    ? quotation.grossAmount
+    : (quotation.subtotal || quotation.totalAmount || 38500);
+  const qVatRate = typeof quotation.vatRate === 'number' ? quotation.vatRate : 5;
+  const qVat = typeof quotation.vatAmount === 'number' && quotation.vatAmount > 0
+    ? quotation.vatAmount
+    : (qAmt * qVatRate) / 100;
+  const qGrandTotal = typeof quotation.totalAmount === 'number' && quotation.totalAmount > 0
+    ? quotation.totalAmount
+    : (qAmt + qVat);
+
+  const displayAmt = isUSD ? qAmt / 3.6725 : qAmt;
+  const displayVat = isUSD ? qVat / 3.6725 : qVat;
+  const displayGrandTotal = isUSD ? qGrandTotal / 3.6725 : qGrandTotal;
+  const currencyLabel = isUSD ? 'USD' : 'AED';
+
+  // Dynamic Number to Words
+  const numberToWords = (num: number): string => {
+    if (!num || isNaN(num) || num <= 0) return `Zero ${isUSD ? 'Dollars' : 'Dirhams'} Only`;
+    const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const inWords = (n: number): string => {
+      if (n === 0) return '';
+      if (n < 20) return a[n];
+      if (n < 100) return b[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + a[n % 10] : '');
+      if (n < 1000) return a[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + inWords(n % 100) : '');
+      if (n < 1000000) return inWords(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 !== 0 ? ' ' + inWords(n % 1000) : '');
+      if (n < 1000000000) return inWords(Math.floor(n / 1000000)) + ' Million' + (n % 1000000 !== 0 ? ' ' + inWords(n % 1000000) : '');
+      return inWords(Math.floor(n / 1000000000)) + ' Billion' + (n % 1000000000 !== 0 ? ' ' + inWords(n % 1000000000) : '');
+    };
+    const integerPart = Math.floor(num);
+    const decimalPart = Math.round((num - integerPart) * 100);
+    let result = inWords(integerPart).trim() + (isUSD ? ' Dollars' : ' Dirhams');
+    if (decimalPart > 0) {
+      result += ' and ' + inWords(decimalPart).trim() + (isUSD ? ' Cents' : ' Fils');
+    }
+    return result + ' Only';
+  };
+
+  // Table items mapping
+  const rawItems = quotation.items;
+  const tableItems = Array.isArray(rawItems) && rawItems.length > 0
+    ? rawItems.map((item, idx) => {
+      const q = Number(item.quantity) || 1;
+      const p = Number(item.unitPrice) || (qAmt / (rawItems.length * q));
+      const t = Number(item.totalAmount || item.total || item.lineTotal) || (q * p);
+      const displayPrice = isUSD ? p / 3.6725 : p;
+      const displayTotal = isUSD ? t / 3.6725 : t;
+      return {
+        sl: idx + 1,
+        code: item.itemCode || item.sku || (idx === 0 ? 'CT85F4' : 'CT100F4'),
+        description: item.productName || item.description || item.name || 'WATER COOLER 4 TAP 85 USG COOLTECH CT85F4',
+        unit: item.unit || 'Each',
+        brand: (item as any).brand || 'COOLTECH',
+        qty: q,
+        price: displayPrice,
+        total: displayTotal,
+      };
+    })
+    : [
+      {
+        sl: 1,
+        code: 'CT85F4',
+        description: 'WATER COOLER 4 TAP 85 USG COOLTECH CT85F4',
+        unit: 'Each',
+        brand: 'COOLTECH',
+        qty: 10,
+        price: isUSD ? 1650 / 3.6725 : 1650,
+        total: isUSD ? 16500 / 3.6725 : 16500,
+      },
+      {
+        sl: 2,
+        code: 'CT100F4',
+        description: 'WATER COOLER 4 TAP 100 USG COOLTECH CT100F4',
+        unit: 'Each',
+        brand: 'COOLTECH',
+        qty: 10,
+        price: isUSD ? 2200 / 3.6725 : 2200,
+        total: isUSD ? 22000 / 3.6725 : 22000,
+      },
+    ];
+
+  const totalCols = 5 + (showQty ? 1 : 0) + (showPrice ? 1 : 0) + (showTotal ? 1 : 0);
+  const summaryColSpan = Math.max(1, totalCols - (showTotal ? 1 : 0));
+
+  const quoteNumber = quotation.quotationNumber || 'CTSQ#4366';
+  const customerName = quotation.customer || 'SMART ALLIANCE COMMERCIAL BROKERAGE L.L.C';
+  const contactPerson = quotation.contactPerson || 'Mr. Malik';
+  const contactPhone = quotation.phone || '+97150 123 9649';
+  const quoteDate = quotation.quoteDate || quotation.createdDate || '06-10-2026';
+  const preparedBy = quotation.assignedTo || quotation.createdBy || quotation.owner || 'MUHAMMED AHSAN P V';
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="4xl">
-      <div className="flex flex-col h-full max-h-[90vh] bg-white text-slate-900 rounded-2xl overflow-hidden">
-        {/* Top Control Bar (Hidden in Print) */}
-        <div className="print:hidden flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 sticky top-0 z-10">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-800 text-sm">Printable Quotation Voucher</span>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-semibold">
-              {quotation.quotationNumber}
+    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-[9999] flex flex-col justify-start items-stretch">
+      {/* Top PDF Reader Control Bar (Hidden on Print) */}
+      <div className="print:hidden bg-[#323639] text-white px-4 py-2 flex items-center justify-between shadow-md z-10 shrink-0 select-none">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-300 hover:text-white p-1 rounded hover:bg-slate-700 cursor-pointer"
+            title="Close"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-2 text-xs">
+            <FileText className="w-4 h-4 text-cyan-400" />
+            <span className="font-semibold tracking-wide text-slate-100">
+              {quoteNumber}_1791281149.pdf
             </span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all cursor-pointer"
-            >
-              <Printer className="w-4 h-4" />
-              Print / Save as PDF
-            </button>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
         </div>
 
-        {/* Printable Document Body */}
-        <div className="flex-1 overflow-y-auto p-6 sm:p-10 print:p-0 bg-white" ref={printContentRef}>
-          <div className="max-w-4xl mx-auto space-y-8 print:space-y-6">
-            {/* Header / Brand */}
-            <div className="flex flex-col sm:flex-row justify-between items-start border-b-2 border-indigo-900 pb-6 gap-6">
-              <div>
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-800 flex items-center justify-center text-white font-black text-xl shadow-md">
-                    CT
+        {/* Center Zoom Controls */}
+        <div className="hidden sm:flex items-center gap-2 bg-[#212427] px-3 py-1 rounded text-xs text-slate-300 border border-slate-700">
+          <span>1 / 1</span>
+          <span className="text-slate-600">|</span>
+          <button
+            type="button"
+            onClick={() => setZoomLevel((prev) => Math.max(60, prev - 10))}
+            className="hover:text-white px-1 font-bold cursor-pointer"
+            title="Zoom Out"
+          >
+            −
+          </button>
+          <span className="w-10 text-center text-[11px] font-mono">{zoomLevel}%</span>
+          <button
+            type="button"
+            onClick={() => setZoomLevel((prev) => Math.min(140, prev + 10))}
+            className="hover:text-white px-1 font-bold cursor-pointer"
+            title="Zoom In"
+          >
+            +
+          </button>
+        </div>
+
+        {/* Right Action Icons */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-semibold px-3 py-1 rounded flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+            title="Print Document"
+          >
+            <Printer className="w-3.5 h-3.5" /> Print
+          </button>
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="text-slate-300 hover:text-white p-1.5 rounded hover:bg-slate-700 cursor-pointer"
+            title="Download PDF"
+          >
+            <Download className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-300 hover:text-red-400 p-1.5 rounded hover:bg-slate-700 cursor-pointer ml-1"
+            title="Close PDF Viewer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Document Canvas Body */}
+      <div className="flex-1 bg-[#525659] p-4 sm:p-8 overflow-y-auto print:p-0 print:bg-white" ref={printContentRef}>
+        <div
+          style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
+          className="bg-white text-slate-900 shadow-2xl mx-auto max-w-[840px] p-8 sm:p-12 text-xs font-sans border border-slate-300 min-h-[1100px] flex flex-col justify-between transition-transform duration-100 print:shadow-none print:border-none print:transform-none print:p-6"
+        >
+          <div className="space-y-6">
+            {/* Top Header Section */}
+            <div className="grid grid-cols-12 items-start gap-4 pb-4">
+              {/* Left: Company Logo & Details */}
+              <div className="col-span-5 space-y-1">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="w-10 h-10 flex items-center justify-center shrink-0">
+                    <svg viewBox="0 0 80 80" className="w-10 h-10" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M60 14 A32 32 0 0 0 18 40" fill="none" stroke="#00AEEF" strokeWidth="6" strokeLinecap="round" />
+                      <path d="M54 21 A24 24 0 0 0 24 40" fill="none" stroke="#00AEEF" strokeWidth="5.5" strokeLinecap="round" />
+                      <path d="M48 28 A16 16 0 0 0 30 40" fill="none" stroke="#00AEEF" strokeWidth="5" strokeLinecap="round" />
+                      <path d="M18 40 A32 32 0 0 0 60 66" fill="none" stroke="#3D405B" strokeWidth="6" strokeLinecap="round" />
+                      <path d="M24 40 A24 24 0 0 0 54 59" fill="none" stroke="#3D405B" strokeWidth="5.5" strokeLinecap="round" />
+                      <path d="M30 40 A16 16 0 0 0 48 52" fill="none" stroke="#3D405B" strokeWidth="5" strokeLinecap="round" />
+                    </svg>
                   </div>
                   <div>
-                    <h1 className="text-2xl font-black tracking-tight text-slate-900 uppercase">
-                      COOL TECHNOLOGIES LLC
-                    </h1>
-                    <p className="text-xs text-slate-500 font-medium tracking-wide">
-                      HVAC & Engineering Solutions • Smart Enterprise Systems
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-1 text-xs text-slate-600">
-                  <p className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    Office 402, Business Bay, Dubai, United Arab Emirates
-                  </p>
-                  <p className="flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-slate-400" />
-                    +971 4 398 2211 • +971 50 123 4567
-                  </p>
-                  <p className="flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
-                    sales@cooltechuae.com • www.cooltechuae.com
-                  </p>
-                  <p className="font-semibold text-slate-800 pt-1 font-mono">
-                    UAE TRN / Tax No: <span className="text-indigo-900">10049281900003</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Quotation Document Badge */}
-              <div className="sm:text-right bg-slate-50 p-4 rounded-xl border border-slate-200 min-w-[240px]">
-                <span className="text-xs font-black tracking-widest text-indigo-700 uppercase block mb-1">
-                  COMMERCIAL QUOTATION
-                </span>
-                <p className="text-xl font-mono font-black text-slate-900">{quotation.quotationNumber}</p>
-                <div className="mt-3 space-y-1 text-xs text-slate-600">
-                  <div className="flex justify-between sm:justify-end gap-3">
-                    <span className="text-slate-400">Date:</span>
-                    <span className="font-semibold text-slate-800">{quotation.quoteDate || quotation.createdDate}</span>
-                  </div>
-                  <div className="flex justify-between sm:justify-end gap-3">
-                    <span className="text-slate-400">Valid Until:</span>
-                    <span className="font-semibold text-slate-800">{quotation.validUntil}</span>
-                  </div>
-                  {quotation.opportunityCode && (
-                    <div className="flex justify-between sm:justify-end gap-3">
-                      <span className="text-slate-400">Ref Code:</span>
-                      <span className="font-mono text-slate-800">{quotation.opportunityCode}</span>
+                    <div className="flex items-baseline gap-1 leading-none">
+                      <span className="font-black text-[18px] text-[#00AEEF] tracking-tight">COOL</span>
+                      <span className="font-bold text-[13px] text-[#3D405B] tracking-wider uppercase">TECHNOLOGIES</span>
                     </div>
-                  )}
+                    <div className="text-[8px] text-slate-400 italic tracking-widest uppercase font-medium mt-0.5">
+                      the science of cooling
+                    </div>
+                  </div>
+                </div>
+                <p className="font-bold text-[11px] text-slate-900 uppercase">COOL TECHNOLOGIES</p>
+                <p className="text-[10px] text-slate-600 leading-snug">
+                  Breej 5 Street, Plot 99, Sector M-42 Mussafah<br />
+                  Industrial Area, Abu Dhabi, UAE
+                </p>
+              </div>
+
+              {/* Center: QUOTATION Headline */}
+              <div className="col-span-3 text-center pt-2">
+                <h2 className="text-lg sm:text-xl font-black text-[#0088CC] tracking-wider uppercase">
+                  QUOTATION
+                </h2>
+              </div>
+
+              {/* Right: Contact Details */}
+              <div className="col-span-4 text-[10px] text-slate-700 space-y-0.5 text-right font-medium">
+                <p><span className="font-bold text-slate-800">Tel :</span> +971 2 585 0123</p>
+                <p><span className="font-bold text-slate-800">Mobile :</span> +971 55 946 0123</p>
+                <p><span className="font-bold text-slate-800">Email :</span> info@cooltechuae.com</p>
+                <p><span className="font-bold text-slate-800">Website :</span> www.cooltechuae.com</p>
+                <p><span className="font-bold text-slate-800">TRN :</span> 100 004 337 000 003</p>
+              </div>
+            </div>
+
+            {/* Recipient & Quotation Details (2 Columns) */}
+            <div className="grid grid-cols-12 gap-6 pt-2 border-t border-slate-200">
+              {/* Left: To */}
+              <div className="col-span-7 space-y-1 text-xs">
+                <div className="border-l-2 border-[#0088CC] pl-1.5 font-bold text-[#0088CC] text-xs">
+                  To
+                </div>
+                <p className="font-bold text-slate-900 text-xs uppercase pt-0.5">
+                  {customerName}
+                </p>
+                <p className="text-[11px] text-slate-700">
+                  <span className="font-medium text-slate-600">Attn :</span> {contactPerson}
+                </p>
+                <p className="text-[11px] text-slate-700">
+                  <span className="font-medium text-slate-600">Mobile :</span> {contactPhone}
+                </p>
+              </div>
+
+              {/* Right: Quotation Details */}
+              <div className="col-span-5 space-y-1 text-[11px] text-slate-800">
+                <div className="border-l-2 border-[#0088CC] pl-1.5 font-bold text-[#0088CC] text-xs">
+                  Quotation Details
+                </div>
+                <div className="space-y-0.5 pt-0.5">
+                  <p><span className="font-medium text-slate-600">Quotation Number :</span> <span className="font-bold">{quoteNumber}</span></p>
+                  <p><span className="font-medium text-slate-600">Quotation Date :</span> <span className="font-bold">{quoteDate}</span></p>
+                  <p><span className="font-medium text-slate-600">Prepared By :</span> <span className="font-bold">{preparedBy}</span></p>
+                  <p><span className="font-medium text-slate-600">No. of Pages :</span> 1</p>
                 </div>
               </div>
             </div>
 
-            {/* Bill To & Project Meta */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-slate-50/70 p-5 rounded-xl border border-slate-200">
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
-                  QUOTED TO (CLIENT):
-                </span>
-                <h3 className="font-bold text-base text-slate-900">{quotation.customer}</h3>
-                {quotation.contactPerson && (
-                  <p className="text-xs text-slate-600 mt-1 font-medium">Attn: {quotation.contactPerson}</p>
-                )}
-                {quotation.billingAddress && (
-                  <p className="text-xs text-slate-600 mt-1">{quotation.billingAddress}</p>
-                )}
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                  {quotation.phone && <span>Tel: {quotation.phone}</span>}
-                  {quotation.email && <span>Email: {quotation.email}</span>}
-                </div>
-              </div>
-
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
-                  QUOTATION SPECIFICATIONS:
-                </span>
-                <div className="space-y-1 text-xs text-slate-700">
-                  <p>
-                    <span className="text-slate-500">Subject / Project:</span>{' '}
-                    <span className="font-semibold text-slate-900">{quotation.subject || 'Commercial Proposal'}</span>
-                  </p>
-                  <p>
-                    <span className="text-slate-500">Prepared By:</span>{' '}
-                    <span className="font-medium text-slate-800">{quotation.assignedTo || 'Sales Department'}</span>
-                  </p>
-                  <p>
-                    <span className="text-slate-500">Department:</span>{' '}
-                    <span className="text-slate-800">{quotation.department || 'Commercial Projects'}</span>
-                  </p>
-                  <p>
-                    <span className="text-slate-500">Currency:</span>{' '}
-                    <span className="font-bold text-slate-900">AED (United Arab Emirates Dirham)</span>
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Line Items Table */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <table className="w-full text-left text-xs border-collapse">
+            {/* Items Table */}
+            <div className="pt-2">
+              <table className="w-full text-left text-[10px] sm:text-[11px] border border-slate-200">
                 <thead>
-                  <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold">
-                    <th className="py-3 px-3 w-10 text-center">#</th>
-                    <th className="py-3 px-4">Item Description & Specifications</th>
-                    <th className="py-3 px-3 text-right w-20">Qty</th>
-                    <th className="py-3 px-3 text-right w-20">Unit</th>
-                    <th className="py-3 px-4 text-right w-28">Unit Price (AED)</th>
-                    <th className="py-3 px-3 text-right w-20">Disc %</th>
-                    <th className="py-3 px-4 text-right w-32">Total (AED)</th>
+                  <tr className="bg-[#0088CC] text-white font-bold">
+                    <th className="py-2 px-2.5 text-center w-8">SL</th>
+                    <th className="py-2 px-2.5">Code</th>
+                    <th className="py-2 px-2.5">Item Description</th>
+                    <th className="py-2 px-2.5">Unit</th>
+                    <th className="py-2 px-2.5">Brand</th>
+                    {showQty && <th className="py-2 px-2.5 text-center">Qty</th>}
+                    {showPrice && <th className="py-2 px-2.5 text-right">Price</th>}
+                    {showTotal && <th className="py-2 px-2.5 text-right">Total</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-slate-800">
-                  {quotation.items && quotation.items.length > 0 ? (
-                    quotation.items.map((item, idx) => (
-                      <tr key={item.id || idx} className="hover:bg-slate-50">
-                        <td className="py-3 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
-                        <td className="py-3 px-4">
-                          <p className="font-bold text-slate-900">{item.productName || item.description}</p>
-                          {item.productName && item.description && (
-                            <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">{item.description}</p>
-                          )}
-                          {item.sku && <p className="text-[10px] text-slate-400 font-mono mt-0.5">SKU: {item.sku}</p>}
-                        </td>
-                        <td className="py-3 px-3 text-right font-semibold">{item.quantity}</td>
-                        <td className="py-3 px-3 text-right text-slate-600">{item.unit || 'pcs'}</td>
-                        <td className="py-3 px-4 text-right font-mono text-slate-700">
-                          {Number(item.unitPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-600">
-                          {item.discountPercentage ? `${item.discountPercentage}%` : '—'}
-                        </td>
-                        <td className="py-3 px-4 text-right font-bold font-mono text-slate-900">
-                          {Number(item.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={7} className="py-6 text-center text-slate-400 italic">
-                        No items specified.
+                  {tableItems.map((item) => (
+                    <tr key={item.sl}>
+                      <td className="py-3 px-2.5 text-center font-medium">{item.sl}</td>
+                      <td className="py-3 px-2.5 font-bold text-slate-900">{item.code}</td>
+                      <td className="py-3 px-2.5 font-bold text-slate-900 uppercase">
+                        {item.description}
                       </td>
+                      <td className="py-3 px-2.5">{item.unit}</td>
+                      <td className="py-3 px-2.5">{item.brand}</td>
+                      {showQty && <td className="py-3 px-2.5 text-center font-medium">{item.qty}</td>}
+                      {showPrice && (
+                        <td className="py-3 px-2.5 text-right font-medium">
+                          {item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      )}
+                      {showTotal && (
+                        <td className="py-3 px-2.5 text-right font-medium">
+                          {item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      )}
                     </tr>
-                  )}
+                  ))}
+
+                  {/* Summary Rows */}
+                  <tr className="bg-slate-50/50">
+                    <td colSpan={summaryColSpan} className="py-1.5 px-2.5 text-right font-bold text-slate-700">
+                      Total
+                    </td>
+                    <td className="py-1.5 px-2.5 text-right font-bold text-slate-900">
+                      {displayAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                  <tr className="bg-slate-50/50">
+                    <td colSpan={summaryColSpan} className="py-1.5 px-2.5 text-right font-bold text-slate-700">
+                      VAT ({qVatRate}%)
+                    </td>
+                    <td className="py-1.5 px-2.5 text-right font-bold text-slate-900">
+                      {displayVat.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                  <tr className="bg-slate-100/80">
+                    <td colSpan={summaryColSpan} className="py-2 px-2.5 text-right font-black text-[#0088CC] text-xs">
+                      Grand Total in {currencyLabel}
+                    </td>
+                    <td className="py-2 px-2.5 text-right font-black text-[#0088CC] text-xs">
+                      {displayGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
 
-            {/* Financial Summary Calculation */}
-            <div className="flex justify-end">
-              <div className="w-full sm:w-80 bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
-                <div className="flex justify-between text-slate-600">
-                  <span>Gross Total Amount:</span>
-                  <span className="font-mono font-medium">
-                    AED {(quotation.grossAmount || quotation.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                {Boolean(quotation.discountAmount) && (
-                  <div className="flex justify-between text-rose-600">
-                    <span>Discount Deduction:</span>
-                    <span className="font-mono font-medium">
-                      - AED {Number(quotation.discountAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between text-slate-700 font-medium">
-                  <span>Taxable Subtotal:</span>
-                  <span className="font-mono">
-                    AED {(quotation.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex justify-between text-slate-700 font-medium">
-                  <span>UAE VAT (5%):</span>
-                  <span className="font-mono">
-                    AED {(quotation.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="pt-2 border-t-2 border-slate-300 flex justify-between text-sm font-black text-indigo-900">
-                  <span>Net Grand Total:</span>
-                  <span className="font-mono text-base">
-                    AED {(quotation.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
+            {/* Amount in words */}
+            <div className="pt-1">
+              <p className="font-bold text-slate-800 text-[11px]">Amount in words</p>
+              <p className="font-bold text-[#0088CC] text-xs mt-0.5">
+                {numberToWords(displayGrandTotal)}
+              </p>
             </div>
 
-            {/* Terms & Conditions */}
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs space-y-2">
-              <h4 className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
-                Terms & Conditions of Supply
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-600 leading-relaxed">
-                <div>
-                  <span className="font-semibold text-slate-800">1. Payment Terms:</span>{' '}
-                  {quotation.paymentTerms || '30% Advance with LPO, 70% against delivery / 30 days.'}
-                </div>
-                <div>
-                  <span className="font-semibold text-slate-800">2. Delivery:</span>{' '}
-                  {quotation.deliveryTerms || 'Within 5-7 working days from confirmed order.'}
-                </div>
-                <div>
-                  <span className="font-semibold text-slate-800">3. Warranty:</span>{' '}
-                  {quotation.warrantyTerms || quotation.warranty || '1 Year Standard Comprehensive Warranty.'}
-                </div>
-                <div>
-                  <span className="font-semibold text-slate-800">4. Quotation Validity:</span>{' '}
-                  {quotation.validityTerms || `Valid until ${quotation.validUntil}`}
-                </div>
+            {/* Terms & Conditions Section */}
+            <div className="pt-2 space-y-1.5 text-[11px] text-slate-800">
+              <div className="border-l-2 border-[#0088CC] pl-1.5 font-bold text-[#0088CC] text-xs mb-2">
+                Terms &amp; Conditions
               </div>
-
-              {quotation.customerNotes && (
-                <div className="mt-3 pt-3 border-t border-slate-200 text-slate-600">
-                  <span className="font-semibold text-slate-800 block mb-0.5">Special Remarks / Scope Notes:</span>
-                  <p className="whitespace-pre-wrap">{quotation.customerNotes}</p>
+              {quotation.customerNotes || quotation.notes ? (
+                <div className="space-y-1 text-slate-800 font-medium whitespace-pre-line">
+                  {quotation.customerNotes || quotation.notes}
+                </div>
+              ) : (
+                <div className="space-y-1 text-slate-800 font-medium">
+                  <p><span className="font-bold">PRICE</span> : In {currencyLabel}, DDP</p>
+                  <p><span className="font-bold">PAYMENT TERMS</span>: {quotation.paymentTerms || 'CASH/CDC/Bank Transfer'}</p>
+                  <p><span className="font-bold">DELIVERY</span> : {quotation.deliveryTerms || '2-3 DAYS ARO, SUBJECT TO PRIOR SALE'}</p>
+                  <p><span className="font-bold">VALIDITY</span> : {quotation.validityTerms || '7 Days'}</p>
+                  <p className="font-bold pt-1">WARRANTY FOR WATER COOLER</p>
+                  <p>1. {quotation.warranty || quotation.warrantyTerms || 'One Year for unit & 5 Years for compressor as per the manufacturer\'s terms.'}</p>
+                  <p>2. Warranty limited for manufacturing defect only</p>
                 </div>
               )}
-            </div>
 
-            {/* Signatures & Acceptance Box */}
-            <div className="grid grid-cols-2 gap-8 pt-6 border-t border-slate-200 text-xs">
-              <div className="space-y-12">
-                <div>
-                  <span className="font-bold text-slate-800 uppercase tracking-wider block mb-1">
-                    For Cool Technologies LLC
-                  </span>
-                  <p className="text-slate-500 text-[11px]">Authorized Signature & Stamp</p>
-                </div>
-                <div className="border-b border-slate-400 w-48"></div>
+              <div className="pt-3 space-y-2 text-[10.5px] text-slate-700 leading-relaxed">
+                <p>We hope we are in line with your requirement &amp; expecting a purchase order from your side to proceed further.</p>
+                <p>Please feel free to call me or mail me for any clarification that you may deem required in the proposal.</p>
               </div>
 
-              <div className="space-y-12 text-right sm:text-left">
-                <div>
-                  <span className="font-bold text-slate-800 uppercase tracking-wider block mb-1">
-                    Client Acceptance & Confirmation
-                  </span>
-                  <p className="text-slate-500 text-[11px]">Authorized Signatory, Date & Company Stamp</p>
-                </div>
-                <div className="border-b border-slate-400 w-48 ml-auto sm:ml-0"></div>
+              {/* Sign-off */}
+              <div className="pt-4 space-y-0.5 text-[11px]">
+                <p className="font-bold text-slate-900">For COOL TECHNOLOGIES</p>
+                <p className="font-bold text-slate-900 pt-1">{preparedBy}</p>
+                <p className="text-slate-600 text-[10px]">Sales Engineer</p>
+                <p className="text-slate-600 text-[10px]">Phone: +971509980095</p>
               </div>
             </div>
           </div>
+
+          {/* Footer */}
+          <div className="pt-6 border-t border-slate-200 flex justify-end text-[10px] text-slate-500">
+            <span>Page 1 of 1</span>
+          </div>
         </div>
       </div>
-    </Modal>
+    </div>
   );
 }

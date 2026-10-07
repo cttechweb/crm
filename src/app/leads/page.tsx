@@ -41,6 +41,11 @@ import { Modal } from '@/components/ui/Modal';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { Input, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import {
+  ChangeLeadStatusModal,
+  getRatingBadgeClass,
+  getStatusBadgeClass,
+} from '@/components/leads/ChangeLeadStatusModal';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { canAccessLead } from '@/services/crmDataScopeService';
 import { CrmLead, LeadRating, LeadStatus } from '@/types/enterprise-crm';
@@ -91,6 +96,7 @@ export function LeadsContent() {
   const [search, setSearch] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
 
   // Modals & Action States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -100,20 +106,66 @@ export function LeadsContent() {
   const [editingLead, setEditingLead] = useState<CrmLead | null>(null);
   const [viewingLead, setViewingLead] = useState<CrmLead | null>(null);
   const [assigningLead, setAssigningLead] = useState<CrmLead | null>(null);
-  const [assignToOwner, setAssignToOwner] = useState('JISMON JOSE');
+  const [assignToOwner, setAssignToOwner] = useState('');
   const [convertingLead, setConvertingLead] = useState<CrmLead | null>(null);
+  const [statusModifyingLead, setStatusModifyingLead] = useState<CrmLead | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
+
+  const handleUpdateStatusAndRating = (data: {
+    status: LeadStatus;
+    rating: LeadRating;
+    comments: string;
+    addNote: boolean;
+  }) => {
+    if (!statusModifyingLead) return;
+    const now = new Date();
+    const formattedDate = `${now.toLocaleDateString('en-GB').replace(/\//g, '-')} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    let updatedNotes = statusModifyingLead.notes || [];
+    if (data.addNote) {
+      const noteContent = data.comments.trim()
+        ? `Status changed to ${data.status} (${String(data.rating).toUpperCase()}). Comment: ${data.comments.trim()}`
+        : `Status changed to ${data.status} (${String(data.rating).toUpperCase()}).`;
+
+      const newNote = {
+        id: `note-${Date.now()}`,
+        author: currentUser?.name || statusModifyingLead.owner || 'Admin',
+        avatar: currentUser?.avatar || statusModifyingLead.ownerAvatar || '',
+        date: formattedDate,
+        content: noteContent,
+      };
+      updatedNotes = [newNote, ...updatedNotes];
+    }
+
+    updateLead(statusModifyingLead.id, {
+      status: data.status,
+      rating: data.rating,
+      comments: data.comments,
+      lastActivity: `Status updated to ${data.status}`,
+      lastActivityDate: formattedDate,
+      lastActivityTimeAgo: 'Just now',
+      notes: updatedNotes,
+    });
+
+    setStatusModifyingLead(null);
+  };
 
   const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
 
   useEffect(() => {
     const syncUser = () => {
       const u = authMockService.getCurrentUser();
-      if (u) setCurrentUser(u);
+      if (u) {
+        setCurrentUser(u);
+        setAssignToOwner((prev) => prev || u.name || 'shaheer');
+      }
     };
     syncUser();
     const unsub = authMockService.onAuthStateChanged((u) => {
-      if (u) setCurrentUser(u);
+      if (u) {
+        setCurrentUser(u);
+        setAssignToOwner((prev) => prev || u.name || 'shaheer');
+      }
     });
     window.addEventListener('storage', syncUser);
     window.addEventListener('crm_auth_updated', syncUser);
@@ -202,6 +254,83 @@ export function LeadsContent() {
     return Array.from(memberIdentifiers);
   }, [currentUser]);
 
+  // Comprehensive list of all active registered CRM users for assignment
+  const assignableUsers = useMemo(() => {
+    let deletedIds: string[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const delRaw = localStorage.getItem('cezcon_crm_deleted_user_ids');
+        if (delRaw) deletedIds = JSON.parse(delRaw);
+      } catch (e) {}
+    }
+
+    const userMap = new Map<string, { id: string; name: string; role: string; department?: string; avatar?: string; email?: string }>();
+
+    // 1. Dynamic users from localStorage (Settings > Users)
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('cezcon_crm_users_list');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((u: any) => {
+              const uId = String(u.id || '');
+              if (deletedIds.includes(uId) || deletedIds.includes(`usr_${uId}`) || deletedIds.includes(uId.replace('usr_', ''))) {
+                return;
+              }
+              const name = u.name?.trim() || u.username?.trim();
+              if (name && !userMap.has(name.toLowerCase())) {
+                userMap.set(name.toLowerCase(), {
+                  id: uId || `usr_${name.toLowerCase()}`,
+                  name,
+                  role: u.profileType || u.employeeType || u.designation || 'Staff',
+                  department: u.department || u.managerType || '',
+                  avatar: u.avatarImage || u.avatarUrl || u.avatar,
+                  email: u.email,
+                });
+              }
+            });
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 2. Users from EnterpriseCrmContext
+    users.forEach((u) => {
+      if (u.name && !userMap.has(u.name.toLowerCase())) {
+        userMap.set(u.name.toLowerCase(), {
+          id: u.id,
+          name: u.name,
+          role: u.role || 'Sales Representative',
+          department: u.department,
+          avatar: u.avatar,
+          email: u.email,
+        });
+      }
+    });
+
+    // 3. Fallback standard enterprise representatives
+    const fallbacks = [
+      { id: 'usr_shaheer', name: 'Shaheer', role: 'Sales Executive', department: 'Sales' },
+      { id: 'usr_shibil', name: 'Muhammed Shibil', role: 'Sales Manager', department: 'Sales' },
+      { id: 'usr_jismon', name: 'JISMON JOSE', role: 'Sales Executive', department: 'Sales' },
+      { id: 'usr_ahsan', name: 'MUHAMMED AHSAN P V', role: 'Sales Executive', department: 'Sales' },
+      { id: 'usr_adhil', name: 'Muhammed Adhil', role: 'Sales Executive', department: 'Sales' },
+      { id: 'usr_afsal', name: 'Afsal', role: 'Marketing Manager', department: 'Marketing' },
+      { id: 'usr_arun', name: 'Arun', role: 'Marketing Executive', department: 'Marketing' },
+      { id: 'usr_shameem', name: 'Shameem', role: 'Marketing Executive', department: 'Marketing' },
+      { id: 'usr_rashid', name: 'Mohammed Rashid', role: 'Purchase Manager', department: 'Purchase' },
+    ];
+
+    fallbacks.forEach((f) => {
+      if (!userMap.has(f.name.toLowerCase())) {
+        userMap.set(f.name.toLowerCase(), f);
+      }
+    });
+
+    return Array.from(userMap.values());
+  }, [users]);
+
   // Country Phone Rules & Validation Schemas
   const COUNTRY_DIAL_RULES: Record<string, { minDigits: number; maxDigits: number; label: string; placeholder: string }> = {
     '+971': { minDigits: 9, maxDigits: 9, label: 'UAE', placeholder: '50 123 4567' },
@@ -220,7 +349,8 @@ export function LeadsContent() {
 
   // New Lead Form State (Full Cezcon CRM Compatibility)
   const [newLead, setNewLead] = useState({
-    owner: currentUser?.name || '',
+    owner: currentUser?.name || 'shaheer',
+    assignedTo: currentUser?.name || 'shaheer',
     leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
     contactPrefix: 'Mr.',
     name: '',
@@ -469,12 +599,13 @@ export function LeadsContent() {
     const contactDisplayName = newLead.name.trim() ? `${newLead.contactPrefix} ${newLead.name.trim()}` : (newLead.customerName || 'Point of contact');
     const companyDisplayName = newLead.customerName.trim() || newLead.name.trim() || 'New Enterprise Client';
 
-    const enteredOwner = newLead.owner.trim();
-    const effectiveOwner = enteredOwner || currentUser?.name || 'Super Admin';
+    const enteredOwner = newLead.owner.trim() || currentUser?.name || 'shaheer';
+    const enteredAssignee = newLead.assignedTo.trim() || enteredOwner;
     const effectiveCreatedBy = currentUser?.name || 'Super Admin';
-    const effectiveAssignedEmployee = enteredOwner || (isEmployee ? currentUser?.name || 'Super Admin' : 'Super Admin');
+    const effectiveAssignedEmployee = enteredAssignee;
 
-    const ownerAvatarImg = getEmployeePhoto(effectiveOwner) || currentUser?.avatar || '';
+    const assigneeAvatarImg = getEmployeePhoto(effectiveAssignedEmployee) || '';
+    const ownerAvatarImg = getEmployeePhoto(enteredOwner) || currentUser?.avatar || '';
     const createdByAvatarImg = getEmployeePhoto(effectiveCreatedBy) || currentUser?.avatar || '';
 
     const cleanBiz = newLead.businessMobile.replace(/\D/g, '');
@@ -485,8 +616,8 @@ export function LeadsContent() {
       leadDate: newLead.leadDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
       assignedDate: newLead.leadDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
       leadAssigned: {
-        name: effectiveOwner,
-        avatar: ownerAvatarImg,
+        name: effectiveAssignedEmployee,
+        avatar: assigneeAvatarImg,
       },
       contactDetails: {
         name: contactDisplayName,
@@ -498,7 +629,7 @@ export function LeadsContent() {
       leadSpecification: newLead.comments || newLead.businessOpportunity || 'Commercial client HVAC specification',
       createdBy: effectiveCreatedBy,
       createdByAvatar: createdByAvatarImg,
-      owner: effectiveOwner,
+      owner: enteredOwner,
       ownerAvatar: ownerAvatarImg,
       assignedEmployee: effectiveAssignedEmployee,
       department: currentUser?.department || currentUser?.managerType || currentUser?.employeeType || (currentUser?.name?.toLowerCase().includes('arun') ? 'Marketing' : 'Sales'),
@@ -517,7 +648,8 @@ export function LeadsContent() {
     setFormErrors({});
     setIsAddModalOpen(false);
     setNewLead({
-      owner: currentUser?.name || '',
+      owner: currentUser?.name || 'shaheer',
+      assignedTo: currentUser?.name || 'shaheer',
       leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
       contactPrefix: 'Mr.',
       name: '',
@@ -587,14 +719,49 @@ export function LeadsContent() {
                   <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
                     Lead Owner
                   </label>
-                  <div className="sm:col-span-9 relative">
-                    <input
-                      type="text"
-                      placeholder="Enter lead owner name"
+                  <div className="sm:col-span-9 relative flex items-center border border-slate-300 rounded bg-white px-2.5 py-1 focus-within:border-blue-500 shadow-2xs">
+                    {renderUserAvatar(newLead.owner, undefined, 'w-5 h-5 mr-2 shrink-0')}
+                    <select
                       value={newLead.owner}
                       onChange={(e) => setNewLead({ ...newLead, owner: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 font-medium focus:outline-none focus:border-blue-500 shadow-2xs"
-                    />
+                      className="w-full bg-transparent text-slate-800 text-xs font-medium focus:outline-none cursor-pointer pr-4 appearance-none"
+                    >
+                      {assignableUsers.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name} {u.role ? `(${u.role})` : ''}
+                        </option>
+                      ))}
+                      {newLead.owner && !assignableUsers.some((u) => u.name === newLead.owner) && (
+                        <option value={newLead.owner}>{newLead.owner}</option>
+                      )}
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 2. Assign Lead / Assigned To */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center bg-blue-50/40 p-2 rounded border border-blue-100/70">
+                  <label className="sm:col-span-3 text-xs font-semibold text-blue-900 flex items-center gap-1">
+                    <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Assign To</span>
+                  </label>
+                  <div className="sm:col-span-9 relative flex items-center border border-blue-300 rounded bg-white px-2.5 py-1 focus-within:border-blue-600 shadow-2xs">
+                    {renderUserAvatar(newLead.assignedTo, undefined, 'w-5 h-5 mr-2 shrink-0')}
+                    <select
+                      value={newLead.assignedTo}
+                      onChange={(e) => setNewLead({ ...newLead, assignedTo: e.target.value })}
+                      className="w-full bg-transparent text-slate-800 text-xs font-semibold focus:outline-none cursor-pointer pr-4 appearance-none"
+                    >
+                      {assignableUsers.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name} {u.role ? `(${u.role})` : ''}
+                        </option>
+                      ))}
+                      {newLead.assignedTo && !assignableUsers.some((u) => u.name === newLead.assignedTo) && (
+                        <option value={newLead.assignedTo}>{newLead.assignedTo}</option>
+                      )}
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-blue-600 absolute right-2.5 pointer-events-none" />
                   </div>
                 </div>
 
@@ -1253,10 +1420,11 @@ export function LeadsContent() {
               className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-600"
             >
               <option value="All">All Owners</option>
-              <option value="Alex Rivera">Alex Rivera</option>
-              <option value="Elena Rostova">Elena Rostova</option>
-              <option value="Jordan Hayes">Jordan Hayes</option>
-              <option value="Mohammed Rashid">Mohammed Rashid</option>
+              {assignableUsers.map((u) => (
+                <option key={u.id} value={u.name}>
+                  {u.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -1271,8 +1439,11 @@ export function LeadsContent() {
               <option value="All">All</option>
               <option value="Super Admin">Super Admin</option>
               <option value="Admin">Admin</option>
-              <option value="Alex Rivera">Alex Rivera</option>
-              <option value="Elena Rostova">Elena Rostova</option>
+              {assignableUsers.map((u) => (
+                <option key={`cb-${u.id}`} value={u.name}>
+                  {u.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -1285,13 +1456,9 @@ export function LeadsContent() {
               className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-600"
             >
               <option value="All">All</option>
-              <option value="Pending/Contacted">Pending/Contacted</option>
               <option value="Pending">Pending</option>
               <option value="Contacted">Contacted</option>
-              <option value="Qualified">Qualified</option>
-              <option value="Proposal Sent">Proposal Sent</option>
-              <option value="Converted">Converted</option>
-              <option value="Lost">Lost</option>
+              <option value="Disqualified">Disqualified</option>
             </select>
           </div>
 
@@ -1437,6 +1604,21 @@ export function LeadsContent() {
 
           {/* Right Action Buttons */}
           <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Selected Leads Counter / Clear */}
+            {selectedLeadIds.length > 0 && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold animate-in fade-in">
+                <span>{selectedLeadIds.length} Selected</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLeadIds([])}
+                  className="text-blue-500 hover:text-blue-700 p-0.5 cursor-pointer"
+                  title="Deselect All"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+
             {/* 1 Duplicate Lead(s) */}
             <button
               type="button"
@@ -1453,10 +1635,10 @@ export function LeadsContent() {
             <button
               type="button"
               onClick={() => setIsAssignModalOpen(true)}
-              className="flex items-center gap-1 px-3 py-1 rounded bg-[#0F2844] hover:bg-[#1E3A5F] text-white text-xs font-medium cursor-pointer transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1 rounded bg-[#0F2844] hover:bg-[#1E3A5F] text-white text-xs font-semibold cursor-pointer transition-colors shadow-2xs"
             >
-              <UserCheck className="w-3.5 h-3.5" />
-              <span>Assign Lead</span>
+              <UserCheck className="w-3.5 h-3.5 text-blue-400" />
+              <span>Assign Lead{selectedLeadIds.length > 0 ? ` (${selectedLeadIds.length})` : ''}</span>
             </button>
 
             {/* Upload Lead */}
@@ -1473,7 +1655,7 @@ export function LeadsContent() {
             <button
               type="button"
               onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-1 px-3 py-1 rounded bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-bold uppercase tracking-wider cursor-pointer transition-colors"
+              className="flex items-center gap-1 px-3 py-1 rounded bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-bold uppercase tracking-wider cursor-pointer transition-colors shadow-2xs"
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
               <span>LEAD</span>
@@ -1529,15 +1711,29 @@ export function LeadsContent() {
               const slNo = lead.slNo || (currentPage - 1) * pageSize + idx + 1;
               const isPending = lead.status === 'Pending';
               const isContacted = lead.status === 'Contacted';
+              const isSelected = selectedLeadIds.includes(lead.id);
 
               return (
                 <div
                   key={lead.id}
-                  className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-xs space-y-2.5 transition-all text-xs"
+                  className={cn(
+                    "bg-white border rounded-lg p-3.5 shadow-xs space-y-2.5 transition-all text-xs",
+                    isSelected ? "border-blue-500 bg-blue-50/20 ring-1 ring-blue-500/20" : "border-slate-200"
+                  )}
                 >
-                  {/* Top row: SL.No, Name, Rating, Status */}
+                  {/* Top row: Checkbox, SL.No, Name, Rating, Status */}
                   <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
                     <div className="flex items-start gap-2 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {
+                          setSelectedLeadIds((prev) =>
+                            prev.includes(lead.id) ? prev.filter((x) => x !== lead.id) : [...prev, lead.id]
+                          );
+                        }}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer w-4 h-4 mt-0.5 shrink-0"
+                      />
                       <span className="w-5 h-5 rounded bg-blue-50 text-blue-700 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
                         #{slNo}
                       </span>
@@ -1566,30 +1762,28 @@ export function LeadsContent() {
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span
+                      <button
+                        type="button"
+                        onClick={() => setStatusModifyingLead(lead)}
                         className={cn(
-                          'px-2 py-0.5 rounded text-[10px] font-bold',
-                          lead.rating === 'Hot'
-                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                            : lead.rating === 'Warm'
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                              : 'bg-sky-50 text-sky-700 border border-sky-200'
+                          'px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-transform active:scale-95 text-white',
+                          getRatingBadgeClass(lead.rating)
                         )}
+                        title="Click to change status & rating"
                       >
                         {lead.rating}
-                      </span>
-                      <span
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatusModifyingLead(lead)}
                         className={cn(
-                          'px-2 py-0.5 rounded text-[10px] font-bold',
-                          isPending
-                            ? 'bg-amber-500 text-white'
-                            : isContacted
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-emerald-600 text-white'
+                          'px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-transform active:scale-95 text-white',
+                          getStatusBadgeClass(lead.status)
                         )}
+                        title="Click to change status & rating"
                       >
                         {lead.status}
-                      </span>
+                      </button>
                     </div>
                   </div>
 
@@ -1616,12 +1810,19 @@ export function LeadsContent() {
                     )}
                   </div>
 
-                  {/* Lead Specification */}
-                  {lead.leadSpecification && (
-                    <p className="text-[11px] text-slate-600 line-clamp-2">
-                      {lead.leadSpecification}
-                    </p>
-                  )}
+                  {/* Lead Assignment & Creator Info Chip */}
+                  <div className="grid grid-cols-2 gap-2 bg-slate-50/70 p-2 rounded border border-slate-100 text-[11px]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-400 font-medium">Created:</span>
+                      {renderUserAvatar(lead.createdBy || 'Super Admin', lead.createdByAvatar, 'w-4 h-4')}
+                      <span className="font-semibold text-slate-700 truncate">{lead.createdBy || 'Super Admin'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-blue-600 font-semibold">Assigned:</span>
+                      {renderUserAvatar(lead.assignedEmployee || lead.leadAssigned?.name || lead.owner, lead.leadAssigned?.avatar || lead.ownerAvatar, 'w-4 h-4')}
+                      <span className="font-bold text-slate-800 truncate">{lead.assignedEmployee || lead.leadAssigned?.name || lead.owner}</span>
+                    </div>
+                  </div>
 
                   {/* Footer: Date, Assigned, Owner, Action menu */}
                   <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-100 text-slate-500">
@@ -1631,10 +1832,16 @@ export function LeadsContent() {
                     </div>
 
                     <div className="flex items-center gap-2 relative">
-                      <div className="flex items-center gap-1">
-                        {renderUserAvatar(lead.owner, lead.ownerAvatar || lead.leadAssigned?.avatar, 'w-5 h-5')}
-                        <span className="font-medium text-slate-700 text-xs">{lead.owner}</span>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAssignToOwner(lead.assignedEmployee || lead.owner || currentUser?.name || 'shaheer');
+                          setAssigningLead(lead);
+                        }}
+                        className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 text-[10px] font-bold cursor-pointer"
+                      >
+                        Assign
+                      </button>
 
                       <button
                         type="button"
@@ -1682,6 +1889,31 @@ export function LeadsContent() {
                             <button
                               type="button"
                               onClick={() => {
+                                setStatusModifyingLead(lead);
+                                setActionMenuId(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3.5 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                            >
+                              <Edit2 className="w-4 h-4 text-slate-700 flex-shrink-0 stroke-[1.75]" />
+                              <span>Change Status & Rating</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAssignToOwner(lead.assignedEmployee || lead.owner || currentUser?.name || 'shaheer');
+                                setAssigningLead(lead);
+                                setActionMenuId(null);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3.5 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                            >
+                              <ArrowUpRight className="w-4 h-4 text-slate-700 flex-shrink-0 stroke-[2] p-0.5 border border-slate-700 rounded-[2px]" />
+                              <span>Assign Lead</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
                                 deleteLead(lead.id);
                                 setActionMenuId(null);
                               }}
@@ -1703,24 +1935,41 @@ export function LeadsContent() {
 
         {/* ── 3. Desktop Data Table matching Cezcon CRM Screenshot ─────── */}
         <div className="hidden md:block overflow-x-auto min-h-[420px] w-full">
-          <table className="w-full text-left text-xs border-collapse min-w-[1050px]">
+          <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
             <thead>
               <tr className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-semibold">
-                <th className="py-2.5 px-3 text-center w-12 border-r border-slate-200">SL.No</th>
+                <th className="py-2.5 px-3 text-center w-14 border-r border-slate-200">
+                  <div className="flex items-center justify-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={displayLeads.length > 0 && displayLeads.every((l) => selectedLeadIds.includes(l.id))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedLeadIds(Array.from(new Set([...selectedLeadIds, ...displayLeads.map((l) => l.id)])));
+                        } else {
+                          setSelectedLeadIds(selectedLeadIds.filter((id) => !displayLeads.some((l) => l.id === id)));
+                        }
+                      }}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer w-3.5 h-3.5"
+                      title="Select all on this page"
+                    />
+                    <span>SL.No</span>
+                  </div>
+                </th>
                 <th className="py-2.5 px-3 w-28 border-r border-slate-200">
                   <div className="flex items-center gap-1">
                     <span>Lead Date</span>
                     <ChevronDown className="w-3 h-3 text-blue-600" />
                   </div>
                 </th>
-                <th className="py-2.5 px-3 w-28 border-r border-slate-200">Lead Assigned</th>
+                <th className="py-2.5 px-3 w-36 border-r border-slate-200">Lead Assigned</th>
                 <th className="py-2.5 px-3 w-64 border-r border-slate-200">Contact Details</th>
-                <th className="py-2.5 px-3 w-56 border-r border-slate-200">Lead Spec</th>
-                <th className="py-2.5 px-3 text-center w-20 border-r border-slate-200">Created By</th>
-                <th className="py-2.5 px-3 text-center w-20 border-r border-slate-200">Owner</th>
+                <th className="py-2.5 px-3 w-52 border-r border-slate-200">Lead Spec</th>
+                <th className="py-2.5 px-3 text-center w-24 border-r border-slate-200">Created By</th>
+                <th className="py-2.5 px-3 text-center w-24 border-r border-slate-200">Owner</th>
                 <th className="py-2.5 px-3 text-center w-24 border-r border-slate-200">Rating</th>
                 <th className="py-2.5 px-3 text-center w-24 border-r border-slate-200">Status</th>
-                <th className="py-2.5 px-3 w-40 border-r border-slate-200">Last Activity</th>
+                <th className="py-2.5 px-3 w-36 border-r border-slate-200">Last Activity</th>
                 <th className="py-2.5 px-3 text-center w-16">Actions</th>
               </tr>
             </thead>
@@ -1736,12 +1985,25 @@ export function LeadsContent() {
                   const slNo = lead.slNo || (currentPage - 1) * pageSize + idx + 1;
                   const isPending = lead.status === 'Pending';
                   const isContacted = lead.status === 'Contacted';
+                  const isSelected = selectedLeadIds.includes(lead.id);
 
                   return (
-                    <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* SL.No */}
+                    <tr key={lead.id} className={cn("hover:bg-slate-50/80 transition-colors", isSelected && "bg-blue-50/40")}>
+                      {/* Checkbox + SL.No */}
                       <td className="py-3 px-3 text-center font-medium text-slate-600 border-r border-slate-200">
-                        {slNo}
+                        <div className="flex items-center justify-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {
+                              setSelectedLeadIds((prev) =>
+                                prev.includes(lead.id) ? prev.filter((x) => x !== lead.id) : [...prev, lead.id]
+                              );
+                            }}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer w-3.5 h-3.5"
+                          />
+                          <span>{slNo}</span>
+                        </div>
                       </td>
 
                       {/* Lead Date */}
@@ -1749,9 +2011,26 @@ export function LeadsContent() {
                         {lead.leadDate}
                       </td>
 
-                      {/* Lead Assigned */}
-                      <td className="py-3 px-3 text-slate-500 whitespace-nowrap border-r border-slate-200 font-mono text-[11px]">
-                        {lead.assignedDate || ''}
+                      {/* Lead Assigned (Date + Assigned Member Avatar & Name) */}
+                      <td className="py-2.5 px-3 border-r border-slate-200 whitespace-nowrap">
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-mono text-slate-700">
+                            {lead.assignedDate || lead.leadDate}
+                          </div>
+                          <div
+                            className="flex items-center gap-1.5 text-[11px] font-bold text-slate-800"
+                            title={`Assigned to: ${lead.assignedEmployee || lead.leadAssigned?.name || lead.owner}`}
+                          >
+                            {renderUserAvatar(
+                              lead.assignedEmployee || lead.leadAssigned?.name || lead.owner,
+                              lead.leadAssigned?.avatar || lead.ownerAvatar,
+                              'w-4 h-4 shrink-0'
+                            )}
+                            <span className="truncate max-w-[100px] text-blue-700 font-semibold">
+                              {lead.assignedEmployee || lead.leadAssigned?.name || lead.owner}
+                            </span>
+                          </div>
+                        </div>
                       </td>
 
                       {/* Contact Details (Name + Info Icon + Shield Company + WhatsApp/Phone) */}
@@ -1808,42 +2087,56 @@ export function LeadsContent() {
                         </span>
                       </td>
 
-                      {/* Created By Avatar */}
-                      <td className="py-3 px-3 text-center border-r border-slate-200">
-                        {renderUserAvatar(lead.createdBy, lead.createdByAvatar)}
+                      {/* Created By (Avatar + Name) */}
+                      <td className="py-2.5 px-3 text-center border-r border-slate-200">
+                        <div className="flex flex-col items-center justify-center" title={`Created by: ${lead.createdBy || 'Super Admin'}`}>
+                          {renderUserAvatar(lead.createdBy || 'Super Admin', lead.createdByAvatar, 'w-6 h-6')}
+                          <span className="text-[10px] text-slate-600 font-medium truncate max-w-[80px] mt-0.5">
+                            {lead.createdBy || 'Super Admin'}
+                          </span>
+                        </div>
                       </td>
 
-                      {/* Owner Avatar */}
-                      <td className="py-3 px-3 text-center border-r border-slate-200">
-                        {renderUserAvatar(lead.owner, lead.ownerAvatar || lead.leadAssigned?.avatar)}
+                      {/* Owner (Avatar + Name) */}
+                      <td className="py-2.5 px-3 text-center border-r border-slate-200">
+                        <div className="flex flex-col items-center justify-center" title={`Lead Owner: ${lead.owner}`}>
+                          {renderUserAvatar(lead.owner, lead.ownerAvatar, 'w-6 h-6')}
+                          <span className="text-[10px] text-slate-600 font-medium truncate max-w-[80px] mt-0.5">
+                            {lead.owner}
+                          </span>
+                        </div>
                       </td>
 
                       {/* Rating (✏ COLD / ✏ WARM / ✏ HOT) */}
                       <td className="py-3 px-3 text-center border-r border-slate-200 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded bg-[#0284C7] text-white text-[10px] font-bold uppercase tracking-wider">
+                        <button
+                          type="button"
+                          onClick={() => setStatusModifyingLead(lead)}
+                          className={cn(
+                            'inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:opacity-90 shadow-2xs transition-all text-white',
+                            getRatingBadgeClass(lead.rating)
+                          )}
+                          title="Click to change status & rating"
+                        >
                           <Edit className="w-2.5 h-2.5" />
                           <span>{lead.rating}</span>
-                        </span>
+                        </button>
                       </td>
 
-                      {/* Status (✏ Contacted / ✏ Pending / ✏ Converted) */}
+                      {/* Status (✏ Pending / ✏ Inprocess / ✏ Completed / etc.) */}
                       <td className="py-3 px-3 text-center border-r border-slate-200 whitespace-nowrap">
-                        {isContacted ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded bg-[#2563EB] text-white text-[10px] font-bold">
-                            <Edit className="w-2.5 h-2.5" />
-                            <span>Contacted</span>
-                          </span>
-                        ) : isPending ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded bg-[#EAB308] text-white text-[10px] font-bold">
-                            <Edit className="w-2.5 h-2.5" />
-                            <span>Pending</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded bg-[#16A34A] text-white text-[10px] font-bold">
-                            <Edit className="w-2.5 h-2.5" />
-                            <span>{lead.status}</span>
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => setStatusModifyingLead(lead)}
+                          className={cn(
+                            'inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-bold cursor-pointer hover:opacity-90 shadow-2xs transition-all text-white',
+                            getStatusBadgeClass(lead.status)
+                          )}
+                          title="Click to change status & rating"
+                        >
+                          <Edit className="w-2.5 h-2.5" />
+                          <span>{lead.status}</span>
+                        </button>
                       </td>
 
                       {/* Last Activity (Timestamp + Cyan Relative Time Pill) */}
@@ -1922,11 +2215,24 @@ export function LeadsContent() {
                                   <span>Edit</span>
                                 </button>
 
+                                {/* 3b. Change Status & Rating */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setStatusModifyingLead(lead);
+                                    setActionMenuId(null);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                >
+                                  <Edit2 className="w-4 h-4 text-slate-700 flex-shrink-0 stroke-[1.75]" />
+                                  <span>Change Status & Rating</span>
+                                </button>
+
                                 {/* 4. Assign Lead */}
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setAssignToOwner(lead.owner || 'JISMON JOSE');
+                                    setAssignToOwner(lead.assignedEmployee || lead.owner || currentUser?.name || 'shaheer');
                                     setAssigningLead(lead);
                                     setActionMenuId(null);
                                   }}
@@ -1962,9 +2268,9 @@ export function LeadsContent() {
                                     }
                                     setActionMenuId(null);
                                   }}
-                                  className="w-full flex items-center gap-2.5 px-3.5 py-1.5 hover:bg-slate-100/70 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-1.5 hover:bg-rose-50 transition-colors text-rose-600 cursor-pointer text-left font-normal"
                                 >
-                                  <Trash2 className="w-4 h-4 text-slate-700 flex-shrink-0 stroke-[1.75]" />
+                                  <Trash2 className="w-4 h-4 text-rose-600 flex-shrink-0 stroke-[1.75]" />
                                   <span>Delete</span>
                                 </button>
                               </div>
@@ -2033,7 +2339,8 @@ export function LeadsContent() {
           description={`Registered on ${viewingLead.leadDate} | Associated with ${viewingLead.contactDetails.company}`}
         >
           <div className="space-y-4 text-xs">
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {/* Metadata Summary Banner with Created By & Assigned To */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded grid grid-cols-2 sm:grid-cols-3 gap-3.5">
               <div>
                 <span className="text-[10px] text-slate-400 block uppercase font-bold">Contact Name</span>
                 <span className="text-slate-800 font-bold">{viewingLead.contactDetails.name}</span>
@@ -2046,10 +2353,48 @@ export function LeadsContent() {
                 <span className="text-[10px] text-slate-400 block uppercase font-bold">Phone Number</span>
                 <span className="text-blue-600 font-mono font-medium">{viewingLead.contactDetails.phone}</span>
               </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase font-bold">Lead Owner</span>
-                <span className="text-slate-800 font-medium">{viewingLead.owner}</span>
+              
+              {/* Created By */}
+              <div className="bg-white p-2 rounded border border-slate-200">
+                <span className="text-[10px] text-slate-400 block uppercase font-bold mb-1">Created By</span>
+                <div className="flex items-center gap-1.5">
+                  {renderUserAvatar(viewingLead.createdBy || 'Super Admin', viewingLead.createdByAvatar, 'w-5 h-5')}
+                  <div>
+                    <span className="text-slate-800 font-bold block">{viewingLead.createdBy || 'Super Admin'}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">{viewingLead.leadDate}</span>
+                  </div>
+                </div>
               </div>
+
+              {/* Lead Assigned / Assigned To */}
+              <div className="bg-blue-50/60 p-2 rounded border border-blue-200">
+                <span className="text-[10px] text-blue-600 block uppercase font-bold mb-1">Assigned To</span>
+                <div className="flex items-center gap-1.5">
+                  {renderUserAvatar(
+                    viewingLead.assignedEmployee || viewingLead.leadAssigned?.name || viewingLead.owner,
+                    viewingLead.leadAssigned?.avatar || viewingLead.ownerAvatar,
+                    'w-5 h-5'
+                  )}
+                  <div>
+                    <span className="text-blue-900 font-bold block">
+                      {viewingLead.assignedEmployee || viewingLead.leadAssigned?.name || viewingLead.owner}
+                    </span>
+                    <span className="text-[10px] text-blue-500 font-mono">
+                      {viewingLead.assignedDate || viewingLead.leadDate}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Owner */}
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase font-bold mb-1">Lead Owner</span>
+                <div className="flex items-center gap-1.5">
+                  {renderUserAvatar(viewingLead.owner, viewingLead.ownerAvatar, 'w-5 h-5')}
+                  <span className="text-slate-800 font-medium">{viewingLead.owner}</span>
+                </div>
+              </div>
+
               <div>
                 <span className="text-[10px] text-slate-400 block uppercase font-bold">Rating & Status</span>
                 <span className="text-slate-800">
@@ -2059,6 +2404,10 @@ export function LeadsContent() {
               <div>
                 <span className="text-[10px] text-slate-400 block uppercase font-bold">Campaign Source</span>
                 <span className="text-slate-800">{viewingLead.campaign || viewingLead.source}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 block uppercase font-bold">Last Activity</span>
+                <span className="text-slate-800">{viewingLead.lastActivityDate || viewingLead.lastActivity}</span>
               </div>
             </div>
 
@@ -2072,6 +2421,17 @@ export function LeadsContent() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setAssignToOwner(viewingLead.assignedEmployee || viewingLead.owner || currentUser?.name || 'shaheer');
+                  setAssigningLead(viewingLead);
+                }}
+              >
+                Assign Lead
+              </Button>
               <Button
                 type="button"
                 variant="outline"
@@ -2097,7 +2457,7 @@ export function LeadsContent() {
           isOpen={!!editingLead}
           onClose={() => setEditingLead(null)}
           title={`Edit Lead: ${editingLead.contactDetails.name}`}
-          description="Update lead classification, stage, contact info, and notes."
+          description="Update lead classification, stage, contact info, and assigned representative."
         >
           <form onSubmit={handleUpdateLead} className="space-y-3 text-xs">
             <div className="grid grid-cols-2 gap-3">
@@ -2125,6 +2485,60 @@ export function LeadsContent() {
               />
             </div>
 
+            {/* Assigned To & Lead Owner Row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-blue-900 mb-1">
+                  Assigned Representative
+                </label>
+                <div className="flex items-center border border-blue-300 rounded bg-white px-2.5 py-1.5 focus-within:border-blue-600 shadow-2xs">
+                  {renderUserAvatar(editingLead.assignedEmployee || editingLead.owner, undefined, 'w-4 h-4 mr-2 shrink-0')}
+                  <select
+                    value={editingLead.assignedEmployee || editingLead.owner}
+                    onChange={(e) => {
+                      const newAssignee = e.target.value;
+                      setEditingLead({
+                        ...editingLead,
+                        assignedEmployee: newAssignee,
+                        leadAssigned: {
+                          name: newAssignee,
+                          avatar: getEmployeePhoto(newAssignee) || '',
+                        },
+                        assignedDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+                      });
+                    }}
+                    className="w-full bg-transparent text-slate-800 text-xs font-semibold focus:outline-none cursor-pointer"
+                  >
+                    {assignableUsers.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name} {u.role ? `(${u.role})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Lead Owner
+                </label>
+                <div className="flex items-center border border-slate-300 rounded bg-white px-2.5 py-1.5 focus-within:border-blue-500 shadow-2xs">
+                  {renderUserAvatar(editingLead.owner, undefined, 'w-4 h-4 mr-2 shrink-0')}
+                  <select
+                    value={editingLead.owner}
+                    onChange={(e) => setEditingLead({ ...editingLead, owner: e.target.value })}
+                    className="w-full bg-transparent text-slate-800 text-xs font-medium focus:outline-none cursor-pointer"
+                  >
+                    {assignableUsers.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name} {u.role ? `(${u.role})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <Input
                 label="Phone Number"
@@ -2137,20 +2551,6 @@ export function LeadsContent() {
                 }
               />
               <Select
-                label="Owner"
-                value={editingLead.owner}
-                onChange={(e) => setEditingLead({ ...editingLead, owner: e.target.value })}
-                options={[
-                  { label: 'Alex Rivera', value: 'Alex Rivera' },
-                  { label: 'Elena Rostova', value: 'Elena Rostova' },
-                  { label: 'Jordan Hayes', value: 'Jordan Hayes' },
-                  { label: 'Mohammed Rashid', value: 'Mohammed Rashid' },
-                ]}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Select
                 label="Rating"
                 value={editingLead.rating}
                 onChange={(e) =>
@@ -2162,6 +2562,9 @@ export function LeadsContent() {
                   { label: 'Hot', value: 'Hot' },
                 ]}
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <Select
                 label="Status"
                 value={editingLead.status}
@@ -2176,6 +2579,13 @@ export function LeadsContent() {
                   { label: 'Converted', value: 'Converted' },
                   { label: 'Lost', value: 'Lost' },
                 ]}
+              />
+              <Input
+                label="Business Opportunity"
+                value={editingLead.businessOpportunity || ''}
+                onChange={(e) =>
+                  setEditingLead({ ...editingLead, businessOpportunity: e.target.value })
+                }
               />
             </div>
 
@@ -2249,8 +2659,11 @@ export function LeadsContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-2xs animate-in fade-in duration-150">
           <div className="bg-white rounded-[4px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-              <h3 className="text-sm font-semibold text-slate-800">Assign Lead</h3>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-[#FAFBFD]">
+              <div className="flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-blue-600" />
+                <h3 className="text-sm font-bold text-slate-800">Assign Lead(s)</h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsAssignModalOpen(false)}
@@ -2261,38 +2674,43 @@ export function LeadsContent() {
             </div>
 
             {/* Body */}
-            <div className="p-4 sm:p-5">
+            <div className="p-4 sm:p-5 space-y-4">
+              {/* Selected Target Summary */}
+              <div className="p-3 bg-blue-50/70 border border-blue-200 rounded text-xs text-blue-950">
+                <div className="flex items-center justify-between font-semibold">
+                  <span>Scope:</span>
+                  <span className="font-bold text-blue-700">
+                    {selectedLeadIds.length > 0
+                      ? `${selectedLeadIds.length} Selected Lead(s)`
+                      : `All ${filteredLeads.length} Filtered Leads`}
+                  </span>
+                </div>
+                <p className="text-[11px] text-blue-700 mt-1">
+                  Choose the sales representative or employee to assign responsibility to.
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2 sm:gap-4 text-xs sm:text-[13px]">
-                <label className="sm:col-span-3 text-slate-700 font-normal">
+                <label className="sm:col-span-3 text-slate-700 font-semibold">
                   Assign To
                 </label>
-                <div className="sm:col-span-9 relative flex items-center border border-slate-300 rounded-[3px] bg-white px-2.5 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
-                  {renderUserAvatar(assignToOwner, undefined, 'w-4 h-4 mr-2 shrink-0')}
+                <div className="sm:col-span-9 relative flex items-center border border-slate-300 rounded bg-white px-2.5 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
+                  {renderUserAvatar(assignToOwner, undefined, 'w-5 h-5 mr-2 shrink-0')}
                   <select
                     value={assignToOwner}
                     onChange={(e) => setAssignToOwner(e.target.value)}
                     className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-semibold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
                   >
-                    {users.length > 0 ? (
-                      users.map((u) => (
-                        <option key={u.id} value={u.name}>
-                          {u.name}
-                        </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="JISMON JOSE">JISMON JOSE</option>
-                        <option value="Alex Rivera">Alex Rivera</option>
-                        <option value="Elena Rostova">Elena Rostova</option>
-                        <option value="Jordan Hayes">Jordan Hayes</option>
-                        <option value="Mohammed Rashid">Mohammed Rashid</option>
-                      </>
-                    )}
-                    {assignToOwner && !users.some((u) => u.name === assignToOwner) && (
+                    {assignableUsers.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name} {u.role ? `(${u.role})` : ''}
+                      </option>
+                    ))}
+                    {assignToOwner && !assignableUsers.some((u) => u.name === assignToOwner) && (
                       <option value={assignToOwner}>{assignToOwner}</option>
                     )}
                   </select>
-                  <span className="absolute right-2.5 pointer-events-none text-slate-500 text-[10px]">▼</span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 pointer-events-none" />
                 </div>
               </div>
             </div>
@@ -2309,7 +2727,21 @@ export function LeadsContent() {
               <button
                 type="button"
                 onClick={() => {
-                  alert(`Selected leads successfully assigned to ${assignToOwner}!`);
+                  const targetIds = selectedLeadIds.length > 0 ? selectedLeadIds : filteredLeads.map((l) => l.id);
+                  const todayDate = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+                  const assigneePhoto = getEmployeePhoto(assignToOwner) || '';
+
+                  targetIds.forEach((id) => {
+                    updateLead(id, {
+                      assignedEmployee: assignToOwner,
+                      leadAssigned: { name: assignToOwner, avatar: assigneePhoto },
+                      assignedDate: todayDate,
+                      owner: assignToOwner,
+                    });
+                  });
+
+                  alert(`Successfully assigned ${targetIds.length} lead(s) to ${assignToOwner}!`);
+                  setSelectedLeadIds([]);
                   setIsAssignModalOpen(false);
                 }}
                 className="px-4 py-1.5 rounded-[3px] bg-[#004b6e] hover:bg-[#003b57] text-white text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
@@ -2360,8 +2792,13 @@ export function LeadsContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-2xs animate-in fade-in duration-150">
           <div className="bg-white rounded-[4px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-              <h3 className="text-sm font-semibold text-slate-800">Assign Lead</h3>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-[#FAFBFD]">
+              <div className="flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-blue-600" />
+                <h3 className="text-sm font-bold text-slate-800">
+                  Assign Lead: {assigningLead.contactDetails.name}
+                </h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setAssigningLead(null)}
@@ -2372,38 +2809,34 @@ export function LeadsContent() {
             </div>
 
             {/* Body */}
-            <div className="p-4 sm:p-5">
+            <div className="p-4 sm:p-5 space-y-4">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded text-xs">
+                <div className="text-slate-800 font-bold">{assigningLead.contactDetails.name}</div>
+                <div className="text-slate-500 text-[11px]">{assigningLead.contactDetails.company} • {assigningLead.contactDetails.phone}</div>
+                <div className="text-slate-400 text-[10px] mt-1 font-mono">Created on: {assigningLead.leadDate} by {assigningLead.createdBy || 'Super Admin'}</div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-2 sm:gap-4 text-xs sm:text-[13px]">
-                <label className="sm:col-span-3 text-slate-700 font-normal">
+                <label className="sm:col-span-3 text-slate-700 font-semibold">
                   Assign To
                 </label>
-                <div className="sm:col-span-9 relative flex items-center border border-slate-300 rounded-[3px] bg-white px-2.5 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
-                  {renderUserAvatar(assignToOwner, undefined, 'w-4 h-4 mr-2 shrink-0')}
+                <div className="sm:col-span-9 relative flex items-center border border-slate-300 rounded bg-white px-2.5 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
+                  {renderUserAvatar(assignToOwner, undefined, 'w-5 h-5 mr-2 shrink-0')}
                   <select
                     value={assignToOwner}
                     onChange={(e) => setAssignToOwner(e.target.value)}
                     className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-semibold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
                   >
-                    {users.length > 0 ? (
-                      users.map((u) => (
-                        <option key={u.id} value={u.name}>
-                          {u.name}
-                        </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="JISMON JOSE">JISMON JOSE</option>
-                        <option value="Alex Rivera">Alex Rivera</option>
-                        <option value="Elena Rostova">Elena Rostova</option>
-                        <option value="Jordan Hayes">Jordan Hayes</option>
-                        <option value="Mohammed Rashid">Mohammed Rashid</option>
-                      </>
-                    )}
-                    {assignToOwner && !users.some((u) => u.name === assignToOwner) && (
+                    {assignableUsers.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name} {u.role ? `(${u.role})` : ''}
+                      </option>
+                    ))}
+                    {assignToOwner && !assignableUsers.some((u) => u.name === assignToOwner) && (
                       <option value={assignToOwner}>{assignToOwner}</option>
                     )}
                   </select>
-                  <span className="absolute right-2.5 pointer-events-none text-slate-500 text-[10px]">▼</span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 pointer-events-none" />
                 </div>
               </div>
             </div>
@@ -2420,11 +2853,15 @@ export function LeadsContent() {
               <button
                 type="button"
                 onClick={() => {
+                  const todayDate = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+                  const assigneePhoto = getEmployeePhoto(assignToOwner) || '';
                   updateLead(assigningLead.id, {
+                    assignedEmployee: assignToOwner,
+                    leadAssigned: { name: assignToOwner, avatar: assigneePhoto },
+                    assignedDate: todayDate,
                     owner: assignToOwner,
-                    leadAssigned: { name: assignToOwner },
-                    assignedDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
                   });
+                  alert(`Lead "${assigningLead.contactDetails.name}" assigned successfully to ${assignToOwner}!`);
                   setAssigningLead(null);
                 }}
                 className="px-4 py-1.5 rounded-[3px] bg-[#004b6e] hover:bg-[#003b57] text-white text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
@@ -2534,6 +2971,14 @@ export function LeadsContent() {
           </div>
         </Modal>
       )}
+
+      {/* Change Lead Status and Rating Modal */}
+      <ChangeLeadStatusModal
+        isOpen={!!statusModifyingLead}
+        lead={statusModifyingLead}
+        onClose={() => setStatusModifyingLead(null)}
+        onUpdate={handleUpdateStatusAndRating}
+      />
     </div>
   );
 }

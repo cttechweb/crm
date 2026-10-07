@@ -35,7 +35,9 @@ import {
   mockInvoices,
   mockReceipts,
   mockDeliveryNotes,
+  getEmployeePhoto,
 } from '@/data/mockEnterpriseData';
+import { authMockService } from '@/services/authMockService';
 
 interface EnterpriseCrmContextType {
   currentRole: UserRole;
@@ -146,7 +148,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   const [salesOpportunities, setSalesOpportunities] = useState<CrmSalesOpportunity[]>([]);
   const [quotations, setQuotations] = useState<CrmQuotation[]>([]);
   const [salesOrders, setSalesOrders] = useState<CrmSalesOrder[]>([]);
-  const [invoices, setInvoices] = useState<CrmInvoice[]>([]);
+  const [invoices, setInvoices] = useState<CrmInvoice[]>(mockInvoices);
   const [receipts, setReceipts] = useState<CrmReceipt[]>([]);
   const [deliveryNotes, setDeliveryNotes] = useState<CrmDeliveryNote[]>([]);
   const [purchaseStocks, setPurchaseStocks] = useState<CrmPurchaseStock[]>([]);
@@ -295,10 +297,31 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
 
         const storedInvoices = localStorage.getItem('crm_invoices_data');
         if (storedInvoices) {
-          const parsed = JSON.parse(storedInvoices);
-          setInvoices(Array.isArray(parsed) ? parsed : []);
+          try {
+            const parsed = JSON.parse(storedInvoices);
+            const liveUser = authMockService.getCurrentUser()?.name || 'shaheer';
+            const sanitizedInvoices = Array.isArray(parsed)
+              ? parsed.map((inv: any) => {
+                  const isMockOwner = !inv.owner || inv.owner.toLowerCase().includes('alex rivera') || inv.owner.toLowerCase().includes('nebin benny');
+                  const effectiveOwner = isMockOwner ? liveUser : inv.owner;
+                  const isMockContact =
+                    inv.contactPerson &&
+                    (inv.contactPerson.toLowerCase().includes('mohammad hattab') || inv.contactPerson.toLowerCase().includes('hala fawzi'));
+                  const realAvatar = (inv.ownerAvatar && !inv.ownerAvatar.includes('unsplash') && !inv.ownerAvatar.includes('photo-')) ? inv.ownerAvatar : (getEmployeePhoto(effectiveOwner) || undefined);
+                  return {
+                    ...inv,
+                    owner: effectiveOwner,
+                    ownerAvatar: realAvatar,
+                    contactPerson: isMockContact ? '' : (inv.contactPerson || ''),
+                  };
+                })
+              : mockInvoices;
+            setInvoices(sanitizedInvoices.length > 0 ? sanitizedInvoices : mockInvoices);
+          } catch (e) {
+            setInvoices(mockInvoices);
+          }
         } else {
-          setInvoices([]);
+          setInvoices(mockInvoices);
         }
 
         const storedReceipts = localStorage.getItem('crm_receipts_data');
@@ -620,7 +643,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     persist('crm_tasks_data', list);
   };
 
-  const reviewTask = (taskId: string, managerName = 'Alex Rivera (Operations Manager)', notes?: string) => {
+  const reviewTask = (taskId: string, managerName = 'Muhammed Shibil (Sales Manager)', notes?: string) => {
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const list = tasks.map((t) => {
       if (t.id !== taskId) return t;
@@ -760,7 +783,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     persist('crm_leads_data', updated);
   };
 
-  const assignLead = (leadId: string, employeeName: string, managerName = 'Alex Rivera (Operations Manager)') => {
+  const assignLead = (leadId: string, employeeName: string, managerName = 'Muhammed Shibil (Sales Manager)') => {
     const list = leads.map((l) => {
       if (l.id !== leadId) return l;
       return {
@@ -802,7 +825,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     persist('crm_customers_data', updated);
   };
 
-  const assignCustomer = (customerId: string, employeeName: string, managerName = 'Alex Rivera (Operations Manager)') => {
+  const assignCustomer = (customerId: string, employeeName: string, managerName = 'Muhammed Shibil (Sales Manager)') => {
     const list = customers.map((c) => {
       if (c.id !== customerId) return c;
       return {
@@ -822,7 +845,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   };
 
   const deleteCustomer = (id: string) => {
-    const list = customers.filter((c) => c.id !== id);
+    const list = customers.filter((c) => c.id !== id && String(c.slNo) !== id);
     setCustomers(list);
     persist('crm_customers_data', list);
   };
@@ -978,6 +1001,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const newInv: CrmInvoice = {
       ...invData,
       id: `inv-${Date.now()}`,
+      slNo: invData.slNo || (invoices.length + 1),
       invoiceNumber: invData.invoiceNumber || `INV-${Date.now().toString().slice(-4)}`,
     };
     const updated = [newInv, ...invoices];

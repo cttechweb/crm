@@ -50,7 +50,7 @@ export interface ExtendedCampaign extends CrmCampaign {
 }
 
 export function CampaignsContent() {
-  const { campaigns, addCampaign, updateCampaign, deleteCampaign: ctxDeleteCampaign, toggleCampaignListing } = useEnterpriseCrm();
+  const { campaigns, addCampaign, updateCampaign, deleteCampaign: ctxDeleteCampaign, toggleCampaignListing, users } = useEnterpriseCrm();
 
   const [localCampaigns, setLocalCampaigns] = useState<ExtendedCampaign[]>(() => {
     return campaigns.map((c) => ({
@@ -647,9 +647,19 @@ export function CampaignsContent() {
                     onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none"
                   >
-                    <option value="Mohammed Rashid">Mohammed Rashid</option>
-                    <option value="Alex Rivera">Alex Rivera</option>
-                    <option value="Sarah Al-Mansoor">Sarah Al-Mansoor</option>
+                    {users && users.length > 0 ? (
+                      users.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="Afsal">Afsal</option>
+                        <option value="Shaheer">Shaheer</option>
+                        <option value="Mohammed Rashid">Mohammed Rashid</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 <div>

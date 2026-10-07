@@ -183,10 +183,12 @@ export interface CrmCustomer {
   sourceName?: string;
   employees?: string | number;
   country?: string;
+  stateRegion?: string;
   location?: string;
   trn?: string;
   comments?: string;
   isSupplier?: boolean;
+  createdBy?: string;
 }
 
 export interface CrmSalesOpportunity {
@@ -219,6 +221,22 @@ export interface CrmSalesOpportunity {
   businessOpportunity?: string;
   campaign?: string;
   source?: string;
+  sourceName?: string;
+  discount?: number | string;
+  vatType?: string;
+  vatRate?: number | string;
+  adjustment?: number | string;
+  deliveryDate?: string;
+  lpoNumber?: string;
+  lpoDate?: string;
+  nextAction?: string;
+  competitorsDetails?: string;
+  type?: string;
+  comments?: string;
+  location?: string;
+  reference?: string;
+  deliveryMethod?: string;
+  enquiryForm?: boolean;
   createdBy?: string;
   tags?: string[];
   createdAt: string;
@@ -349,16 +367,16 @@ export interface CrmQuotation {
   shippingCharges?: number;
   totalAmount: number;
   status:
-    | 'Draft'
-    | 'Pending Approval'
-    | 'Approved'
-    | 'Sent'
-    | 'Viewed'
-    | 'Accepted'
-    | 'Rejected'
-    | 'Expired'
-    | 'Cancelled'
-    | 'Converted';
+  | 'Draft'
+  | 'Pending Approval'
+  | 'Approved'
+  | 'Sent'
+  | 'Viewed'
+  | 'Accepted'
+  | 'Rejected'
+  | 'Expired'
+  | 'Cancelled'
+  | 'Converted';
   owner?: string;
   ownerId?: string;
   assignedTo?: string;
@@ -410,6 +428,8 @@ export interface CrmSalesOrder {
   receivable?: number;
   status: string;
   assignedTo?: string;
+  owner?: string;
+  ownerAvatar?: string;
   category?: string;
   notes?: string;
   paymentTerms?: string;
@@ -430,6 +450,19 @@ export interface CrmProformaInvoice {
   totalAmount: number;
   status: string;
   preparedBy?: string;
+  owner?: string;
+  ownerAvatar?: string;
+}
+
+export interface CrmInvoiceLineItem {
+  id: string;
+  description: string;
+  code?: string;
+  unit?: string;
+  brand?: string;
+  qty: number;
+  price: number;
+  total?: number;
 }
 
 export interface CrmInvoice {
@@ -450,10 +483,23 @@ export interface CrmInvoice {
   amount: number;
   subtotal?: number;
   vatAmount?: number;
+  vatRate?: number | string;
+  vatType?: string;
   totalAmount?: number;
   paidAmount: number;
   balanceAmount: number;
+  lpoNumber?: string;
+  lpoDate?: string;
+  referenceNumber?: string;
   status: 'Paid' | 'Unpaid' | 'Overdue' | 'Partially Paid' | 'Due' | string;
+  location?: string;
+  attention?: string;
+  description?: string;
+  discount?: number | string;
+  discountPercent?: number | string;
+  adjustment?: number | string;
+  termsConditions?: string;
+  items?: CrmInvoiceLineItem[];
 }
 
 export interface CrmReceipt {

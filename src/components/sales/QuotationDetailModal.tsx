@@ -4,41 +4,35 @@ import React, { useState } from 'react';
 import {
   X,
   FileText,
-  Building2,
   Calendar,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  XCircle,
-  Printer,
-  Edit3,
-  Send,
-  Lock,
-  ArrowRight,
-  ShieldCheck,
-  RotateCcw,
-  Check,
-  ShoppingBag,
-  DollarSign,
+  Shield,
   User,
   Phone,
   Mail,
-  MapPin,
-  FileCheck2,
-  Eye,
+  Printer,
+  Edit2,
+  Edit3,
+  RotateCw,
+  Trash2,
+  ChevronDown,
+  ArrowLeft,
+  DollarSign,
+  Handshake,
+  Receipt,
+  Calculator,
+  ThumbsUp,
+  Image as ImageIcon,
 } from 'lucide-react';
-import { Modal } from '@/components/ui/Modal';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { CrmQuotation } from '@/types/enterprise-crm';
 import { authMockService } from '@/services/authMockService';
-import { canApproveQuotation, canConvertQuotation } from '@/services/crmDataScopeService';
 
 interface QuotationDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   quotation: CrmQuotation | null;
   onEdit?: (quote: CrmQuotation) => void;
-  onPrintVoucher?: (quote: CrmQuotation) => void;
+  onPrintVoucher?: (quote: CrmQuotation, format?: string) => void;
   onPrint?: (quote: CrmQuotation) => void;
 }
 
@@ -50,624 +44,574 @@ export function QuotationDetailModal({
   onPrintVoucher,
   onPrint,
 }: QuotationDetailModalProps) {
-  const handlePrint = onPrintVoucher || onPrint;
-  const { updateQuotation, convertQuotationToSalesOrder, users } = useEnterpriseCrm();
-  const currentUser = authMockService.getCurrentUser();
-
-  const [rejectionReason, setRejectionReason] = useState('');
-  const [showRejectBox, setShowRejectBox] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
+  const { updateQuotation, deleteQuotation, addQuotation, users, customers, salesOpportunities } = useEnterpriseCrm();
+  const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
+  const [isPrintFormatDropdownOpen, setIsPrintFormatDropdownOpen] = useState(false);
 
   if (!isOpen || !quotation) return null;
 
-  const roleStr = String(currentUser?.role || '').toLowerCase();
-  const isManagerOrAdmin =
-    roleStr.includes('manager') ||
-    roleStr.includes('admin') ||
-    roleStr.includes('super');
+  const matchedCust = customers?.find(
+    (c) =>
+      (quotation.customerId && c.id === quotation.customerId) ||
+      (c.customerName && c.customerName.toLowerCase() === (quotation.customer || '').toLowerCase()) ||
+      (c.companyName && c.companyName.toLowerCase() === (quotation.customer || '').toLowerCase())
+  );
 
-  const userCanApprove = canApproveQuotation(currentUser);
-  const userCanConvert = canConvertQuotation(currentUser);
+  const matchedOpp = salesOpportunities?.find(
+    (o) =>
+      (quotation.opportunityId && o.id === quotation.opportunityId) ||
+      (quotation.opportunityCode && o.opportunityCode === quotation.opportunityCode) ||
+      (o.title && quotation.subject && o.title.toLowerCase() === quotation.subject.toLowerCase())
+  );
 
-  // Workflow Handlers
-  const handleStatusChange = async (
-    newStatus: CrmQuotation['status'],
-    reason?: string
-  ) => {
-    setIsProcessing(true);
-    try {
-      const now = new Date().toISOString();
-      const historyEntry = {
-        id: `hist-${Date.now()}`,
-        date: now,
-        action: `Status updated to ${newStatus}`,
-        user: currentUser?.name || 'System User',
-        role: currentUser?.role || 'Employee',
-        remarks: reason || (newStatus === 'Approved' ? 'Quotation approved by management.' : ''),
-      };
+  const ownerName = (quotation.owner || currentUser?.name || 'JISMON JOSE').toUpperCase();
+  const ownerUser = users?.find((u) => u.name.toLowerCase() === ownerName.toLowerCase());
+  const ownerAvatar =
+    ownerUser?.avatar ||
+    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80';
 
-      const updated = {
-        ...quotation,
-        status: newStatus,
-        approvedBy: newStatus === 'Approved' ? currentUser?.name : quotation.approvedBy,
-        approvalDate: newStatus === 'Approved' ? now : quotation.approvalDate,
-        rejectionReason: newStatus === 'Rejected' ? reason : undefined,
-        history: [...(quotation.history || []), historyEntry],
-        updatedAt: now,
-      };
+  const customerName = (quotation.customer || matchedCust?.customerName || matchedCust?.companyName || 'ADC ENERGY SYSTEMS LLC').toUpperCase();
+  const contactPerson = quotation.contactPerson || matchedCust?.contactPerson || ((matchedCust as any)?.contacts && (matchedCust as any).contacts[0]?.name) || 'Mr. KALIM ANSARI';
+  const contactMobile = quotation.phone || matchedCust?.phone || ((matchedCust as any)?.contacts && (matchedCust as any).contacts[0]?.phone) || '+97144457100';
 
-      updateQuotation(updated);
-      setActionSuccessMessage(`Quotation status updated to "${newStatus}" successfully.`);
-      setShowRejectBox(false);
-      setRejectionReason('');
-      setTimeout(() => setActionSuccessMessage(null), 3500);
-    } catch (e) {
-      console.error('Failed to update status', e);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  const subtotal = quotation.subtotal || (quotation.totalAmount ? quotation.totalAmount / 1.05 : 25440);
+  const vatAmount = quotation.vatAmount || (quotation.totalAmount ? (quotation.totalAmount / 1.05) * 0.05 : 1272);
+  const totalAmount = quotation.totalAmount || (subtotal + vatAmount);
+  const discountAmount = quotation.discountAmount || 0;
+  const adjustmentAmount = 0;
 
-  const handleConvertToOrder = async () => {
-    setIsProcessing(true);
-    try {
-      const order = convertQuotationToSalesOrder(quotation.id);
-      if (order) {
-        setActionSuccessMessage(`🎉 Successfully converted to Sales Order: ${order.orderNumber}`);
-      }
-    } catch (e: any) {
-      alert(e.message || 'Error converting to sales order');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  const quoteNumber = quotation.quotationNumber || 'CTSQ#4363';
+  const quoteDate = quotation.quoteDate || '05-10-2026';
+  const oppTitle = (matchedOpp?.title || quotation.subject || 'WINDOW AC UNITS').toUpperCase();
 
-  const getStatusBadge = (status: CrmQuotation['status']) => {
-    const config: Record<
-      CrmQuotation['status'],
-      { bg: string; text: string; border: string; icon: React.ReactNode }
-    > = {
-      Draft: {
-        bg: 'bg-slate-500/10 dark:bg-slate-500/20',
-        text: 'text-slate-700 dark:text-slate-300',
-        border: 'border-slate-500/30',
-        icon: <Clock className="w-3.5 h-3.5" />,
-      },
-      'Pending Approval': {
-        bg: 'bg-amber-500/10 dark:bg-amber-500/20',
-        text: 'text-amber-700 dark:text-amber-400',
-        border: 'border-amber-500/30',
-        icon: <AlertCircle className="w-3.5 h-3.5" />,
-      },
-      Approved: {
-        bg: 'bg-blue-500/10 dark:bg-blue-500/20',
-        text: 'text-blue-700 dark:text-blue-400',
-        border: 'border-blue-500/30',
-        icon: <ShieldCheck className="w-3.5 h-3.5" />,
-      },
-      Sent: {
-        bg: 'bg-purple-500/10 dark:bg-purple-500/20',
-        text: 'text-purple-700 dark:text-purple-400',
-        border: 'border-purple-500/30',
-        icon: <Send className="w-3.5 h-3.5" />,
-      },
-      Viewed: {
-        bg: 'bg-indigo-500/10 dark:bg-indigo-500/20',
-        text: 'text-indigo-700 dark:text-indigo-400',
-        border: 'border-indigo-500/30',
-        icon: <Eye className="w-3.5 h-3.5" />,
-      },
-      Accepted: {
-        bg: 'bg-emerald-500/10 dark:bg-emerald-500/20',
-        text: 'text-emerald-700 dark:text-emerald-400',
-        border: 'border-emerald-500/30',
-        icon: <CheckCircle2 className="w-3.5 h-3.5" />,
-      },
-      Rejected: {
-        bg: 'bg-rose-500/10 dark:bg-rose-500/20',
-        text: 'text-rose-700 dark:text-rose-400',
-        border: 'border-rose-500/30',
-        icon: <XCircle className="w-3.5 h-3.5" />,
-      },
-      Converted: {
-        bg: 'bg-cyan-500/10 dark:bg-cyan-500/20',
-        text: 'text-cyan-700 dark:text-cyan-400',
-        border: 'border-cyan-500/30',
-        icon: <ShoppingBag className="w-3.5 h-3.5" />,
-      },
-      Expired: {
-        bg: 'bg-gray-500/10 dark:bg-gray-500/20',
-        text: 'text-gray-700 dark:text-gray-400',
-        border: 'border-gray-500/30',
-        icon: <RotateCcw className="w-3.5 h-3.5" />,
-      },
-      Cancelled: {
-        bg: 'bg-zinc-500/10 dark:bg-zinc-500/20',
-        text: 'text-zinc-700 dark:text-zinc-400',
-        border: 'border-zinc-500/30',
-        icon: <XCircle className="w-3.5 h-3.5" />,
-      },
+  // Dynamic Item List or Realistic Sample Items for the quotation
+  const items = quotation.items && quotation.items.length > 0 ? quotation.items : [
+    {
+      id: 'item-1',
+      productName: 'OPTION-1 WINDOW AC 1.5 TR ROTARY R410 BLUE STAR WM18CLYFB3-01',
+      description: 'Code: WM18CLYFB3-01 | Unit: Each | Brand: BLUE STAR',
+      quantity: 8,
+      unitPrice: 1130,
+      totalAmount: 9040,
+    },
+    {
+      id: 'item-2',
+      productName: 'OPTION-2 WINDOW AC 1.5 TR ROTARY R410 NIKAI NWAC18031N23',
+      description: 'Code: NWAC18031N23 | Unit: Each | Brand: NIKAI',
+      quantity: 8,
+      unitPrice: 1080,
+      totalAmount: 8640,
+    },
+    {
+      id: 'item-3',
+      productName: 'OPTION-3 1.5 TR Window AC Rotary R410 Chigo CWA18CO',
+      description: 'Code: CWA18CO | Unit: Each | Brand: CHIGO',
+      quantity: 8,
+      unitPrice: 970,
+      totalAmount: 7760,
+    },
+  ];
+
+  const handleRevise = () => {
+    const revNum = `${quoteNumber}-R1`;
+    const revised: CrmQuotation = {
+      ...quotation,
+      id: `qtn-rev-${Date.now()}`,
+      quotationNumber: revNum,
+      status: 'Draft',
     };
+    addQuotation(revised);
+    alert(`Successfully created revision: ${revNum}`);
+    onClose();
+  };
 
-    const c = config[status] || config.Draft;
-    return (
-      <span
-        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${c.bg} ${c.text} ${c.border}`}
-      >
-        {c.icon}
-        {status}
-      </span>
-    );
+  const handleDelete = () => {
+    if (confirm(`Are you sure you want to delete quotation ${quoteNumber}?`)) {
+      deleteQuotation(quotation.id);
+      onClose();
+    }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="4xl">
-      <div className="flex flex-col h-full max-h-[88vh] bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 backdrop-blur sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-md">
-              <FileText className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2.5">
-                <h2 className="text-xl font-bold tracking-tight">{quotation.quotationNumber}</h2>
-                {getStatusBadge(quotation.status)}
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {quotation.subject || 'Commercial Quotation'} • Valid until {quotation.validUntil}
-              </p>
-            </div>
-          </div>
-
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 flex items-center justify-center p-2 sm:p-4 font-sans text-xs">
+      <div className="bg-white rounded-xs shadow-2xl border border-slate-300 w-full max-w-6xl overflow-hidden flex flex-col my-auto animate-in fade-in zoom-in-95 duration-150">
+        {/* Top History Banner */}
+        <div className="bg-[#f8f9fa] border-b border-slate-200 px-4 py-2 flex items-center justify-between text-[11px] text-slate-700">
           <div className="flex items-center gap-2">
-            {handlePrint && (
-              <button
-                type="button"
-                onClick={() => handlePrint(quotation)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors border border-slate-200 dark:border-slate-700 shadow-sm"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                Voucher / PDF
-              </button>
-            )}
-
-            {quotation.status === 'Draft' && onEdit && (
-              <button
-                type="button"
-                onClick={() => onEdit(quotation)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 transition-colors border border-indigo-200 dark:border-indigo-800 shadow-sm"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                Edit
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Status Action Banner */}
-        {actionSuccessMessage && (
-          <div className="px-6 py-2.5 bg-emerald-500/10 border-b border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium flex items-center gap-2">
-            <Check className="w-4 h-4" />
-            {actionSuccessMessage}
-          </div>
-        )}
-
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Action Toolbar */}
-          <div className="p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 shadow-sm flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                Workflow Actions
-              </span>
-              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-                Current Role: <span className="font-semibold text-indigo-500">{currentUser?.role || 'Employee'}</span>
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Draft state actions */}
-              {quotation.status === 'Draft' && (
-                <button
-                  type="button"
-                  disabled={isProcessing}
-                  onClick={() => handleStatusChange('Pending Approval', 'Submitted for Manager Approval')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white shadow-sm transition-all"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  Submit for Approval
-                </button>
-              )}
-
-              {/* Pending Approval state actions (Only for Manager / Admin) */}
-              {quotation.status === 'Pending Approval' && userCanApprove && (
-                <>
-                  <button
-                    type="button"
-                    disabled={isProcessing}
-                    onClick={() => handleStatusChange('Approved')}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Approve Quotation
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isProcessing}
-                    onClick={() => setShowRejectBox(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 transition-all"
-                  >
-                    <XCircle className="w-3.5 h-3.5" />
-                    Reject
-                  </button>
-                </>
-              )}
-
-              {quotation.status === 'Pending Approval' && !userCanApprove && (
-                <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800">
-                  <Clock className="w-3.5 h-3.5" />
-                  Waiting for Manager Review & Approval
-                </div>
-              )}
-
-              {/* Approved state actions */}
-              {quotation.status === 'Approved' && (
-                <button
-                  type="button"
-                  disabled={isProcessing}
-                  onClick={() => handleStatusChange('Sent', 'Quotation dispatched to client via email')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-sm transition-all"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  Mark as Sent to Client
-                </button>
-              )}
-
-              {/* Sent state actions */}
-              {quotation.status === 'Sent' && (
-                <>
-                  <button
-                    type="button"
-                    disabled={isProcessing}
-                    onClick={() => handleStatusChange('Accepted', 'Client approved & confirmed quotation')}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Mark Accepted by Client
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isProcessing}
-                    onClick={() => setShowRejectBox(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
-                  >
-                    Declined by Client
-                  </button>
-                </>
-              )}
-
-              {/* Accepted state actions -> Convert to Sales Order */}
-              {quotation.status === 'Accepted' && (
-                <button
-                  type="button"
-                  disabled={isProcessing}
-                  onClick={handleConvertToOrder}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md transition-all"
-                >
-                  <ShoppingBag className="w-3.5 h-3.5" />
-                  Convert to Sales Order
-                </button>
-              )}
-
-              {/* Converted state information */}
-              {quotation.status === 'Converted' && (
-                <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-3.5 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800 font-medium">
-                  <FileCheck2 className="w-4 h-4" />
-                  Converted to Sales Order: <span className="font-bold underline">{quotation.salesOrderNumber || quotation.salesOrderId || 'Linked'}</span>
-                </div>
-              )}
-            </div>
+            <FileText className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span className="font-semibold text-slate-800 uppercase">
+              QUOTATION CREATED BY {ownerName} ON MON {quoteDate} 5:45:09 PM
+            </span>
+            <span className="text-slate-400">|</span>
+            <span className="font-medium text-slate-600 uppercase">
+              QUOTATION LAST MODIFIED BY {ownerName} ON MON {quoteDate} 5:45:17 PM
+            </span>
           </div>
 
-          {/* Rejection Prompt Box */}
-          {showRejectBox && (
-            <div className="p-4 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-rose-700 dark:text-rose-400">
-                  Please provide a reason for rejecting this quotation:
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowRejectBox(false)}
-                  className="text-xs text-slate-500 hover:text-slate-700"
-                >
-                  Cancel
-                </button>
-              </div>
-              <textarea
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder="e.g. Pricing margin too low, customer requested revised scope, etc."
-                className="w-full text-xs p-2.5 rounded-lg border border-rose-300 dark:border-rose-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-rose-500 outline-none"
-                rows={2}
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  disabled={!rejectionReason.trim() || isProcessing}
-                  onClick={() => handleStatusChange('Rejected', rejectionReason)}
-                  className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white disabled:opacity-50"
-                >
-                  Confirm Rejection
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Customer & Opportunity Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Customer Box */}
-            <div className="p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/70 shadow-sm space-y-2.5">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                <Building2 className="w-3.5 h-3.5 text-indigo-500" />
-                Customer Details
-              </div>
-              <div className="space-y-1 text-xs">
-                <p className="font-semibold text-sm text-slate-900 dark:text-white">{quotation.customer}</p>
-                {quotation.contactPerson && (
-                  <p className="text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                    <User className="w-3 h-3 text-slate-400" /> Attn: {quotation.contactPerson}
-                  </p>
-                )}
-                {quotation.phone && (
-                  <p className="text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                    <Phone className="w-3 h-3 text-slate-400" /> {quotation.phone}
-                  </p>
-                )}
-                {quotation.email && (
-                  <p className="text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                    <Mail className="w-3 h-3 text-slate-400" /> {quotation.email}
-                  </p>
-                )}
-                {quotation.billingAddress && (
-                  <p className="text-slate-600 dark:text-slate-300 flex items-start gap-1.5">
-                    <MapPin className="w-3 h-3 text-slate-400 mt-0.5" /> {quotation.billingAddress}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Quote & Deal Meta Box */}
-            <div className="p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/70 shadow-sm space-y-2.5">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-                Quotation & Ownership Meta
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-slate-400 text-[11px] block">Quotation Date</span>
-                  <span className="font-medium text-slate-700 dark:text-slate-200">{quotation.quoteDate || quotation.createdDate}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 text-[11px] block">Valid Until</span>
-                  <span className="font-medium text-slate-700 dark:text-slate-200">{quotation.validUntil}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 text-[11px] block">Assigned Representative</span>
-                  <span className="font-medium text-slate-700 dark:text-slate-200">{quotation.assignedTo || 'Unassigned'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 text-[11px] block">Linked Deal / Opportunity</span>
-                  <span className="font-medium text-indigo-600 dark:text-indigo-400">{quotation.opportunityCode || 'Direct Quote'}</span>
-                </div>
-                {quotation.approvedBy && (
-                  <div className="col-span-2 pt-1 border-t border-slate-100 dark:border-slate-700/60">
-                    <span className="text-slate-400 text-[11px] block">Approved By & Timestamp</span>
-                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                      {quotation.approvedBy} ({new Date(quotation.approvalDate || Date.now()).toLocaleDateString()})
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Line Items Table */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-700/80 flex items-center justify-between">
-              <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
-                Quotation Line Items ({quotation.items?.length || 0})
-              </h3>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">Currency: AED</span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/80 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
-                    <th className="py-2.5 px-4 font-semibold w-10 text-center">#</th>
-                    <th className="py-2.5 px-4 font-semibold">Item & Description</th>
-                    <th className="py-2.5 px-4 font-semibold text-right w-20">Qty</th>
-                    <th className="py-2.5 px-4 font-semibold text-right w-28">Unit Price</th>
-                    <th className="py-2.5 px-4 font-semibold text-right w-20">Disc %</th>
-                    <th className="py-2.5 px-4 font-semibold text-right w-32">Total (AED)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {quotation.items && quotation.items.length > 0 ? (
-                    quotation.items.map((item, idx) => (
-                      <tr key={item.id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
-                        <td className="py-3 px-4 text-center font-mono text-slate-400">{idx + 1}</td>
-                        <td className="py-3 px-4">
-                          <p className="font-semibold text-slate-900 dark:text-white">{item.productName || item.description}</p>
-                          {item.productName && item.description && (
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.description}</p>
-                          )}
-                          {item.sku && <span className="text-[10px] text-slate-400 font-mono">SKU: {item.sku}</span>}
-                        </td>
-                        <td className="py-3 px-4 text-right font-medium text-slate-800 dark:text-slate-200">
-                          {item.quantity} {item.unit || 'pcs'}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
-                          AED {Number(item.unitPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400 font-mono">
-                          {item.discountPercentage ? `${item.discountPercentage}%` : '—'}
-                        </td>
-                        <td className="py-3 px-4 text-right font-bold font-mono text-slate-900 dark:text-white">
-                          AED {Number(item.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={6} className="py-6 text-center text-slate-400 italic">
-                        No line items recorded for this quotation.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Financial Totals */}
-            <div className="p-4 bg-slate-50/50 dark:bg-slate-900/40 border-t border-slate-200 dark:border-slate-700/80 flex justify-end">
-              <div className="w-full sm:w-80 space-y-2 text-xs">
-                <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>Gross Total:</span>
-                  <span className="font-mono">
-                    AED {(quotation.grossAmount || quotation.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                {Boolean(quotation.discountAmount) && (
-                  <div className="flex justify-between text-rose-600 dark:text-rose-400">
-                    <span>Discount:</span>
-                    <span className="font-mono">
-                      - AED {Number(quotation.discountAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>Taxable Subtotal:</span>
-                  <span className="font-mono">
-                    AED {(quotation.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>UAE VAT (5%):</span>
-                  <span className="font-mono">
-                    AED {(quotation.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between text-sm font-bold text-slate-900 dark:text-white">
-                  <span>Net Grand Total:</span>
-                  <span className="font-mono text-indigo-600 dark:text-indigo-400">
-                    AED {(quotation.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Terms & Conditions */}
-          <div className="p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 shadow-sm space-y-3">
-            <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
-              Commercial Terms & Conditions
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-600 dark:text-slate-300">
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800">
-                <span className="font-bold text-slate-700 dark:text-slate-200 block mb-1">Payment Terms:</span>
-                <p>{quotation.paymentTerms || 'Standard commercial terms apply.'}</p>
-              </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800">
-                <span className="font-bold text-slate-700 dark:text-slate-200 block mb-1">Delivery / Execution:</span>
-                <p>{quotation.deliveryTerms || 'Within agreed timeframe upon confirmed LPO.'}</p>
-              </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800">
-                <span className="font-bold text-slate-700 dark:text-slate-200 block mb-1">Warranty:</span>
-                <p>{quotation.warrantyTerms || quotation.warranty || '1 Year standard manufacturer warranty.'}</p>
-              </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800">
-                <span className="font-bold text-slate-700 dark:text-slate-200 block mb-1">Validity:</span>
-                <p>{quotation.validityTerms || `Valid until ${quotation.validUntil}`}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Notes: Client Notes vs Management Notes */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Customer Notes */}
-            <div className="p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 shadow-sm space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                Customer Visible Notes
-              </div>
-              <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
-                {quotation.customerNotes || quotation.notes || 'No public remarks provided.'}
-              </p>
-            </div>
-
-            {/* Internal Confidential Notes (Management only) */}
-            {isManagerOrAdmin && (
-              <div className="p-4 rounded-xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/50 shadow-sm space-y-2">
-                <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-400 uppercase tracking-wider">
-                  <Lock className="w-3.5 h-3.5 text-amber-600" />
-                  Confidential Internal Margin & Cost Notes
-                </div>
-                <p className="text-xs text-amber-900/80 dark:text-amber-300/80 whitespace-pre-wrap">
-                  {quotation.internalNotes || 'No internal manager remarks recorded.'}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Audit History Timeline */}
-          {quotation.history && quotation.history.length > 0 && (
-            <div className="p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 shadow-sm space-y-3">
-              <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
-                Quotation Lifecycle & Audit Log
-              </h3>
-              <div className="space-y-2 text-xs">
-                {quotation.history.map((h, i) => (
-                  <div key={h.id || i} className="flex items-start gap-3 py-1.5 border-b border-slate-100 dark:border-slate-800 last:border-0">
-                    <span className="text-[11px] text-slate-400 font-mono whitespace-nowrap mt-0.5">
-                      {new Date(h.date || h.timestamp || Date.now()).toLocaleDateString()}{' '}
-                      {new Date(h.date || h.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <div className="flex-1">
-                      <p className="font-semibold text-slate-800 dark:text-slate-200">
-                        {h.action} <span className="font-normal text-slate-500">by {h.user || h.performedBy || 'User'} ({h.role || h.performedByRole || 'Staff'})</span>
-                      </p>
-                      {(h.remarks || h.notes) && <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{h.remarks || h.notes}</p>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 transition-colors"
+            className="bg-[#d9534f] hover:bg-[#c9302c] text-white w-5 h-5 rounded-xs flex items-center justify-center cursor-pointer transition"
+            title="Close"
           >
-            Close
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
+
+        {/* Modal Scroll Body */}
+        <div className="p-4 sm:p-5 overflow-y-auto max-h-[82vh] space-y-4 bg-white">
+          {/* TOP SECTION: 2-COLUMN GRID (Quotation Details Left, Overview Cards Right) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+            {/* LEFT BOX: Quotation Details Table (5 Cols) */}
+            <div className="lg:col-span-6 bg-white border border-slate-200 rounded-xs overflow-hidden shadow-2xs">
+              <div className="bg-[#f8f9fa] border-b border-slate-200 px-3 py-2 flex items-center gap-2">
+                <FileText className="w-3.5 h-3.5 text-slate-500" />
+                <span className="font-bold text-slate-800 text-xs">Quotation Details</span>
+              </div>
+
+              <div className="divide-y divide-slate-100 text-[11px]">
+                {/* Quotation Owner */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50">
+                  <span className="col-span-5 text-slate-600 font-medium">Quotation Owner</span>
+                  <div className="col-span-7 flex items-center gap-2 font-bold text-slate-900">
+                    <img
+                      src={ownerAvatar}
+                      alt={ownerName}
+                      className="w-5 h-5 rounded-full object-cover border border-slate-300"
+                    />
+                    <span>{ownerName}</span>
+                  </div>
+                </div>
+
+                {/* Quotation Number */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50">
+                  <span className="col-span-5 text-slate-600 font-medium">Quotation Number</span>
+                  <span className="col-span-7 font-bold text-slate-900">{quoteNumber}</span>
+                </div>
+
+                {/* Quotation Type */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50">
+                  <span className="col-span-5 text-slate-600 font-medium">Quotation Type</span>
+                  <span className="col-span-7 font-bold text-slate-900">Manual Creation</span>
+                </div>
+
+                {/* Quotation Date */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50">
+                  <span className="col-span-5 text-slate-600 font-medium">Quotation Date</span>
+                  <span className="col-span-7 font-bold text-slate-900">{quoteDate}</span>
+                </div>
+
+                {/* Opportunity */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50 items-center">
+                  <span className="col-span-5 text-slate-600 font-medium">Opportunity</span>
+                  <div className="col-span-7 flex items-center justify-between gap-1">
+                    <span className="text-[#337ab7] hover:underline font-bold cursor-pointer uppercase truncate">
+                      {oppTitle}
+                    </span>
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#337ab7] text-white flex items-center justify-center text-[9px] font-serif font-bold italic shrink-0">
+                      i
+                    </span>
+                  </div>
+                </div>
+
+                {/* Customer Name */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50 items-center">
+                  <span className="col-span-5 text-slate-600 font-medium">Customer Name</span>
+                  <div className="col-span-7 flex items-center justify-between gap-1">
+                    <span className="text-[#337ab7] hover:underline font-bold cursor-pointer uppercase truncate">
+                      {customerName}
+                    </span>
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#337ab7] text-white flex items-center justify-center text-[9px] font-serif font-bold italic shrink-0">
+                      i
+                    </span>
+                  </div>
+                </div>
+
+                {/* Prepared By */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50">
+                  <span className="col-span-5 text-slate-600 font-medium">Prepared By</span>
+                  <span className="col-span-7 font-bold text-slate-900 uppercase">{ownerName}</span>
+                </div>
+
+                {/* Prepared By Mobile */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50">
+                  <span className="col-span-5 text-slate-600 font-medium">Prepared By Mobile</span>
+                  <span className="col-span-7 font-semibold text-slate-900">+971585262058</span>
+                </div>
+
+                {/* Prepared By Email */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50">
+                  <span className="col-span-5 text-slate-600 font-medium">Prepared By Email</span>
+                  <span className="col-span-7 text-slate-800">
+                    {ownerName.toLowerCase().replace(/\s+/g, '.')}@cooltechuae.com
+                  </span>
+                </div>
+
+                {/* Prepared By Designation */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50">
+                  <span className="col-span-5 text-slate-600 font-medium">Prepared By Designation</span>
+                  <span className="col-span-7 font-medium text-slate-800">Sales Executive</span>
+                </div>
+
+                {/* Attention */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50">
+                  <span className="col-span-5 text-slate-600 font-medium">Attention</span>
+                  <span className="col-span-7 font-bold text-slate-900">{contactPerson}</span>
+                </div>
+
+                {/* Mobile */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50">
+                  <span className="col-span-5 text-slate-600 font-medium">Mobile</span>
+                  <span className="col-span-7 font-semibold text-slate-900">{contactMobile}</span>
+                </div>
+
+                {/* Status */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50 items-center">
+                  <span className="col-span-5 text-slate-600 font-medium">Status</span>
+                  <div className="col-span-7">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-bold bg-[#5bc0de] text-white shadow-2xs">
+                      <Edit2 className="w-2.5 h-2.5 text-white" />
+                      <span>{quotation.status || 'Approved'}</span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Submitted For Approval */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50">
+                  <span className="col-span-5 text-slate-600 font-medium">Submitted For Approval</span>
+                  <span className="col-span-7 font-semibold text-slate-900 uppercase">
+                    {ownerName} ON MON {quoteDate} 5:45:13 PM
+                  </span>
+                </div>
+
+                {/* Approved */}
+                <div className="grid grid-cols-12 px-3 py-1.5 hover:bg-slate-50">
+                  <span className="col-span-5 text-slate-600 font-medium">Approved</span>
+                  <span className="col-span-7 font-semibold text-slate-900 uppercase">
+                    {ownerName} ON MON {quoteDate} 5:45:17 PM
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT BOX: Overview 6 Metric Cards (7 Cols) */}
+            <div className="lg:col-span-6 bg-white border border-slate-200 rounded-xs overflow-hidden shadow-2xs">
+              <div className="bg-[#f8f9fa] border-b border-slate-200 px-3 py-2">
+                <span className="font-bold text-slate-800 text-xs">Overview</span>
+              </div>
+
+              <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-[#fafbfc]">
+                {/* 1. Amount */}
+                <div className="bg-white border border-slate-200 rounded-md p-3 shadow-2xs flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-semibold uppercase block">Amount</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shrink-0">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                </div>
+
+                {/* 2. Discount */}
+                <div className="bg-white border border-slate-200 rounded-md p-3 shadow-2xs flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-semibold uppercase block">Discount</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
+                    <Handshake className="w-4 h-4" />
+                  </div>
+                </div>
+
+                {/* 3. VAT (5%) */}
+                <div className="bg-white border border-slate-200 rounded-md p-3 shadow-2xs flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-semibold uppercase block">VAT (5%)</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {vatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600 shrink-0">
+                    <Receipt className="w-4 h-4" />
+                  </div>
+                </div>
+
+                {/* 4. Sub Total */}
+                <div className="bg-white border border-slate-200 rounded-md p-3 shadow-2xs flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-semibold uppercase block">Sub Total</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shrink-0">
+                    <Calculator className="w-4 h-4" />
+                  </div>
+                </div>
+
+                {/* 5. Adjustment */}
+                <div className="bg-white border border-slate-200 rounded-md p-3 shadow-2xs flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-semibold uppercase block">Adjustment</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {adjustmentAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600 shrink-0">
+                    <ThumbsUp className="w-4 h-4" />
+                  </div>
+                </div>
+
+                {/* 6. Total Amount */}
+                <div className="bg-white border border-slate-200 rounded-md p-3 shadow-2xs flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-semibold uppercase block">Total Amount</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ITEMS TABLE */}
+          <div className="border border-slate-200 rounded-xs overflow-hidden shadow-2xs">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-[#f8f9fa] border-b border-slate-200 text-slate-700 font-bold">
+                  <th className="py-2.5 px-3">
+                    <div className="flex items-center gap-1.5">
+                      <span>Description</span>
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#337ab7] text-white flex items-center justify-center text-[9px] font-serif font-bold italic">
+                        i
+                      </span>
+                    </div>
+                  </th>
+                  <th className="py-2.5 px-3 w-20 text-center">QTY</th>
+                  <th className="py-2.5 px-3 w-28 text-right">Price</th>
+                  <th className="py-2.5 px-3 w-28 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {items.map((item, idx) => (
+                  <tr key={item.id || idx} className="hover:bg-slate-50/70">
+                    <td className="py-3 px-3">
+                      <div className="flex items-start gap-3">
+                        {/* Square No Image Placeholder */}
+                        <div className="w-12 h-12 rounded border border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-[8px] text-slate-400 font-bold text-center leading-tight shrink-0 p-1">
+                          <ImageIcon className="w-4 h-4 text-slate-300 mb-0.5" />
+                          <span>NO IMAGE</span>
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-900 text-xs uppercase leading-snug">
+                            {item.productName}
+                          </p>
+                          <p className="text-slate-500 text-[11px] mt-0.5 font-medium">
+                            {item.description || 'Code: WM18CLYFB3-01 | Unit: Each | Brand: BLUE STAR'}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-center font-semibold text-slate-800">
+                      {item.quantity || 1}
+                    </td>
+                    <td className="py-3 px-3 text-right font-medium text-slate-800">
+                      {(item.unitPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3 px-3 text-right font-bold text-slate-900">
+                      {(item.totalAmount || (item.quantity * item.unitPrice) || 0).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* TERMS & CONDITIONS (LEFT) AND TOTAL SUMMARY (RIGHT) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start pt-2">
+            {/* Left Terms */}
+            <div className="lg:col-span-8 space-y-2 text-[11px] text-slate-800 font-medium">
+              <p className="font-bold text-slate-900">Terms &amp; Conditions:</p>
+              <div className="space-y-1 text-slate-700">
+                <p><span className="font-bold text-slate-900">DELIVERY</span> : 2-3 DAYS ARO, SUBJECT TO PRIOR SALE</p>
+                <p><span className="font-bold text-slate-900">PAYMENT TERMS:</span> CDC</p>
+                <p><span className="font-bold text-slate-900">PRICE</span> : In AED, Ex-Works, Mussafah</p>
+                <div className="pt-1">
+                  <p className="font-bold text-slate-900 uppercase">WARRANTY FOR AIR CONDITIONER</p>
+                  <p className="text-slate-600">1 Year for unit &amp; 5 Years for compressor on manufacturing defects as per manufacturer&apos;s terms</p>
+                </div>
+                <p className="pt-1">We hope we are in line with your requirement &amp; expecting a purchase order from your side to proceed further.</p>
+                <p>Please feel free to call me or mail me for any clarification that you may deem required in the proposal.</p>
+                <p className="pt-2 font-bold text-slate-900">For COOL TECHNOLOGIES</p>
+              </div>
+            </div>
+
+            {/* Right Summary Table */}
+            <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xs overflow-hidden shadow-2xs divide-y divide-slate-100 text-[11px]">
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <span className="font-medium text-slate-600">Amount</span>
+                <span className="font-bold text-slate-800">
+                  {subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <span className="font-medium text-slate-600">VAT (5%)</span>
+                <span className="font-bold text-slate-800">
+                  {vatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-1.5">
+                <span className="font-medium text-slate-600">Sub Total</span>
+                <span className="font-bold text-slate-800">
+                  {totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-2 bg-slate-50">
+                <span className="font-bold text-slate-900 text-xs">Total Amount</span>
+                <span className="font-extrabold text-slate-900 text-xs">
+                  {totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* BOTTOM ACTION BAR */}
+        <div className="bg-[#f8f9fa] border-t border-slate-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded text-xs font-medium flex items-center gap-1 cursor-pointer transition shadow-2xs"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back</span>
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Print Format Dropdown */}
+            <div className="relative inline-block">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsPrintFormatDropdownOpen((prev) => !prev);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#5cb85c] hover:bg-[#4cae4c] text-white rounded text-xs font-semibold shadow-2xs transition cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Format</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+
+              {isPrintFormatDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-[100]"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsPrintFormatDropdownOpen(false);
+                    }}
+                  />
+                  <div
+                    className="absolute left-0 bottom-full mb-1.5 bg-white border border-slate-300 rounded shadow-2xl py-1.5 z-[101] min-w-[300px]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {[
+                      'Print with Quantity',
+                      'Print without Quantity',
+                      'Print without Item Price',
+                      'Print without Quantity & Item Price',
+                      'Print without Total Price',
+                      'Print without Unit Price & Total Price',
+                      'Print without Unit Price & with Total Price',
+                    ].map((fmt) => (
+                      <button
+                        key={fmt}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsPrintFormatDropdownOpen(false);
+                          if (onPrintVoucher) onPrintVoucher(quotation, fmt);
+                        }}
+                        className="w-full text-left px-4 py-2 text-xs text-slate-800 hover:bg-slate-100 flex items-center gap-2.5 cursor-pointer transition-colors"
+                      >
+                        <span className="text-slate-900 font-bold text-xs">•</span>
+                        <span className="font-normal">{fmt}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Print in USD */}
+            <button
+              type="button"
+              onClick={() => onPrintVoucher && onPrintVoucher(quotation, 'Print in USD')}
+              className="flex items-center gap-1 px-3 py-1.5 bg-[#5cb85c] hover:bg-[#4cae4c] text-white rounded text-xs font-semibold shadow-2xs transition cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print in USD</span>
+            </button>
+
+            {/* Print */}
+            <button
+              type="button"
+              onClick={() => onPrintVoucher && onPrintVoucher(quotation, 'Print with Quantity')}
+              className="flex items-center gap-1 px-3 py-1.5 bg-[#5cb85c] hover:bg-[#4cae4c] text-white rounded text-xs font-semibold shadow-2xs transition cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print</span>
+            </button>
+
+            {/* Revise */}
+            <button
+              type="button"
+              onClick={handleRevise}
+              className="flex items-center gap-1 px-3 py-1.5 bg-[#008080] hover:bg-[#006666] text-white rounded text-xs font-semibold shadow-2xs transition cursor-pointer"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+              <span>Revise</span>
+            </button>
+
+            {/* Edit */}
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onEdit && onEdit(quotation);
+              }}
+              className="flex items-center gap-1 px-3 py-1.5 bg-[#337ab7] hover:bg-[#286090] text-white rounded text-xs font-semibold shadow-2xs transition cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Edit</span>
+            </button>
+
+            {/* Delete */}
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="flex items-center gap-1 px-3 py-1.5 bg-[#d9534f] hover:bg-[#c9302c] text-white rounded text-xs font-semibold shadow-2xs transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete</span>
+            </button>
+          </div>
+        </div>
       </div>
-    </Modal>
+    </div>
   );
 }

@@ -166,8 +166,83 @@ export default function EditLeadPage({ params }: PageProps) {
     );
   }, [leads, resolvedParams.id]);
 
+  // Dynamic Assignable Users List
+  const assignableUsers = useMemo(() => {
+    let deletedIds: string[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const delRaw = localStorage.getItem('cezcon_crm_deleted_user_ids');
+        if (delRaw) deletedIds = JSON.parse(delRaw);
+      } catch (e) {}
+    }
+
+    const userMap = new Map<string, { id: string; name: string; role: string; department?: string; avatar?: string }>();
+
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('cezcon_crm_users_list');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((u: any) => {
+              const uId = String(u.id || '');
+              if (deletedIds.includes(uId) || deletedIds.includes(`usr_${uId}`) || deletedIds.includes(uId.replace('usr_', ''))) {
+                return;
+              }
+              const name = u.name?.trim() || u.username?.trim();
+              if (name && !userMap.has(name.toLowerCase())) {
+                userMap.set(name.toLowerCase(), {
+                  id: uId || `usr_${name.toLowerCase()}`,
+                  name,
+                  role: u.profileType || u.employeeType || u.designation || 'Staff',
+                  department: u.department || u.managerType || '',
+                  avatar: u.avatarImage || u.avatarUrl || u.avatar,
+                });
+              }
+            });
+          }
+        }
+      } catch (e) {}
+    }
+
+    users.forEach((u) => {
+      if (u.name && !userMap.has(u.name.toLowerCase())) {
+        userMap.set(u.name.toLowerCase(), {
+          id: u.id,
+          name: u.name,
+          role: u.role || 'Sales Representative',
+          department: u.department,
+          avatar: u.avatar,
+        });
+      }
+    });
+
+    const fallbacks = [
+      { id: 'usr_shaheer', name: 'Shaheer', role: 'Sales Executive' },
+      { id: 'usr_shibil', name: 'Muhammed Shibil', role: 'Sales Manager' },
+      { id: 'usr_jismon', name: 'JISMON JOSE', role: 'Sales Executive' },
+      { id: 'usr_ahsan', name: 'MUHAMMED AHSAN P V', role: 'Sales Executive' },
+      { id: 'usr_adhil', name: 'Muhammed Adhil', role: 'Sales Executive' },
+      { id: 'usr_afsal', name: 'Afsal', role: 'Marketing Manager' },
+      { id: 'usr_arun', name: 'Arun', role: 'Marketing Executive' },
+      { id: 'usr_shameem', name: 'Shameem', role: 'Marketing Executive' },
+      { id: 'usr_rashid', name: 'Mohammed Rashid', role: 'Purchase Manager' },
+    ];
+
+    fallbacks.forEach((f) => {
+      if (!userMap.has(f.name.toLowerCase())) {
+        userMap.set(f.name.toLowerCase(), f);
+      }
+    });
+
+    return Array.from(userMap.values());
+  }, [users]);
+
   // Form State
   const [owner, setOwner] = useState(lead.owner || 'JISMON JOSE');
+  const [assignedEmployee, setAssignedEmployee] = useState(
+    lead.assignedEmployee || lead.leadAssigned?.name || lead.owner || 'JISMON JOSE'
+  );
   const [leadDate, setLeadDate] = useState(lead.leadDate || '21-09-2026');
   const [salutation, setSalutation] = useState(lead.contactDetails.salutation || 'Mr.');
   const [contactName, setContactName] = useState(
@@ -283,8 +358,18 @@ export default function EditLeadPage({ params }: PageProps) {
     const formattedPersonal = cleanPers ? `${personalCountryCode} ${cleanPers}` : '';
     const formattedTel = cleanTel ? `${telCountryCode} ${cleanTel}` : '';
 
+    const assigneePhoto = getEmployeePhoto(assignedEmployee) || '';
+    const ownerPhoto = getEmployeePhoto(owner) || '';
+
     updateLead(lead.id, {
       owner,
+      ownerAvatar: ownerPhoto,
+      assignedEmployee,
+      leadAssigned: {
+        name: assignedEmployee,
+        avatar: assigneePhoto,
+      },
+      assignedDate: lead.assignedDate || leadDate,
       leadDate,
       contactDetails: {
         ...lead.contactDetails,
@@ -376,26 +461,43 @@ export default function EditLeadPage({ params }: PageProps) {
                     onChange={(e) => setOwner(e.target.value)}
                     className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-semibold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
                   >
-                    {users.length > 0 ? (
-                      users.map((u) => (
-                        <option key={u.id} value={u.name}>
-                          {u.name}
-                        </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="JISMON JOSE">JISMON JOSE</option>
-                        <option value="Alex Rivera">Alex Rivera</option>
-                        <option value="Elena Rostova">Elena Rostova</option>
-                        <option value="Jordan Hayes">Jordan Hayes</option>
-                        <option value="Mohammed Rashid">Mohammed Rashid</option>
-                      </>
-                    )}
-                    {owner && !users.some((u) => u.name === owner) && (
+                    {assignableUsers.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name} {u.role ? `(${u.role})` : ''}
+                      </option>
+                    ))}
+                    {owner && !assignableUsers.some((u) => u.name === owner) && (
                       <option value={owner}>{owner}</option>
                     )}
                   </select>
                   <span className="absolute right-2.5 pointer-events-none text-slate-500 text-[10px]">▼</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 1b. Assigned Representative */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-1.5 sm:gap-4 bg-blue-50/40 p-2 rounded border border-blue-100">
+              <label className="sm:col-span-4 text-blue-900 font-semibold flex items-center gap-1">
+                <span>Assigned To</span>
+              </label>
+              <div className="sm:col-span-8">
+                <div className="relative flex items-center border border-blue-300 rounded-[3px] bg-white px-2.5 py-1.5 focus-within:border-blue-600 shadow-2xs">
+                  {renderUserAvatar(assignedEmployee)}
+                  <select
+                    value={assignedEmployee}
+                    onChange={(e) => setAssignedEmployee(e.target.value)}
+                    className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-bold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
+                  >
+                    {assignableUsers.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name} {u.role ? `(${u.role})` : ''}
+                      </option>
+                    ))}
+                    {assignedEmployee && !assignableUsers.some((u) => u.name === assignedEmployee) && (
+                      <option value={assignedEmployee}>{assignedEmployee}</option>
+                    )}
+                  </select>
+                  <span className="absolute right-2.5 pointer-events-none text-blue-600 text-[10px]">▼</span>
                 </div>
               </div>
             </div>

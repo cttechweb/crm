@@ -40,6 +40,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
+import { authMockService } from '@/services/authMockService';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Input';
@@ -54,6 +55,8 @@ function TasksContent() {
   const initialView = (searchParams.get('view') || 'all') as TaskTab;
 
   const { tasks, addTask, updateTask, toggleTaskStatus, deleteTask, users, leads, customers, salesOpportunities, campaigns, invoices } = useEnterpriseCrm();
+  const currentUser = authMockService.getCurrentUser();
+  const defaultUser = currentUser?.name || users[0]?.name || 'shaheer';
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<TaskTab>(initialView);
@@ -108,7 +111,7 @@ function TasksContent() {
 
   // Add Form State
   const [formData, setFormData] = useState({
-    assignee: { name: 'Alex Rivera' },
+    assignee: { name: defaultUser },
     taskDetails: '',
     taskUnder: 'CTEQ#1041 770KG ICE MACHINE / FOCUS EMC KITCHENS LLC',
     taskType: 'Follow-up' as TaskType,
@@ -116,12 +119,12 @@ function TasksContent() {
     dueTime: '06:00 PM',
     priority: 'High' as TaskPriority,
     status: 'Pending' as TaskStatus,
-    createdBy: 'Super Admin',
+    createdBy: defaultUser,
   });
 
   // Assign Task Form & Screen State
   const [assignForm, setAssignForm] = useState({
-    targetAssignee: 'Alex Rivera',
+    targetAssignee: defaultUser,
     selectedTaskIds: [] as string[],
   });
   const [assignSortBy, setAssignSortBy] = useState('All Task');
@@ -366,7 +369,7 @@ function TasksContent() {
     addTask(formData);
     setIsAddModalOpen(false);
     setFormData({
-      assignee: { name: 'Alex Rivera' },
+      assignee: { name: defaultUser },
       taskDetails: '',
       taskUnder: 'CTEQ#1041 770KG ICE MACHINE / FOCUS EMC KITCHENS LLC',
       taskType: 'Follow-up',
@@ -374,7 +377,7 @@ function TasksContent() {
       dueTime: '06:00 PM',
       priority: 'High',
       status: 'Pending',
-      createdBy: 'Super Admin',
+      createdBy: defaultUser,
     });
   };
 
@@ -558,7 +561,7 @@ function TasksContent() {
       updateTask(id, { assignee: { name: assignForm.targetAssignee } });
     });
     setIsAssignModalOpen(false);
-    setAssignForm({ targetAssignee: 'Alex Rivera', selectedTaskIds: [] });
+    setAssignForm({ targetAssignee: defaultUser, selectedTaskIds: [] });
   };
 
   // ── FULL PAGE ASSIGN TASKS VIEW (Matches Cezcon CRM Reference) ───────
@@ -1635,8 +1638,8 @@ function TasksContent() {
                 dueTime: '06:00 PM',
                 priority: 'Medium',
                 status: 'Pending',
-                assignee: { name: 'Alex Rivera' },
-                createdBy: 'Super Admin',
+                assignee: { name: defaultUser },
+                createdBy: defaultUser,
               });
               alert('Generic task created successfully!');
               setGenericTemplate('');
@@ -1729,8 +1732,8 @@ function TasksContent() {
                 dueTime: '06:00 PM',
                 priority: 'High',
                 status: 'Pending',
-                assignee: { name: 'Alex Rivera' },
-                createdBy: 'Super Admin',
+                assignee: { name: defaultUser },
+                createdBy: defaultUser,
               });
               alert('Lead task created successfully!');
               setSelectedLeadId('');
@@ -1856,8 +1859,8 @@ function TasksContent() {
                 dueTime: '06:00 PM',
                 priority: 'High',
                 status: 'Pending',
-                assignee: { name: 'Alex Rivera' },
-                createdBy: 'Super Admin',
+                assignee: { name: defaultUser },
+                createdBy: defaultUser,
               });
               alert('Customer task created successfully!');
               setSelectedCustomerId('');
@@ -1986,8 +1989,8 @@ function TasksContent() {
                 dueTime: '06:00 PM',
                 priority: 'High',
                 status: 'Pending',
-                assignee: { name: 'Alex Rivera' },
-                createdBy: 'Super Admin',
+                assignee: { name: defaultUser },
+                createdBy: defaultUser,
               });
               alert('Opportunity / Order task created successfully!');
               setSelectedOppId('');
@@ -2111,8 +2114,8 @@ function TasksContent() {
                 dueTime: '06:00 PM',
                 priority: 'Medium',
                 status: 'Pending',
-                assignee: { name: 'Alex Rivera' },
-                createdBy: 'Super Admin',
+                assignee: { name: defaultUser },
+                createdBy: defaultUser,
               });
               alert('Contact task created successfully!');
               setSelectedContactId('');
@@ -2240,8 +2243,8 @@ function TasksContent() {
                 dueTime: '06:00 PM',
                 priority: 'Medium',
                 status: 'Pending',
-                assignee: { name: 'Alex Rivera' },
-                createdBy: 'Super Admin',
+                assignee: { name: defaultUser },
+                createdBy: defaultUser,
               });
               alert('Campaign task created successfully!');
               setSelectedCampaignId('');
@@ -2370,8 +2373,8 @@ function TasksContent() {
                 dueTime: '06:00 PM',
                 priority: 'High',
                 status: 'Pending',
-                assignee: { name: 'Alex Rivera' },
-                createdBy: 'Super Admin',
+                assignee: { name: defaultUser },
+                createdBy: defaultUser,
               });
               alert('Invoice task created successfully!');
               setSelectedInvoiceId('');
@@ -3103,7 +3106,7 @@ function TasksContent() {
                   type="button"
                   onClick={() => {
                     setAssignForm({
-                      targetAssignee: 'Alex Rivera',
+                      targetAssignee: defaultUser,
                       selectedTaskIds: filteredTasks.map((t) => t.id),
                     });
                     setIsAssignModalOpen(true);

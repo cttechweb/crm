@@ -224,9 +224,9 @@ export function canAccessLead(
   const uEmail = normalizeIdentifier(currentUser.email);
   const uId = normalizeIdentifier(currentUser.id);
 
-  const leadOwner = normalizeIdentifier(lead.owner || lead.leadAssigned?.name);
+  const leadOwner = normalizeIdentifier(lead.owner);
   const leadCreator = normalizeIdentifier(lead.createdBy);
-  const leadAssignee = normalizeIdentifier(lead.assignedEmployee);
+  const leadAssignee = normalizeIdentifier(lead.assignedEmployee || lead.leadAssigned?.name);
   const leadDept = normalizeIdentifier(lead.department);
 
   // Detect exact lead origin department
@@ -256,13 +256,21 @@ export function canAccessLead(
     leadOwner.includes('adhil') ||
     leadAssignee.includes('adhil');
 
-  // 2. Employee Scope: Own records only
+  // 2. Employee Scope: Own records (Assigned, Created, or Owned)
   if (scope === 'OWN') {
-    return (
-      (leadOwner.length > 0 && (leadOwner === uName || leadOwner === uEmail || leadOwner === uId)) ||
-      (leadCreator.length > 0 && (leadCreator === uName || leadCreator === uEmail || leadCreator === uId)) ||
-      (leadAssignee.length > 0 && (leadAssignee === uName || leadAssignee === uEmail || leadAssignee === uId))
-    );
+    const matchesUser = (fieldVal: string) => {
+      if (!fieldVal) return false;
+      return (
+        fieldVal === uName ||
+        fieldVal === uEmail ||
+        fieldVal === uId ||
+        (uName.length > 2 && fieldVal.includes(uName)) ||
+        (fieldVal.length > 2 && uName.includes(fieldVal)) ||
+        (uEmail.length > 4 && fieldVal.includes(uEmail.split('@')[0]))
+      );
+    };
+
+    return matchesUser(leadOwner) || matchesUser(leadCreator) || matchesUser(leadAssignee);
   }
 
   // 3. Manager Scope: Own records + Team / Department records
@@ -358,7 +366,10 @@ export function canAccessCustomer(
   const custOwner = normalizeIdentifier(customer.owner);
 
   if (scope === 'OWN') {
-    return custOwner === uName || custOwner === uEmail || custOwner === uId;
+    const custCreator = normalizeIdentifier(customer.createdBy);
+    const isDirectOwner = custOwner.length > 0 && (custOwner === uName || custOwner === uEmail || custOwner === uId);
+    const isCreator = custCreator.length > 0 && (custCreator === uName || custCreator === uEmail || custCreator === uId);
+    return isDirectOwner || isCreator;
   }
 
   if (scope === 'TEAM') {

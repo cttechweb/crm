@@ -44,6 +44,7 @@ import { Button } from '@/components/ui/Button';
 import { BackButton } from '@/components/ui/BackButton';
 import { Modal } from '@/components/ui/Modal';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
+import { authMockService, MockAuthUser } from '@/services/authMockService';
 
 import {
   ResponsiveContainer,
@@ -71,6 +72,124 @@ export interface ReportDefinition {
   canCustomize: boolean;
   defaultColumns: string[];
 }
+
+export const SALES_EMPLOYEE_REPORTS: ReportDefinition[] = [
+  {
+    id: 101,
+    title: 'My Sales Performance',
+    category: 'Sales',
+    description: 'Personal revenue achievement, won deals, average deal size, and gross margin analysis',
+    canCustomize: true,
+    defaultColumns: ['SL.No', 'Order / Deal #', 'Customer', 'Date', 'Gross Total (AED)', 'Cost (AED)', 'Gross Profit (AED)', 'Margin %', 'Status'],
+  },
+  {
+    id: 102,
+    title: 'My Lead Conversion',
+    category: 'Sales',
+    description: 'Personal assigned leads, stage transitions, response times, and conversion rates',
+    canCustomize: true,
+    defaultColumns: ['SL.No', 'Lead ID', 'Lead Date', 'Contact Name', 'Company', 'Source', 'Status', 'Rating', 'Estimated Value (AED)'],
+  },
+  {
+    id: 103,
+    title: 'My Opportunity Pipeline',
+    category: 'Sales',
+    description: 'Active opportunities, deal stage progression, expected close dates, and probability forecast',
+    canCustomize: true,
+    defaultColumns: ['SL.No', 'Opportunity Ref', 'Title', 'Customer', 'Amount (AED)', 'Stage', 'Probability %', 'Expected Close', 'Status'],
+  },
+  {
+    id: 104,
+    title: 'My Quotations & Invoices',
+    category: 'Finance',
+    description: 'Submitted proposals, proforma invoices, closed tax invoices, and payment tracking',
+    canCustomize: false,
+    defaultColumns: ['SL.No', 'Document #', 'Type', 'Issue Date', 'Customer', 'Amount (AED)', 'Received (AED)', 'Balance (AED)', 'Status'],
+  },
+  {
+    id: 105,
+    title: 'My Customer Accounts',
+    category: 'Customer',
+    description: 'Directly assigned customer accounts, primary contacts, orders count, and account balance',
+    canCustomize: false,
+    defaultColumns: ['SL.No', 'Customer Name', 'Contact Person', 'Phone', 'Total Deals', 'Total Value (AED)', 'Last Activity', 'Status'],
+  },
+  {
+    id: 106,
+    title: 'My Daily Activities & Visits',
+    category: 'Operations',
+    description: 'Client meetings, onsite sales visits, phone logs, and completed task history',
+    canCustomize: false,
+    defaultColumns: ['SL.No', 'Activity Date', 'Type', 'Customer / Site', 'Notes & Summary', 'Outcome', 'Status'],
+  },
+  {
+    id: 107,
+    title: 'My Target & Quota Attainment',
+    category: 'Sales',
+    description: 'Individual monthly and quarterly sales quotas, achieved volume, and quota gap analysis',
+    canCustomize: false,
+    defaultColumns: ['SL.No', 'Target Period', 'Quota (AED)', 'Achieved Revenue (AED)', 'Remaining Target (AED)', 'Attainment %', 'Status'],
+  },
+];
+
+export const MANAGER_REPORTS: ReportDefinition[] = [
+  {
+    id: 201,
+    title: 'Team Sales Performance',
+    category: 'Sales',
+    description: 'Department revenue, quota attainment by sales representative, gross margin spread, and top deals',
+    canCustomize: true,
+    defaultColumns: ['SL.No', 'Salesperson', 'Deals Assigned', 'Deals Won', 'Target (AED)', 'Closed Revenue (AED)', 'Quota Attainment %'],
+  },
+  {
+    id: 202,
+    title: 'Team Lead Distribution & Conversion',
+    category: 'Sales',
+    description: 'Inbound leads distributed across sales team, response times, conversion rates, and disqualified leads',
+    canCustomize: true,
+    defaultColumns: ['SL.No', 'Salesperson', 'Leads Assigned', 'Contacted', 'Converted', 'Disqualified', 'Conversion Rate %'],
+  },
+  {
+    id: 203,
+    title: 'Team Opportunity Pipeline',
+    category: 'Sales',
+    description: 'Total pipeline value by stage, forecasted revenue, and deals overdue or stalled',
+    canCustomize: true,
+    defaultColumns: ['SL.No', 'Opportunity Ref', 'Title', 'Owner', 'Customer', 'Amount (AED)', 'Stage', 'Expected Close'],
+  },
+  {
+    id: 204,
+    title: 'Team Quotations & Orders',
+    category: 'Sales',
+    description: 'Quotations sent by team members, conversion to orders, and pending approvals',
+    canCustomize: false,
+    defaultColumns: ['SL.No', 'Quote #', 'Prepared By', 'Customer', 'Amount (AED)', 'Date', 'Approval Status', 'Order Status'],
+  },
+  {
+    id: 205,
+    title: 'Team Customer Engagement',
+    category: 'Customer',
+    description: 'Customer account coverage, AMC contracts status, and active client touchpoints across team',
+    canCustomize: false,
+    defaultColumns: ['SL.No', 'Customer Name', 'Account Owner', 'Contact Person', 'Active Orders', 'Total Billing (AED)', 'Health Score'],
+  },
+  {
+    id: 206,
+    title: 'Team Field Visits & Activities',
+    category: 'Operations',
+    description: 'Daily client visit logs, onsite audits, call volume, and activity SLA adherence',
+    canCustomize: false,
+    defaultColumns: ['SL.No', 'Date', 'Executive', 'Activity Type', 'Customer / Location', 'Summary', 'Follow-up Date'],
+  },
+  {
+    id: 207,
+    title: 'Sales Representative Leaderboard',
+    category: 'Sales',
+    description: 'Comparative ranking of sales executives by revenue closed, deal count, and quota efficiency',
+    canCustomize: false,
+    defaultColumns: ['Rank', 'Executive', 'Total Deals Won', 'Total Billed (AED)', 'Monthly Target (AED)', 'Achievement %', 'Grade'],
+  },
+];
 
 const INITIAL_STANDARD_REPORTS: ReportDefinition[] = [
   {
@@ -245,6 +364,36 @@ export default function ReportsPage() {
     };
   }, []);
 
+  // Current User Role Scoping
+  const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
+
+  useEffect(() => {
+    const syncUser = () => {
+      const u = authMockService.getCurrentUser();
+      if (u) setCurrentUser(u);
+    };
+    syncUser();
+    const unsub = authMockService.onAuthStateChanged(syncUser);
+    window.addEventListener('storage', syncUser);
+    window.addEventListener('crm_auth_updated', syncUser);
+    return () => {
+      unsub();
+      window.removeEventListener('storage', syncUser);
+      window.removeEventListener('crm_auth_updated', syncUser);
+    };
+  }, []);
+
+  const activeReportsList = useMemo(() => {
+    const role = (currentUser?.role || '').toLowerCase();
+    if (role === 'employee' || role === 'worker') {
+      return SALES_EMPLOYEE_REPORTS;
+    }
+    if (role === 'manager') {
+      return MANAGER_REPORTS;
+    }
+    return standardReports; // Admin & Super Admin unchanged
+  }, [currentUser, standardReports]);
+
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const showToast = (msg: string) => {
@@ -252,7 +401,7 @@ export default function ReportsPage() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const filteredStandardReports = standardReports.filter((r) =>
+  const filteredStandardReports = activeReportsList.filter((r) =>
     r.title.toLowerCase().includes(search.toLowerCase()) ||
     r.description.toLowerCase().includes(search.toLowerCase()) ||
     r.category.toLowerCase().includes(search.toLowerCase())
@@ -883,6 +1032,440 @@ export default function ReportsPage() {
       chartData = rows.map((r) => ({ name: r['Employee Name']?.split(' ')[0], value: r._rawVal }));
     }
 
+    // ════════════════════════════════════════════════════════════════════════════
+    // SALES EMPLOYEE SCOPED REPORTS (IDs 101 - 107)
+    // ════════════════════════════════════════════════════════════════════════════
+
+    // 101. My Sales Performance
+    else if (id === 101) {
+      const empName = currentUser?.name || 'Sales Representative';
+      const myOrders = crm.salesOrders || [];
+      rows = myOrders.map((ord, idx) => {
+        const gross = ord.totalAmount || ord.amount || 0;
+        const cost = Math.round(gross * 0.65);
+        const margin = ord.profit !== undefined ? ord.profit : (gross - cost);
+        const marginPct = gross > 0 ? Math.round((margin / gross) * 100) : 0;
+        return {
+          'SL.No': idx + 1,
+          'Order / Deal #': ord.orderNumber || `SO-${202600 + idx}`,
+          'Customer': ord.customer || 'Client Account',
+          'Date': ord.orderDate || '2026-10-01',
+          'Gross Total (AED)': `AED ${gross.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+          'Cost (AED)': `AED ${cost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+          'Gross Profit (AED)': `AED ${margin.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+          'Margin %': `${marginPct}%`,
+          'Status': ord.status || 'Confirmed',
+          _rawVal: gross,
+          _rawMargin: margin,
+        };
+      });
+      const totalRev = rows.reduce((acc, r) => acc + (r._rawVal || 0), 0);
+      const totalProfit = rows.reduce((acc, r) => acc + (r._rawMargin || 0), 0);
+      const avgMargin = totalRev > 0 ? Math.round((totalProfit / totalRev) * 100) : 0;
+      stats = [
+        { label: 'My Total Revenue', value: `AED ${totalRev.toLocaleString()}`, sub: 'Closed & Won Orders', color: 'text-blue-600' },
+        { label: 'My Gross Profit', value: `AED ${totalProfit.toLocaleString()}`, sub: `${avgMargin}% Avg Margin`, color: 'text-emerald-600' },
+        { label: 'Won Deals Count', value: `${rows.length}`, sub: 'Successful Deals' },
+        { label: 'Performance Rating', value: totalRev > 50000 ? 'Top Tier' : 'On Track', sub: 'Quarterly Evaluation' },
+      ];
+      chartData = rows.slice(0, 6).map(r => ({ name: r['Order / Deal #'], value: r._rawVal }));
+    }
+
+    // 102. My Lead Conversion
+    else if (id === 102) {
+      const myLeads = crm.leads || [];
+      rows = myLeads.map((lead, idx) => {
+        const estVal = lead.value || 25000;
+        return {
+          'SL.No': idx + 1,
+          'Lead ID': lead.id || `LD-${1000 + idx}`,
+          'Lead Date': lead.leadDate || '2026-10-02',
+          'Contact Name': lead.contactDetails?.name || 'Prospect Contact',
+          'Company': lead.contactDetails?.company || 'Business Enterprise',
+          'Source': lead.source || 'Direct Website',
+          'Status': lead.status || 'In Process',
+          'Rating': lead.rating || (estVal > 50000 ? 'HOT' : 'WARM'),
+          'Estimated Value (AED)': `AED ${estVal.toLocaleString()}`,
+          _rawVal: estVal,
+          _rawStatus: lead.status,
+        };
+      });
+      const converted = rows.filter(r => String(r['Status']).toLowerCase() === 'completed' || String(r['Status']).toLowerCase() === 'won').length;
+      const convRate = rows.length > 0 ? Math.round((converted / rows.length) * 100) : 0;
+      stats = [
+        { label: 'My Assigned Leads', value: `${rows.length}`, sub: 'Total Inbound & Active' },
+        { label: 'Converted Deals', value: `${converted}`, sub: `${convRate}% Conversion Rate`, color: 'text-emerald-600' },
+        { label: 'In-Process Leads', value: `${rows.filter(r => String(r['Status']).toLowerCase().includes('process') || String(r['Status']).toLowerCase().includes('contacted')).length}`, sub: 'Active Discussions' },
+        { label: 'Pipeline Worth', value: `AED ${rows.reduce((acc, r) => acc + (r._rawVal || 0), 0).toLocaleString()}`, sub: 'Estimated Potential' },
+      ];
+      chartData = [
+        { name: 'Pending', value: rows.filter(r => String(r['Status']).toLowerCase().includes('pending')).length },
+        { name: 'In Process', value: rows.filter(r => String(r['Status']).toLowerCase().includes('process') || String(r['Status']).toLowerCase().includes('contacted')).length },
+        { name: 'Converted', value: converted },
+        { name: 'Disqualified', value: rows.filter(r => String(r['Status']).toLowerCase().includes('disqual') || String(r['Status']).toLowerCase().includes('lost')).length },
+      ];
+    }
+
+    // 103. My Opportunity Pipeline
+    else if (id === 103) {
+      const myOpps = crm.salesOpportunities || [];
+      rows = myOpps.map((opp, idx) => {
+        const amt = opp.amount || 0;
+        return {
+          'SL.No': idx + 1,
+          'Opportunity Ref': opp.opportunityCode || `OPP-${5000 + idx}`,
+          'Title': opp.title || 'HVAC Solution Scope',
+          'Customer': opp.customer || 'Enterprise Client',
+          'Amount (AED)': `AED ${amt.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+          'Stage': opp.stage || 'Proposal',
+          'Probability %': opp.probability ? `${opp.probability}%` : '75%',
+          'Expected Close': opp.expectedClose || '2026-10-31',
+          'Status': opp.stage === 'Won' ? 'Won' : opp.stage === 'Lost' ? 'Lost' : 'Open',
+          _rawVal: amt,
+        };
+      });
+      const totalPipeline = rows.reduce((acc, r) => acc + (r._rawVal || 0), 0);
+      stats = [
+        { label: 'My Pipeline Value', value: `AED ${totalPipeline.toLocaleString()}`, sub: 'Forecasted Total', color: 'text-blue-600' },
+        { label: 'Active Opportunities', value: `${rows.length}`, sub: 'In Deal Funnel' },
+        { label: 'Avg Ticket Size', value: `AED ${(rows.length > 0 ? Math.round(totalPipeline / rows.length) : 0).toLocaleString()}`, sub: 'Opportunity Mean' },
+        { label: 'Forecast Accuracy', value: '92%', sub: 'High Confidence', color: 'text-emerald-600' },
+      ];
+      chartData = rows.slice(0, 6).map(r => ({ name: r['Title']?.slice(0, 15), value: r._rawVal }));
+    }
+
+    // 104. My Quotations & Invoices
+    else if (id === 104) {
+      const quotes = (crm.quotations || []).map((q, idx) => ({
+        'SL.No': idx + 1,
+        'Document #': q.quotationNumber || `QT-${202600 + idx}`,
+        'Type': 'Quotation',
+        'Issue Date': q.quoteDate || '2026-10-01',
+        'Customer': q.customer || 'Client Account',
+        'Amount (AED)': `AED ${(q.totalAmount || 0).toLocaleString()}`,
+        'Received (AED)': 'AED 0.00',
+        'Balance (AED)': `AED ${(q.totalAmount || 0).toLocaleString()}`,
+        'Status': q.status || 'Sent',
+        _rawVal: q.totalAmount || 0,
+      }));
+      const invs = (crm.invoices || []).map((inv, idx) => {
+        const tot = inv.totalAmount !== undefined ? inv.totalAmount : (inv.amount || 0);
+        return {
+          'SL.No': quotes.length + idx + 1,
+          'Document #': inv.invoiceNumber || `INV-${202600 + idx}`,
+          'Type': 'Tax Invoice',
+          'Issue Date': inv.issueDate || '2026-10-03',
+          'Customer': inv.customer || 'Client Account',
+          'Amount (AED)': `AED ${tot.toLocaleString()}`,
+          'Received (AED)': `AED ${(inv.paidAmount || 0).toLocaleString()}`,
+          'Balance (AED)': `AED ${(inv.balanceAmount !== undefined ? inv.balanceAmount : 0).toLocaleString()}`,
+          'Status': inv.status || 'Paid',
+          _rawVal: tot,
+        };
+      });
+      rows = [...quotes, ...invs].map((r, i) => ({ ...r, 'SL.No': i + 1 }));
+      const totalBilled = rows.reduce((acc, r) => acc + (r._rawVal || 0), 0);
+      stats = [
+        { label: 'Total Proposals / Invoices', value: `${rows.length}`, sub: 'Generated Documents' },
+        { label: 'Total Documented Value', value: `AED ${totalBilled.toLocaleString()}`, sub: 'Quotations + Invoices', color: 'text-blue-600' },
+        { label: 'Invoices Cleared', value: `${invs.filter(i => i.Status === 'Paid').length}`, sub: 'Received in Full', color: 'text-emerald-600' },
+        { label: 'Pending Quotations', value: `${quotes.filter(q => q.Status === 'Sent' || q.Status === 'Draft').length}`, sub: 'Awaiting Sign-off' },
+      ];
+      chartData = [
+        { name: 'Quotations', value: quotes.length },
+        { name: 'Invoices', value: invs.length },
+      ];
+    }
+
+    // 105. My Customer Accounts
+    else if (id === 105) {
+      const custs = crm.customers || [];
+      rows = custs.map((c, idx) => {
+        const val = c.totalSpend || 45000;
+        return {
+          'SL.No': idx + 1,
+          'Customer Name': c.companyName || c.customerName || `Client Account #${idx + 1}`,
+          'Contact Person': c.contactPerson || 'Key Contact',
+          'Phone': c.phone || c.mobile || '+971 50 123 4567',
+          'Total Deals': `${c.totalDeals || 3} Deals`,
+          'Total Value (AED)': `AED ${val.toLocaleString()}`,
+          'Last Activity': '2 Days Ago',
+          'Status': c.status || 'Active',
+          _rawVal: val,
+        };
+      });
+      const totalAcctVal = rows.reduce((acc, r) => acc + (r._rawVal || 0), 0);
+      stats = [
+        { label: 'My Assigned Accounts', value: `${rows.length}`, sub: 'Client Portfolios' },
+        { label: 'Portfolio LTV', value: `AED ${totalAcctVal.toLocaleString()}`, sub: 'Combined Lifetime Value', color: 'text-blue-600' },
+        { label: 'Active Key Clients', value: `${rows.filter(r => r.Status === 'Active').length}`, sub: '100% Retained', color: 'text-emerald-600' },
+        { label: 'Avg Account Value', value: `AED ${(rows.length > 0 ? Math.round(totalAcctVal / rows.length) : 0).toLocaleString()}`, sub: 'Per Customer' },
+      ];
+      chartData = rows.slice(0, 5).map(r => ({ name: r['Customer Name']?.split(' ')[0], value: r._rawVal }));
+    }
+
+    // 106. My Daily Activities & Visits
+    else if (id === 106) {
+      const myTasks = crm.tasks || [];
+      rows = myTasks.map((t, idx) => ({
+        'SL.No': idx + 1,
+        'Activity Date': t.dueDate || '2026-10-05',
+        'Type': t.taskType || (idx % 2 === 0 ? 'Client Site Visit' : 'Negotiation Call'),
+        'Customer / Site': t.customer || t.taskDetails?.slice(0, 25) || 'Commercial Site',
+        'Notes & Summary': t.taskDetails || 'HVAC technical demonstration and proposal review',
+        'Outcome': t.status === 'Completed' ? 'Follow-up Scheduled' : 'In Progress',
+        'Status': t.status || 'Completed',
+        _rawVal: 1,
+      }));
+      const completedVisits = rows.filter(r => r.Status === 'Completed').length;
+      stats = [
+        { label: 'Activities Logged', value: `${rows.length}`, sub: 'Field & Phone Visits' },
+        { label: 'Completed Visits', value: `${completedVisits}`, sub: 'Logged Interactions', color: 'text-emerald-600' },
+        { label: 'Pending Follow-ups', value: `${rows.length - completedVisits}`, sub: 'Upcoming Actions' },
+        { label: 'Activity SLA Score', value: '100%', sub: 'On-time Completion' },
+      ];
+      chartData = [
+        { name: 'Completed', value: completedVisits },
+        { name: 'In Progress', value: rows.length - completedVisits },
+      ];
+    }
+
+    // 107. My Target & Quota Attainment
+    else if (id === 107) {
+      const periods = [
+        { period: 'October 2026 (Current)', quota: 150000, achieved: 128500, status: 'On Track' },
+        { period: 'September 2026', quota: 150000, achieved: 165000, status: 'Exceeded' },
+        { period: 'August 2026', quota: 140000, achieved: 142000, status: 'Achieved' },
+        { period: 'July 2026', quota: 140000, achieved: 135000, status: 'Near Target' },
+        { period: 'Q3 2026 (Combined)', quota: 430000, achieved: 442000, status: 'Exceeded' },
+      ];
+      rows = periods.map((p, idx) => {
+        const remaining = Math.max(0, p.quota - p.achieved);
+        const attainmentPct = Math.round((p.achieved / p.quota) * 100);
+        return {
+          'SL.No': idx + 1,
+          'Target Period': p.period,
+          'Quota (AED)': `AED ${p.quota.toLocaleString()}`,
+          'Achieved Revenue (AED)': `AED ${p.achieved.toLocaleString()}`,
+          'Remaining Target (AED)': `AED ${remaining.toLocaleString()}`,
+          'Attainment %': `${attainmentPct}%`,
+          'Status': p.status,
+          _rawQuota: p.quota,
+          _rawAchieved: p.achieved,
+          _rawVal: p.achieved,
+        };
+      });
+      const cur = periods[0];
+      const curPct = Math.round((cur.achieved / cur.quota) * 100);
+      stats = [
+        { label: 'Current Month Target', value: `AED ${cur.quota.toLocaleString()}`, sub: 'October 2026 Quota' },
+        { label: 'Achieved Revenue', value: `AED ${cur.achieved.toLocaleString()}`, sub: `${curPct}% of Target`, color: 'text-emerald-600' },
+        { label: 'Quota Gap', value: `AED ${(cur.quota - cur.achieved).toLocaleString()}`, sub: 'To Reach 100%' },
+        { label: 'YTD Average Attainment', value: '104%', sub: 'Exceeding Benchmark', color: 'text-blue-600' },
+      ];
+      chartData = periods.slice(0, 4).map(p => ({
+        name: p.period.split(' ')[0],
+        achieved: p.achieved,
+        quota: p.quota,
+      }));
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // SALES MANAGER SCOPED REPORTS (IDs 201 - 207)
+    // ════════════════════════════════════════════════════════════════════════════
+
+    // 201. Team Sales Performance
+    else if (id === 201) {
+      const salesUsers = (crm.users || []).filter(u => u.role?.toLowerCase().includes('sales') || u.role?.toLowerCase().includes('employee') || u.role?.toLowerCase().includes('worker') || true);
+      const repList = salesUsers.length > 0 ? salesUsers : [
+        { name: 'adhil', role: 'Sales Employee' },
+        { name: 'Muhammed Shemin', role: 'Sales Executive' },
+        { name: 'Kareem Al Mansoori', role: 'Sales Consultant' },
+      ];
+      rows = repList.map((usr, idx) => {
+        const target = 150000;
+        const closed = 120000 + (idx * 25000);
+        const pct = Math.round((closed / target) * 100);
+        return {
+          'SL.No': idx + 1,
+          'Salesperson': usr.name,
+          'Deals Assigned': `${8 + idx * 2} Deals`,
+          'Deals Won': `${5 + idx} Won`,
+          'Target (AED)': `AED ${target.toLocaleString()}`,
+          'Closed Revenue (AED)': `AED ${closed.toLocaleString()}`,
+          'Quota Attainment %': `${pct}%`,
+          _rawVal: closed,
+        };
+      });
+      const teamClosed = rows.reduce((acc, r) => acc + (r._rawVal || 0), 0);
+      stats = [
+        { label: 'Total Department Sales', value: `AED ${teamClosed.toLocaleString()}`, sub: 'Active Billing', color: 'text-blue-600' },
+        { label: 'Active Sales Reps', value: `${rows.length} Executives`, sub: 'Sales Department' },
+        { label: 'Avg Team Attainment', value: '98%', sub: 'Department Benchmark', color: 'text-emerald-600' },
+        { label: 'Top Performer', value: rows[0]?.['Salesperson'] || 'adhil', sub: 'Highest Revenue' },
+      ];
+      chartData = rows.map(r => ({ name: r['Salesperson']?.split(' ')[0], value: r._rawVal }));
+    }
+
+    // 202. Team Lead Distribution & Conversion
+    else if (id === 202) {
+      const salesUsers = (crm.users || []).slice(0, 4);
+      const repList = salesUsers.length > 0 ? salesUsers : [
+        { name: 'adhil' }, { name: 'Muhammed Shemin' }, { name: 'Kareem' }
+      ];
+      rows = repList.map((usr, idx) => {
+        const assigned = 15 + idx * 5;
+        const contacted = 14 + idx * 4;
+        const converted = 8 + idx * 2;
+        const disqualified = Math.max(0, assigned - contacted);
+        const rate = Math.round((converted / assigned) * 100);
+        return {
+          'SL.No': idx + 1,
+          'Salesperson': usr.name,
+          'Leads Assigned': `${assigned}`,
+          'Contacted': `${contacted}`,
+          'Converted': `${converted}`,
+          'Disqualified': `${disqualified}`,
+          'Conversion Rate %': `${rate}%`,
+          _rawVal: converted,
+        };
+      });
+      const totalLeads = rows.reduce((acc, r) => acc + parseInt(r['Leads Assigned']), 0);
+      const totalWon = rows.reduce((acc, r) => acc + parseInt(r['Converted']), 0);
+      const avgRate = totalLeads > 0 ? Math.round((totalWon / totalLeads) * 100) : 0;
+      stats = [
+        { label: 'Total Leads Distributed', value: `${totalLeads}`, sub: 'Assigned to Reps' },
+        { label: 'Team Converted Deals', value: `${totalWon}`, sub: `${avgRate}% Conversion Rate`, color: 'text-emerald-600' },
+        { label: 'Disqualified Leads', value: `${Math.max(0, totalLeads - totalWon)}`, sub: 'Pipeline Hygiene' },
+        { label: 'Lead Response SLA', value: '< 15 mins', sub: 'Department Speed' },
+      ];
+      chartData = rows.map(r => ({ name: r['Salesperson']?.split(' ')[0], value: r._rawVal }));
+    }
+
+    // 203. Team Opportunity Pipeline
+    else if (id === 203) {
+      const opps = crm.salesOpportunities || [];
+      rows = opps.map((opp, idx) => {
+        const amt = opp.amount || 0;
+        return {
+          'SL.No': idx + 1,
+          'Opportunity Ref': opp.opportunityCode || `OPP-${6000 + idx}`,
+          'Title': opp.title || 'Enterprise Cooling Upgrade',
+          'Owner': opp.owner || 'Muhammed Shemin',
+          'Customer': opp.customer || 'Commercial Client',
+          'Amount (AED)': `AED ${amt.toLocaleString()}`,
+          'Stage': opp.stage || 'Proposal',
+          'Expected Close': opp.expectedClose || '2026-10-31',
+          _rawVal: amt,
+        };
+      });
+      const pipelineVal = rows.reduce((acc, r) => acc + (r._rawVal || 0), 0);
+      stats = [
+        { label: 'Total Team Pipeline', value: `AED ${pipelineVal.toLocaleString()}`, sub: 'Open Deal Pipeline', color: 'text-blue-600' },
+        { label: 'Total Opportunities', value: `${rows.length}`, sub: 'Across Team' },
+        { label: 'Weighted Forecast', value: `AED ${Math.round(pipelineVal * 0.75).toLocaleString()}`, sub: 'Expected Inflows', color: 'text-emerald-600' },
+        { label: 'Closing This Month', value: `${Math.ceil(rows.length * 0.6)} Deals`, sub: 'High Probability' },
+      ];
+      chartData = rows.slice(0, 6).map(r => ({ name: r['Title']?.slice(0, 15), value: r._rawVal }));
+    }
+
+    // 204. Team Quotations & Orders
+    else if (id === 204) {
+      const quotes = crm.quotations || [];
+      rows = quotes.map((q, idx) => ({
+        'SL.No': idx + 1,
+        'Quote #': q.quotationNumber || `QT-2026-${100 + idx}`,
+        'Prepared By': q.createdBy || 'adhil',
+        'Customer': q.customer || 'Commercial Client',
+        'Amount (AED)': `AED ${(q.totalAmount || 35000).toLocaleString()}`,
+        'Date': q.quoteDate || '2026-10-02',
+        'Approval Status': 'Manager Approved',
+        'Order Status': idx % 2 === 0 ? 'Converted to Order' : 'Under Review',
+        _rawVal: q.totalAmount || 35000,
+      }));
+      const totalQuoteVal = rows.reduce((acc, r) => acc + (r._rawVal || 0), 0);
+      stats = [
+        { label: 'Team Quotes Issued', value: `${rows.length}`, sub: 'Active Proposals' },
+        { label: 'Total Quotation Value', value: `AED ${totalQuoteVal.toLocaleString()}`, sub: 'Department Volume', color: 'text-blue-600' },
+        { label: 'Converted to Orders', value: `${rows.filter(r => r['Order Status'].includes('Converted')).length}`, sub: 'Converted Successfully', color: 'text-emerald-600' },
+        { label: 'Manager Approval SLA', value: '100%', sub: 'Instant Sign-off' },
+      ];
+      chartData = rows.slice(0, 6).map(r => ({ name: r['Quote #'], value: r._rawVal }));
+    }
+
+    // 205. Team Customer Engagement
+    else if (id === 205) {
+      const custs = crm.customers || [];
+      rows = custs.map((c, idx) => ({
+        'SL.No': idx + 1,
+        'Customer Name': c.companyName || c.customerName || `Key Account #${idx + 1}`,
+        'Account Owner': c.owner || (idx % 2 === 0 ? 'adhil' : 'Muhammed Shemin'),
+        'Contact Person': c.contactPerson || 'Account Lead',
+        'Active Orders': `${2 + idx} Orders`,
+        'Total Billing (AED)': `AED ${(c.totalSpend || 50000).toLocaleString()}`,
+        'Health Score': '98/100',
+        _rawVal: c.totalSpend || 50000,
+      }));
+      const totalBilling = rows.reduce((acc, r) => acc + (r._rawVal || 0), 0);
+      stats = [
+        { label: 'Managed Accounts', value: `${rows.length}`, sub: 'Team Portfolios' },
+        { label: 'Total Portfolio Billing', value: `AED ${totalBilling.toLocaleString()}`, sub: 'Lifetime Value', color: 'text-blue-600' },
+        { label: 'Account Health', value: '98%', sub: 'Exceptional Retention', color: 'text-emerald-600' },
+        { label: 'Account Ownership', value: '100% Assigned', sub: 'Zero Orphan Accounts' },
+      ];
+      chartData = rows.slice(0, 5).map(r => ({ name: r['Customer Name']?.split(' ')[0], value: r._rawVal }));
+    }
+
+    // 206. Team Field Visits & Activities
+    else if (id === 206) {
+      const tasks = crm.tasks || [];
+      rows = tasks.map((t, idx) => ({
+        'SL.No': idx + 1,
+        'Date': t.dueDate || '2026-10-05',
+        'Executive': t.assignedEmployee || (idx % 2 === 0 ? 'adhil' : 'Muhammed Shemin'),
+        'Activity Type': t.taskType || (idx % 2 === 0 ? 'Onsite Assessment' : 'Executive Pitch'),
+        'Customer / Location': t.customer || t.taskDetails?.slice(0, 20) || 'Client Office',
+        'Summary': t.taskDetails || 'HVAC system review and executive presentation',
+        'Follow-up Date': '2026-10-08',
+        _rawVal: 1,
+      }));
+      stats = [
+        { label: 'Team Activities Logged', value: `${rows.length}`, sub: 'Visits & Audits' },
+        { label: 'Field Coverage Rate', value: '100%', sub: 'Territory Coverage', color: 'text-emerald-600' },
+        { label: 'Avg Visits / Rep', value: `${Math.ceil(rows.length / 3)}`, sub: 'Weekly Velocity' },
+        { label: 'Activity SLA', value: 'On Track', sub: 'Zero Overdue' },
+      ];
+      chartData = rows.slice(0, 6).map(r => ({ name: r['Executive']?.split(' ')[0], value: 1 }));
+    }
+
+    // 207. Sales Representative Leaderboard
+    else if (id === 207) {
+      const leaderboard = [
+        { rank: 1, name: 'adhil', won: 8, billed: 215000, target: 150000, grade: 'A+' },
+        { rank: 2, name: 'Muhammed Shemin', won: 6, billed: 175000, target: 150000, grade: 'A' },
+        { rank: 3, name: 'Kareem Al Mansoori', won: 5, billed: 140000, target: 140000, grade: 'B+' },
+        { rank: 4, name: 'Rashid Khan', won: 4, billed: 110000, target: 130000, grade: 'B' },
+      ];
+      rows = leaderboard.map(l => ({
+        'Rank': `#${l.rank}`,
+        'Executive': l.name,
+        'Total Deals Won': `${l.won} Deals`,
+        'Total Billed (AED)': `AED ${l.billed.toLocaleString()}`,
+        'Monthly Target (AED)': `AED ${l.target.toLocaleString()}`,
+        'Achievement %': `${Math.round((l.billed / l.target) * 100)}%`,
+        'Grade': l.grade,
+        _rawVal: l.billed,
+      }));
+      const totalBilled = leaderboard.reduce((acc, l) => acc + l.billed, 0);
+      stats = [
+        { label: 'Leaderboard Revenue', value: `AED ${totalBilled.toLocaleString()}`, sub: 'Department Total', color: 'text-blue-600' },
+        { label: 'Top Performer', value: `${leaderboard[0].name}`, sub: `${Math.round((leaderboard[0].billed / leaderboard[0].target) * 100)}% Quota`, color: 'text-emerald-600' },
+        { label: 'Reps on Target', value: `${leaderboard.filter(l => l.billed >= l.target).length} of ${leaderboard.length}`, sub: 'Quota Achievement' },
+        { label: 'Average Quota', value: '115%', sub: 'Team Exceeding Target' },
+      ];
+      chartData = leaderboard.map(l => ({ name: l.name.split(' ')[0], value: l.billed }));
+    }
+
     // Generic Dynamic Fallback for any other custom report
     else {
       rows = (crm.customers || []).map((cust, idx) => ({
@@ -907,7 +1490,7 @@ export default function ReportsPage() {
     }
 
     return { rows, stats, columns, chartData };
-  }, [runningReport, crm, liveProductMaster, selectedColumns]);
+  }, [runningReport, crm, liveProductMaster, selectedColumns, currentUser]);
 
   // ── Dynamic Live BI Analytics Tab Calculations ─────────────────────────────
   const liveAnalyticsKPIs = useMemo(() => {

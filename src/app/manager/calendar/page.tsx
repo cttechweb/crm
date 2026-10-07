@@ -6,9 +6,9 @@ import { ManagerShell } from '@/components/layout/ManagerShell';
 
 const CALENDAR_EVENTS = [
   { id: 1, day: 25, title: 'Emergency Chiller Overhaul', client: 'Lumina Health Tower', tech: 'Tariq Mansour', time: '11:00 AM - 03:00 PM', type: 'Task', color: 'bg-rose-500' },
-  { id: 2, day: 25, title: 'Operations Capacity Briefing', client: 'Internal Cool Tech', tech: 'Alex Rivera', time: '08:30 AM - 09:15 AM', type: 'Meeting', color: 'bg-blue-600' },
+  { id: 2, day: 25, title: 'Operations Capacity Briefing', client: 'Internal Cool Tech', tech: 'Muhammed Shibil', time: '08:30 AM - 09:15 AM', type: 'Meeting', color: 'bg-blue-600' },
   { id: 3, day: 26, title: 'Quarterly AMC Site Survey', client: 'Apex Logistics Complex', tech: 'Zayed Al Qasimi', time: '09:00 AM - 12:00 PM', type: 'Site Visit', color: 'bg-indigo-600' },
-  { id: 4, day: 28, title: 'Contract Renewal Discussion', client: 'Yas Marina Towers', tech: 'Alex Rivera', time: '02:00 PM - 03:00 PM', type: 'Meeting', color: 'bg-emerald-600' },
+  { id: 4, day: 28, title: 'Contract Renewal Discussion', client: 'Yas Marina Towers', tech: 'Muhammed Shibil', time: '02:00 PM - 03:00 PM', type: 'Meeting', color: 'bg-emerald-600' },
   { id: 5, day: 30, title: 'Q3 Operations Wrap-up', client: 'Management Board', tech: 'All Managers', time: '04:00 PM - 05:30 PM', type: 'Meeting', color: 'bg-purple-600' },
 ];
 

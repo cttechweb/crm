@@ -172,8 +172,8 @@ export default function ManagerDashboardPage() {
             m.status === 'Approved' || m.status === 'Dispatched' || m.status === 'Collected'
               ? 'bg-[#D1FAE5] text-[#059669]'
               : m.status === 'Rejected'
-              ? 'bg-[#FEE2E2] text-[#DC2626]'
-              : 'bg-[#FEF3C7] text-[#D97706]',
+                ? 'bg-[#FEE2E2] text-[#DC2626]'
+                : 'bg-[#FEF3C7] text-[#D97706]',
         }));
         setMaterialRequestsList(mapped);
       } else {
@@ -255,11 +255,15 @@ export default function ManagerDashboardPage() {
     if (typeof window !== 'undefined') {
       try {
         const stored = localStorage.getItem('cezcon_crm_users_list');
+        const deletedRaw = localStorage.getItem('cezcon_crm_deleted_user_ids');
+        const deletedSet = new Set<string>(deletedRaw ? JSON.parse(deletedRaw) : []);
+
         if (stored) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            const curMgrId = String(currentManagerId || '').toLowerCase();
+            const curMgrId = String(currentUser?.id || '').toLowerCase();
             const curMgrEmail = String(currentUser?.email || '').toLowerCase();
+            const curMgrName = String(currentUser?.name || '').toLowerCase();
             const mgrType = (
               currentUser?.managerType ||
               currentUser?.designation ||
@@ -267,12 +271,18 @@ export default function ManagerDashboardPage() {
               ''
             ).toLowerCase();
 
-            const isMarketingMgr = mgrType.includes('market') || curMgrEmail.includes('afsal');
-            const isSalesMgr = mgrType.includes('sales') || curMgrEmail.includes('shibil');
-            const isPurchaseMgr = mgrType.includes('purchase');
+            const isMarketingMgr = mgrType.includes('market') || curMgrEmail.includes('afsal') || curMgrName.includes('afsal');
+            const isSalesMgr = mgrType.includes('sales') || curMgrEmail.includes('shibil') || curMgrName.includes('shibil');
+            const isPurchaseMgr = mgrType.includes('purchase') || curMgrEmail.includes('rashid') || curMgrName.includes('rashid');
             const isOpsMgr = mgrType.includes('operation');
 
             const managerSpecific = parsed.filter((u: any) => {
+              if (!u) return false;
+              const uid = String(u.id || '').toLowerCase();
+              const uemail = String(u.email || '').toLowerCase();
+              const uuser = String(u.username || '').toLowerCase();
+              if (deletedSet.has(uid) || deletedSet.has(uemail) || deletedSet.has(uuser)) return false;
+
               const uMgrId = String(u.managerId || u.reportingManagerId || '').toLowerCase();
               const uEmpType = String(u.employeeType || u.designation || '').toLowerCase();
               const uDept = String(u.department || u.profileType || '').toLowerCase();
@@ -283,14 +293,17 @@ export default function ManagerDashboardPage() {
                   `usr_${uMgrId}` === curMgrId ||
                   uMgrId === curMgrId.replace('usr_', '') ||
                   uMgrId === curMgrEmail ||
+                  uMgrId === curMgrName ||
                   (curMgrEmail.includes('afsal') && (uMgrId.includes('afsal') || uMgrId === 'mgr_3' || uMgrId === '3')) ||
                   (curMgrEmail.includes('shibil') && (uMgrId.includes('shibil') || uMgrId === 'mgr_1' || uMgrId === '1')));
 
+              // If no explicit manager assigned, match strictly by the user's specific department
               const matchesDept =
-                (isMarketingMgr && (uEmpType.includes('market') || uDept.includes('market'))) ||
+                !uMgrId &&
+                ((isMarketingMgr && (uEmpType.includes('market') || uDept.includes('market'))) ||
                 (isSalesMgr && (uEmpType.includes('sales') || uDept.includes('sales'))) ||
                 (isPurchaseMgr && (uEmpType.includes('purchase') || uDept.includes('purchase'))) ||
-                (isOpsMgr && (uEmpType.includes('operation') || uDept.includes('operation')));
+                (isOpsMgr && (uEmpType.includes('operation') || uDept.includes('operation'))));
 
               const isEmployeeOrWorker =
                 u.profileType === 'Employee' ||
@@ -302,66 +315,7 @@ export default function ManagerDashboardPage() {
               return (matchesId || matchesDept) && isEmployeeOrWorker;
             });
 
-            let listToUse = managerSpecific;
-            if (listToUse.length === 0) {
-              if (isMarketingMgr) {
-                listToUse = [
-                  {
-                    id: 'emp_arun_001',
-                    name: 'Arun',
-                    email: 'arun@gmail.com',
-                    designation: 'Marketing Specialist',
-                    department: 'Marketing',
-                    status: 'Active',
-                    profileType: 'Marketing Employee',
-                    employeeType: 'Marketing Employee',
-                  },
-                  {
-                    id: 'emp_shameem_001',
-                    name: 'Shameem',
-                    email: 'shameem@gmail.com',
-                    designation: 'Marketing Executive',
-                    department: 'Marketing',
-                    status: 'Active',
-                    profileType: 'Marketing Employee',
-                    employeeType: 'Marketing Employee',
-                  },
-                ];
-              } else if (isSalesMgr) {
-                listToUse = [
-                  {
-                    id: 'emp_shaheer_001',
-                    name: 'shaheer',
-                    email: 'shaheer@gmail.com',
-                    designation: 'Sales Executive',
-                    department: 'Sales',
-                    status: 'Active',
-                    profileType: 'Sales Employee',
-                    employeeType: 'Sales Employee',
-                  },
-                  {
-                    id: 'emp_adhil_001',
-                    name: 'adhil',
-                    email: 'adhil@gmail.com',
-                    designation: 'Sales Representative',
-                    department: 'Sales',
-                    status: 'Active',
-                    profileType: 'Sales Employee',
-                    employeeType: 'Sales Employee',
-                  },
-                ];
-              } else {
-                listToUse = parsed.filter((u: any) => {
-                  const isEmployeeOrWorker =
-                    u.profileType === 'Employee' ||
-                    u.profileType === 'Worker' ||
-                    u.role === 'Employee' ||
-                    u.isWorker ||
-                    (!u.isAdmin && !u.profileType?.toLowerCase().includes('manager') && !u.profileType?.toLowerCase().includes('admin'));
-                  return isEmployeeOrWorker;
-                });
-              }
-            }
+            const listToUse = managerSpecific;
 
             const bgPalette = ['bg-slate-900', 'bg-slate-800', 'bg-slate-700', 'bg-blue-900', 'bg-indigo-950'];
 
@@ -398,8 +352,8 @@ export default function ManagerDashboardPage() {
                 statusColor: isOverloaded
                   ? 'bg-[#FEE2E2] text-[#DC2626]'
                   : isOnField
-                  ? 'bg-[#EBF3FE] text-[#1677FF]'
-                  : 'bg-[#ECFDF5] text-[#059669]',
+                    ? 'bg-[#EBF3FE] text-[#1677FF]'
+                    : 'bg-[#ECFDF5] text-[#059669]',
                 barColor: isOverloaded ? 'bg-[#DC2626]' : isOnField ? 'bg-[#EA580C]' : 'bg-[#1677FF]',
                 capacity: calculatedCap,
                 assignedCount: userAssignedTasks.length || 2,
@@ -435,10 +389,10 @@ export default function ManagerDashboardPage() {
           statusColor: isDone
             ? 'bg-[#D1FAE5] text-[#059669]'
             : isInProgress
-            ? 'bg-[#EBF3FE] text-[#1677FF]'
-            : isUrgent
-            ? 'bg-[#FEE2E2] text-[#DC2626]'
-            : 'bg-[#FEF3C7] text-[#D97706]',
+              ? 'bg-[#EBF3FE] text-[#1677FF]'
+              : isUrgent
+                ? 'bg-[#FEE2E2] text-[#DC2626]'
+                : 'bg-[#FEF3C7] text-[#D97706]',
           dotColor: isDone ? 'bg-[#059669]' : isUrgent ? 'bg-[#EA580C]' : 'bg-[#1677FF]',
         };
       });
@@ -535,7 +489,7 @@ export default function ManagerDashboardPage() {
       try {
         const raw = localStorage.getItem('cezcon_crm_users_list');
         if (raw) allCrmUsers = JSON.parse(raw);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // 1. Team Members / Employees
@@ -571,8 +525,8 @@ export default function ManagerDashboardPage() {
       pipelineTotal >= 1000000
         ? `AED ${(pipelineTotal / 1000000).toFixed(1)}M`
         : pipelineTotal >= 1000
-        ? `AED ${(pipelineTotal / 1000).toFixed(0)}K`
-        : `AED ${pipelineTotal.toLocaleString()}`;
+          ? `AED ${(pipelineTotal / 1000).toFixed(0)}K`
+          : `AED ${pipelineTotal.toLocaleString()}`;
 
     const totalDealsCount = (salesOpportunities || []).length;
 

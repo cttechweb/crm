@@ -43,10 +43,11 @@ interface ImportBatchItem {
 const INITIAL_BATCHES: ImportBatchItem[] = [];
 
 function ImportLeadsContent() {
+  const { users } = useEnterpriseCrm();
   const [batches, setBatches] = useState<ImportBatchItem[]>(INITIAL_BATCHES);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedSource, setSelectedSource] = useState('Website Inbound');
-  const [selectedRep, setSelectedRep] = useState('Mohammed Rashid');
+  const [selectedRep, setSelectedRep] = useState(users[0]?.name || 'shaheer');
   const [dedupPolicy, setDedupPolicy] = useState('skip');
   const [isImporting, setIsImporting] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -207,9 +208,18 @@ function ImportLeadsContent() {
                 onChange={(e) => setSelectedRep(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none"
               >
-                <option value="Mohammed Rashid">Mohammed Rashid</option>
-                <option value="Alex Rivera">Alex Rivera</option>
-                <option value="Sarah Al-Mansoor">Sarah Al-Mansoor</option>
+                {users && users.length > 0 ? (
+                  users.map((u) => (
+                    <option key={u.id} value={u.name}>
+                      {u.name}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="Shaheer">Shaheer</option>
+                    <option value="Muhammed Shibil">Muhammed Shibil</option>
+                  </>
+                )}
               </select>
             </div>
 

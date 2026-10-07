@@ -52,72 +52,85 @@ const HEADER_ICONS: Record<string, (isActive: boolean) => React.ReactNode> = {
   BarChart3: (active) => <BarChart3 className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
 };
 
-const WORKER_NAV_ITEMS: EnterpriseNavItem[] = [
+const SALES_EMPLOYEE_NAV_ITEMS: EnterpriseNavItem[] = [
   {
     id: 'employee-dashboard',
     label: 'Dashboard',
-    path: '/worker/dashboard',
+    path: '/employee/dashboard',
     iconName: 'Home',
   },
   {
     id: 'employee-tasks',
-    label: 'My Tasks',
-    path: '/worker/tasks',
+    label: 'Task',
+    path: '/tasks',
     iconName: 'CheckSquare',
     children: [
-      { label: "Today's Schedule", href: '/worker/tasks', iconName: 'CheckSquare' },
-      { label: 'Live Job Pad', href: '/worker/tasks/active', iconName: 'Hourglass' },
-      { label: 'Pending Acceptance', href: '/worker/tasks?status=Pending', iconName: 'Hourglass' },
-      { label: 'Completed History', href: '/worker/tasks?status=Completed', iconName: 'FileText' },
+      { label: 'My Tasks', href: '/tasks', iconName: 'CheckSquare' },
+      { label: 'Task Calendar', href: '/employee/calendar', iconName: 'Calendar' },
+      { label: "Today's Follow-ups", href: '/leads/followups', iconName: 'Clock' },
     ],
   },
   {
     id: 'employee-leads',
-    label: 'My Leads',
-    path: '/worker/leads',
-    iconName: 'Target',
+    label: 'Lead',
+    path: '/leads',
+    iconName: 'ListChecks',
+    children: [
+      { label: 'All Leads', href: '/leads', iconName: 'ListChecks' },
+      { label: 'My Leads', href: '/leads', iconName: 'UserCheck' },
+      { label: '+ Add Lead', href: '/leads', iconName: 'Plus' },
+      { label: 'Convert Lead', href: '/leads', iconName: 'CornerUpRight' },
+      { label: 'Lead Follow-ups', href: '/leads/followups', iconName: 'Clock' },
+      { label: 'Lead Status', href: '/leads/status', iconName: 'Activity' },
+    ],
   },
   {
     id: 'employee-customers',
-    label: 'My Customers',
-    path: '/worker/customers',
-    iconName: 'UserCheck',
+    label: 'Customer',
+    path: '/customers',
+    iconName: 'Shield',
+    children: [
+      { label: 'All Customers', href: '/customers', iconName: 'Shield' },
+      { label: 'My Customers', href: '/customers', iconName: 'UserCheck' },
+      { label: 'Contacts', href: '/customers/contacts', iconName: 'Contact' },
+      { label: 'Customer Activities', href: '/customers/activities', iconName: 'Activity' },
+      { label: 'Follow-ups', href: '/customers/followups', iconName: 'Clock' },
+    ],
   },
   {
-    id: 'employee-activities',
-    label: 'My Activities',
-    path: '/worker/activities',
-    iconName: 'ListChecks',
-  },
-  {
-    id: 'employee-deals',
-    label: 'My Deals',
-    path: '/worker/deals',
-    iconName: 'Briefcase',
-  },
-  {
-    id: 'employee-quotations',
-    label: 'My Quotations',
-    path: '/worker/quotations',
-    iconName: 'FileText',
-  },
-  {
-    id: 'employee-timesheet',
-    label: 'Timesheet',
-    path: '/worker/timesheet',
+    id: 'employee-sales',
+    label: 'Sales',
+    path: '/sales',
     iconName: 'Hourglass',
+    children: [
+      { label: 'Opportunities', href: '/sales?tab=opportunities', iconName: 'Key' },
+      { label: 'Quotations', href: '/sales?tab=quotations', iconName: 'FileText' },
+      { label: 'Orders', href: '/sales?tab=orders', iconName: 'ThumbsUp' },
+      { label: 'Proforma Invoices', href: '/sales?tab=proforma', iconName: 'CreditCard' },
+      { label: 'Invoices', href: '/sales?tab=invoice', iconName: 'FileSpreadsheet' },
+      { label: 'Delivery Notes', href: '/sales?tab=delivery', iconName: 'Table' },
+      { label: 'Receipts / Payments', href: '/sales?tab=receipt', iconName: 'Receipt' },
+    ],
   },
   {
     id: 'employee-reports',
-    label: 'Reports',
-    path: '/worker/reports',
+    label: 'Report',
+    path: '/reports',
     iconName: 'FileText',
+    children: [
+      { label: 'Sales Reports', href: '/reports?type=sales', iconName: 'DollarSign' },
+      { label: 'Lead Reports', href: '/leads/reports', iconName: 'ListChecks' },
+      { label: 'My Targets & Performance', href: '/settings?tab=user-target', iconName: 'Target' },
+    ],
   },
   {
-    id: 'employee-profile',
-    label: 'Profile',
-    path: '/worker/profile',
-    iconName: 'Shield',
+    id: 'employee-settings',
+    label: 'Settings',
+    iconName: 'Wrench',
+    children: [
+      { label: 'My Profile', href: '/settings?tab=profile', iconName: 'Contact' },
+      { label: 'User Target', href: '/settings?tab=user-target', iconName: 'BarChart3' },
+    ],
   },
 ];
 
@@ -139,61 +152,12 @@ export function EnterpriseNavbar() {
     }
   }, []);
 
-  const isWorkerPath = pathname.startsWith('/worker');
+  const isWorkerPath = pathname.startsWith('/worker') || pathname.startsWith('/employee');
   const isManagerPath = pathname.startsWith('/manager');
 
   const activeNavItems = useMemo(() => {
-    const role = userRole || currentUser?.role?.toLowerCase() || '';
-    const isSuper = role === 'super_admin';
-    const isAdmin = role === 'admin';
-    const isMgr = role === 'manager' || isManagerPath;
-    const isWorker = role === 'employee' || role === 'worker' || isWorkerPath;
-
-    if (isSuper || isAdmin) {
-      return ENTERPRISE_NAV_ITEMS;
-    }
-
-    if (isMgr) {
-      const perms = currentUser?.modulePermissions;
-      const mgrType = (currentUser?.managerType || currentUser?.profileType || currentUser?.department || '').toLowerCase();
-
-      return MANAGER_NAV_ITEMS.filter((item) => {
-        if (item.id === 'manager-dashboard') return true;
-        if (item.id === 'manager-tasks') return perms ? perms.tasks !== false : true;
-        if (item.id === 'manager-leads') return perms ? perms.leads !== false : true;
-        if (item.id === 'manager-customers') return perms ? perms.customers !== false : true;
-        if (item.id === 'manager-reports') return perms ? perms.reports !== false : true;
-
-        if (item.id === 'manager-marketing') {
-          if (perms && perms.marketing !== undefined) return perms.marketing;
-          return mgrType.includes('marketing') || mgrType.includes('market');
-        }
-
-        if (item.id === 'manager-sales') {
-          if (perms && perms.sales !== undefined) return perms.sales;
-          return mgrType.includes('sales') || mgrType.includes('operation') || !mgrType.includes('marketing');
-        }
-
-        if (item.id === 'manager-purchase') {
-          if (perms && perms.purchase !== undefined) return perms.purchase;
-          return mgrType.includes('purchase') || mgrType.includes('operation');
-        }
-
-        if (item.id === 'settings') {
-          // Settings is always visible to all managers
-          return true;
-        }
-
-        return true;
-      });
-    }
-
-    if (isWorker) {
-      return WORKER_NAV_ITEMS;
-    }
-
     return ENTERPRISE_NAV_ITEMS;
-  }, [userRole, currentUser, isManagerPath, isWorkerPath]);
+  }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {

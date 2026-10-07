@@ -380,20 +380,71 @@ export function UsersTab({
     try {
       const storedUsersRaw = localStorage.getItem('cezcon_crm_users_list');
       const storedAdminsRaw = localStorage.getItem('crm_admin_accounts_list');
+      const deletedIdsRaw = localStorage.getItem('cezcon_crm_deleted_user_ids');
+      const deletedIdsSet = new Set<string>(deletedIdsRaw ? JSON.parse(deletedIdsRaw) : []);
 
       let cezconList: CezconUserItem[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
       let adminList: any[] = storedAdminsRaw ? JSON.parse(storedAdminsRaw) : [];
 
       const userMap = new Map<string | number, CezconUserItem>();
 
-      // 1. Add all Cezcon users (Managers, Employees, Workers, Admins) keyed by unique ID
+      if (storedUsersRaw !== null) {
+        // Data already initialized in localStorage - respect the stored list and deletions strictly
+        cezconList.forEach((u) => {
+          if (u && u.id) {
+            const uid = String(u.id).toLowerCase();
+            const uemail = (u.email || '').toLowerCase();
+            const uuser = (u.username || '').toLowerCase();
+            if (!deletedIdsSet.has(uid) && !deletedIdsSet.has(uemail) && !deletedIdsSet.has(uuser)) {
+              userMap.set(u.id, u);
+            }
+          }
+        });
+
+        // Merge any new Admins created in Super Admin if not deleted
+        adminList.forEach((a) => {
+          if (a && a.id) {
+            const aid = String(a.id).toLowerCase();
+            const aemail = (a.email || '').toLowerCase();
+            if (!deletedIdsSet.has(aid) && !deletedIdsSet.has(aemail)) {
+              const alreadyExists = Array.from(userMap.values()).some(
+                (u) =>
+                  String(u.id) === String(a.id) ||
+                  (u.email && a.email && u.email.toLowerCase() === a.email.toLowerCase())
+              );
+              if (!alreadyExists) {
+                userMap.set(a.id, {
+                  id: a.id || `adm_${Date.now()}`,
+                  name: a.name,
+                  email: a.email,
+                  username: a.username ? (a.username.includes('@') ? a.username : `${a.username}@cooltechuae.com`) : `${a.name.toLowerCase().replace(/\s+/g, '.')}@cooltechuae.com`,
+                  profileType: 'Admin',
+                  designation: a.designation || 'Admin',
+                  department: a.department || 'Administration',
+                  phone: a.phone || '+971 55 485 3829',
+                  status: a.status || 'Active',
+                  isAdmin: true,
+                  role: 'Admin',
+                  loginPermission: 'Web & Mobile',
+                  avatarImage: a.avatar,
+                });
+              }
+            }
+          }
+        });
+
+        const currentUsers = Array.from(userMap.values());
+        setCezconUsersList(currentUsers);
+        return;
+      }
+
+      // Initial clean seed ONLY if cezcon_crm_users_list was never initialized
       cezconList.forEach((u) => {
         if (u && u.id) {
           userMap.set(u.id, u);
         }
       });
 
-      // 2. Merge Admins created in Super Admin
       adminList.forEach((a) => {
         if (a && a.id) {
           const alreadyExists = Array.from(userMap.values()).some(
@@ -421,176 +472,121 @@ export function UsersTab({
         }
       });
 
-      // 3. Ensure Muhammed shemin exists as live Admin
-      const hasShemin = Array.from(userMap.values()).some(
-        (u) =>
-          (u.email && u.email.toLowerCase() === 'shemin@gmail.com') ||
-          (u.username && u.username.toLowerCase().includes('shemin'))
-      );
-      if (!hasShemin) {
-        userMap.set('usr_shemin_001', {
-          id: 'usr_shemin_001',
-          name: 'Muhammed shemin',
-          email: 'shemin@gmail.com',
-          username: 'shemin@cooltechuae.com',
-          profileType: 'Admin',
-          designation: 'Managing Director / Business Admin',
-          department: 'Executive Operations',
-          phone: '+971 50 123 4567',
-          status: 'Active',
-          isAdmin: true,
-          role: 'Admin',
-          loginPermission: 'Web & Mobile',
-        });
-      }
+      // Default baseline users on first run
+      userMap.set('usr_shemin_001', {
+        id: 'usr_shemin_001',
+        name: 'Muhammed shemin',
+        email: 'shemin@gmail.com',
+        username: 'shemin@cooltechuae.com',
+        profileType: 'Admin',
+        designation: 'Managing Director / Business Admin',
+        department: 'Executive Operations',
+        phone: '+971 50 123 4567',
+        status: 'Active',
+        isAdmin: true,
+        role: 'Admin',
+        loginPermission: 'Web & Mobile',
+      });
 
-      // 4. Ensure Afsal (Marketing Manager) exists
-      const hasAfsal = Array.from(userMap.values()).some(
-        (u) =>
-          (u.email && u.email.toLowerCase() === 'afsal@gmail.com') ||
-          (u.name && u.name.toLowerCase().includes('afsal'))
-      );
-      if (!hasAfsal) {
-        userMap.set('usr_afsal_001', {
-          id: 'usr_afsal_001',
-          name: 'Afsal',
-          email: 'afsal@gmail.com',
-          username: 'afsal@cooltechuae.com',
-          profileType: 'Marketing Manager',
-          managerType: 'Marketing Manager',
-          designation: 'Marketing Manager',
-          department: 'Marketing',
-          phone: '+971 55 123 9988',
-          status: 'Active',
-          role: 'Manager',
-          dataScope: 'team',
-          loginPermission: 'Web & Mobile',
-        });
-      }
+      userMap.set('usr_afsal_001', {
+        id: 'usr_afsal_001',
+        name: 'Afsal',
+        email: 'afsal@gmail.com',
+        username: 'afsal@cooltechuae.com',
+        profileType: 'Marketing Manager',
+        managerType: 'Marketing Manager',
+        designation: 'Marketing Manager',
+        department: 'Marketing',
+        phone: '+971 55 123 9988',
+        status: 'Active',
+        role: 'Manager',
+        dataScope: 'team',
+        loginPermission: 'Web & Mobile',
+      });
 
-      // 5. Ensure Muhammed Shibil (Sales Manager) exists
-      const hasShibil = Array.from(userMap.values()).some(
-        (u) =>
-          (u.email && u.email.toLowerCase() === 'shibil@gmail.com') ||
-          (u.name && u.name.toLowerCase().includes('shibil'))
-      );
-      if (!hasShibil) {
-        userMap.set('usr_shibil_001', {
-          id: 'usr_shibil_001',
-          name: 'Muhammed Shibil',
-          email: 'shibil@gmail.com',
-          username: 'shibil@cooltechuae.com',
-          profileType: 'Sales Manager',
-          managerType: 'Sales Manager',
-          designation: 'Sales Manager',
-          department: 'Sales',
-          phone: '+971 50 987 6543',
-          status: 'Active',
-          role: 'Manager',
-          dataScope: 'team',
-          loginPermission: 'Web & Mobile',
-        });
-      }
+      userMap.set('usr_shibil_001', {
+        id: 'usr_shibil_001',
+        name: 'Muhammed Shibil',
+        email: 'shibil@gmail.com',
+        username: 'shibil@cooltechuae.com',
+        profileType: 'Sales Manager',
+        managerType: 'Sales Manager',
+        designation: 'Sales Manager',
+        department: 'Sales',
+        phone: '+971 50 987 6543',
+        status: 'Active',
+        role: 'Manager',
+        dataScope: 'team',
+        loginPermission: 'Web & Mobile',
+      });
 
-      // 6. Ensure Shaheer (Sales Employee) exists
-      const hasShaheer = Array.from(userMap.values()).some(
-        (u) =>
-          (u.email && u.email.toLowerCase() === 'shaheer@gmail.com') ||
-          (u.name && u.name.toLowerCase().includes('shaheer'))
-      );
-      if (!hasShaheer) {
-        userMap.set('emp_shaheer_001', {
-          id: 'emp_shaheer_001',
-          name: 'shaheer',
-          email: 'shaheer@gmail.com',
-          username: 'shaheer@cooltechuae.com',
-          profileType: 'Sales Employee',
-          employeeType: 'Sales Employee',
-          designation: 'Sales Executive',
-          department: 'Sales',
-          managerId: 'usr_shibil_001',
-          phone: '+971 50 776 5432',
-          status: 'Active',
-          role: 'Employee',
-          dataScope: 'own',
-          loginPermission: 'Web & Mobile',
-        });
-      }
+      userMap.set('emp_shaheer_001', {
+        id: 'emp_shaheer_001',
+        name: 'shaheer',
+        email: 'shaheer@gmail.com',
+        username: 'shaheer@cooltechuae.com',
+        profileType: 'Sales Employee',
+        employeeType: 'Sales Employee',
+        designation: 'Sales Executive',
+        department: 'Sales',
+        managerId: 'usr_shibil_001',
+        phone: '+971 50 776 5432',
+        status: 'Active',
+        role: 'Employee',
+        dataScope: 'own',
+        loginPermission: 'Web & Mobile',
+      });
 
-      // 7. Ensure Muhammed Adhil (Sales Employee) exists
-      const hasAdhil = Array.from(userMap.values()).some(
-        (u) =>
-          (u.email && u.email.toLowerCase() === 'adhil@gmail.com') ||
-          (u.name && u.name.toLowerCase().includes('adhil'))
-      );
-      if (!hasAdhil) {
-        userMap.set('emp_adhil_001', {
-          id: 'emp_adhil_001',
-          name: 'adhil',
-          email: 'adhil@gmail.com',
-          username: 'adhil@cooltechuae.com',
-          profileType: 'Sales Employee',
-          employeeType: 'Sales Employee',
-          designation: 'Sales Representative',
-          department: 'Sales',
-          managerId: 'usr_shibil_001',
-          phone: '+971 56 881 1334',
-          status: 'Active',
-          role: 'Employee',
-          dataScope: 'own',
-          loginPermission: 'Web & Mobile',
-        });
-      }
+      userMap.set('emp_adhil_001', {
+        id: 'emp_adhil_001',
+        name: 'adhil',
+        email: 'adhil@gmail.com',
+        username: 'adhil@cooltechuae.com',
+        profileType: 'Sales Employee',
+        employeeType: 'Sales Employee',
+        designation: 'Sales Representative',
+        department: 'Sales',
+        managerId: 'usr_shibil_001',
+        phone: '+971 56 881 1334',
+        status: 'Active',
+        role: 'Employee',
+        dataScope: 'own',
+        loginPermission: 'Web & Mobile',
+      });
 
-      // 8. Ensure Shameem (Marketing Employee) exists
-      const hasShameem = Array.from(userMap.values()).some(
-        (u) =>
-          (u.email && u.email.toLowerCase() === 'shameem@gmail.com') ||
-          (u.name && u.name.toLowerCase().includes('shameem'))
-      );
-      if (!hasShameem) {
-        userMap.set('emp_shameem_001', {
-          id: 'emp_shameem_001',
-          name: 'shameem',
-          email: 'shameem@gmail.com',
-          username: 'shameem@cooltechuae.com',
-          profileType: 'Marketing Employee',
-          employeeType: 'Marketing Employee',
-          designation: 'Marketing Executive',
-          department: 'Marketing',
-          managerId: 'usr_afsal_001',
-          phone: '+971 52 443 8901',
-          status: 'Active',
-          role: 'Employee',
-          dataScope: 'own',
-          loginPermission: 'Web & Mobile',
-        });
-      }
+      userMap.set('emp_shameem_001', {
+        id: 'emp_shameem_001',
+        name: 'shameem',
+        email: 'shameem@gmail.com',
+        username: 'shameem@cooltechuae.com',
+        profileType: 'Marketing Employee',
+        employeeType: 'Marketing Employee',
+        designation: 'Marketing Executive',
+        department: 'Marketing',
+        managerId: 'usr_afsal_001',
+        phone: '+971 52 443 8901',
+        status: 'Active',
+        role: 'Employee',
+        dataScope: 'own',
+        loginPermission: 'Web & Mobile',
+      });
 
-      // 9. Ensure Arun (Marketing Employee) exists
-      const hasArun = Array.from(userMap.values()).some(
-        (u) =>
-          (u.email && u.email.toLowerCase() === 'arun@gmail.com') ||
-          (u.name && u.name.toLowerCase().includes('arun'))
-      );
-      if (!hasArun) {
-        userMap.set('emp_arun_001', {
-          id: 'emp_arun_001',
-          name: 'arun',
-          email: 'arun@gmail.com',
-          username: 'arun@cooltechuae.com',
-          profileType: 'Marketing Employee',
-          employeeType: 'Marketing Employee',
-          designation: 'Marketing Specialist',
-          department: 'Marketing',
-          managerId: 'usr_afsal_001',
-          phone: '+971 54 321 0987',
-          status: 'Active',
-          role: 'Employee',
-          dataScope: 'own',
-          loginPermission: 'Web & Mobile',
-        });
-      }
+      userMap.set('emp_arun_001', {
+        id: 'emp_arun_001',
+        name: 'arun',
+        email: 'arun@gmail.com',
+        username: 'arun@cooltechuae.com',
+        profileType: 'Marketing Employee',
+        employeeType: 'Marketing Employee',
+        designation: 'Marketing Specialist',
+        department: 'Marketing',
+        managerId: 'usr_afsal_001',
+        phone: '+971 54 321 0987',
+        status: 'Active',
+        role: 'Employee',
+        dataScope: 'own',
+        loginPermission: 'Web & Mobile',
+      });
 
       const mergedUsers = Array.from(userMap.values());
       setCezconUsersList(mergedUsers);
@@ -1290,11 +1286,37 @@ export function UsersTab({
 
   const handleDeleteUser = () => {
     if (!userToDelete) return;
-    const updated = cezconUsersList.filter((u) => u.id !== userToDelete.id);
+    const targetId = String(userToDelete.id).toLowerCase();
+    const targetEmail = (userToDelete.email || '').toLowerCase();
+    const targetUsername = (userToDelete.username || '').toLowerCase();
+
+    // 1. Update deleted registry in localStorage
+    try {
+      const deletedIdsRaw = localStorage.getItem('cezcon_crm_deleted_user_ids');
+      const deletedList: string[] = deletedIdsRaw ? JSON.parse(deletedIdsRaw) : [];
+      if (targetId && !deletedList.includes(targetId)) deletedList.push(targetId);
+      if (targetEmail && !deletedList.includes(targetEmail)) deletedList.push(targetEmail);
+      if (targetUsername && !deletedList.includes(targetUsername)) deletedList.push(targetUsername);
+      localStorage.setItem('cezcon_crm_deleted_user_ids', JSON.stringify(deletedList));
+    } catch (e) {
+      console.error('Error saving deleted user registry:', e);
+    }
+
+    // 2. Remove from cezconUsersList
+    const updated = cezconUsersList.filter(
+      (u) =>
+        String(u.id).toLowerCase() !== targetId &&
+        (u.email ? u.email.toLowerCase() !== targetEmail : true) &&
+        (u.username ? u.username.toLowerCase() !== targetUsername : true)
+    );
     setCezconUsersList(updated);
+
     try {
       localStorage.setItem('cezcon_crm_users_list', JSON.stringify(updated));
       window.dispatchEvent(new Event('crm_users_updated'));
+      window.dispatchEvent(new Event('crm_team_updated'));
+      window.dispatchEvent(new Event('crm_data_updated'));
+      window.dispatchEvent(new Event('storage'));
 
       // Also remove from crm_admin_accounts_list if it was an admin
       if (userToDelete.profileType === 'Admin' || userToDelete.isAdmin) {
@@ -1302,7 +1324,9 @@ export function UsersTab({
         if (rawAdmins) {
           const adminList: any[] = JSON.parse(rawAdmins);
           const filtered = adminList.filter(
-            (a) => a.id !== String(userToDelete.id) && a.email?.toLowerCase() !== userToDelete.email?.toLowerCase()
+            (a) =>
+              String(a.id).toLowerCase() !== targetId &&
+              (a.email ? a.email.toLowerCase() !== targetEmail : true)
           );
           localStorage.setItem('crm_admin_accounts_list', JSON.stringify(filtered));
           window.dispatchEvent(new Event('crm_admins_updated'));

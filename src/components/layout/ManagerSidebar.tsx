@@ -53,9 +53,9 @@ export function ManagerSidebar() {
   });
 
   const currentUser = authMockService.getCurrentUser() || {
-    name: 'Alex Rivera',
-    designation: 'Operations Manager',
-    email: 'manager@cooltechuae.com',
+    name: 'Muhammed Shibil',
+    designation: 'Sales Manager',
+    email: 'shibil@gmail.com',
   };
 
   const toggleExpand = (title: string) => {

@@ -44,6 +44,8 @@ import {
   TrendingUp,
   HelpCircle,
   CheckCircle2,
+  Check,
+  AlertCircle,
   ArrowLeft,
   MessageCircle,
   CreditCard,
@@ -58,6 +60,126 @@ import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { canAccessCustomer } from '@/services/crmDataScopeService';
 import { CrmCustomer } from '@/types/enterprise-crm';
 import { cn, formatCurrency } from '@/lib/utils';
+
+// Country dial codes with flags and validation rules
+const COUNTRY_CODES_LIST = [
+  { code: '+971', country: 'United Arab Emirates', flag: '🇦🇪', iso: 'AE', minDigits: 7, maxDigits: 10, placeholder: '04 123 4567 / 50 123 4567' },
+  { code: '+966', country: 'Saudi Arabia', flag: '🇸🇦', iso: 'SA', minDigits: 9, maxDigits: 9, placeholder: '50 123 4567' },
+  { code: '+974', country: 'Qatar', flag: '🇶🇦', iso: 'QA', minDigits: 8, maxDigits: 8, placeholder: '33 123 456' },
+  { code: '+968', country: 'Oman', flag: '🇴🇲', iso: 'OM', minDigits: 8, maxDigits: 8, placeholder: '91 123 456' },
+  { code: '+973', country: 'Bahrain', flag: '🇧🇭', iso: 'BH', minDigits: 8, maxDigits: 8, placeholder: '39 123 456' },
+  { code: '+965', country: 'Kuwait', flag: '🇰🇼', iso: 'KW', minDigits: 8, maxDigits: 8, placeholder: '91 234 567' },
+  { code: '+91', country: 'India', flag: '🇮🇳', iso: 'IN', minDigits: 10, maxDigits: 10, placeholder: '98765 43210' },
+  { code: '+44', country: 'United Kingdom', flag: '🇬🇧', iso: 'GB', minDigits: 10, maxDigits: 10, placeholder: '7911 123456' },
+  { code: '+1', country: 'United States', flag: '🇺🇸', iso: 'US', minDigits: 10, maxDigits: 10, placeholder: '202 555 0123' },
+  { code: '+49', country: 'Germany', flag: '🇩🇪', iso: 'DE', minDigits: 10, maxDigits: 11, placeholder: '151 1234567' },
+  { code: '+86', country: 'China', flag: '🇨🇳', iso: 'CN', minDigits: 11, maxDigits: 11, placeholder: '138 0013 8000' },
+  { code: '+20', country: 'Egypt', flag: '🇪🇬', iso: 'EG', minDigits: 10, maxDigits: 10, placeholder: '10 1234 5678' },
+  { code: '+92', country: 'Pakistan', flag: '🇵🇰', iso: 'PK', minDigits: 10, maxDigits: 10, placeholder: '300 1234567' },
+  { code: '+962', country: 'Jordan', flag: '🇯🇴', iso: 'JO', minDigits: 9, maxDigits: 9, placeholder: '7 9012 3456' },
+  { code: '+961', country: 'Lebanon', flag: '🇱🇧', iso: 'LB', minDigits: 7, maxDigits: 8, placeholder: '70 123 456' },
+];
+
+const COUNTRY_OPTIONS_LIST = [
+  'United Arab Emirates',
+  'Saudi Arabia',
+  'Qatar',
+  'Oman',
+  'Bahrain',
+  'Kuwait',
+  'India',
+  'Pakistan',
+  'Egypt',
+  'Jordan',
+  'Lebanon',
+  'United Kingdom',
+  'United States',
+  'Germany',
+  'China',
+  'Singapore',
+  'Turkey',
+  'Canada',
+  'Australia',
+  'Philippines',
+  'Malaysia',
+  'South Africa',
+  'Other',
+];
+
+const REGION_OPTIONS_MAP: Record<string, string[]> = {
+  'United Arab Emirates': [
+    'Dubai',
+    'Abu Dhabi',
+    'Sharjah',
+    'Ajman',
+    'Ras Al Khaimah',
+    'Fujairah',
+    'Umm Al Quwain',
+    'Al Ain',
+  ],
+  'Saudi Arabia': [
+    'Riyadh',
+    'Jeddah',
+    'Dammam',
+    'Mecca',
+    'Medina',
+    'Khobar',
+    'Dhahran',
+    'Tabuk',
+    'Jubail',
+  ],
+  'Qatar': ['Doha', 'Al Rayyan', 'Al Wakrah', 'Al Khor', 'Umm Salal'],
+  'Oman': ['Muscat', 'Salalah', 'Sohar', 'Nizwa', 'Sur', 'Seeb'],
+  'Bahrain': ['Manama', 'Riffa', 'Muharraq', 'Hamad Town', 'Isa Town'],
+  'Kuwait': ['Kuwait City', 'Hawalli', 'Salmiya', 'Al Ahmadi', 'Farwaniya'],
+  'India': ['Maharashtra', 'Delhi', 'Karnataka', 'Tamil Nadu', 'Kerala', 'Gujarat', 'Telangana', 'Uttar Pradesh', 'West Bengal'],
+};
+
+const POPULAR_LOCATIONS_LIST = [
+  'Mussafah Industrial Area, Abu Dhabi',
+  'Mussafah Zone M-42, Abu Dhabi',
+  'Mussafah Zone M-12, Abu Dhabi',
+  'Industrial City of Abu Dhabi (ICAD)',
+  'Khalifa Industrial Zone Abu Dhabi (KIZAD)',
+  'Mohamed Bin Zayed City (MBZ), Abu Dhabi',
+  'Mina Zayed, Abu Dhabi',
+  'Al Ain Industrial Area',
+  'Business Bay, Dubai',
+  'Al Quoz Industrial Area 1-4, Dubai',
+  'JAFZA (Jebel Ali Free Zone), Dubai',
+  'Dubai Investment Park (DIP 1 & 2)',
+  'Dubai Silicon Oasis (DSO)',
+  'Ras Al Khor Industrial Area, Dubai',
+  'Deira, Dubai',
+  'Bur Dubai, Dubai',
+  'Al Barsha, Dubai',
+  'Dubai South (DWC)',
+  'Sharjah Industrial Area 1-18',
+  'Hamriyah Free Zone, Sharjah',
+  'Saif Zone, Sharjah',
+  'Ajman Free Zone',
+  'Ajman Industrial Area',
+  'Ras Al Khaimah Free Trade Zone (RAKEZ)',
+  'Fujairah Free Zone',
+];
+
+const validatePhoneNumber = (val: string, code: string = '+971'): { isValid: boolean; message?: string } => {
+  if (!val || !val.trim()) return { isValid: true };
+  const digitsOnly = val.replace(/\D/g, '');
+  if (!/^[0-9\s\-+()]+$/.test(val)) {
+    return { isValid: false, message: 'Please enter numbers, spaces, and hyphens only.' };
+  }
+  if (digitsOnly.length < 7) {
+    return { isValid: false, message: 'Contact number is too short (min 7 digits required).' };
+  }
+  if (code === '+971' && digitsOnly.length > 10) {
+    return { isValid: false, message: 'UAE contact numbers cannot exceed 10 digits.' };
+  }
+  if (digitsOnly.length > 15) {
+    return { isValid: false, message: 'Contact number cannot exceed 15 digits.' };
+  }
+  return { isValid: true };
+};
 
 function CustomersContent() {
   const router = useRouter();
@@ -81,14 +203,26 @@ function CustomersContent() {
     }
   }, [searchParams, router]);
 
-  const { customers, addCustomer, updateCustomer, deleteCustomer, users, campaigns, salesOpportunities, globalSearch } =
-    useEnterpriseCrm();
+  const {
+    customers,
+    addCustomer,
+    updateCustomer,
+    deleteCustomer,
+    users,
+    campaigns,
+    salesOpportunities,
+    quotations,
+    salesOrders,
+    invoices,
+    receipts,
+    globalSearch,
+  } = useEnterpriseCrm();
 
   // Top Tabs: 'All' | 'Customer' | 'Prospect'
   const [activeTab, setActiveTab] = useState<'All' | 'Customer' | 'Prospect'>('All');
   const [activeCustomerSubTab, setActiveCustomerSubTab] = useState<string>('customer');
   const [activeActivityTab, setActiveActivityTab] = useState<'notes' | 'task' | 'files' | 'sales_visit'>('notes');
-  const [assignUser, setAssignUser] = useState('Nafal');
+  const [assignUser, setAssignUser] = useState('');
 
   // Top Filter Grid State
   const [ownerFilter, setOwnerFilter] = useState('All');
@@ -108,10 +242,13 @@ function CustomersContent() {
   // Modals & Action Menus
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [uploadOwner, setUploadOwner] = useState('Nafal');
+  const [uploadOwner, setUploadOwner] = useState('');
   const [uploadDateFormat, setUploadDateFormat] = useState('MM/DD/YYYY');
   const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isAddParentModalOpen, setIsAddParentModalOpen] = useState(false);
+  const [newParentCustomerName, setNewParentCustomerName] = useState('');
+  const [customParentOptions, setCustomParentOptions] = useState<string[]>([]);
   const [viewingCustomer, setViewingCustomer] = useState<CrmCustomer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<CrmCustomer | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
@@ -129,6 +266,127 @@ function CustomersContent() {
       router.push('/customers');
     }
   };
+
+  // Live linked data for active viewing customer
+  const activeCustomerOpportunities = useMemo(() => {
+    if (!activeCustomer) return [];
+    const name = (activeCustomer.customerName || '').trim().toLowerCase();
+    const id = (activeCustomer.id || '').trim().toLowerCase();
+    return (salesOpportunities || []).filter((opp) => {
+      const oppCust = (opp.customer || '').trim().toLowerCase();
+      const oppCustId = String((opp as any).customerId || '').trim().toLowerCase();
+      return (name && (oppCust === name || oppCust.includes(name) || name.includes(oppCust))) ||
+        (id && (oppCustId === id || oppCustId.includes(id)));
+    });
+  }, [salesOpportunities, activeCustomer]);
+
+  const activeCustomerOrders = useMemo(() => {
+    if (!activeCustomer) return [];
+    const name = (activeCustomer.customerName || '').trim().toLowerCase();
+    const id = (activeCustomer.id || '').trim().toLowerCase();
+    return (salesOrders || []).filter((ord) => {
+      const ordCust = (ord.customer || '').trim().toLowerCase();
+      const ordCustId = String((ord as any).customerId || '').trim().toLowerCase();
+      return (name && (ordCust === name || ordCust.includes(name) || name.includes(ordCust))) ||
+        (id && (ordCustId === id || ordCustId.includes(id)));
+    });
+  }, [salesOrders, activeCustomer]);
+
+  const activeCustomerInvoices = useMemo(() => {
+    if (!activeCustomer) return [];
+    const name = (activeCustomer.customerName || '').trim().toLowerCase();
+    const id = (activeCustomer.id || '').trim().toLowerCase();
+    return (invoices || []).filter((inv) => {
+      const invCust = (inv.customer || '').trim().toLowerCase();
+      const invCustId = String((inv as any).customerId || '').trim().toLowerCase();
+      return (name && (invCust === name || invCust.includes(name) || name.includes(invCust))) ||
+        (id && (invCustId === id || invCustId.includes(id)));
+    });
+  }, [invoices, activeCustomer]);
+
+  const activeCustomerReceipts = useMemo(() => {
+    if (!activeCustomer) return [];
+    const name = (activeCustomer.customerName || '').trim().toLowerCase();
+    const id = (activeCustomer.id || '').trim().toLowerCase();
+    return (receipts || []).filter((rec) => {
+      const recCust = (rec.customer || '').trim().toLowerCase();
+      const recCustId = String((rec as any).customerId || '').trim().toLowerCase();
+      return (name && (recCust === name || recCust.includes(name) || name.includes(recCust))) ||
+        (id && (recCustId === id || recCustId.includes(id)));
+    });
+  }, [receipts, activeCustomer]);
+
+  const activeCustomerOverviewMetrics = useMemo(() => {
+    if (!activeCustomer) return null;
+    const totalEnquiries = activeCustomerOpportunities.length || activeCustomer.openEnquiries || 1;
+    const openEnquiries = activeCustomerOpportunities.filter((o) => !['Won', 'Lost', 'Closed Lost'].includes(o.stage)).length || activeCustomer.openEnquiries || (activeCustomerOpportunities.length > 0 ? activeCustomerOpportunities.length : 1);
+    const lastEnquiry = activeCustomer.lastEnquiry || (activeCustomerOpportunities[0]?.opportunityDate ? `${activeCustomerOpportunities[0].opportunityDate}` : 'Today');
+
+    const totalOrders = activeCustomerOrders.length || activeCustomerOpportunities.filter((o) => o.stage === 'Order' || o.stage === 'Won').length;
+    const conversionRatio = totalEnquiries > 0 ? `${((totalOrders / totalEnquiries) * 100).toFixed(2)}%` : '0.00%';
+    const lostOpportunities = activeCustomerOpportunities.filter((o) => o.stage === 'Lost' || o.stage === 'Closed Lost').length;
+
+    const saleAmount =
+      activeCustomerOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0) ||
+      activeCustomerInvoices.reduce((sum, i) => sum + (Number(i.subtotal) || Number(i.amount) || 0), 0) ||
+      activeCustomerOpportunities.reduce((sum, o) => sum + (Number(o.amount) || 0), 0) ||
+      (Number(activeCustomer.totalSpend) || 0);
+
+    const vatAmount =
+      activeCustomerOrders.reduce((sum, o) => sum + (Number(o.vatAmount) || 0), 0) ||
+      activeCustomerInvoices.reduce((sum, i) => sum + (Number(i.vatAmount) || 0), 0) ||
+      activeCustomerOpportunities.reduce((sum, o) => sum + (Number((o as any).vatAmount) || 0), 0) ||
+      (saleAmount > 0 ? saleAmount * 0.05 : 0);
+
+    const totalAmount =
+      activeCustomerOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || (Number(o.amount) || 0) + (Number(o.vatAmount) || 0)), 0) ||
+      activeCustomerInvoices.reduce((sum, i) => sum + (Number(i.totalAmount) || 0), 0) ||
+      activeCustomerOpportunities.reduce((sum, o) => sum + (Number((o as any).totalAmount) || (Number(o.amount) || 0) + (Number((o as any).vatAmount) || 0)), 0) ||
+      (saleAmount + vatAmount);
+
+    const invoicedAmount =
+      activeCustomerInvoices.reduce((sum, i) => sum + (Number(i.totalAmount) || Number(i.amount) || 0), 0) ||
+      activeCustomerOpportunities.filter((o) => o.stage === 'Invoice').reduce((sum, o) => sum + (Number((o as any).totalAmount) || Number(o.amount) || 0), 0);
+
+    const collectionsAmount =
+      activeCustomerReceipts.reduce((sum, r) => sum + (Number(r.amount) || 0), 0) ||
+      activeCustomerInvoices.reduce((sum, i) => sum + (Number((i as any).paidAmount) || 0), 0);
+
+    const collectionsVat =
+      activeCustomerReceipts.reduce((sum, r) => sum + (Number((r as any).vatAmount) || 0), 0) ||
+      (collectionsAmount > 0 ? collectionsAmount * 0.05 : 0);
+
+    const billedReceivable = Math.max(0, invoicedAmount - collectionsAmount);
+    const unbilledReceivable = Math.max(0, totalAmount - invoicedAmount);
+    const totalReceivable = (Number(activeCustomer.outstanding) || 0) > 0
+      ? Number(activeCustomer.outstanding)
+      : (billedReceivable + unbilledReceivable);
+
+    const saleExpense = activeCustomerOrders.reduce((sum, o) => sum + (Number((o as any).expense) || 0), 0);
+    const profitPaymentReceived = collectionsAmount;
+    const profitOrder = Math.max(0, totalAmount - saleExpense);
+
+    return {
+      totalEnquiries,
+      openEnquiries,
+      lastEnquiry,
+      totalOrders,
+      conversionRatio,
+      lostOpportunities,
+      saleAmount,
+      vatAmount,
+      totalAmount,
+      invoicedAmount,
+      collectionsAmount,
+      collectionsVat,
+      billedReceivable,
+      unbilledReceivable,
+      totalReceivable,
+      saleExpense,
+      profitPaymentReceived,
+      profitOrder,
+    };
+  }, [activeCustomer, activeCustomerOpportunities, activeCustomerOrders, activeCustomerInvoices, activeCustomerReceipts]);
 
   const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
 
@@ -149,6 +407,18 @@ function CustomersContent() {
       window.removeEventListener('crm_auth_updated', syncUser);
     };
   }, []);
+
+  // Sync form owner / upload owner / assign user whenever currentUser resolves
+  useEffect(() => {
+    if (currentUser?.name) {
+      setFormData((prev) => ({
+        ...prev,
+        owner: prev.owner || currentUser.name || '',
+      }));
+      setAssignUser((prev) => prev || currentUser.name || '');
+      setUploadOwner((prev) => prev || currentUser.name || '');
+    }
+  }, [currentUser]);
 
   const isEmployee = currentUser?.role === 'employee' || currentUser?.role === 'worker';
   const isManager = currentUser?.role === 'manager';
@@ -176,7 +446,7 @@ function CustomersContent() {
       try {
         const raw = localStorage.getItem('cezcon_crm_users_list');
         if (raw) allCrmUsers = JSON.parse(raw);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const team = allCrmUsers.filter((u) => {
@@ -231,12 +501,22 @@ function CustomersContent() {
   const [formData, setFormData] = useState({
     customerName: '',
     parentCustomer: '',
+    existingContact: '',
+    contactDesignation: '',
     contactSalutation: 'Mr.',
     contactPerson: '',
     phoneCode: '+971',
     phone: '',
+    personalMobile: '',
+    businessMobile: '',
+    spokenLanguage: '',
+    nationality: '',
+    isPrimaryContact: true,
+    contactEmail: '',
+    contactAddress: '',
+    contactComments: '',
     email: '',
-    owner: 'Nafal',
+    owner: '',
     type: 'Customer' as 'Customer' | 'Prospect',
     status: 'Active' as 'Active' | 'Inactive' | 'Prospect',
     companyGroup: 'Commercial Engineering',
@@ -256,10 +536,22 @@ function CustomersContent() {
     website: '',
     trn: '',
     isSupplier: false,
-    addContactDetails: false,
+    addContactDetails: true,
     totalSpend: 0,
     outstanding: 0,
   });
+
+  // Contact validation & dropdown states
+  const [businessMobileCode, setBusinessMobileCode] = useState('+971');
+  const [personalMobileCode, setPersonalMobileCode] = useState('+971');
+  const [isPhoneCodeDropdownOpen, setIsPhoneCodeDropdownOpen] = useState(false);
+  const [isBusinessCodeDropdownOpen, setIsBusinessCodeDropdownOpen] = useState(false);
+  const [isPersonalCodeDropdownOpen, setIsPersonalCodeDropdownOpen] = useState(false);
+  const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
+  const [locationSearchQuery, setLocationSearchQuery] = useState('');
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  const [businessMobileTouched, setBusinessMobileTouched] = useState(false);
+  const [personalMobileTouched, setPersonalMobileTouched] = useState(false);
 
   // Close action menus when clicking outside
   useEffect(() => {
@@ -371,16 +663,46 @@ function CustomersContent() {
 
   // Live Cezcon customer records from Enterprise CRM state
   const effectiveCustomers: CrmCustomer[] = useMemo(() => {
-    return (customers || []).map((c, idx) => ({
-      ...c,
-      slNo: idx + 1,
-      date: c.date || (c.createdDate ? new Date(c.createdDate).toLocaleDateString('en-GB').replace(/\//g, '-') : '30-09-2026'),
-      lastEnquiry: c.lastEnquiry || (idx % 2 === 0 ? 'Today' : '1 day(s) ago'),
-      openEnquiries: c.openEnquiries ?? 1,
-      lastOrder: c.lastOrder || 'No order till the date.',
-      outstanding: c.outstanding ?? 0.0,
-    }));
-  }, [customers]);
+    return (customers || []).map((c, idx) => {
+      const cName = (c.customerName || '').trim().toLowerCase();
+      const cId = (c.id || '').trim().toLowerCase();
+
+      const opps = (salesOpportunities || []).filter((opp) => {
+        const oCust = (opp.customer || '').trim().toLowerCase();
+        const oCustId = String((opp as any).customerId || '').trim().toLowerCase();
+        return (cName && (oCust === cName || oCust.includes(cName) || cName.includes(oCust))) ||
+          (cId && (oCustId === cId || oCustId.includes(cId)));
+      });
+
+      const ords = (salesOrders || []).filter((ord) => {
+        const ordCust = (ord.customer || '').trim().toLowerCase();
+        const ordCustId = String((ord as any).customerId || '').trim().toLowerCase();
+        return (cName && (ordCust === cName || ordCust.includes(cName) || cName.includes(ordCust))) ||
+          (cId && (ordCustId === cId || ordCustId.includes(cId)));
+      });
+
+      const openEnq = opps.length > 0
+        ? opps.filter((o) => !['Won', 'Lost', 'Closed Lost'].includes(o.stage)).length
+        : (c.openEnquiries ?? 1);
+
+      const latestOpp = opps[0];
+      const lastEnq = latestOpp?.opportunityDate || c.lastEnquiry || 'Today';
+
+      const lastOrd = ords.length > 0
+        ? (ords[0].orderDate || '1 day(s) ago')
+        : (c.lastOrder || 'No order till the date.');
+
+      return {
+        ...c,
+        slNo: idx + 1,
+        date: c.date || (c.createdDate ? new Date(c.createdDate).toLocaleDateString('en-GB').replace(/\//g, '-') : '05-10-2026'),
+        lastEnquiry: lastEnq,
+        openEnquiries: openEnq,
+        lastOrder: lastOrd,
+        outstanding: c.outstanding ?? 0.0,
+      };
+    });
+  }, [customers, salesOpportunities, salesOrders]);
 
   // Combined Search & Filter Logic
   const query = (search || globalSearch || '').trim().toLowerCase();
@@ -391,7 +713,7 @@ function CustomersContent() {
       try {
         const raw = localStorage.getItem('cezcon_crm_users_list');
         if (raw) allCrmUsers = JSON.parse(raw);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return effectiveCustomers.filter((cust) => {
@@ -454,21 +776,61 @@ function CustomersContent() {
   // Handle Add Customer
   const handleCreateCustomer = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.customerName.trim()) return;
+    if (!formData.customerName.trim()) {
+      alert('Please enter a Customer Name.');
+      return;
+    }
 
-    const fullContactName = formData.contactSalutation
-      ? `${formData.contactSalutation} ${formData.contactPerson.trim()}`
-      : formData.contactPerson.trim();
+    // Validate Tel phone number if provided
+    if (formData.phone.trim()) {
+      const v = validatePhoneNumber(formData.phone, formData.phoneCode);
+      if (!v.isValid) {
+        setPhoneTouched(true);
+        alert(`Invalid Tel: ${v.message}`);
+        return;
+      }
+    }
 
-    const fullPhone = formData.phone ? `${formData.phoneCode} ${formData.phone.trim()}` : '';
+    // Validate Business Mobile if provided
+    if (formData.businessMobile?.trim()) {
+      const v = validatePhoneNumber(formData.businessMobile, businessMobileCode);
+      if (!v.isValid) {
+        setBusinessMobileTouched(true);
+        alert(`Invalid Business Mobile: ${v.message}`);
+        return;
+      }
+    }
 
+    // Validate Personal Mobile if provided
+    if (formData.personalMobile?.trim()) {
+      const v = validatePhoneNumber(formData.personalMobile, personalMobileCode);
+      if (!v.isValid) {
+        setPersonalMobileTouched(true);
+        alert(`Invalid Personal Mobile: ${v.message}`);
+        return;
+      }
+    }
+
+    const fullContactName = formData.contactPerson.trim()
+      ? (formData.contactSalutation ? `${formData.contactSalutation} ${formData.contactPerson.trim()}` : formData.contactPerson.trim())
+      : 'Primary Contact';
+
+    const fullPhone = formData.businessMobile
+      ? `${businessMobileCode} ${formData.businessMobile.trim()}`
+      : formData.phone
+        ? `${formData.phoneCode} ${formData.phone.trim()}`
+        : '+971 50 000 0000';
+
+    const resolvedOwner = formData.owner || currentUser?.name || '';
     const newCust: Partial<CrmCustomer> = {
       customerName: formData.customerName.trim().toUpperCase(),
-      contactPerson: fullContactName || 'Primary Contact',
+      contactPerson: fullContactName,
       salutation: formData.contactSalutation,
-      phone: fullPhone || '+971 50 000 0000',
-      email: formData.email.trim() || 'contact@client.ae',
-      owner: formData.owner || currentUser?.name || 'Alex Rivera',
+      phone: fullPhone,
+      email: formData.contactEmail.trim() || formData.email.trim() || 'contact@client.ae',
+      owner: resolvedOwner,
+      // createdBy stamps the actual logged-in user so OWN-scope employees always see their records
+      createdBy: currentUser?.name || resolvedOwner,
       status: formData.status,
       type: formData.type,
       companyGroup: formData.companyGroup,
@@ -477,8 +839,11 @@ function CustomersContent() {
       source: formData.source,
       campaign: formData.campaign,
       tags: formData.tags ? formData.tags.split(',').map((t) => t.trim()) : [],
-      address: formData.address,
-      city: formData.city,
+      address: formData.contactAddress || formData.address,
+      country: formData.country || 'United Arab Emirates',
+      stateRegion: formData.stateRegion || formData.city || 'Dubai',
+      city: formData.stateRegion || formData.city || 'Dubai',
+      location: formData.location || '',
       website: formData.website,
       totalSpend: Number(formData.totalSpend) || 0,
       outstanding: Number(formData.outstanding) || 0,
@@ -497,12 +862,22 @@ function CustomersContent() {
     setFormData({
       customerName: '',
       parentCustomer: '',
+      existingContact: '',
+      contactDesignation: '',
       contactSalutation: 'Mr.',
       contactPerson: '',
       phoneCode: '+971',
       phone: '',
+      personalMobile: '',
+      businessMobile: '',
+      spokenLanguage: '',
+      nationality: '',
+      isPrimaryContact: true,
+      contactEmail: '',
+      contactAddress: '',
+      contactComments: '',
       email: '',
-      owner: 'Nafal',
+      owner: currentUser?.name || '',
       type: 'Customer',
       status: 'Active',
       companyGroup: 'Commercial Engineering',
@@ -522,7 +897,7 @@ function CustomersContent() {
       website: '',
       trn: '',
       isSupplier: false,
-      addContactDetails: false,
+      addContactDetails: true,
       totalSpend: 0,
       outstanding: 0,
     });
@@ -615,18 +990,11 @@ function CustomersContent() {
                       onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
                       className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                     >
-                      <option value="Nafal">Nafal</option>
                       {users.map((u) => (
                         <option key={u.id} value={u.name}>
                           {u.name}
                         </option>
                       ))}
-                      <option value="JISMON JOSE">JISMON JOSE</option>
-                      <option value="MUHAMMED AHSAN P V">MUHAMMED AHSAN P V</option>
-                      <option value="Muhammed Adhil">Muhammed Adhil</option>
-                      <option value="shameem">shameem</option>
-                      <option value="Alex Rivera">Alex Rivera</option>
-                      <option value="Super Admin">Super Admin</option>
                     </select>
                   </div>
                 </div>
@@ -651,11 +1019,11 @@ function CustomersContent() {
                 {/* Left: Parent Customer */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Parent Customer</label>
-                  <div className="flex-1">
+                  <div className="flex-1 flex items-center gap-1.5">
                     <select
                       value={formData.parentCustomer || ''}
                       onChange={(e) => setFormData({ ...formData, parentCustomer: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                      className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
                     >
                       <option value="">Select Parent Customer</option>
                       {customers.map((c) => (
@@ -663,7 +1031,23 @@ function CustomersContent() {
                           {c.customerName}
                         </option>
                       ))}
+                      {customParentOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
                     </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewParentCustomerName('');
+                        setIsAddParentModalOpen(true);
+                      }}
+                      className="px-2.5 py-1.5 bg-[#0088CC] hover:bg-[#0077b3] text-white text-xs font-semibold rounded flex items-center gap-1 shrink-0 transition-colors shadow-2xs cursor-pointer"
+                      title="Add New Parent Customer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> New
+                    </button>
                   </div>
                 </div>
 
@@ -809,21 +1193,103 @@ function CustomersContent() {
 
                 {/* ── ROW 6 ── */}
                 {/* Left: Tel */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 flex items-center gap-1 text-teal-700">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 flex items-center gap-1 text-teal-700 pt-1.5">
                     <Phone className="w-3.5 h-3.5 text-teal-600 inline" /> Tel
                   </label>
-                  <div className="flex-1 flex items-center">
-                    <span className="bg-slate-100 border border-r-0 border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 rounded-l flex items-center gap-1 shrink-0">
-                      🇦🇪 +971 <ChevronDown className="w-3 h-3 text-slate-400" />
-                    </span>
-                    <input
-                      type="text"
-                      placeholder="Landline"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="flex-1 bg-white border border-slate-300 rounded-r px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
-                    />
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center relative">
+                      {/* Country Code Dropdown Trigger */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsPhoneCodeDropdownOpen(!isPhoneCodeDropdownOpen);
+                        }}
+                        className="bg-slate-100 hover:bg-slate-200 border border-r-0 border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 rounded-l flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                        title="Select Country Dial Code"
+                      >
+                        <span>
+                          {COUNTRY_CODES_LIST.find((c) => c.code === (formData.phoneCode || '+971'))?.flag || '🇦🇪'}
+                        </span>
+                        <span className="font-mono text-xs">{formData.phoneCode || '+971'}</span>
+                        <ChevronDown className="w-3 h-3 text-slate-400 ml-0.5" />
+                      </button>
+
+                      {/* Country Code Picker Dropdown */}
+                      {isPhoneCodeDropdownOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-[120]"
+                            onClick={() => setIsPhoneCodeDropdownOpen(false)}
+                          />
+                          <div
+                            className="absolute left-0 top-full mt-1 bg-white border border-slate-300 rounded shadow-xl py-1 z-[121] max-h-56 overflow-y-auto w-64 text-xs"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {COUNTRY_CODES_LIST.map((item) => (
+                              <button
+                                key={item.code + item.country}
+                                type="button"
+                                onClick={() => {
+                                  setFormData({ ...formData, phoneCode: item.code });
+                                  setIsPhoneCodeDropdownOpen(false);
+                                }}
+                                className={`w-full text-left px-3 py-1.5 hover:bg-slate-100 flex items-center justify-between cursor-pointer transition-colors ${
+                                  formData.phoneCode === item.code ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700'
+                                }`}
+                              >
+                                <span className="flex items-center gap-2">
+                                  <span>{item.flag}</span>
+                                  <span className="truncate">{item.country}</span>
+                                </span>
+                                <span className="font-mono text-[11px] text-slate-500 shrink-0">{item.code}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+
+                      {/* Phone Input */}
+                      <input
+                        type="text"
+                        placeholder="e.g. 04 123 4567 or 1234567"
+                        value={formData.phone}
+                        onBlur={() => setPhoneTouched(true)}
+                        onChange={(e) => {
+                          // Allow only digits, spaces, hyphens, and parentheses
+                          const cleanVal = e.target.value.replace(/[^0-9\s\-+()]/g, '');
+                          setFormData({ ...formData, phone: cleanVal });
+                          setPhoneTouched(true);
+                        }}
+                        className={`flex-1 bg-white border rounded-r px-2.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none ${
+                          phoneTouched && formData.phone.trim() && !validatePhoneNumber(formData.phone, formData.phoneCode).isValid
+                            ? 'border-red-400 focus:border-red-500 bg-red-50/20'
+                            : phoneTouched && formData.phone.trim() && validatePhoneNumber(formData.phone, formData.phoneCode).isValid
+                            ? 'border-emerald-400 focus:border-emerald-500'
+                            : 'border-slate-300 focus:border-blue-500'
+                        }`}
+                      />
+
+                      {/* Validation Status Icon */}
+                      {phoneTouched && formData.phone.trim() && (
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                          {validatePhoneNumber(formData.phone, formData.phoneCode).isValid ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Inline Validation Helper */}
+                    {phoneTouched && formData.phone.trim() && !validatePhoneNumber(formData.phone, formData.phoneCode).isValid && (
+                      <p className="text-[11px] text-red-600 flex items-center gap-1 font-medium">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        {validatePhoneNumber(formData.phone, formData.phoneCode).message}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -875,29 +1341,34 @@ function CustomersContent() {
                 </div>
 
                 {/* ── ROW 8 ── */}
-                {/* Left: Country */}
+                {/* Left: Country (Dropdown) */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Country</label>
-                  <div className="flex-1 relative">
-                    <input
-                      type="text"
+                  <div className="flex-1">
+                    <select
                       value={formData.country || 'United Arab Emirates'}
-                      onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 pr-7 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
-                    />
-                    {formData.country && (
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, country: '' })}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
-                      >
-                        ×
-                      </button>
-                    )}
+                      onChange={(e) => {
+                        const newCountry = e.target.value;
+                        const regions = REGION_OPTIONS_MAP[newCountry] || [];
+                        setFormData({
+                          ...formData,
+                          country: newCountry,
+                          stateRegion: regions[0] || '',
+                          city: regions[0] || '',
+                        });
+                      }}
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                    >
+                      {COUNTRY_OPTIONS_LIST.map((countryName) => (
+                        <option key={countryName} value={countryName}>
+                          {countryName}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
-                {/* Right: State/Region */}
+                {/* Right: State/Region (Dynamic based on Country) */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">State/Region</label>
                   <div className="flex-1">
@@ -906,38 +1377,99 @@ function CustomersContent() {
                       onChange={(e) => setFormData({ ...formData, stateRegion: e.target.value, city: e.target.value })}
                       className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
                     >
-                      <option value="">Select</option>
-                      <option value="Dubai">Dubai</option>
-                      <option value="Abu Dhabi">Abu Dhabi</option>
-                      <option value="Sharjah">Sharjah</option>
-                      <option value="Ajman">Ajman</option>
-                      <option value="Ras Al Khaimah">Ras Al Khaimah</option>
-                      <option value="Fujairah">Fujairah</option>
-                      <option value="Umm Al Quwain">Umm Al Quwain</option>
+                      <option value="">Select State/Region</option>
+                      {(REGION_OPTIONS_MAP[formData.country || 'United Arab Emirates'] || REGION_OPTIONS_MAP['United Arab Emirates']).map((reg) => (
+                        <option key={reg} value={reg}>
+                          {reg}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
 
                 {/* ── ROW 9 ── */}
-                {/* Left: Location */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Location</label>
+                {/* Left: Location (Smart Searchable Combobox) */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 pt-1.5">Location</label>
                   <div className="flex-1 relative">
-                    <input
-                      type="text"
-                      placeholder="Search location"
-                      value={formData.location || ''}
-                      onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 pr-7 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
-                    />
-                    {formData.location && (
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, location: '' })}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
-                      >
-                        ×
-                      </button>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        placeholder="Search or enter location (e.g. Mussafah, Business Bay, Al Quoz...)"
+                        value={formData.location || ''}
+                        onFocus={() => {
+                          setIsLocationDropdownOpen(true);
+                          setLocationSearchQuery(formData.location || '');
+                        }}
+                        onChange={(e) => {
+                          setFormData({ ...formData, location: e.target.value });
+                          setLocationSearchQuery(e.target.value);
+                          setIsLocationDropdownOpen(true);
+                        }}
+                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 pr-8 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                      />
+                      {formData.location ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData({ ...formData, location: '' });
+                            setLocationSearchQuery('');
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer p-0.5"
+                          title="Clear Location"
+                        >
+                          ×
+                        </button>
+                      ) : (
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      )}
+                    </div>
+
+                    {/* Location Autocomplete / Suggestions Dropdown */}
+                    {isLocationDropdownOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-[110]"
+                          onClick={() => setIsLocationDropdownOpen(false)}
+                        />
+                        <div
+                          className="absolute left-0 top-full mt-1 bg-white border border-slate-300 rounded shadow-xl py-1 z-[111] max-h-56 overflow-y-auto w-full text-xs"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="px-3 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                            <span>Popular Commercial &amp; Industrial Zones</span>
+                            <span>{POPULAR_LOCATIONS_LIST.length} Locations</span>
+                          </div>
+                          {POPULAR_LOCATIONS_LIST
+                            .filter((loc) =>
+                              !locationSearchQuery.trim() ||
+                              loc.toLowerCase().includes(locationSearchQuery.toLowerCase())
+                            )
+                            .map((loc) => (
+                              <button
+                                key={loc}
+                                type="button"
+                                onClick={() => {
+                                  setFormData({ ...formData, location: loc });
+                                  setIsLocationDropdownOpen(false);
+                                }}
+                                className={`w-full text-left px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 cursor-pointer transition-colors ${
+                                  formData.location === loc ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700'
+                                }`}
+                              >
+                                <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                <span className="truncate">{loc}</span>
+                              </button>
+                            ))}
+                          {POPULAR_LOCATIONS_LIST.filter((loc) =>
+                            loc.toLowerCase().includes(locationSearchQuery.toLowerCase())
+                          ).length === 0 && (
+                            <div className="px-3 py-2 text-slate-400 italic text-[11px]">
+                              No matching preset zone. &quot;{formData.location}&quot; will be saved as custom location.
+                            </div>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1006,45 +1538,376 @@ function CustomersContent() {
                     onChange={(e) => setFormData({ ...formData, addContactDetails: e.target.checked })}
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600 relative"></div>
-                  <span className="text-xs font-medium text-slate-700">Add contact details</span>
+                  <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#22C55E] relative"></div>
+                  <span className="text-xs font-semibold text-slate-700">Add contact details</span>
                 </label>
 
                 {formData.addContactDetails && (
-                  <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Salutation</label>
-                      <select
-                        value={formData.contactSalutation}
-                        onChange={(e) => setFormData({ ...formData, contactSalutation: e.target.value })}
-                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                      >
-                        <option value="Mr.">Mr.</option>
-                        <option value="Ms.">Ms.</option>
-                        <option value="Mrs.">Mrs.</option>
-                        <option value="Dr.">Dr.</option>
-                        <option value="Eng.">Eng.</option>
-                      </select>
+                  <div className="mt-4 border border-slate-200 rounded-sm overflow-hidden bg-white shadow-2xs">
+                    {/* Sub-Header: Contact Details */}
+                    <div className="bg-[#EEF2F6] border-b border-slate-200 px-4 py-2 flex items-center gap-2 font-bold text-slate-700 text-xs">
+                      <FileText className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Contact Details</span>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Contact Person Name</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Bishoy George"
-                        value={formData.contactPerson}
-                        onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
-                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Mobile / WhatsApp</label>
-                      <input
-                        type="text"
-                        placeholder="+971 56 881 1334"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                      />
+
+                    <div className="p-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-4">
+                        {/* ── ROW 1 ── */}
+                        {/* Left: Existing Contact */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Existing Contact</label>
+                          <div className="flex-1">
+                            <select
+                              value={formData.existingContact || ''}
+                              onChange={(e) => setFormData({ ...formData, existingContact: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                            >
+                              <option value="">Select contact</option>
+                              <option value="Bishoy George">Bishoy George</option>
+                              <option value="Mr. Puspak">Mr. Puspak</option>
+                              <option value="Mr. Farhan">Mr. Farhan</option>
+                              <option value="NIKHIL">NIKHIL</option>
+                              <option value="Nafal">Nafal</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Right: Contact Name * */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">
+                            Contact Name <span className="text-red-600 font-bold">*</span>
+                          </label>
+                          <div className="flex-1 flex items-center">
+                            <select
+                              value={formData.contactSalutation || 'Mr.'}
+                              onChange={(e) => setFormData({ ...formData, contactSalutation: e.target.value })}
+                              className="bg-slate-50 border border-r-0 border-slate-300 rounded-l px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none shrink-0"
+                            >
+                              <option value="Mr.">Mr.</option>
+                              <option value="Ms.">Ms.</option>
+                              <option value="Mrs.">Mrs.</option>
+                              <option value="Dr.">Dr.</option>
+                              <option value="Eng.">Eng.</option>
+                            </select>
+                            <input
+                              type="text"
+                              placeholder="Point of contact"
+                              value={formData.contactPerson || ''}
+                              onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
+                              className="flex-1 bg-white border border-blue-400 rounded-r px-2.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* ── ROW 2 ── */}
+                        {/* Left: Designation */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Designation</label>
+                          <div className="flex-1">
+                            <select
+                              value={formData.contactDesignation || ''}
+                              onChange={(e) => setFormData({ ...formData, contactDesignation: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                            >
+                              <option value="">Select Designation</option>
+                              <option value="Managing Director">Managing Director</option>
+                              <option value="General Manager">General Manager</option>
+                              <option value="Procurement Manager">Procurement Manager</option>
+                              <option value="Project Manager">Project Manager</option>
+                              <option value="Purchase Officer">Purchase Officer</option>
+                              <option value="Operations Head">Operations Head</option>
+                              <option value="Sales Director">Sales Director</option>
+                              <option value="Site Engineer">Site Engineer</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Right: Business Mobile */}
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                          <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 flex items-center gap-1.5 text-amber-700 pt-1.5">
+                            <Phone className="w-3.5 h-3.5 text-amber-600 inline" /> Business Mobile
+                          </label>
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center relative">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsBusinessCodeDropdownOpen(!isBusinessCodeDropdownOpen);
+                                }}
+                                className="bg-slate-100 hover:bg-slate-200 border border-r-0 border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 rounded-l flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                                title="Select Country Dial Code"
+                              >
+                                <span>{COUNTRY_CODES_LIST.find((c) => c.code === businessMobileCode)?.flag || '🇦🇪'}</span>
+                                <span className="font-mono text-xs">{businessMobileCode}</span>
+                                <ChevronDown className="w-3 h-3 text-slate-400 ml-0.5" />
+                              </button>
+
+                              {isBusinessCodeDropdownOpen && (
+                                <>
+                                  <div
+                                    className="fixed inset-0 z-[120]"
+                                    onClick={() => setIsBusinessCodeDropdownOpen(false)}
+                                  />
+                                  <div
+                                    className="absolute left-0 top-full mt-1 bg-white border border-slate-300 rounded shadow-xl py-1 z-[121] max-h-56 overflow-y-auto w-64 text-xs"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {COUNTRY_CODES_LIST.map((item) => (
+                                      <button
+                                        key={item.code + item.country}
+                                        type="button"
+                                        onClick={() => {
+                                          setBusinessMobileCode(item.code);
+                                          setIsBusinessCodeDropdownOpen(false);
+                                        }}
+                                        className={`w-full text-left px-3 py-1.5 hover:bg-slate-100 flex items-center justify-between cursor-pointer transition-colors ${
+                                          businessMobileCode === item.code ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700'
+                                        }`}
+                                      >
+                                        <span className="flex items-center gap-2">
+                                          <span>{item.flag}</span>
+                                          <span className="truncate">{item.country}</span>
+                                        </span>
+                                        <span className="font-mono text-[11px] text-slate-500 shrink-0">{item.code}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+
+                              <input
+                                type="text"
+                                placeholder="e.g. 50 123 4567"
+                                value={formData.businessMobile || ''}
+                                onBlur={() => setBusinessMobileTouched(true)}
+                                onChange={(e) => {
+                                  const cleanVal = e.target.value.replace(/[^0-9\s\-+()]/g, '');
+                                  setFormData({ ...formData, businessMobile: cleanVal });
+                                  setBusinessMobileTouched(true);
+                                }}
+                                className={`flex-1 bg-white border rounded-r px-2.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none ${
+                                  businessMobileTouched && formData.businessMobile?.trim() && !validatePhoneNumber(formData.businessMobile, businessMobileCode).isValid
+                                    ? 'border-red-400 focus:border-red-500 bg-red-50/20'
+                                    : businessMobileTouched && formData.businessMobile?.trim() && validatePhoneNumber(formData.businessMobile, businessMobileCode).isValid
+                                    ? 'border-emerald-400 focus:border-emerald-500'
+                                    : 'border-slate-300 focus:border-blue-500'
+                                }`}
+                              />
+
+                              {businessMobileTouched && formData.businessMobile?.trim() && (
+                                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                                  {validatePhoneNumber(formData.businessMobile, businessMobileCode).isValid ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  ) : (
+                                    <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {businessMobileTouched && formData.businessMobile?.trim() && !validatePhoneNumber(formData.businessMobile, businessMobileCode).isValid && (
+                              <p className="text-[11px] text-red-600 flex items-center gap-1 font-medium">
+                                <AlertCircle className="w-3 h-3 shrink-0" />
+                                {validatePhoneNumber(formData.businessMobile, businessMobileCode).message}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* ── ROW 3 ── */}
+                        {/* Left: Personal Mobile */}
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                          <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 flex items-center gap-1.5 text-amber-700 pt-1.5">
+                            <Phone className="w-3.5 h-3.5 text-amber-600 inline" /> Personal Mobile
+                          </label>
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center relative">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsPersonalCodeDropdownOpen(!isPersonalCodeDropdownOpen);
+                                }}
+                                className="bg-slate-100 hover:bg-slate-200 border border-r-0 border-slate-300 px-2.5 py-1.5 text-xs text-slate-700 rounded-l flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                                title="Select Country Dial Code"
+                              >
+                                <span>{COUNTRY_CODES_LIST.find((c) => c.code === personalMobileCode)?.flag || '🇦🇪'}</span>
+                                <span className="font-mono text-xs">{personalMobileCode}</span>
+                                <ChevronDown className="w-3 h-3 text-slate-400 ml-0.5" />
+                              </button>
+
+                              {isPersonalCodeDropdownOpen && (
+                                <>
+                                  <div
+                                    className="fixed inset-0 z-[120]"
+                                    onClick={() => setIsPersonalCodeDropdownOpen(false)}
+                                  />
+                                  <div
+                                    className="absolute left-0 top-full mt-1 bg-white border border-slate-300 rounded shadow-xl py-1 z-[121] max-h-56 overflow-y-auto w-64 text-xs"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {COUNTRY_CODES_LIST.map((item) => (
+                                      <button
+                                        key={item.code + item.country}
+                                        type="button"
+                                        onClick={() => {
+                                          setPersonalMobileCode(item.code);
+                                          setIsPersonalCodeDropdownOpen(false);
+                                        }}
+                                        className={`w-full text-left px-3 py-1.5 hover:bg-slate-100 flex items-center justify-between cursor-pointer transition-colors ${
+                                          personalMobileCode === item.code ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700'
+                                        }`}
+                                      >
+                                        <span className="flex items-center gap-2">
+                                          <span>{item.flag}</span>
+                                          <span className="truncate">{item.country}</span>
+                                        </span>
+                                        <span className="font-mono text-[11px] text-slate-500 shrink-0">{item.code}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+
+                              <input
+                                type="text"
+                                placeholder="e.g. 55 987 6543"
+                                value={formData.personalMobile || ''}
+                                onBlur={() => setPersonalMobileTouched(true)}
+                                onChange={(e) => {
+                                  const cleanVal = e.target.value.replace(/[^0-9\s\-+()]/g, '');
+                                  setFormData({ ...formData, personalMobile: cleanVal });
+                                  setPersonalMobileTouched(true);
+                                }}
+                                className={`flex-1 bg-white border rounded-r px-2.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none ${
+                                  personalMobileTouched && formData.personalMobile?.trim() && !validatePhoneNumber(formData.personalMobile, personalMobileCode).isValid
+                                    ? 'border-red-400 focus:border-red-500 bg-red-50/20'
+                                    : personalMobileTouched && formData.personalMobile?.trim() && validatePhoneNumber(formData.personalMobile, personalMobileCode).isValid
+                                    ? 'border-emerald-400 focus:border-emerald-500'
+                                    : 'border-slate-300 focus:border-blue-500'
+                                }`}
+                              />
+
+                              {personalMobileTouched && formData.personalMobile?.trim() && (
+                                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                                  {validatePhoneNumber(formData.personalMobile, personalMobileCode).isValid ? (
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  ) : (
+                                    <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {personalMobileTouched && formData.personalMobile?.trim() && !validatePhoneNumber(formData.personalMobile, personalMobileCode).isValid && (
+                              <p className="text-[11px] text-red-600 flex items-center gap-1 font-medium">
+                                <AlertCircle className="w-3 h-3 shrink-0" />
+                                {validatePhoneNumber(formData.personalMobile, personalMobileCode).message}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Right: Email */}
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                          <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 flex items-center gap-1.5 text-red-600 pt-1.5">
+                            <Mail className="w-3.5 h-3.5 text-red-500 inline" /> Email
+                          </label>
+                          <div className="flex-1">
+                            <input
+                              type="email"
+                              placeholder="Add multiple emails by pressing Tab button."
+                              value={formData.contactEmail || ''}
+                              onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* ── ROW 4 ── */}
+                        {/* Left: Spoken Language */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Spoken Language</label>
+                          <div className="flex-1">
+                            <input
+                              type="text"
+                              value={formData.spokenLanguage || ''}
+                              onChange={(e) => setFormData({ ...formData, spokenLanguage: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Right: Address */}
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                          <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 flex items-center gap-1.5 text-blue-600 pt-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-blue-500 inline" /> Address
+                          </label>
+                          <div className="flex-1">
+                            <textarea
+                              rows={2}
+                              placeholder="PO Box, Street, City etc..."
+                              value={formData.contactAddress || ''}
+                              onChange={(e) => setFormData({ ...formData, contactAddress: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 resize-y"
+                            />
+                          </div>
+                        </div>
+
+                        {/* ── ROW 5 ── */}
+                        {/* Left: Nationality */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Nationality</label>
+                          <div className="flex-1">
+                            <select
+                              value={formData.nationality || ''}
+                              onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                            >
+                              <option value="">Select Country</option>
+                              <option value="United Arab Emirates">United Arab Emirates</option>
+                              <option value="India">India</option>
+                              <option value="Pakistan">Pakistan</option>
+                              <option value="Egypt">Egypt</option>
+                              <option value="Philippines">Philippines</option>
+                              <option value="Saudi Arabia">Saudi Arabia</option>
+                              <option value="United Kingdom">United Kingdom</option>
+                              <option value="United States">United States</option>
+                              <option value="Jordan">Jordan</option>
+                              <option value="Lebanon">Lebanon</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Right: Comments */}
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                          <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0 pt-1.5">Comments</label>
+                          <div className="flex-1">
+                            <textarea
+                              rows={2}
+                              placeholder=""
+                              value={formData.contactComments || ''}
+                              onChange={(e) => setFormData({ ...formData, contactComments: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500 resize-y"
+                            />
+                          </div>
+                        </div>
+
+                        {/* ── ROW 6 ── */}
+                        {/* Left: Primary Contact? */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Primary Contact?</label>
+                          <div className="flex-1 flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={formData.isPrimaryContact ?? true}
+                              onChange={(e) => setFormData({ ...formData, isPrimaryContact: e.target.checked })}
+                              className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1112,18 +1975,11 @@ function CustomersContent() {
                       onChange={(e) => setUploadOwner(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                     >
-                      <option value="Nafal">Nafal</option>
                       {users.map((u) => (
                         <option key={u.id} value={u.name}>
                           {u.name}
                         </option>
                       ))}
-                      <option value="JISMON JOSE">JISMON JOSE</option>
-                      <option value="MUHAMMED AHSAN P V">MUHAMMED AHSAN P V</option>
-                      <option value="Muhammed Adhil">Muhammed Adhil</option>
-                      <option value="shameem">shameem</option>
-                      <option value="Alex Rivera">Alex Rivera</option>
-                      <option value="Super Admin">Super Admin</option>
                     </select>
                   </div>
                 </div>
@@ -1291,12 +2147,6 @@ function CustomersContent() {
                         {u.name}
                       </option>
                     ))}
-                    <option value="JISMON JOSE">JISMON JOSE</option>
-                    <option value="MUHAMMED AHSAN P V">MUHAMMED AHSAN P V</option>
-                    <option value="Muhammed Adhil">Muhammed Adhil</option>
-                    <option value="shameem">shameem</option>
-                    <option value="Alex Rivera">Alex Rivera</option>
-                    <option value="Super Admin">Super Admin</option>
                   </select>
                 </div>
               </div>
@@ -1606,7 +2456,7 @@ function CustomersContent() {
                     type="text"
                     placeholder="Type contact..."
                     value=""
-                    onChange={() => {}}
+                    onChange={() => { }}
                     className="flex-1 bg-transparent text-xs focus:outline-none"
                   />
                 </div>
@@ -1975,7 +2825,7 @@ function CustomersContent() {
                       <div className="border border-slate-200 rounded-sm p-2.5 flex items-center justify-between bg-white shadow-2xs min-h-[64px]">
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Total Enquiries</span>
-                          <span className="text-sm font-bold text-slate-900">{activeCustomer.openEnquiries || 1}</span>
+                          <span className="text-sm font-bold text-slate-900">{activeCustomerOverviewMetrics?.totalEnquiries ?? 1}</span>
                         </div>
                         <div className="w-7 h-7 rounded bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
                           <List className="w-3.5 h-3.5" />
@@ -1986,7 +2836,7 @@ function CustomersContent() {
                       <div className="border border-slate-200 rounded-sm p-2.5 flex items-center justify-between bg-white shadow-2xs min-h-[64px]">
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Open Enquiries</span>
-                          <span className="text-sm font-bold text-slate-900">{activeCustomer.openEnquiries ?? 1}</span>
+                          <span className="text-sm font-bold text-slate-900">{activeCustomerOverviewMetrics?.openEnquiries ?? 1}</span>
                         </div>
                         <div className="w-7 h-7 rounded bg-slate-200 text-slate-600 flex items-center justify-center shrink-0">
                           <FileText className="w-3.5 h-3.5" />
@@ -1997,7 +2847,7 @@ function CustomersContent() {
                       <div className="border border-slate-200 rounded-sm p-2.5 flex items-center justify-between bg-white shadow-2xs min-h-[64px]">
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Last Enquiry</span>
-                          <span className="text-[11px] font-bold text-slate-900">{activeCustomer.lastEnquiry || '1 day(s) ago'}</span>
+                          <span className="text-[11px] font-bold text-slate-900">{activeCustomerOverviewMetrics?.lastEnquiry || '1 day(s) ago'}</span>
                         </div>
                         <div className="w-7 h-7 rounded bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
                           <FileText className="w-3.5 h-3.5" />
@@ -2008,7 +2858,7 @@ function CustomersContent() {
                       <div className="border border-slate-200 rounded-sm p-2.5 flex items-center justify-between bg-white shadow-2xs min-h-[64px]">
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Total Order</span>
-                          <span className="text-sm font-bold text-slate-900">0</span>
+                          <span className="text-sm font-bold text-slate-900">{activeCustomerOverviewMetrics?.totalOrders ?? 0}</span>
                         </div>
                         <div className="w-7 h-7 rounded bg-pink-100 text-pink-500 flex items-center justify-center shrink-0">
                           <Award className="w-3.5 h-3.5" />
@@ -2019,7 +2869,7 @@ function CustomersContent() {
                       <div className="border border-slate-200 rounded-sm p-2.5 flex items-center justify-between bg-white shadow-2xs min-h-[64px]">
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Conversion Ratio</span>
-                          <span className="text-[11px] font-bold text-slate-900">0.00%</span>
+                          <span className="text-[11px] font-bold text-slate-900">{activeCustomerOverviewMetrics?.conversionRatio || '0.00%'}</span>
                         </div>
                         <div className="w-7 h-7 rounded bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
                           <TrendingUp className="w-3.5 h-3.5" />
@@ -2030,7 +2880,7 @@ function CustomersContent() {
                       <div className="border border-slate-200 rounded-sm p-2.5 flex items-center justify-between bg-white shadow-2xs min-h-[64px]">
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Lost Opportunity</span>
-                          <span className="text-sm font-bold text-slate-900">0</span>
+                          <span className="text-sm font-bold text-slate-900">{activeCustomerOverviewMetrics?.lostOpportunities ?? 0}</span>
                         </div>
                         <div className="w-7 h-7 rounded bg-rose-100 text-rose-500 flex items-center justify-center shrink-0">
                           <X className="w-3.5 h-3.5" />
@@ -2041,7 +2891,7 @@ function CustomersContent() {
                       <div className="border border-slate-200 rounded-sm p-2.5 flex items-center justify-between bg-white shadow-2xs min-h-[64px]">
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Sale Amount</span>
-                          <span className="text-[11px] font-bold text-slate-900">0.00</span>
+                          <span className="text-[11px] font-bold text-slate-900">{(activeCustomerOverviewMetrics?.saleAmount ?? 0).toFixed(2)}</span>
                         </div>
                         <div className="w-7 h-7 rounded bg-slate-200 text-slate-600 flex items-center justify-center shrink-0">
                           <ShoppingCart className="w-3.5 h-3.5" />
@@ -2052,7 +2902,7 @@ function CustomersContent() {
                       <div className="border border-slate-200 rounded-sm p-2.5 flex items-center justify-between bg-white shadow-2xs min-h-[64px]">
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">VAT</span>
-                          <span className="text-[11px] font-bold text-slate-900">0.00</span>
+                          <span className="text-[11px] font-bold text-slate-900">{(activeCustomerOverviewMetrics?.vatAmount ?? 0).toFixed(2)}</span>
                         </div>
                         <div className="w-7 h-7 rounded bg-pink-100 text-pink-500 flex items-center justify-center shrink-0">
                           <Calculator className="w-3.5 h-3.5" />
@@ -2063,7 +2913,7 @@ function CustomersContent() {
                       <div className="border border-slate-200 rounded-sm p-2.5 flex items-center justify-between bg-white shadow-2xs min-h-[64px]">
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Total</span>
-                          <span className="text-[11px] font-bold text-slate-900">0.00</span>
+                          <span className="text-[11px] font-bold text-slate-900">{(activeCustomerOverviewMetrics?.totalAmount ?? 0).toFixed(2)}</span>
                         </div>
                         <div className="w-7 h-7 rounded bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
                           <DollarSign className="w-3.5 h-3.5" />
@@ -2074,7 +2924,7 @@ function CustomersContent() {
                       <div className="border border-slate-200 rounded-sm p-2.5 flex items-center justify-between bg-white shadow-2xs min-h-[64px]">
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Invoiced</span>
-                          <span className="text-[11px] font-bold text-slate-900">0.00</span>
+                          <span className="text-[11px] font-bold text-slate-900">{(activeCustomerOverviewMetrics?.invoicedAmount ?? 0).toFixed(2)}</span>
                         </div>
                         <div className="w-7 h-7 rounded bg-cyan-100 text-cyan-600 flex items-center justify-center shrink-0">
                           <FileText className="w-3.5 h-3.5" />
@@ -2086,8 +2936,8 @@ function CustomersContent() {
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Total Collections</span>
                           <div className="text-[10px] space-y-0.5">
-                            <span className="font-bold text-slate-900 block">0.00</span>
-                            <span className="text-red-500 font-semibold block">VAT 0.00</span>
+                            <span className="font-bold text-slate-900 block">{(activeCustomerOverviewMetrics?.collectionsAmount ?? 0).toFixed(2)}</span>
+                            <span className="text-red-500 font-semibold block">VAT {(activeCustomerOverviewMetrics?.collectionsVat ?? 0).toFixed(2)}</span>
                           </div>
                         </div>
                         <div className="w-7 h-7 rounded bg-pink-100 text-pink-600 flex items-center justify-center shrink-0">
@@ -2100,9 +2950,9 @@ function CustomersContent() {
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Receivable</span>
                           <div className="text-[10px] space-y-0.2">
-                            <span className="font-bold text-red-600 block">0.00</span>
-                            <span className="text-emerald-600 block">Billed 0.00</span>
-                            <span className="text-blue-600 block">Unbilled 0.00</span>
+                            <span className="font-bold text-red-600 block">{(activeCustomerOverviewMetrics?.totalReceivable ?? 0).toFixed(2)}</span>
+                            <span className="text-emerald-600 block">Billed {(activeCustomerOverviewMetrics?.billedReceivable ?? 0).toFixed(2)}</span>
+                            <span className="text-blue-600 block">Unbilled {(activeCustomerOverviewMetrics?.unbilledReceivable ?? 0).toFixed(2)}</span>
                           </div>
                         </div>
                         <div className="w-7 h-7 rounded bg-blue-100 text-blue-500 flex items-center justify-center shrink-0">
@@ -2114,7 +2964,7 @@ function CustomersContent() {
                       <div className="border border-slate-200 rounded-sm p-2.5 flex items-center justify-between bg-white shadow-2xs min-h-[64px]">
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Sale Expense</span>
-                          <span className="text-[11px] font-bold text-slate-900">0.00</span>
+                          <span className="text-[11px] font-bold text-slate-900">{(activeCustomerOverviewMetrics?.saleExpense ?? 0).toFixed(2)}</span>
                         </div>
                         <div className="w-7 h-7 rounded bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                           <ShoppingCart className="w-3.5 h-3.5" />
@@ -2126,8 +2976,8 @@ function CustomersContent() {
                         <div>
                           <span className="text-[11px] font-medium text-slate-600 block">Profit / Loss</span>
                           <div className="flex items-center gap-3 text-[10px] mt-0.5">
-                            <span className="text-slate-600">Payment Received ⓘ <strong className="text-emerald-600">0.00</strong></span>
-                            <span className="text-slate-600">Order ⓘ <strong className="text-emerald-600">0.00</strong></span>
+                            <span className="text-slate-600">Payment Received ⓘ <strong className="text-emerald-600">{(activeCustomerOverviewMetrics?.profitPaymentReceived ?? 0).toFixed(2)}</strong></span>
+                            <span className="text-slate-600">Order ⓘ <strong className="text-emerald-600">{(activeCustomerOverviewMetrics?.profitOrder ?? 0).toFixed(2)}</strong></span>
                           </div>
                         </div>
                         <div className="w-7 h-7 rounded bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
@@ -2304,497 +3154,527 @@ function CustomersContent() {
                 <span>All</span>
               </button>
 
-          <button
-            onClick={() => setActiveTab('Customer')}
-            className={cn(
-              'flex items-center gap-1.5 pb-2.5 transition-colors relative',
-              activeTab === 'Customer'
-                ? 'text-[#DC2626] font-bold border-b-2 border-[#DC2626]'
-                : 'text-slate-600 hover:text-slate-900'
-            )}
-          >
-            <Eye className="w-3.5 h-3.5 text-slate-400" />
-            <span>Customer</span>
-          </button>
+              <button
+                onClick={() => setActiveTab('Customer')}
+                className={cn(
+                  'flex items-center gap-1.5 pb-2.5 transition-colors relative',
+                  activeTab === 'Customer'
+                    ? 'text-[#DC2626] font-bold border-b-2 border-[#DC2626]'
+                    : 'text-slate-600 hover:text-slate-900'
+                )}
+              >
+                <Eye className="w-3.5 h-3.5 text-slate-400" />
+                <span>Customer</span>
+              </button>
 
-          <button
-            onClick={() => setActiveTab('Prospect')}
-            className={cn(
-              'flex items-center gap-1.5 pb-2.5 transition-colors relative',
-              activeTab === 'Prospect'
-                ? 'text-[#DC2626] font-bold border-b-2 border-[#DC2626]'
-                : 'text-slate-600 hover:text-slate-900'
-            )}
-          >
-            <User className="w-3.5 h-3.5 text-slate-400" />
-            <span>Prospect</span>
-            <Info className="w-3 h-3 text-blue-500 ml-0.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* 2. TOP FILTER GRID (2 Rows Multi-column Form Bordered Box) */}
-      <div className="bg-white border border-slate-200 rounded-sm p-4 shadow-2xs">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
-          {/* Row 1 */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1">Owner</label>
-            <select
-              value={ownerFilter}
-              onChange={(e) => setOwnerFilter(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
-            >
-              <option value="All">All Owners</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.name}>
-                  {u.name}
-                </option>
-              ))}
-              <option value="Muhammed Adhil">Muhammed Adhil</option>
-              <option value="shameem">shameem</option>
-              <option value="JISMON JOSE">JISMON JOSE</option>
-              <option value="Alex Rivera">Alex Rivera</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1">Campaign</label>
-            <select
-              value={campaignFilter}
-              onChange={(e) => setCampaignFilter(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
-            >
-              <option value="All">Select</option>
-              {campaigns.map((c) => (
-                <option key={c.id} value={c.name}>
-                  {c.name}
-                </option>
-              ))}
-              <option value="HVAC Commercial 2026">HVAC Commercial 2026</option>
-              <option value="Google Ads Search">Google Ads Search</option>
-              <option value="Email Outreach">Email Outreach</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1">Industry Type</label>
-            <select
-              value={industryFilter}
-              onChange={(e) => setIndustryFilter(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
-            >
-              <option value="All">All Industry</option>
-              <option value="General Contracting">General Contracting</option>
-              <option value="Landscape & Horticulture">Landscape & Horticulture</option>
-              <option value="Construction & Civil">Construction & Civil</option>
-              <option value="Fitout & Interior Design">Fitout & Interior Design</option>
-              <option value="Chemical & Manufacturing">Chemical & Manufacturing</option>
-              <option value="Commercial Engineering">Commercial Engineering</option>
-              <option value="Hospitality & Hotels">Hospitality & Hotels</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1">Key Customer?</label>
-            <select
-              value={keyCustomerFilter}
-              onChange={(e) => setKeyCustomerFilter(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
-            >
-              <option value="All">All</option>
-              <option value="Yes">Yes</option>
-              <option value="No">No</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1">Source</label>
-            <select
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
-            >
-              <option value="All">Select</option>
-              <option value="Direct Inquiry">Direct Inquiry</option>
-              <option value="Website">Website</option>
-              <option value="Referral">Referral</option>
-              <option value="Cold Call">Cold Call</option>
-              <option value="Google Ads">Google Ads</option>
-              <option value="Exhibition">Exhibition</option>
-            </select>
-          </div>
-
-          {/* Row 2 */}
-          <div className="lg:col-span-1">
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1">Tags</label>
-            <input
-              type="text"
-              placeholder="Select tags"
-              value={tagsFilter}
-              onChange={(e) => setTagsFilter(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <div className="lg:col-span-1">
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1">Assigned Date</label>
-            <div className="relative">
-              <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Select Date"
-                value={assignedDateFilter}
-                onChange={(e) => setAssignedDateFilter(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded pl-8 pr-7 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
-              />
-              {assignedDateFilter && (
-                <button
-                  onClick={() => setAssignedDateFilter('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
+              <button
+                onClick={() => setActiveTab('Prospect')}
+                className={cn(
+                  'flex items-center gap-1.5 pb-2.5 transition-colors relative',
+                  activeTab === 'Prospect'
+                    ? 'text-[#DC2626] font-bold border-b-2 border-[#DC2626]'
+                    : 'text-slate-600 hover:text-slate-900'
+                )}
+              >
+                <User className="w-3.5 h-3.5 text-slate-400" />
+                <span>Prospect</span>
+                <Info className="w-3 h-3 text-blue-500 ml-0.5" />
+              </button>
             </div>
           </div>
 
-          <div className="lg:col-span-1">
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1">No Orders After</label>
-            <div className="relative">
-              <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Select Date"
-                value={noOrdersAfterDate}
-                onChange={(e) => setNoOrdersAfterDate(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded pl-8 pr-7 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
-              />
-              {noOrdersAfterDate && (
-                <button
-                  onClick={() => setNoOrdersAfterDate('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          {/* 2. TOP FILTER GRID (2 Rows Multi-column Form Bordered Box) */}
+          <div className="bg-white border border-slate-200 rounded-sm p-4 shadow-2xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
+              {/* Row 1 */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Owner</label>
+                <select
+                  value={ownerFilter}
+                  onChange={(e) => setOwnerFilter(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
                 >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
+                  <option value="All">All Owners</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.name}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Campaign</label>
+                <select
+                  value={campaignFilter}
+                  onChange={(e) => setCampaignFilter(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="All">Select</option>
+                  {campaigns.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                  <option value="HVAC Commercial 2026">HVAC Commercial 2026</option>
+                  <option value="Google Ads Search">Google Ads Search</option>
+                  <option value="Email Outreach">Email Outreach</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Industry Type</label>
+                <select
+                  value={industryFilter}
+                  onChange={(e) => setIndustryFilter(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="All">All Industry</option>
+                  <option value="General Contracting">General Contracting</option>
+                  <option value="Landscape & Horticulture">Landscape & Horticulture</option>
+                  <option value="Construction & Civil">Construction & Civil</option>
+                  <option value="Fitout & Interior Design">Fitout & Interior Design</option>
+                  <option value="Chemical & Manufacturing">Chemical & Manufacturing</option>
+                  <option value="Commercial Engineering">Commercial Engineering</option>
+                  <option value="Hospitality & Hotels">Hospitality & Hotels</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Key Customer?</label>
+                <select
+                  value={keyCustomerFilter}
+                  onChange={(e) => setKeyCustomerFilter(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="All">All</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Source</label>
+                <select
+                  value={sourceFilter}
+                  onChange={(e) => setSourceFilter(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="All">Select</option>
+                  <option value="Direct Inquiry">Direct Inquiry</option>
+                  <option value="Website">Website</option>
+                  <option value="Referral">Referral</option>
+                  <option value="Cold Call">Cold Call</option>
+                  <option value="Google Ads">Google Ads</option>
+                  <option value="Exhibition">Exhibition</option>
+                </select>
+              </div>
+
+              {/* Row 2 */}
+              <div className="lg:col-span-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Tags</label>
+                <input
+                  type="text"
+                  placeholder="Select tags"
+                  value={tagsFilter}
+                  onChange={(e) => setTagsFilter(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="lg:col-span-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">Assigned Date</label>
+                <div className="relative">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Select Date"
+                    value={assignedDateFilter}
+                    onChange={(e) => setAssignedDateFilter(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded pl-8 pr-7 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                  />
+                  {assignedDateFilter && (
+                    <button
+                      onClick={() => setAssignedDateFilter('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="lg:col-span-1">
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">No Orders After</label>
+                <div className="relative">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Select Date"
+                    value={noOrdersAfterDate}
+                    onChange={(e) => setNoOrdersAfterDate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded pl-8 pr-7 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                  />
+                  {noOrdersAfterDate && (
+                    <button
+                      onClick={() => setNoOrdersAfterDate('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* 3. CUSTOMER LIST CARD CONTAINER */}
-      <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden">
-        {/* Card Header Bar with Actions */}
-        <div className="bg-[#F8FAFC] border-b border-slate-200 px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2">
-            <span className="bg-[#DC2626] text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow-2xs min-w-[22px] text-center">
-              {filteredCustomers.length}
-            </span>
-            <span className="font-bold text-slate-800 text-sm">Customer List</span>
-          </div>
+          {/* 3. CUSTOMER LIST CARD CONTAINER */}
+          <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden">
+            {/* Card Header Bar with Actions */}
+            <div className="bg-[#F8FAFC] border-b border-slate-200 px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2">
+                <span className="bg-[#DC2626] text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow-2xs min-w-[22px] text-center">
+                  {filteredCustomers.length}
+                </span>
+                <span className="font-bold text-slate-800 text-sm">Customer List</span>
+              </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setIsAssignModalOpen(true)}
-              className="bg-[#0F2844] hover:bg-[#1E3A8A] text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors flex items-center gap-1.5 shadow-2xs"
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              <span>Assign Customer/Prospect</span>
-            </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setIsAssignModalOpen(true)}
+                  className="bg-[#0F2844] hover:bg-[#1E3A8A] text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors flex items-center gap-1.5 shadow-2xs"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Assign Customer/Prospect</span>
+                </button>
 
-            <button
-              onClick={() => setIsUploadModalOpen(true)}
-              className="bg-[#0F2844] hover:bg-[#1E3A8A] text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors flex items-center gap-1.5 shadow-2xs"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Upload Customer/Prospect</span>
-            </button>
+                <button
+                  onClick={() => setIsUploadModalOpen(true)}
+                  className="bg-[#0F2844] hover:bg-[#1E3A8A] text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Customer/Prospect</span>
+                </button>
 
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-bold px-3.5 py-1.5 rounded transition-colors flex items-center gap-1.5 shadow-2xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ CUSTOMER</span>
-            </button>
-          </div>
-        </div>
+                <button
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-bold px-3.5 py-1.5 rounded transition-colors flex items-center gap-1.5 shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ CUSTOMER</span>
+                </button>
+              </div>
+            </div>
 
-        {/* Table Controls (Shows 10 Rows, Search) */}
-        <div className="p-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="text-slate-600 font-medium">Shows</span>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer"
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-            <span className="text-slate-600 font-medium">Rows</span>
-          </div>
+            {/* Table Controls (Shows 10 Rows, Search) */}
+            <div className="p-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-600 font-medium">Shows</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span className="text-slate-600 font-medium">Rows</span>
+              </div>
 
-          <div className="relative w-full sm:w-64">
-            <input
-              type="text"
-              placeholder="Search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-700 pr-8 focus:outline-none focus:border-blue-500"
-            />
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
-        </div>
+              <div className="relative w-full sm:w-64">
+                <input
+                  type="text"
+                  placeholder="Search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-700 pr-8 focus:outline-none focus:border-blue-500"
+                />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
 
-        {/* 4. CEZCON DESKTOP DATA TABLE */}
-        <div className="overflow-x-auto w-full min-h-[380px]">
-          <table className="w-full text-left text-xs border-collapse min-w-[1050px]">
-            <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
-              <tr>
-                <th className="py-2.5 px-3 text-center w-12 border-r border-slate-100">SL.No</th>
-                <th className="py-2.5 px-3 w-24 border-r border-slate-100">Date</th>
-                <th className="py-2.5 px-4 min-w-[240px] border-r border-slate-100">Customer</th>
-                <th className="py-2.5 px-3 text-center w-20 border-r border-slate-100">Owner</th>
-                <th className="py-2.5 px-4 min-w-[190px] border-r border-slate-100">Primary Contact</th>
-                <th className="py-2.5 px-3 text-center w-28 border-r border-slate-100">Last Enquiry</th>
-                <th className="py-2.5 px-3 text-center w-24 border-r border-slate-100">Open Enquiries</th>
-                <th className="py-2.5 px-4 text-center w-36 border-r border-slate-100">Last Order</th>
-                <th className="py-2.5 px-3 text-right w-24 border-r border-slate-100">Outstanding</th>
-                <th className="py-2.5 px-3 text-center w-20">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {displayCustomers.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="py-12 text-center text-xs text-slate-400">
-                    No customers found matching the selected filters.
-                  </td>
-                </tr>
-              ) : (
-                displayCustomers.map((cust, idx) => {
-                  const sl = (currentPage - 1) * pageSize + idx + 1;
-                  const dateStr = cust.date || '30-09-2026';
-                  const isMenuOpen = actionMenuId === cust.id;
-
-                  return (
-                    <tr key={cust.id || idx} className="hover:bg-slate-50/80 transition-colors">
-                      {/* 1. SL.No */}
-                      <td className="py-3 px-3 text-center font-medium text-slate-600 border-r border-slate-100">
-                        {sl}
-                      </td>
-
-                      {/* 2. Date */}
-                      <td className="py-3 px-3 text-slate-700 whitespace-nowrap font-medium border-r border-slate-100">
-                        {dateStr}
-                      </td>
-
-                      {/* 3. Customer */}
-                      <td className="py-3 px-4 border-r border-slate-100">
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => router.push(`/customers/${cust.id}`)}
-                            className="font-bold text-[#1677FF] hover:text-[#0958d9] uppercase hover:underline text-left leading-snug cursor-pointer"
-                          >
-                            {cust.customerName}
-                          </button>
-                          <button
-                            onClick={() => router.push(`/customers/${cust.id}`)}
-                            title="View customer overview"
-                            className="text-[#1677FF] hover:text-[#0958d9] shrink-0 cursor-pointer"
-                          >
-                            <Info className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* 4. Owner */}
-                      <td className="py-3 px-3 text-center border-r border-slate-100">
-                        <div className="inline-block" title={`Account Owner: ${cust.owner || 'Alex Rivera'}`}>
-                          {renderUserAvatar(cust.owner || 'Alex Rivera', cust.ownerAvatar, 'w-6 h-6')}
-                        </div>
-                      </td>
-
-                      {/* 5. Primary Contact */}
-                      <td className="py-3 px-4 border-r border-slate-100">
-                        <div>
-                          <div className="flex items-center gap-1">
-                            <span className="font-semibold text-[#1677FF]">{cust.contactPerson || 'Point of Contact'}</span>
-                            <button
-                              onClick={() => setViewingCustomer(cust)}
-                              className="text-[#1677FF] hover:text-[#0958d9]"
-                            >
-                              <Info className="w-3 h-3" />
-                            </button>
-                          </div>
-                          {cust.phone && (
-                            <div className="flex items-center gap-1 text-xs mt-0.5">
-                              <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[8px] font-bold">
-                                D
-                              </span>
-                              <a
-                                href={`https://wa.me/${cust.phone.replace(/[^0-9]/g, '')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-emerald-600 hover:text-emerald-700 font-semibold"
-                              >
-                                {cust.phone}
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* 6. Last Enquiry */}
-                      <td className="py-3 px-3 text-center border-r border-slate-100">
-                        <span className="inline-block bg-[#38BDF8] text-white text-[11px] font-bold px-2.5 py-0.5 rounded shadow-2xs">
-                          {cust.lastEnquiry || 'Today'}
-                        </span>
-                      </td>
-
-                      {/* 7. Open Enquiries */}
-                      <td className="py-3 px-3 text-center font-bold text-slate-800 border-r border-slate-100">
-                        {cust.openEnquiries ?? 1}
-                      </td>
-
-                      {/* 8. Last Order */}
-                      <td className="py-3 px-4 text-center border-r border-slate-100">
-                        <span className="inline-block bg-[#F59E0B] text-white text-[11px] font-semibold px-2 py-0.5 rounded whitespace-nowrap shadow-2xs">
-                          {cust.lastOrder || 'No order till the date.'}
-                        </span>
-                      </td>
-
-                      {/* 9. Outstanding */}
-                      <td className="py-3 px-3 text-right font-bold text-slate-800 border-r border-slate-100">
-                        {(cust.outstanding ?? 0).toFixed(2)}
-                      </td>
-
-                      {/* 10. Actions Dropdown Menu */}
-                      <td className="py-3 px-3 text-center relative">
-                        <div className="relative inline-block text-left">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActionMenuId(isMenuOpen ? null : cust.id);
-                            }}
-                            className="bg-[#008080] hover:bg-[#006666] text-white px-2 py-1 rounded text-xs flex items-center justify-center gap-1 shadow-2xs transition-colors cursor-pointer"
-                          >
-                            <Settings className="w-3.5 h-3.5" />
-                            <ChevronDown className="w-3 h-3" />
-                          </button>
-
-                          {isMenuOpen && (
-                            <div
-                              onClick={(e) => e.stopPropagation()}
-                              className="absolute right-0 top-full mt-1 w-56 bg-white rounded-md shadow-xl border border-slate-200 z-50 py-1.5 text-xs text-left"
-                            >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActionMenuId(null);
-                                  window.open(`/customers/${cust.id}`, '_blank');
-                                }}
-                                className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
-                              >
-                                <BookOpen className="w-4 h-4 text-slate-800 shrink-0" />
-                                <span>Open in new tab</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActionMenuId(null);
-                                  router.push(`/customers/${cust.id}`);
-                                }}
-                                className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
-                              >
-                                <BookOpen className="w-4 h-4 text-slate-800 shrink-0" />
-                                <span>View</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActionMenuId(null);
-                                  setIsAssignModalOpen(true);
-                                }}
-                                className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
-                              >
-                                <ExternalLink className="w-4 h-4 text-slate-800 shrink-0" />
-                                <span>Assign Customer/Prospect</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActionMenuId(null);
-                                  setEditingCustomer(cust);
-                                }}
-                                className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
-                              >
-                                <Edit2 className="w-4 h-4 text-slate-800 shrink-0" />
-                                <span>Edit</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActionMenuId(null);
-                                  if (confirm(`Are you sure you want to delete customer "${cust.customerName}"?`)) {
-                                    deleteCustomer(cust.id);
-                                  }
-                                }}
-                                className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
-                              >
-                                <Trash2 className="w-4 h-4 text-slate-800 shrink-0" />
-                                <span>Delete</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
+            {/* 4. CEZCON DESKTOP DATA TABLE */}
+            <div className="overflow-x-auto w-full min-h-[380px]">
+              <table className="w-full text-left text-xs border-collapse min-w-[1050px]">
+                <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
+                  <tr>
+                    <th className="py-2.5 px-3 text-center w-12 border-r border-slate-100">SL.No</th>
+                    <th className="py-2.5 px-3 w-24 border-r border-slate-100">Date</th>
+                    <th className="py-2.5 px-4 min-w-[240px] border-r border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <span>Customer</span>
+                        <span className="text-slate-400 text-[11px] select-none">⬍</span>
+                      </div>
+                    </th>
+                    <th className="py-2.5 px-3 text-center w-20 border-r border-slate-100">Owner</th>
+                    <th className="py-2.5 px-4 min-w-[190px] border-r border-slate-100">Primary Contact</th>
+                    <th className="py-2.5 px-3 text-center w-28 border-r border-slate-100">Last Enquiry</th>
+                    <th className="py-2.5 px-3 text-center w-24 border-r border-slate-100">Open Enquiries</th>
+                    <th className="py-2.5 px-4 text-center w-36 border-r border-slate-100">Last Order</th>
+                    <th className="py-2.5 px-3 text-right w-24 border-r border-slate-100">Outstanding</th>
+                    <th className="py-2.5 px-3 text-center w-20">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {displayCustomers.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="py-12 text-center text-xs text-slate-400">
+                        No customers found matching the selected filters.
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                  ) : (
+                    displayCustomers.map((cust, idx) => {
+                      const sl = (currentPage - 1) * pageSize + idx + 1;
+                      const dateStr = cust.date || '30-09-2026';
+                      const isMenuOpen = actionMenuId === cust.id;
 
-        {/* Table Footer with Pagination */}
-        <div className="p-3 bg-[#F8FAFC] border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <span className="text-slate-500 font-medium">
-            Showing {(currentPage - 1) * pageSize + 1} to{' '}
-            {Math.min(currentPage * pageSize, filteredCustomers.length)} of {filteredCustomers.length} entries
-          </span>
+                      return (
+                        <tr key={cust.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                          {/* 1. SL.No */}
+                          <td className="py-3 px-3 text-center font-medium text-slate-600 border-r border-slate-100">
+                            {sl}
+                          </td>
 
-          <div className="flex items-center gap-1.5 self-end sm:self-auto">
-            <button
-              disabled={currentPage <= 1}
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-xs font-semibold"
-            >
-              Previous
-            </button>
-            <span className="px-2.5 py-1 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded">
-              {currentPage} / {totalPages}
-            </span>
-            <button
-              disabled={currentPage >= totalPages}
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              className="px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-xs font-semibold"
-            >
-              Next
-            </button>
+                          {/* 2. Date */}
+                          <td className="py-3 px-3 text-slate-700 whitespace-nowrap font-medium border-r border-slate-100">
+                            {dateStr}
+                          </td>
+
+                          {/* 3. Customer */}
+                          <td className="py-3 px-4 border-r border-slate-100">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {(cust.keyCustomer === true || cust.keyCustomer === 'Yes' || (cust as any).isKeyCustomer) && (
+                                    <span className="text-amber-500 shrink-0 select-none">🤝</span>
+                                  )}
+                                  <button
+                                    onClick={() => router.push(`/customers/${cust.id}`)}
+                                    className="font-bold text-[#1677FF] hover:text-[#0958d9] uppercase hover:underline text-left leading-snug cursor-pointer"
+                                  >
+                                    {cust.customerName}
+                                  </button>
+                                </div>
+                                {cust.phone && !cust.contactPerson && (
+                                  <div className="flex items-center gap-1 text-xs mt-1">
+                                    <Phone className="w-3 h-3 text-[#e11d48] shrink-0 fill-current" />
+                                    <a
+                                      href={`tel:${cust.phone}`}
+                                      className="text-[#1677FF] hover:text-[#0958d9] hover:underline font-normal text-xs"
+                                    >
+                                      {cust.phone}
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => router.push(`/customers/${cust.id}`)}
+                                title="View customer overview"
+                                className="text-[#1677FF] hover:text-[#0958d9] shrink-0 cursor-pointer mt-0.5"
+                              >
+                                <Info className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+
+                          {/* 4. Owner */}
+                          <td className="py-3 px-3 text-center border-r border-slate-100">
+                            <div className="inline-block" title={`Account Owner: ${cust.owner || currentUser?.name || 'shaheer'}`}>
+                              {renderUserAvatar(cust.owner || currentUser?.name || 'shaheer', cust.ownerAvatar, 'w-6 h-6')}
+                            </div>
+                          </td>
+
+                          {/* 5. Primary Contact */}
+                          <td className="py-3 px-4 border-r border-slate-100">
+                            {cust.contactPerson ? (
+                              <div>
+                                <div className="flex items-center gap-1">
+                                  <span className="font-semibold text-[#1677FF]">{cust.contactPerson}</span>
+                                  <button
+                                    onClick={() => setViewingCustomer(cust)}
+                                    className="text-[#1677FF] hover:text-[#0958d9] cursor-pointer"
+                                    title="View contact details"
+                                  >
+                                    <Info className="w-3 h-3" />
+                                  </button>
+                                </div>
+                                {cust.phone && (
+                                  <div className="flex items-center gap-1.5 text-xs mt-0.5">
+                                    <span className="w-3.5 h-3.5 rounded-full bg-[#25D366] text-white flex items-center justify-center shrink-0">
+                                      <svg className="w-2.5 h-2.5 fill-white" viewBox="0 0 24 24">
+                                        <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-5.805 1.543zm6.26-4.089l.363.216c1.548.92 3.33 1.407 5.153 1.408 5.485 0 9.948-4.462 9.95-9.948.002-2.66-1.032-5.161-2.91-7.04-1.879-1.879-4.38-2.914-7.04-2.914-5.486 0-9.949 4.462-9.951 9.948-.001 1.877.514 3.707 1.492 5.297l.237.385-1.01 3.687 3.719-.993z" />
+                                      </svg>
+                                    </span>
+                                    <a
+                                      href={`https://wa.me/${cust.phone.replace(/[^0-9]/g, '')}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[#1677FF] hover:text-[#0958d9] hover:underline font-semibold"
+                                    >
+                                      {cust.phone}
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+                          </td>
+
+                          {/* 6. Last Enquiry */}
+                          <td className="py-3 px-3 text-center border-r border-slate-100">
+                            <span className="inline-block bg-[#5bc0de] text-white text-[11px] font-bold px-2.5 py-0.5 rounded shadow-2xs">
+                              {cust.lastEnquiry || '1 day(s) ago'}
+                            </span>
+                          </td>
+
+                          {/* 7. Open Enquiries */}
+                          <td className="py-3 px-3 text-center font-bold text-slate-800 border-r border-slate-100">
+                            {cust.openEnquiries ?? 1}
+                          </td>
+
+                          {/* 8. Last Order */}
+                          <td className="py-3 px-4 text-center border-r border-slate-100">
+                            {cust.lastOrder && !cust.lastOrder.toLowerCase().includes('no order') ? (
+                              <span className="inline-block bg-[#5bc0de] text-white text-[11px] font-semibold px-2 py-0.5 rounded whitespace-nowrap shadow-2xs">
+                                {cust.lastOrder}
+                              </span>
+                            ) : (
+                              <span className="inline-block bg-[#ea993c] text-white text-[11px] font-semibold px-2 py-0.5 rounded whitespace-nowrap shadow-2xs">
+                                {cust.lastOrder || 'No order till the date.'}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* 9. Outstanding */}
+                          <td className="py-3 px-3 text-right font-bold text-slate-800 border-r border-slate-100">
+                            {(cust.outstanding ?? 0).toFixed(2)}
+                          </td>
+
+                          {/* 10. Actions Dropdown Menu */}
+                          <td className="py-3 px-3 text-center relative">
+                            <div className="relative inline-block text-left">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActionMenuId(isMenuOpen ? null : cust.id);
+                                }}
+                                className="bg-[#113a5d] hover:bg-[#0c2b45] text-white px-2 py-1 rounded text-xs flex items-center justify-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                              >
+                                <Settings className="w-3.5 h-3.5" />
+                                <ChevronDown className="w-3 h-3" />
+                              </button>
+
+                              {isMenuOpen && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute right-0 top-full mt-1 w-56 bg-white rounded-md shadow-xl border border-slate-200 z-50 py-1.5 text-xs text-left"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActionMenuId(null);
+                                      window.open(`/customers/${cust.id}`, '_blank');
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
+                                  >
+                                    <BookOpen className="w-4 h-4 text-slate-800 shrink-0" />
+                                    <span>Open in new tab</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActionMenuId(null);
+                                      router.push(`/customers/${cust.id}`);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
+                                  >
+                                    <BookOpen className="w-4 h-4 text-slate-800 shrink-0" />
+                                    <span>View</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActionMenuId(null);
+                                      setIsAssignModalOpen(true);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
+                                  >
+                                    <ExternalLink className="w-4 h-4 text-slate-800 shrink-0" />
+                                    <span>Assign Customer/Prospect</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActionMenuId(null);
+                                      setEditingCustomer(cust);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
+                                  >
+                                    <Edit2 className="w-4 h-4 text-slate-800 shrink-0" />
+                                    <span>Edit</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActionMenuId(null);
+                                      if (confirm(`Are you sure you want to delete customer "${cust.customerName}"?`)) {
+                                        deleteCustomer(cust.id || String(cust.slNo));
+                                      }
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="w-4 h-4 text-slate-800 shrink-0" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Table Footer with Pagination */}
+            <div className="p-3 bg-[#F8FAFC] border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <span className="text-slate-500 font-medium">
+                Showing {(currentPage - 1) * pageSize + 1} to{' '}
+                {Math.min(currentPage * pageSize, filteredCustomers.length)} of {filteredCustomers.length} entries
+              </span>
+
+              <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                <button
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-xs font-semibold"
+                >
+                  Previous
+                </button>
+                <span className="px-2.5 py-1 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-xs font-semibold"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
         </>
       )}
 
@@ -2835,13 +3715,6 @@ function CustomersContent() {
                         {u.name}
                       </option>
                     ))}
-                    <option value="JISMON JOSE">JISMON JOSE</option>
-                    <option value="MUHAMMED AHSAN P V">MUHAMMED AHSAN P V</option>
-                    <option value="Muhammed Adhil">Muhammed Adhil</option>
-                    <option value="shameem">shameem</option>
-                    <option value="Alex Rivera">Alex Rivera</option>
-                    <option value="Nafal">Nafal</option>
-                    <option value="Super Admin">Super Admin</option>
                   </select>
                 </div>
               </div>
@@ -2875,7 +3748,79 @@ function CustomersContent() {
         </div>
       )}
 
+      {/* ── MODAL: ADD NEW PARENT CUSTOMER ── */}
+      {isAddParentModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="bg-white rounded-sm shadow-xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-tight">
+                <Building className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                <span>Add New Parent Customer</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddParentModalOpen(false)}
+                className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
+            {/* Modal Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const name = newParentCustomerName.trim().toUpperCase();
+                if (!name) return;
+
+                if (!customParentOptions.includes(name)) {
+                  setCustomParentOptions((prev) => [...prev, name]);
+                }
+                setFormData((prev) => ({ ...prev, parentCustomer: name }));
+                setNewParentCustomerName('');
+                setIsAddParentModalOpen(false);
+              }}
+              className="p-5 space-y-4 text-xs"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Parent Customer / Group Name <span className="text-red-600 font-bold">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. AL FUTTAIM GROUP LLC"
+                  value={newParentCustomerName}
+                  onChange={(e) => setNewParentCustomerName(e.target.value)}
+                  className="w-full bg-white border border-blue-400 rounded px-3 py-2 text-xs text-slate-800 font-semibold uppercase placeholder:normal-case placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  This parent holding company will be added to your parent list and automatically selected.
+                </p>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddParentModalOpen(false)}
+                  className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-1.5 bg-[#0088CC] hover:bg-[#0077b3] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Parent Customer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

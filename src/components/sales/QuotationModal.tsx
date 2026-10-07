@@ -158,7 +158,7 @@ export function QuotationModal({
       vatAmount: calculatedVat,
       totalAmount: grandTotal,
       status: quotationToEdit?.status || 'Approved',
-      owner: quotationToEdit?.owner || currentUser?.name || 'Alex Rivera',
+      owner: quotationToEdit?.owner || currentUser?.name || 'shaheer',
       itemsCount: 1,
       items: [
         {
