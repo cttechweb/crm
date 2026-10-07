@@ -30,7 +30,23 @@ export const mockQuotations: CrmQuotation[] = [];
 
 export const mockSalesOrders: CrmSalesOrder[] = [];
 
-export const mockProformaInvoices: CrmProformaInvoice[] = [];
+export const mockProformaInvoices: CrmProformaInvoice[] = [
+  {
+    id: 'pi_1',
+    slNo: 1,
+    piNumber: 'CTPI#1001',
+    issueDate: '2026-10-07',
+    owner: 'shaheer',
+    ownerAvatar: '',
+    customer: 'RASHAD',
+    opportunityTitle: 'EQ 2 Supply of AC and Water Cooler',
+    quotationRef: 'CTSQ#4343',
+    amount: 9448.00,
+    vatAmount: 472.25,
+    totalAmount: 9918.25,
+    status: 'Pending',
+  },
+];
 
 export const mockInvoices: CrmInvoice[] = [];
 
@@ -52,9 +68,10 @@ export const mockStockTransfers: CrmStockTransfer[] = [];
 export const mockUsers: CrmUser[] = [
   {
     id: 'usr_superadmin_001',
-    name: 'System Super Admin',
+    name: 'Nafal',
     email: 'superadmin@gmail.com',
     role: 'Super Admin',
+    position: 'CEO',
     phone: '+971 50 111 2233',
     department: 'Executive Leadership',
     status: 'Active',
@@ -77,6 +94,16 @@ export const mockUsers: CrmUser[] = [
     role: 'Manager',
     phone: '+971 50 987 6543',
     department: 'Sales',
+    status: 'Active',
+    lastLogin: 'Active now',
+  },
+  {
+    id: 'usr_rashid_001',
+    name: 'Rashid Ali',
+    email: 'purchasemanager@gmail.com',
+    role: 'Manager',
+    phone: '+971 50 445 6789',
+    department: 'Purchase',
     status: 'Active',
     lastLogin: 'Active now',
   },
@@ -107,6 +134,16 @@ export const mockUsers: CrmUser[] = [
     role: 'Employee',
     phone: '+971 56 881 1334',
     department: 'Sales',
+    status: 'Active',
+    lastLogin: 'Recent',
+  },
+  {
+    id: 'emp_faisal_001',
+    name: 'Faisal Khan',
+    email: 'purchaseemp@gmail.com',
+    role: 'Employee',
+    phone: '+971 52 334 5566',
+    department: 'Purchase',
     status: 'Active',
     lastLogin: 'Recent',
   },

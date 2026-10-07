@@ -31,12 +31,24 @@ import {
   resolveDefaultPermissions,
   canCreateRole,
   validateUserCreationAuthority,
+  POSITION_HIERARCHY_CONFIG,
 } from '@/services/authMockService';
 import { Modal } from '@/components/ui/Modal';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { CezconUserItem, CezconProfileItem } from '@/types/settings';
 import { CEZCON_PROFILES_DATA } from '@/data/settingsMockData';
 import { createFirebaseAuthUser } from '@/services/firebaseAuthService';
+
+const ALL_ORGANIZATIONAL_POSITIONS = [
+  'CEO',
+  'COO',
+  'CSO',
+  'Sales Manager',
+  'Sales Employee',
+  'CPO',
+  'Purchase Manager',
+  'Purchase Employee',
+];
 
 const COUNTRY_CODES = [
   { code: '+971', country: 'United Arab Emirates', flag: '🇦🇪', iso: 'AE', minDigits: 9, maxDigits: 9, placeholder: '50 123 4567' },
@@ -232,6 +244,8 @@ export function UsersTab({
     mobileCountry: '+971',
     mobileNumber: '',
     dob: '',
+    position: '',
+    department: '',
     profile: '',
     managerType: 'Sales Manager',
     employeeType: 'Sales Employee',
@@ -333,22 +347,48 @@ export function UsersTab({
   const isAdminSession = loggedInUser?.role === 'admin';
   const isManagerSession = loggedInUser?.role === 'manager';
 
+  // Available positions based on the session's authority
+  const availablePositionsForSession = useMemo(() => {
+    if (isSuperAdminSession) {
+      return ALL_ORGANIZATIONAL_POSITIONS;
+    }
+    if (isAdminSession) {
+      return ALL_ORGANIZATIONAL_POSITIONS.filter((pos) => pos !== 'CEO' && pos !== 'COO');
+    }
+    if (isManagerSession) {
+      const mgrTitle = (
+        loggedInUser?.position ||
+        loggedInUser?.managerType ||
+        loggedInUser?.department ||
+        ''
+      ).toLowerCase();
+      if (mgrTitle.includes('purchase') || mgrTitle.includes('cpo')) {
+        return ['Purchase Employee'];
+      }
+      if (mgrTitle.includes('sales') || mgrTitle.includes('cso')) {
+        return ['Sales Employee'];
+      }
+      return ['Sales Employee', 'Purchase Employee'];
+    }
+    return [];
+  }, [isSuperAdminSession, isAdminSession, isManagerSession, loggedInUser]);
+
   // Derive which employee type this manager's department maps to
   const managerDeptType = useMemo(() => {
     if (!isManagerSession) return null;
-    // Read from all possible session fields where manager type might be stored
     const mgrType = (
+      loggedInUser?.position ||
       loggedInUser?.managerType ||
       loggedInUser?.department ||
       loggedInUser?.designation ||
       loggedInUser?.profileType ||
       ''
     ).toLowerCase();
-    if (mgrType.includes('sales')) return 'Sales Employee';
+    if (mgrType.includes('sales') || mgrType.includes('cso')) return 'Sales Employee';
+    if (mgrType.includes('purchase') || mgrType.includes('cpo')) return 'Purchase Employee';
     if (mgrType.includes('marketing') || mgrType.includes('market')) return 'Marketing Employee';
-    if (mgrType.includes('purchase')) return 'Purchase Employee';
     if (mgrType.includes('operation')) return 'Operations Employee';
-    return 'Sales Employee'; // default fallback
+    return 'Sales Employee';
   }, [isManagerSession, loggedInUser]);
 
   // For manager sessions: only their department employee type is available
@@ -358,6 +398,64 @@ export function UsersTab({
   }, [isManagerSession, managerDeptType]);
 
   const [profilesList, setProfilesList] = useState(CEZCON_PROFILES_DATA);
+
+  // Eligible "Reports To / Manager" users filtered dynamically based on the selected position hierarchy
+  const eligibleReportsToUsers = useMemo(() => {
+    const currentPos = userFormData.position;
+    if (!currentPos || currentPos === 'CEO') return [];
+
+    const config = POSITION_HIERARCHY_CONFIG[currentPos];
+    const requiredParentPositions = config ? config.reportsToPositions : [];
+
+    const matches = cezconUsersList.filter((u) => {
+      if (editingUserId && String(u.id) === String(editingUserId)) return false;
+
+      const uPos = (u.position || '').trim();
+      const uDesig = (u.designation || '').trim();
+      const uProf = (u.profileType || '').trim();
+      const uRole = (u.role || '').trim();
+      const uMgrType = (u.managerType || '').trim();
+
+      // 1. Direct match with parent positions
+      if (requiredParentPositions.some((p) => p.toLowerCase() === uPos.toLowerCase())) return true;
+      if (requiredParentPositions.some((p) => p.toLowerCase() === uDesig.toLowerCase())) return true;
+      if (requiredParentPositions.some((p) => p.toLowerCase() === uMgrType.toLowerCase())) return true;
+
+      // 2. Role and fallback matching
+      if (requiredParentPositions.includes('CEO') && (uRole.toLowerCase().includes('super') || uProf.toLowerCase().includes('super') || uPos === 'CEO')) return true;
+      if (requiredParentPositions.includes('COO') && (uRole.toLowerCase() === 'admin' || uProf.toLowerCase() === 'admin' || uPos === 'COO')) return true;
+      if (requiredParentPositions.includes('CSO') && (uMgrType.toLowerCase().includes('sales') || uProf.toLowerCase().includes('sales manager') || uPos === 'CSO' || (uRole.toLowerCase() === 'manager' && (u.department || '').toLowerCase().includes('sales')))) return true;
+      if (requiredParentPositions.includes('CPO') && (uMgrType.toLowerCase().includes('purchase') || uProf.toLowerCase().includes('purchase manager') || uPos === 'CPO' || (uRole.toLowerCase() === 'manager' && (u.department || '').toLowerCase().includes('purchase')))) return true;
+      if (requiredParentPositions.includes('Sales Manager') && (uMgrType.toLowerCase().includes('sales') || uProf.toLowerCase().includes('sales manager') || uPos === 'Sales Manager' || uPos === 'CSO')) return true;
+      if (requiredParentPositions.includes('Purchase Manager') && (uMgrType.toLowerCase().includes('purchase') || uProf.toLowerCase().includes('purchase manager') || uPos === 'Purchase Manager' || uPos === 'CPO')) return true;
+
+      return false;
+    });
+
+    // Fallback: If no exact hierarchy match is found yet in mock data, provide available managers
+    if (matches.length === 0) {
+      return cezconUsersList
+        .filter((u) => {
+          if (editingUserId && String(u.id) === String(editingUserId)) return false;
+          const r = (u.role || '').toLowerCase();
+          const p = (u.profileType || '').toLowerCase();
+          return r === 'admin' || r === 'manager' || r === 'super_admin' || p.includes('manager') || p.includes('admin');
+        })
+        .map((u) => ({
+          id: String(u.id),
+          name: u.name,
+          email: u.email || u.username || '',
+          position: u.position || u.designation || u.profileType || u.role || 'Manager',
+        }));
+    }
+
+    return matches.map((u) => ({
+      id: String(u.id),
+      name: u.name,
+      email: u.email || u.username || '',
+      position: u.position || u.designation || u.profileType || u.role || 'Manager',
+    }));
+  }, [userFormData.position, cezconUsersList, editingUserId]);
 
   const availableManagers = useMemo(() => {
     return cezconUsersList
@@ -371,10 +469,30 @@ export function UsersTab({
         id: String(u.id),
         name: u.name,
         email: u.email || u.username || '',
-        managerType: u.managerType || u.profileType || 'Manager',
+        managerType: u.position || u.managerType || u.profileType || 'Manager',
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [cezconUsersList]);
+
+  const resolveManagerLabel = (mgrIdOrEmail?: string | number | null, userPosition?: string) => {
+    if (userPosition === 'CEO') return 'None (CEO - Company Head)';
+    if (!mgrIdOrEmail) return 'None';
+    const str = String(mgrIdOrEmail).trim();
+    if (!str || str === 'null' || str === 'undefined') return 'None';
+
+    const found = cezconUsersList.find(
+      (u) =>
+        String(u.id).toLowerCase() === str.toLowerCase() ||
+        (u.email && u.email.toLowerCase() === str.toLowerCase()) ||
+        (u.username && u.username.toLowerCase() === str.toLowerCase())
+    );
+    if (found) {
+      const pos = found.position || found.managerType || found.profileType || found.role || 'Manager';
+      return `${found.name} (${pos})`;
+    }
+    if (str.includes('@')) return str;
+    return str;
+  };
 
   const loadUnifiedUsers = () => {
     try {
@@ -517,6 +635,39 @@ export function UsersTab({
         status: 'Active',
         role: 'Manager',
         dataScope: 'team',
+        loginPermission: 'Web & Mobile',
+      });
+
+      userMap.set('usr_rashid_001', {
+        id: 'usr_rashid_001',
+        name: 'Rashid Ali',
+        email: 'purchasemanager@gmail.com',
+        username: 'purchasemanager@cooltechuae.com',
+        profileType: 'Purchase Manager',
+        managerType: 'Purchase Manager',
+        designation: 'Purchase Manager',
+        department: 'Purchase',
+        phone: '+971 50 445 6789',
+        status: 'Active',
+        role: 'Manager',
+        dataScope: 'team',
+        loginPermission: 'Web & Mobile',
+      });
+
+      userMap.set('emp_faisal_001', {
+        id: 'emp_faisal_001',
+        name: 'Faisal Khan',
+        email: 'purchaseemp@gmail.com',
+        username: 'purchaseemp@cooltechuae.com',
+        profileType: 'Purchase Employee',
+        employeeType: 'Purchase Employee',
+        designation: 'Purchase Employee',
+        department: 'Purchase',
+        managerId: 'usr_rashid_001',
+        phone: '+971 52 334 5566',
+        status: 'Active',
+        role: 'Employee',
+        dataScope: 'own',
         loginPermission: 'Web & Mobile',
       });
 
@@ -863,6 +1014,8 @@ export function UsersTab({
       mobileCountry: '+971',
       mobileNumber: '',
       dob: '',
+      position: '',
+      department: '',
       profile: 'Select Profile',
       managerType: 'Sales Manager',
       employeeType: 'Sales Employee',
@@ -919,10 +1072,12 @@ export function UsersTab({
       mobileCountry: '+971',
       mobileNumber: (user.phone || '').replace('+971', '').trim(),
       dob: user.dob || '',
+      position: user.position || '',
+      department: user.department || '',
       profile: user.profileType || 'Select Profile',
       managerType: user.managerType || 'Sales Manager',
       employeeType: user.employeeType || 'Sales Employee',
-      assignedManagerId: String(user.managerId || user.reportingManagerId || ''),
+      assignedManagerId: String(user.managerId || user.reportsTo || user.reportingManagerId || ''),
       businessOpportunity: user.businessOpportunity || 'None selected',
       businessOpportunityAll: true,
       designation: user.designation || user.managerType || user.employeeType || 'Sales Representative',
@@ -987,29 +1142,29 @@ export function UsersTab({
       return;
     }
 
-    const isSuperAdminAttempt = profileName.toLowerCase().includes('super');
+    const isSuperAdminAttempt = profileName.toLowerCase().includes('super') || userFormData.position === 'CEO';
     if (isSuperAdminAttempt && !isSuperAdminSession) {
-      alert('Authority Restriction: Only Super Admin can create or manage Super Admin accounts.');
+      alert('Authority Restriction: Only Super Admin can create or manage Super Admin / CEO accounts.');
       return;
     }
 
-    const isAdminUser = profileName.toLowerCase().includes('admin');
+    const isAdminUser = profileName.toLowerCase().includes('admin') || userFormData.position === 'COO';
     if (isAdminUser && !isSuperAdminSession) {
-      alert('Authority Restriction: Only Super Admin can create Admin accounts.');
+      alert('Authority Restriction: Only Super Admin can create Admin / COO accounts.');
       return;
     }
 
-    const isManager = profileName.toLowerCase().includes('manager') || profileName.toLowerCase().includes('operation');
+    const isManager = profileName.toLowerCase().includes('manager') || profileName.toLowerCase().includes('operation') || userFormData.position === 'CSO' || userFormData.position === 'CPO' || userFormData.position === 'Sales Manager' || userFormData.position === 'Purchase Manager';
     if (isManagerSession && (isAdminUser || isManager)) {
-      alert('Authority Restriction: Managers can only create and manage Employee / Team accounts for their own team.');
+      alert('Authority Restriction: Managers can only create and manage Employee / Team accounts for their own department.');
       return;
     }
-    const isEmployee = !isAdminUser && !isManager;
+    const isEmployee = !isAdminUser && !isManager && !isSuperAdminAttempt;
 
     const authCheck = validateUserCreationAuthority(
       loggedInUser,
       profileName,
-      isAdminUser ? 'admin' : isManager ? 'manager' : 'employee'
+      isSuperAdminAttempt ? 'super_admin' : isAdminUser ? 'admin' : isManager ? 'manager' : 'employee'
     );
     if (!authCheck.allowed) {
       alert(authCheck.error || 'Authority Restriction: Unauthorized action.');
@@ -1021,24 +1176,14 @@ export function UsersTab({
       ? managerDeptType
       : userFormData.employeeType;
 
-    // Resolve reporting manager: Manager sessions strictly auto-assign to themselves
-    let effectiveManagerId = isEmployee
-      ? (isManagerSession ? (loggedInUser?.id || loggedInUser?.email || 'mgr_1') : (userFormData.assignedManagerId || null))
-      : null;
-
-    if (isEmployee && !effectiveManagerId) {
-      const typeStr = (resolvedEmployeeType || '').toLowerCase();
-      if (typeStr.includes('sales')) {
-        const salesMgr = cezconUsersList.find(
-          (u) => (u.profileType || '').toLowerCase().includes('sales') && (u.profileType || '').toLowerCase().includes('manager')
-        ) || cezconUsersList.find((u) => (u.name || '').toLowerCase().includes('shibil'));
-        effectiveManagerId = salesMgr ? String(salesMgr.id || salesMgr.email) : 'shibil@gmail.com';
-      } else if (typeStr.includes('marketing') || typeStr.includes('market')) {
-        const mktMgr = cezconUsersList.find(
-          (u) => (u.profileType || '').toLowerCase().includes('marketing') && (u.profileType || '').toLowerCase().includes('manager')
-        ) || cezconUsersList.find((u) => (u.name || '').toLowerCase().includes('afsal'));
-        effectiveManagerId = mktMgr ? String(mktMgr.id || mktMgr.email) : 'afsal@gmail.com';
-      }
+    // Resolve reporting manager
+    let effectiveManagerId: string | null = null;
+    if (userFormData.position === 'CEO') {
+      effectiveManagerId = null;
+    } else if (isManagerSession && isEmployee) {
+      effectiveManagerId = String(loggedInUser?.id || loggedInUser?.email || 'mgr_1');
+    } else {
+      effectiveManagerId = userFormData.assignedManagerId || null;
     }
 
     // Automatically create user in Firebase Auth if it's a new user registration
@@ -1083,10 +1228,13 @@ export function UsersTab({
             email: userEmail,
             username: fullUsername,
             password: userFormData.password.trim(),
+            position: userFormData.position || u.position,
+            department: userFormData.department || u.department,
             profileType: profileName,
             managerType: isManager ? userFormData.managerType : undefined,
             employeeType: isEmployee ? resolvedEmployeeType : undefined,
             managerId: effectiveManagerId,
+            reportsTo: effectiveManagerId,
             reportingManagerId: effectiveManagerId,
             dataScope: userFormData.dataScope,
             modulePermissions: userFormData.modulePermissions,
@@ -1095,6 +1243,7 @@ export function UsersTab({
             hasTarget: userFormData.monthlyTargets,
             designation:
               userFormData.designation ||
+              userFormData.position ||
               (isManager ? userFormData.managerType : isEmployee ? resolvedEmployeeType : profileName),
             phone: userFormData.mobileNumber ? `${userFormData.mobileCountry} ${userFormData.mobileNumber}` : u.phone,
             dob: userFormData.dob || u.dob,
@@ -1117,6 +1266,7 @@ export function UsersTab({
         console.error(err);
       }
     } else {
+      const resolvedRole = isSuperAdminAttempt ? 'Super Admin' : isAdminUser ? 'Admin' : isManager ? 'Manager' : 'Employee';
       const newUser: CezconUserItem = {
         id: `usr_${Date.now()}`,
         name: userFormData.name.trim(),
@@ -1124,25 +1274,29 @@ export function UsersTab({
         username: fullUsername,
         password: userFormData.password.trim(),
         firebaseUid: firebaseUid,
+        position: userFormData.position || undefined,
+        department: userFormData.department || (userFormData.position ? POSITION_HIERARCHY_CONFIG[userFormData.position]?.department : undefined),
         profileType: profileName,
         managerType: isManager ? userFormData.managerType : undefined,
         employeeType: isEmployee ? resolvedEmployeeType : undefined,
         managerId: effectiveManagerId,
+        reportsTo: effectiveManagerId,
         reportingManagerId: effectiveManagerId,
         dataScope: userFormData.dataScope,
         modulePermissions: userFormData.modulePermissions,
         actionPermissions: userFormData.actionPermissions,
         isAdmin: isAdminUser,
-        role: isAdminUser ? 'Admin' : isManager ? 'Manager' : 'Employee',
+        role: resolvedRole as any,
         hasTarget: userFormData.monthlyTargets,
         salesPermission: 'All',
         projectPermission: 'All',
         status: 'Active',
-        avatarBg: isAdminUser ? 'bg-indigo-600' : isManager ? 'bg-blue-600' : 'bg-emerald-600',
+        avatarBg: isSuperAdminAttempt ? 'bg-purple-600' : isAdminUser ? 'bg-indigo-600' : isManager ? 'bg-blue-600' : 'bg-emerald-600',
         phone: userFormData.mobileNumber ? `${userFormData.mobileCountry} ${userFormData.mobileNumber}` : '+971 55 485 3829',
         dob: userFormData.dob || '20-05-1995',
         designation:
           userFormData.designation ||
+          userFormData.position ||
           (isManager ? userFormData.managerType : isEmployee ? resolvedEmployeeType : profileName),
         businessOpportunity: userFormData.businessOpportunity || 'All Works',
         salesVisitPermission: userFormData.salesVisitPermission ?? true,
@@ -1179,7 +1333,7 @@ export function UsersTab({
       }
 
       // Sync Admin accounts with Super Admin's crm_admin_accounts_list
-      if (isAdminUser || profileName === 'Admin') {
+      if (isAdminUser || profileName === 'Admin' || userFormData.position === 'COO') {
         try {
           const rawAdmins = localStorage.getItem('crm_admin_accounts_list');
           const adminList: any[] = rawAdmins ? JSON.parse(rawAdmins) : [];
@@ -1215,9 +1369,9 @@ export function UsersTab({
       addUser({
         name: userFormData.name.trim(),
         email: userEmail,
-        role: (isAdminUser ? 'Admin' : isManager ? 'Manager' : 'Employee') as any,
+        role: (isSuperAdminAttempt ? 'Super Admin' : isAdminUser ? 'Admin' : isManager ? 'Manager' : 'Employee') as any,
         phone: `${userFormData.mobileCountry} ${userFormData.mobileNumber}`,
-        department: userFormData.designation || (isAdminUser ? 'Administration' : isManager ? 'Management' : 'Sales'),
+        department: userFormData.department || userFormData.designation || (isAdminUser ? 'Administration' : isManager ? 'Management' : 'Sales'),
         status: 'Active',
       });
     }
@@ -1704,10 +1858,103 @@ export function UsersTab({
 
               {/* Right Column */}
               <div className="space-y-3.5">
+                {/* Organizational Position Selector */}
+                <div className="bg-slate-50 border border-slate-200 rounded p-2.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Organizational Position <span className="text-red-500">*</span>
+                    </label>
+                    <span className="text-[10px] text-slate-500">Hierarchy Structure</span>
+                  </div>
+                  <select
+                    value={userFormData.position}
+                    onChange={(e) => {
+                      const pos = e.target.value;
+                      const config = POSITION_HIERARCHY_CONFIG[pos];
+                      if (config) {
+                        const defaults = resolveDefaultPermissions(
+                          config.crmRole,
+                          config.crmRole.toLowerCase() === 'manager' ? 'manager' : config.crmRole.toLowerCase() === 'employee' ? 'employee' : undefined,
+                          pos
+                        );
+                        setUserFormData((prev) => ({
+                          ...prev,
+                          position: pos,
+                          profile: config.crmRole,
+                          department: config.department,
+                          designation: pos,
+                          managerType: config.crmRole === 'Manager' ? pos : prev.managerType,
+                          employeeType: config.crmRole === 'Employee' ? pos : prev.employeeType,
+                          assignedManagerId: pos === 'CEO' ? '' : prev.assignedManagerId,
+                          dataScope: defaults.dataScope,
+                          modulePermissions: defaults.modulePermissions,
+                          actionPermissions: defaults.actionPermissions,
+                        }));
+                      } else {
+                        setUserFormData((prev) => ({
+                          ...prev,
+                          position: pos,
+                        }));
+                      }
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-sky-500 cursor-pointer shadow-2xs"
+                  >
+                    <option value="">-- Select Organizational Position --</option>
+                    {availablePositionsForSession.map((pos) => {
+                      const cfg = POSITION_HIERARCHY_CONFIG[pos];
+                      return (
+                        <option key={pos} value={pos}>
+                          {pos} ({cfg ? `${cfg.crmRole} • ${cfg.department}` : ''})
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  {userFormData.position && POSITION_HIERARCHY_CONFIG[userFormData.position] && (
+                    <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-600 flex-wrap">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">
+                        Role: {POSITION_HIERARCHY_CONFIG[userFormData.position].crmRole}
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">
+                        Dept: {POSITION_HIERARCHY_CONFIG[userFormData.position].department}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Reports To Field */}
+                  <div className="pt-1.5 border-t border-slate-200/60">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Reports To / Manager <span className="text-red-500">*</span>
+                    </label>
+                    {userFormData.position === 'CEO' ? (
+                      <div className="w-full bg-slate-100 border border-slate-200 rounded px-3 py-1.5 text-xs text-slate-500 font-medium select-none">
+                        None (Top Level Executive)
+                      </div>
+                    ) : isManagerSession ? (
+                      <div className="w-full bg-slate-100 border border-slate-200 rounded px-3 py-1.5 text-xs text-slate-700 font-medium select-none">
+                        {loggedInUser?.name || 'You'} ({loggedInUser?.position || loggedInUser?.designation || loggedInUser?.managerType || 'Manager'})
+                      </div>
+                    ) : (
+                      <select
+                        value={userFormData.assignedManagerId}
+                        onChange={(e) => setUserFormData({ ...userFormData, assignedManagerId: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500 cursor-pointer"
+                      >
+                        <option value="">-- Select Reporting Manager --</option>
+                        {eligibleReportsToUsers.map((mgr) => (
+                          <option key={mgr.id} value={mgr.id}>
+                            {mgr.name} ({mgr.position}) — {mgr.email}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                </div>
+
                 <div className="relative">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-medium text-slate-700">
-                      Profile <span className="text-red-500">*</span>
+                      CRM Profile <span className="text-red-500">*</span>
                     </label>
                     <button
                       type="button"
@@ -2641,7 +2888,10 @@ export function UsersTab({
                   <div className="grid grid-cols-3 gap-2 py-1 items-center">
                     <span className="text-slate-500 font-medium">Reporting Manager</span>
                     <span className="col-span-2 font-semibold text-slate-800 text-xs">
-                      {activeViewUser.managerId || activeViewUser.reportingManagerId || 'manager@gmail.com'}
+                      {resolveManagerLabel(
+                        activeViewUser.managerId || activeViewUser.reportsTo || activeViewUser.reportingManagerId,
+                        activeViewUser.position
+                      )}
                     </span>
                   </div>
 
@@ -2748,64 +2998,7 @@ export function UsersTab({
             <button
               type="button"
               onClick={() => {
-                setUserFormData({
-                  name: '',
-                  email: '',
-                  username: '',
-                  password: '',
-                  showPassword: false,
-                  mobileCountry: '+971',
-                  mobileNumber: '',
-                  dob: '',
-                  profile: '',
-                  managerType: 'Sales Manager',
-                  employeeType: 'Sales Employee',
-                  assignedManagerId: '',
-                  businessOpportunity: 'None',
-                  businessOpportunityAll: false,
-                  designation: '',
-                  signatureImage: null,
-                  avatarImage: null,
-                  loginPermission: 'Web & Mobile',
-                  salesVisitPermission: false,
-                  store: 'None',
-                  storeAll: false,
-                  isWorker: false,
-                  monthlyTargets: false,
-                  dataScope: 'team',
-                  modulePermissions: {
-                    dashboard: true,
-                    tasks: true,
-                    leads: true,
-                    customers: true,
-                    sales: true,
-                    invoices: true,
-                    purchase: false,
-                    manufacturing: false,
-                    service: false,
-                    materials: false,
-                    timesheet: false,
-                    marketing: false,
-                    whatsapp: false,
-                    financials: false,
-                    reports: true,
-                    fileManager: true,
-                    users: false,
-                    settings: false,
-                  },
-                  actionPermissions: {
-                    canView: true,
-                    canCreate: true,
-                    canEdit: true,
-                    canDelete: false,
-                    canExport: true,
-                    canPrint: true,
-                    canApprove: false,
-                    canImport: false,
-                    canReassign: false,
-                    canViewFinancials: false,
-                  },
-                });
+                resetUserForm();
                 setIsAddUserModalOpen(true);
               }}
               className="inline-flex items-center gap-1 px-3 py-1 rounded bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
@@ -2879,10 +3072,10 @@ export function UsersTab({
                   <th className="py-2.5 px-3 text-center w-12">SL.No</th>
                   <th className="py-2.5 px-4 min-w-[140px]">Name</th>
                   <th className="py-2.5 px-4 min-w-[160px]">Email ID</th>
-                  <th className="py-2.5 px-4 min-w-[160px]">Username</th>
-                  <th className="py-2.5 px-3 text-center min-w-[110px]">Profile Type</th>
-                  <th className="py-2.5 px-3 text-center min-w-[100px]">Login Permission</th>
-                  <th className="py-2.5 px-3 text-center min-w-[90px]">Status</th>
+                  <th className="py-2.5 px-3 text-center min-w-[120px]">Position / Role</th>
+                  <th className="py-2.5 px-3 text-center min-w-[100px]">Department</th>
+                  <th className="py-2.5 px-3 text-center min-w-[120px]">Reports To</th>
+                  <th className="py-2.5 px-3 text-center min-w-[80px]">Status</th>
                   <th className="py-2.5 px-3 text-center w-16">Actions</th>
                 </tr>
               </thead>
@@ -2901,13 +3094,20 @@ export function UsersTab({
                       <td className="py-3 px-3 text-center font-bold text-slate-800">{idx + 1}</td>
                       <td className="py-3 px-4 font-bold text-slate-900">{u.name}</td>
                       <td className="py-3 px-4 text-slate-700">{u.email}</td>
-                      <td className="py-3 px-4 text-slate-600 font-mono text-[11px]">{u.username}</td>
                       <td className="py-3 px-3 text-center">
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">
-                          {u.managerType || u.employeeType || u.profileType}
+                          {u.position || u.managerType || u.employeeType || u.profileType}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-center text-slate-600">{u.loginPermission || 'Web & Mobile'}</td>
+                      <td className="py-3 px-3 text-center text-slate-700 font-medium text-[11px]">
+                        {u.department || (u.position && POSITION_HIERARCHY_CONFIG[u.position]?.department) || 'Sales'}
+                      </td>
+                      <td className="py-3 px-3 text-center text-slate-600 text-[11px]">
+                        {resolveManagerLabel(
+                          u.reportsTo || u.managerId || u.reportingManagerId,
+                          u.position
+                        )}
+                      </td>
                       <td className="py-3 px-3 text-center">
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">
                           {u.status}

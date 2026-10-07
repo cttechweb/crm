@@ -86,7 +86,7 @@ export function resolveUserDepartment(user?: UserContext | null): DepartmentType
 
   if (raw.includes('market') || raw.includes('afsal') || raw.includes('arun') || raw.includes('shameem')) return 'marketing';
   if (raw.includes('sale') || raw.includes('shibil') || raw.includes('shaheer') || raw.includes('adhil')) return 'sales';
-  if (raw.includes('purch') || raw.includes('procure')) return 'purchase';
+  if (raw.includes('purch') || raw.includes('procure') || raw.includes('rashid') || raw.includes('faisal')) return 'purchase';
   if (raw.includes('operat') || raw.includes('service') || raw.includes('field')) return 'operations';
   if (raw.includes('admin')) return 'administration';
   if (raw.includes('super') || raw.includes('execut')) return 'executive';

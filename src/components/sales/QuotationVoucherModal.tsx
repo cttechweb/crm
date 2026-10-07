@@ -72,20 +72,20 @@ export function QuotationVoucherModal({
   };
 
   // Table items mapping
-  const rawItems = quotation.items;
+  const rawItems = quotation.items || (quotation as any).lineItems || (quotation as any).products || (quotation as any).enquiryItems;
   const tableItems = Array.isArray(rawItems) && rawItems.length > 0
     ? rawItems.map((item, idx) => {
-      const q = Number(item.quantity) || 1;
-      const p = Number(item.unitPrice) || (qAmt / (rawItems.length * q));
-      const t = Number(item.totalAmount || item.total || item.lineTotal) || (q * p);
+      const q = Number((item as any).quantity || (item as any).qty) || 1;
+      const p = Number((item as any).unitPrice || (item as any).price) || (qAmt / (rawItems.length * q));
+      const t = Number((item as any).totalAmount || (item as any).total || (item as any).lineTotal) || (q * p);
       const displayPrice = isUSD ? p / 3.6725 : p;
       const displayTotal = isUSD ? t / 3.6725 : t;
       return {
         sl: idx + 1,
-        code: item.itemCode || item.sku || (idx === 0 ? 'CT85F4' : 'CT100F4'),
-        description: item.productName || item.description || item.name || 'WATER COOLER 4 TAP 85 USG COOLTECH CT85F4',
-        unit: item.unit || 'Each',
-        brand: (item as any).brand || 'COOLTECH',
+        code: (item as any).itemCode || (item as any).sku || (item as any).code || '',
+        description: (item as any).productName || (item as any).description || (item as any).name || (quotation as any).opportunityTitle || quotation.subject || '',
+        unit: (item as any).unit || 'Each',
+        brand: (item as any).brand || '',
         qty: q,
         price: displayPrice,
         total: displayTotal,
@@ -94,35 +94,27 @@ export function QuotationVoucherModal({
     : [
       {
         sl: 1,
-        code: 'CT85F4',
-        description: 'WATER COOLER 4 TAP 85 USG COOLTECH CT85F4',
-        unit: 'Each',
-        brand: 'COOLTECH',
-        qty: 10,
-        price: isUSD ? 1650 / 3.6725 : 1650,
-        total: isUSD ? 16500 / 3.6725 : 16500,
-      },
-      {
-        sl: 2,
-        code: 'CT100F4',
-        description: 'WATER COOLER 4 TAP 100 USG COOLTECH CT100F4',
-        unit: 'Each',
-        brand: 'COOLTECH',
-        qty: 10,
-        price: isUSD ? 2200 / 3.6725 : 2200,
-        total: isUSD ? 22000 / 3.6725 : 22000,
+        code: (quotation as any).itemCode || (quotation as any).code || '',
+        description: (quotation as any).opportunityTitle || quotation.subject || (quotation as any).title || '',
+        unit: (quotation as any).unit || 'Each',
+        brand: (quotation as any).brand || '',
+        qty: 1,
+        price: displayAmt,
+        total: displayAmt,
       },
     ];
 
   const totalCols = 5 + (showQty ? 1 : 0) + (showPrice ? 1 : 0) + (showTotal ? 1 : 0);
   const summaryColSpan = Math.max(1, totalCols - (showTotal ? 1 : 0));
 
-  const quoteNumber = quotation.quotationNumber || 'CTSQ#4366';
-  const customerName = quotation.customer || 'SMART ALLIANCE COMMERCIAL BROKERAGE L.L.C';
-  const contactPerson = quotation.contactPerson || 'Mr. Malik';
-  const contactPhone = quotation.phone || '+97150 123 9649';
-  const quoteDate = quotation.quoteDate || quotation.createdDate || '06-10-2026';
-  const preparedBy = quotation.assignedTo || quotation.createdBy || quotation.owner || 'MUHAMMED AHSAN P V';
+  const quoteNumber = quotation.quotationNumber || '';
+  const customerName = quotation.customer || '';
+  const contactPerson = quotation.contactPerson || (quotation as any).attn || '';
+  const contactPhone = quotation.phone || (quotation as any).mobile || '';
+  const quoteDate = quotation.quoteDate || quotation.createdDate || (quotation as any).date || '';
+  const preparedBy = quotation.assignedTo || quotation.createdBy || quotation.owner || (quotation as any).preparedBy || '';
+  const preparedByPhone = (quotation as any).preparedByMobile || (quotation as any).ownerPhone || '';
+  const liveTerms = (quotation as any).termsConditions || quotation.customerNotes || quotation.notes || (quotation as any).termsAndConditions || (quotation as any).terms || '';
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-[9999] flex flex-col justify-start items-stretch">
@@ -263,12 +255,16 @@ export function QuotationVoucherModal({
                 <p className="font-bold text-slate-900 text-xs uppercase pt-0.5">
                   {customerName}
                 </p>
-                <p className="text-[11px] text-slate-700">
-                  <span className="font-medium text-slate-600">Attn :</span> {contactPerson}
-                </p>
-                <p className="text-[11px] text-slate-700">
-                  <span className="font-medium text-slate-600">Mobile :</span> {contactPhone}
-                </p>
+                {contactPerson ? (
+                  <p className="text-[11px] text-slate-700">
+                    <span className="font-medium text-slate-600">Attn :</span> {contactPerson}
+                  </p>
+                ) : null}
+                {contactPhone ? (
+                  <p className="text-[11px] text-slate-700">
+                    <span className="font-medium text-slate-600">Mobile :</span> {contactPhone}
+                  </p>
+                ) : null}
               </div>
 
               {/* Right: Quotation Details */}
@@ -279,7 +275,9 @@ export function QuotationVoucherModal({
                 <div className="space-y-0.5 pt-0.5">
                   <p><span className="font-medium text-slate-600">Quotation Number :</span> <span className="font-bold">{quoteNumber}</span></p>
                   <p><span className="font-medium text-slate-600">Quotation Date :</span> <span className="font-bold">{quoteDate}</span></p>
-                  <p><span className="font-medium text-slate-600">Prepared By :</span> <span className="font-bold">{preparedBy}</span></p>
+                  {preparedBy ? (
+                    <p><span className="font-medium text-slate-600">Prepared By :</span> <span className="font-bold">{preparedBy}</span></p>
+                  ) : null}
                   <p><span className="font-medium text-slate-600">No. of Pages :</span> 1</p>
                 </div>
               </div>
@@ -313,12 +311,12 @@ export function QuotationVoucherModal({
                       {showQty && <td className="py-3 px-2.5 text-center font-medium">{item.qty}</td>}
                       {showPrice && (
                         <td className="py-3 px-2.5 text-right font-medium">
-                          {item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {(Number(item.price) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       )}
                       {showTotal && (
                         <td className="py-3 px-2.5 text-right font-medium">
-                          {item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {(Number(item.total) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       )}
                     </tr>
@@ -362,39 +360,25 @@ export function QuotationVoucherModal({
             </div>
 
             {/* Terms & Conditions Section */}
-            <div className="pt-2 space-y-1.5 text-[11px] text-slate-800">
-              <div className="border-l-2 border-[#0088CC] pl-1.5 font-bold text-[#0088CC] text-xs mb-2">
-                Terms &amp; Conditions
-              </div>
-              {quotation.customerNotes || quotation.notes ? (
+            {liveTerms && liveTerms.trim() ? (
+              <div className="pt-2 space-y-1.5 text-[11px] text-slate-800">
+                <div className="border-l-2 border-[#0088CC] pl-1.5 font-bold text-[#0088CC] text-xs mb-2">
+                  Terms &amp; Conditions
+                </div>
                 <div className="space-y-1 text-slate-800 font-medium whitespace-pre-line">
-                  {quotation.customerNotes || quotation.notes}
+                  {liveTerms}
                 </div>
-              ) : (
-                <div className="space-y-1 text-slate-800 font-medium">
-                  <p><span className="font-bold">PRICE</span> : In {currencyLabel}, DDP</p>
-                  <p><span className="font-bold">PAYMENT TERMS</span>: {quotation.paymentTerms || 'CASH/CDC/Bank Transfer'}</p>
-                  <p><span className="font-bold">DELIVERY</span> : {quotation.deliveryTerms || '2-3 DAYS ARO, SUBJECT TO PRIOR SALE'}</p>
-                  <p><span className="font-bold">VALIDITY</span> : {quotation.validityTerms || '7 Days'}</p>
-                  <p className="font-bold pt-1">WARRANTY FOR WATER COOLER</p>
-                  <p>1. {quotation.warranty || quotation.warrantyTerms || 'One Year for unit & 5 Years for compressor as per the manufacturer\'s terms.'}</p>
-                  <p>2. Warranty limited for manufacturing defect only</p>
-                </div>
-              )}
-
-              <div className="pt-3 space-y-2 text-[10.5px] text-slate-700 leading-relaxed">
-                <p>We hope we are in line with your requirement &amp; expecting a purchase order from your side to proceed further.</p>
-                <p>Please feel free to call me or mail me for any clarification that you may deem required in the proposal.</p>
               </div>
+            ) : null}
 
-              {/* Sign-off */}
+            {/* Sign-off */}
+            {preparedBy ? (
               <div className="pt-4 space-y-0.5 text-[11px]">
                 <p className="font-bold text-slate-900">For COOL TECHNOLOGIES</p>
                 <p className="font-bold text-slate-900 pt-1">{preparedBy}</p>
-                <p className="text-slate-600 text-[10px]">Sales Engineer</p>
-                <p className="text-slate-600 text-[10px]">Phone: +971509980095</p>
+                {preparedByPhone ? <p className="text-slate-600 text-[10px]">Phone: {preparedByPhone}</p> : null}
               </div>
-            </div>
+            ) : null}
           </div>
 
           {/* Footer */}

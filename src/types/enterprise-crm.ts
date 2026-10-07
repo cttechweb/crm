@@ -275,13 +275,30 @@ export interface CrmCampaign {
   listing?: boolean;
 }
 
+export type UserPosition =
+  | 'CEO'
+  | 'COO'
+  | 'CSO'
+  | 'CPO'
+  | 'Sales Manager'
+  | 'Sales Employee'
+  | 'Purchase Manager'
+  | 'Purchase Employee'
+  | string;
+
+export type UserDepartment = 'Executive' | 'Management' | 'Sales' | 'Purchase' | string;
+
 export interface CrmUser {
   id: string;
   name: string;
   email: string;
   role: UserRole;
+  position?: UserPosition;
+  department: UserDepartment;
+  managerId?: string | null;
+  reportsTo?: string | null;
+  teamId?: string | null;
   phone: string;
-  department: string;
   designation?: string;
   status: 'Active' | 'Inactive';
   lastLogin: string;
@@ -450,8 +467,18 @@ export interface CrmProformaInvoice {
   totalAmount: number;
   status: string;
   preparedBy?: string;
+  preparedByMobile?: string;
   owner?: string;
   ownerAvatar?: string;
+  items?: CrmInvoiceLineItem[];
+  adjustment?: number;
+  remarks?: string;
+  phone?: string;
+  location?: string;
+  attention?: string;
+  trnNumber?: string;
+  lpoNumber?: string;
+  lpoDate?: string;
 }
 
 export interface CrmInvoiceLineItem {

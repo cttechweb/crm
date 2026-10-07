@@ -6,7 +6,10 @@ export interface CezconUserItem {
   password?: string;
   firebaseUid?: string;
   role?: string;
+  position?: string;
   department?: string;
+  reportsTo?: string | number | null;
+  teamId?: string | null;
   branch?: string;
   phone?: string;
   dob?: string;

@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Info,
   BookOpen,
+  Contact,
   SlidersHorizontal,
   X,
   RotateCcw,
@@ -159,6 +160,26 @@ function SalesPipelineInner() {
   const [proformas, setProformas] = useState<CrmProformaInvoice[]>(mockProformaInvoices);
   const [proformaSearch, setProformaSearch] = useState<string>('');
   const [isCreateProformaModalOpen, setIsCreateProformaModalOpen] = useState(false);
+  const [openProformaActionId, setOpenProformaActionId] = useState<string | null>(null);
+  const [viewingProforma, setViewingProforma] = useState<CrmProformaInvoice | null>(null);
+  const [showProformaAlertBanner, setShowProformaAlertBanner] = useState<boolean>(true);
+  const [proformaFormData, setProformaFormData] = useState({
+    customer: '',
+    quotation: '',
+    opportunityOrder: '',
+    proformaNumber: 'CTPI#1001',
+    invoiceDate: new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+    lpoDate: '',
+    lpoNumber: '',
+    invoiceType: 'File Upload',
+    vatType: 'With VAT',
+    amount: '',
+    discount: '',
+    adjustment: '',
+    remarks: '',
+    vatRate: '5',
+    document: null as File | null,
+  });
 
   // Invoice State
   const [invoiceSubTab, setInvoiceSubTab] = useState<'invoice' | 'followup'>('invoice');
@@ -196,6 +217,7 @@ function SalesPipelineInner() {
   const [deleteInvoiceConfirm, setDeleteInvoiceConfirm] = useState<CrmInvoice | null>(null);
 
   const [isInvoicePrintFormatDropdownOpen, setIsInvoicePrintFormatDropdownOpen] = useState(false);
+  const [isProformaPrintFormatDropdownOpen, setIsProformaPrintFormatDropdownOpen] = useState(false);
   const [isPrintInvoiceModalOpen, setIsPrintInvoiceModalOpen] = useState(false);
   const [activePrintInvoice, setActivePrintInvoice] = useState<CrmInvoice | null>(null);
   const [selectedInvoicePrintFormat, setSelectedInvoicePrintFormat] = useState('Print with Quantity');
@@ -218,6 +240,33 @@ function SalesPipelineInner() {
       }
     }
   }, [activeTab, invoiceIdParam, invoices]);
+
+  // Proforma localStorage sync
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('crm_proforma_invoices');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setProformas(parsed);
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && proformas && proformas.length > 0) {
+      try {
+        localStorage.setItem('crm_proforma_invoices', JSON.stringify(proformas));
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [proformas]);
 
   // Open Edit Invoice with 100% Live Data
   const handleOpenEditInvoice = (inv: CrmInvoice) => {
@@ -397,6 +446,7 @@ function SalesPipelineInner() {
   });
 
   // Receipt State
+  const [invoiceLocationDropdownOpen, setInvoiceLocationDropdownOpen] = useState(false);
   const [receipts, setReceipts] = useState<CrmReceipt[]>(mockReceipts);
   const [receiptSearch, setReceiptSearch] = useState<string>('');
   const [isCreateReceiptModalOpen, setIsCreateReceiptModalOpen] = useState(false);
@@ -584,6 +634,22 @@ function SalesPipelineInner() {
     classification: 'Corporate',
     createdBy: 'Super Admin',
   });
+
+  // Location dropdown state for Add Opportunity
+  const UAE_LOCATIONS = [
+    'Abu Dhabi', 'Dubai', 'Sharjah', 'Ajman', 'Umm Al Quwain', 'Ras Al Khaimah', 'Fujairah',
+    'Al Ain', 'Bur Dubai', 'Deira', 'Jumeirah', 'Karama', 'Mirdif', 'Satwa',
+    'Barsha', 'Jebel Ali', 'Dubai Marina', 'Downtown Dubai', 'Business Bay',
+    'DIFC', 'JLT', 'JVC', 'Mussafah', 'Khalifa City', 'Ruwais', 'Madinat Zayed',
+    'Shahama', 'Al Quoz', 'Al Nahda', 'Dip', 'TECOM', 'Silicon Oasis', 'Academic City',
+    'Al Qusais', 'Al Rashidiya', 'Oud Metha', 'Al Barsha', 'Motor City', 'Sports City',
+    'Discovery Gardens', 'International City', 'Al Warqa', 'Umm Suqeim', 'Al Safa',
+    'Palm Jumeirah', 'The Greens', 'The Views', 'Remraam', 'Town Square', 'Dubai South',
+    'Al Majaz', 'Al Nahda (Sharjah)', 'Al Khan', 'Industrial Area', 'Hamriyah', 'Halwan',
+    'Al Jurf', 'Ajman Industrial', 'Al Hamidiyah', 'Al Rashidiya (Ajman)',
+  ];
+  const [oppLocationDropdownOpen, setOppLocationDropdownOpen] = useState(false);
+  const oppLocationRef = useRef<HTMLDivElement>(null);
 
   // Opportunity Number Settings Modal State (Matching Cezcon CRM UI)
   const [isOppNumModalOpen, setIsOppNumModalOpen] = useState(false);
@@ -2563,12 +2629,17 @@ function SalesPipelineInner() {
                       {/* Location */}
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Location</label>
-                        <div className="flex-1 relative">
+                        <div className="flex-1 relative" ref={oppLocationRef}>
                           <input
                             type="text"
                             placeholder="Search location"
                             value={oppFormData.location}
-                            onChange={(e) => setOppFormData({ ...oppFormData, location: e.target.value })}
+                            onChange={(e) => {
+                              setOppFormData({ ...oppFormData, location: e.target.value });
+                              setOppLocationDropdownOpen(true);
+                            }}
+                            onFocus={() => setOppLocationDropdownOpen(true)}
+                            onBlur={() => setTimeout(() => setOppLocationDropdownOpen(false), 150)}
                             className="w-full bg-white border border-slate-300 rounded px-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                           />
                           {oppFormData.location ? (
@@ -2582,6 +2653,28 @@ function SalesPipelineInner() {
                           ) : (
                             <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2 pointer-events-none" />
                           )}
+                          {oppLocationDropdownOpen && (() => {
+                            const filtered = UAE_LOCATIONS.filter((loc) =>
+                              loc.toLowerCase().includes(oppFormData.location.toLowerCase())
+                            );
+                            return filtered.length > 0 ? (
+                              <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white border border-slate-200 rounded shadow-lg max-h-48 overflow-y-auto">
+                                {filtered.map((loc) => (
+                                  <button
+                                    key={loc}
+                                    type="button"
+                                    onMouseDown={() => {
+                                      setOppFormData({ ...oppFormData, location: loc });
+                                      setOppLocationDropdownOpen(false);
+                                    }}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors"
+                                  >
+                                    {loc}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null;
+                          })()}
                         </div>
                       </div>
 
@@ -6675,7 +6768,1148 @@ function SalesPipelineInner() {
       {/* ========================================================================= */}
       {activeTab === 'proforma' && (
         <div className="flex-1 p-3 sm:p-4 space-y-3 w-full font-sans">
-          {/* TOP FILTER CRITERIA CARD */}
+          {viewingProforma ? (
+            /* ========================================================================= */
+            /* VIEW 1: FULL PAGE PROFORMA INVOICE DETAILS (EXACT CEZCON CRM REFERENCE)   */
+            /* ========================================================================= */
+            <div className="space-y-3 font-sans">
+              {/* Top Notification Alert Banner */}
+              <div className="bg-[#EBF3FB] border border-[#BCE8F1] text-[#31708F] px-3.5 py-2.5 rounded-xs flex items-center justify-between text-xs font-semibold shadow-2xs">
+                <div className="flex items-start sm:items-center gap-2.5">
+                  <span className="text-sm shrink-0">🗋</span>
+                  <div className="space-y-0.5">
+                    <div>
+                      PROFORMA INVOICE CREATED BY {viewingProforma.owner?.toUpperCase() || currentUser?.name?.toUpperCase() || 'SYSTEM SUPER ADMIN'} ON MON {viewingProforma.issueDate} 10:24:42 AM
+                    </div>
+                    <div>
+                      PROFORMA INVOICE LAST MODIFIED BY {viewingProforma.owner?.toUpperCase() || currentUser?.name?.toUpperCase() || 'SYSTEM SUPER ADMIN'} ON MON {viewingProforma.issueDate} 10:29:58 AM
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingProforma(null)}
+                  className="w-4 h-4 bg-[#D9534F] hover:bg-[#C9302C] text-white flex items-center justify-center rounded-xs transition cursor-pointer text-[10px] font-bold shrink-0 ml-2"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Main Card */}
+              <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden font-sans">
+                {/* Header */}
+                <div className="flex items-center justify-between px-3.5 py-2 bg-[#FAFAFA] border-b border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-slate-500" />
+                    <h2 className="text-xs font-bold text-slate-800">Proforma Invoice Details</h2>
+                  </div>
+                </div>
+
+                {/* 2-Column Info Grid */}
+                <div className="p-4 sm:p-6 border-b border-slate-200">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-2.5 text-xs text-slate-700">
+                    {/* Left Column */}
+                    <div className="space-y-2.5">
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Owner</span>
+                        <div className="col-span-2 flex items-center gap-2 font-bold text-slate-800 uppercase">
+                          {(() => {
+                            const av = viewingProforma.ownerAvatar || getEmployeePhoto(viewingProforma.owner);
+                            if (av) {
+                              return (
+                                <div className="w-5 h-5 rounded-full overflow-hidden bg-slate-200 shrink-0">
+                                  <img src={av} alt={viewingProforma.owner} className="w-full h-full object-cover" />
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-[#1E293B] to-[#334155] text-white flex items-center justify-center font-bold text-[9px] uppercase shadow-2xs shrink-0">
+                                {(viewingProforma.owner || 'M')[0]}
+                              </div>
+                            );
+                          })()}
+                          <span>{viewingProforma.owner || currentUser?.name || 'System Super Admin'}</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Date</span>
+                        <span className="col-span-2 font-bold text-slate-800">{viewingProforma.issueDate}</span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">LPO Number</span>
+                        <span className="col-span-2 text-slate-800">{(viewingProforma as any).lpoNumber || '—'}</span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Opportunity</span>
+                        <div className="col-span-2 flex items-center gap-1.5">
+                          <span className="text-[#2563EB] font-bold hover:underline cursor-pointer">
+                            {viewingProforma.opportunityTitle || '—'}
+                          </span>
+                          <Info className="w-3.5 h-3.5 text-blue-500 cursor-pointer shrink-0" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Amount</span>
+                        <span className="col-span-2 font-bold text-slate-800">
+                          {viewingProforma.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">VAT (5%)</span>
+                        <span className="col-span-2 text-slate-800">
+                          {viewingProforma.vatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Adjustment</span>
+                        <span className="col-span-2 text-slate-800">
+                          {((viewingProforma as any).adjustment || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Remarks</span>
+                        <span className="col-span-2 text-slate-800">{(viewingProforma as any).remarks || '—'}</span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Prepared By</span>
+                        <span className="col-span-2 font-bold text-slate-800 uppercase">
+                          {(viewingProforma as any).preparedBy || viewingProforma.owner || currentUser?.name || 'System Super Admin'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Prepared by Mobile</span>
+                        <span className="col-span-2 text-slate-800">
+                          {(viewingProforma as any).preparedByMobile || (viewingProforma as any).mobile || (currentUser as any)?.mobile || (currentUser as any)?.phone || '+971 50 123 4567'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="space-y-2.5">
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Invoice Number</span>
+                        <span className="col-span-2 font-bold text-slate-800">{viewingProforma.piNumber || 'PRN-1'}</span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Quotation Number</span>
+                        <span className="col-span-2 text-[#2563EB] font-bold hover:underline cursor-pointer">
+                          {viewingProforma.quotationRef || '—'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">LPO Date</span>
+                        <span className="col-span-2 text-slate-800">{(viewingProforma as any).lpoDate || '—'}</span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Customer Name</span>
+                        <div className="col-span-2 flex items-center gap-1.5">
+                          <span className="text-[#2563EB] font-bold hover:underline cursor-pointer">
+                            {viewingProforma.customer}
+                          </span>
+                          <Info className="w-3.5 h-3.5 text-blue-500 cursor-pointer shrink-0" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Discount</span>
+                        <span className="col-span-2 text-slate-800">
+                          {((viewingProforma as any).discount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Sub Total</span>
+                        <span className="col-span-2 font-bold text-slate-800">
+                          {viewingProforma.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-slate-700 font-medium">Total Amount</span>
+                        <span className="col-span-2 font-bold text-slate-900 text-sm">
+                          {viewingProforma.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Line Items Table */}
+                <div className="overflow-x-auto w-full">
+                  <table className="w-full text-xs text-left border-collapse min-w-[700px]">
+                    <thead>
+                      <tr className="bg-[#F8FAFC] border-b border-slate-200 text-slate-600 font-semibold">
+                        <th className="py-2.5 px-4">Description</th>
+                        <th className="py-2.5 px-4 w-20 text-center">QTY</th>
+                        <th className="py-2.5 px-4 w-32 text-right">Price</th>
+                        <th className="py-2.5 px-4 w-32 text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      {(() => {
+                        const matchedQuote = liveQuotations?.find(
+                          (q) =>
+                            (viewingProforma.quotationRef && (q.quotationNumber === viewingProforma.quotationRef || q.id === viewingProforma.quotationRef)) ||
+                            (viewingProforma.customer && q.customer && q.customer.trim().toLowerCase() === viewingProforma.customer.trim().toLowerCase())
+                        );
+                        const matchedOpp = salesOpportunities?.find(
+                          (o) =>
+                            (viewingProforma.opportunityTitle && (`${o.reference || o.opportunityCode || 'OPP'} / ${o.title}` === viewingProforma.opportunityTitle || viewingProforma.opportunityTitle.includes(o.title))) ||
+                            (viewingProforma.customer && o.customer && o.customer.trim().toLowerCase() === viewingProforma.customer.trim().toLowerCase())
+                        );
+                        const items = (matchedQuote?.items && matchedQuote.items.length > 0)
+                          ? matchedQuote.items.map((it: any, idx: number) => ({
+                              id: it.id || `quote-item-${idx}`,
+                              description: it.description || it.name || it.itemDescription || 'Product Item',
+                              code: it.code || it.itemCode || 'CT-PROD',
+                              unit: it.unit || 'Each',
+                              brand: it.brand || 'SUPER GENERAL',
+                              qty: Number(it.qty || it.quantity) || 1,
+                              price: Number(it.price || it.rate || it.unitPrice) || (viewingProforma.amount / (Number(it.qty || it.quantity) || 1)),
+                              total: (Number(it.qty || it.quantity) || 1) * (Number(it.price || it.rate || it.unitPrice) || (viewingProforma.amount / (Number(it.qty || it.quantity) || 1))),
+                            }))
+                          : ((matchedOpp as any)?.items && (matchedOpp as any).items.length > 0)
+                          ? (matchedOpp as any).items.map((it: any, idx: number) => ({
+                              id: it.id || `opp-item-${idx}`,
+                              description: it.description || it.name || it.itemDescription || 'Product Item',
+                              code: it.code || it.itemCode || 'CT-PROD',
+                              unit: it.unit || 'Each',
+                              brand: it.brand || 'SUPER GENERAL',
+                              qty: Number(it.qty || it.quantity) || 1,
+                              price: Number(it.price || it.rate || it.unitPrice) || (viewingProforma.amount / (Number(it.qty || it.quantity) || 1)),
+                              total: (Number(it.qty || it.quantity) || 1) * (Number(it.price || it.rate || it.unitPrice) || (viewingProforma.amount / (Number(it.qty || it.quantity) || 1))),
+                            }))
+                          : [
+                              {
+                                id: `proforma-item-${viewingProforma.id}`,
+                                description: viewingProforma.opportunityTitle?.split('/')[1]?.trim() || viewingProforma.opportunityTitle || 'Sales Item',
+                                code: (viewingProforma as any).itemCode || 'CT-PROD',
+                                unit: 'Each',
+                                brand: 'SUPER GENERAL',
+                                qty: 1,
+                                price: viewingProforma.amount,
+                                total: viewingProforma.amount,
+                              }
+                            ];
+
+                        return (
+                          <>
+                            {items.map((it: any) => (
+                              <tr key={it.id} className="hover:bg-slate-50/50">
+                                <td className="py-3 px-4">
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-12 h-12 bg-slate-100 border border-slate-200 rounded flex flex-col items-center justify-center text-[8px] text-slate-400 font-semibold uppercase text-center p-1 shrink-0">
+                                      <Package className="w-4 h-4 text-slate-400 mb-0.5" />
+                                      <span>No Image</span>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <div className="font-semibold text-slate-800 whitespace-pre-line leading-relaxed">
+                                        {it.description}
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 flex flex-wrap gap-x-3">
+                                        {it.code && <span>Code: {it.code}</span>}
+                                        {it.unit && <span>Unit: {it.unit}</span>}
+                                        {it.brand && <span>Brand: {it.brand}</span>}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4 text-center font-medium text-slate-800">{it.qty}</td>
+                                <td className="py-3 px-4 text-right font-medium text-slate-800">
+                                  {it.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td className="py-3 px-4 text-right font-semibold text-slate-900">
+                                  {it.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                              </tr>
+                            ))}
+
+                            {/* Total Quantity Footer Row */}
+                            <tr className="bg-slate-50/50 border-t border-slate-200 font-bold text-slate-700">
+                              <td className="py-2.5 px-4 text-right">Total Quantity:</td>
+                              <td className="py-2.5 px-4 text-center">
+                                {items.reduce((acc: number, curr: any) => acc + (curr.qty || 0), 0)}
+                              </td>
+                              <td colSpan={2}></td>
+                            </tr>
+                          </>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Financial Summary Box */}
+                <div className="p-4 bg-white border-t border-slate-200 flex justify-end">
+                  <div className="w-full sm:w-80 space-y-1.5 text-xs">
+                    <div className="flex justify-between py-1 border-b border-slate-100 text-slate-600">
+                      <span className="font-medium">Amount</span>
+                      <span className="font-bold text-slate-800">
+                        {viewingProforma.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100 text-slate-600">
+                      <span className="font-medium">VAT (5%)</span>
+                      <span className="font-medium text-slate-700">
+                        {viewingProforma.vatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100 text-slate-600">
+                      <span className="font-medium">Sub Total</span>
+                      <span className="font-bold text-slate-800">
+                        {viewingProforma.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1 border-b border-slate-100 text-slate-600">
+                      <span className="font-medium">Adjustment</span>
+                      <span className="text-slate-700">
+                        {((viewingProforma as any).adjustment || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-1.5 border-t-2 border-slate-300 font-bold text-slate-900 text-sm">
+                      <span>Total Amount</span>
+                      <span>
+                        {viewingProforma.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons Bar */}
+                <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col items-end gap-2.5">
+                  <div className="flex flex-wrap items-center justify-end gap-1.5 w-full">
+                    {/* Print Format Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsProformaPrintFormatDropdownOpen((prev) => !prev);
+                        }}
+                        className="px-3 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold flex items-center gap-1 shadow-2xs cursor-pointer transition"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Print Format</span>
+                        <span className="text-[10px]">▾</span>
+                      </button>
+
+                      {isProformaPrintFormatDropdownOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-[100]"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsProformaPrintFormatDropdownOpen(false);
+                            }}
+                          />
+                          <div
+                            className="absolute left-0 bottom-full mb-1.5 bg-white border border-slate-300 rounded shadow-2xl py-1.5 z-[101] min-w-[300px]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {[
+                              'Print with Quantity',
+                              'Print without Quantity',
+                              'Print without Item Price',
+                              'Print without Quantity & Item Price',
+                              'Print without Total Price',
+                              'Print without Unit Price & Total Price',
+                              'Print without Unit Price & with Total Price',
+                            ].map((fmt) => (
+                              <button
+                                key={fmt}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsProformaPrintFormatDropdownOpen(false);
+                                  const proformaAsInv: CrmInvoice = {
+                                    id: viewingProforma.id,
+                                    slNo: viewingProforma.slNo || 1,
+                                    invoiceNumber: viewingProforma.piNumber,
+                                    customer: viewingProforma.customer,
+                                    issueDate: viewingProforma.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+                                    dueDate: viewingProforma.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+                                    lpoNumber: viewingProforma.lpoNumber || '',
+                                    lpoDate: viewingProforma.lpoDate || '',
+                                    amount: viewingProforma.amount,
+                                    subtotal: viewingProforma.amount,
+                                    vatAmount: viewingProforma.vatAmount,
+                                    totalAmount: viewingProforma.totalAmount,
+                                    adjustment: viewingProforma.adjustment || 0,
+                                    vatType: 'With VAT',
+                                    status: viewingProforma.status || 'Pending',
+                                    items: viewingProforma.items && viewingProforma.items.length > 0
+                                      ? viewingProforma.items
+                                      : [
+                                          {
+                                            id: 'item-1',
+                                            description: 'AC',
+                                            code: 'CT-PROD',
+                                            unit: 'Each',
+                                            brand: 'SUPER GENERAL',
+                                            qty: 1,
+                                            price: viewingProforma.amount || 9448,
+                                          },
+                                        ],
+                                    owner: viewingProforma.preparedBy || viewingProforma.owner || '',
+                                    phone: viewingProforma.preparedByMobile || viewingProforma.phone || '',
+                                    location: viewingProforma.location || '',
+                                    opportunityOrderRef: viewingProforma.quotationRef || viewingProforma.opportunityTitle || '',
+                                    paidAmount: 0,
+                                    balanceAmount: viewingProforma.totalAmount,
+                                    ...({ isProforma: true } as any),
+                                  };
+                                  handleOpenPrintInvoice(proformaAsInv, fmt);
+                                }}
+                                className="w-full text-left px-4 py-2 text-xs text-slate-800 hover:bg-slate-100 flex items-center gap-2.5 cursor-pointer transition-colors"
+                              >
+                                <span className="text-slate-900 font-bold text-xs">•</span>
+                                <span className="font-normal text-slate-800">{fmt}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const proformaAsInv: CrmInvoice = {
+                          id: viewingProforma.id,
+                          slNo: viewingProforma.slNo || 1,
+                          invoiceNumber: viewingProforma.piNumber,
+                          customer: viewingProforma.customer,
+                          issueDate: viewingProforma.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+                          dueDate: viewingProforma.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+                          lpoNumber: viewingProforma.lpoNumber || '',
+                          lpoDate: viewingProforma.lpoDate || '',
+                          amount: viewingProforma.amount,
+                          subtotal: viewingProforma.amount,
+                          vatAmount: viewingProforma.vatAmount,
+                          totalAmount: viewingProforma.totalAmount,
+                          adjustment: viewingProforma.adjustment || 0,
+                          vatType: 'With VAT',
+                          status: viewingProforma.status || 'Pending',
+                          items: viewingProforma.items && viewingProforma.items.length > 0
+                            ? viewingProforma.items
+                            : [
+                                {
+                                  id: 'item-1',
+                                  description: 'AC',
+                                  code: 'CT-PROD',
+                                  unit: 'Each',
+                                  brand: 'SUPER GENERAL',
+                                  qty: 1,
+                                  price: viewingProforma.amount || 9448,
+                                },
+                              ],
+                          owner: viewingProforma.preparedBy || viewingProforma.owner || '',
+                          phone: viewingProforma.preparedByMobile || viewingProforma.phone || '',
+                          location: viewingProforma.location || '',
+                          opportunityOrderRef: viewingProforma.quotationRef || viewingProforma.opportunityTitle || '',
+                          paidAmount: 0,
+                          balanceAmount: viewingProforma.totalAmount,
+                          ...({ isProforma: true } as any),
+                        };
+                        handleOpenPrintInvoice(proformaAsInv, 'Print in USD');
+                      }}
+                      className="px-3 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold flex items-center gap-1 shadow-2xs cursor-pointer transition"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Print In USD</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const proformaAsInv: CrmInvoice = {
+                          id: viewingProforma.id,
+                          slNo: viewingProforma.slNo || 1,
+                          invoiceNumber: viewingProforma.piNumber,
+                          customer: viewingProforma.customer,
+                          issueDate: viewingProforma.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+                          dueDate: viewingProforma.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+                          lpoNumber: viewingProforma.lpoNumber || '',
+                          lpoDate: viewingProforma.lpoDate || '',
+                          amount: viewingProforma.amount,
+                          subtotal: viewingProforma.amount,
+                          vatAmount: viewingProforma.vatAmount,
+                          totalAmount: viewingProforma.totalAmount,
+                          adjustment: viewingProforma.adjustment || 0,
+                          vatType: 'With VAT',
+                          status: viewingProforma.status || 'Pending',
+                          items: viewingProforma.items && viewingProforma.items.length > 0
+                            ? viewingProforma.items
+                            : [
+                                {
+                                  id: 'item-1',
+                                  description: 'AC',
+                                  code: 'CT-PROD',
+                                  unit: 'Each',
+                                  brand: 'SUPER GENERAL',
+                                  qty: 1,
+                                  price: viewingProforma.amount || 9448,
+                                },
+                              ],
+                          owner: viewingProforma.preparedBy || viewingProforma.owner || '',
+                          phone: viewingProforma.preparedByMobile || viewingProforma.phone || '',
+                          location: viewingProforma.location || '',
+                          opportunityOrderRef: viewingProforma.quotationRef || viewingProforma.opportunityTitle || '',
+                          paidAmount: 0,
+                          balanceAmount: viewingProforma.totalAmount,
+                          ...({ isProforma: true } as any),
+                        };
+                        handleOpenPrintInvoice(proformaAsInv, 'Print with Quantity');
+                      }}
+                      className="px-3 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold flex items-center gap-1 shadow-2xs cursor-pointer transition"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Print</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        alert(`Generating Tax Invoice from ${viewingProforma.piNumber}...`);
+                      }}
+                      className="px-3 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold flex items-center gap-1 shadow-2xs cursor-pointer transition"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span>Generate Invoice</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const p = viewingProforma;
+                        setViewingProforma(null);
+                        setProformaFormData({
+                          customer: p.customer || '',
+                          quotation: p.quotationRef || '',
+                          opportunityOrder: p.opportunityTitle || '',
+                          proformaNumber: p.piNumber,
+                          invoiceDate: p.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+                          lpoDate: (p as any).lpoDate || '',
+                          lpoNumber: (p as any).lpoNumber || '',
+                          invoiceType: (p as any).invoiceType || 'File Upload',
+                          vatType: p.vatAmount > 0 ? 'With VAT' : 'Without VAT',
+                          amount: String(p.amount || ''),
+                          discount: String((p as any).discount || ''),
+                          adjustment: String((p as any).adjustment || ''),
+                          remarks: (p as any).remarks || '',
+                          vatRate: '5',
+                          document: null,
+                        });
+                        setIsCreateProformaModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-[#337AB7] hover:bg-[#286090] text-white rounded text-xs font-semibold flex items-center gap-1 shadow-2xs cursor-pointer transition"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>Edit</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`Are you sure you want to delete proforma invoice ${viewingProforma.piNumber}?`)) {
+                          setProformas((prev) => {
+                            const updated = prev.filter((item) => item.id !== viewingProforma.id);
+                            if (typeof window !== 'undefined') {
+                              localStorage.setItem('crm_proforma_invoices', JSON.stringify(updated));
+                            }
+                            return updated;
+                          });
+                          setViewingProforma(null);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-[#D9534F] hover:bg-[#C9302C] text-white rounded text-xs font-semibold flex items-center gap-1 shadow-2xs cursor-pointer transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </button>
+                  </div>
+
+                  <div className="flex justify-end w-full pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setViewingProforma(null)}
+                      className="px-3.5 py-1.5 border border-slate-300 hover:bg-slate-100 bg-white text-slate-700 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Back</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : isCreateProformaModalOpen ? (
+            /* ================================================================= */
+            /* ADD PROFORMA INVOICE FORM (Matching Cezcon CRM Reference UI)      */
+            /* ================================================================= */
+            <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden font-sans">
+              {/* Header */}
+              <div className="flex items-center justify-between px-3.5 py-2 bg-[#FAFAFA] border-b border-slate-200">
+                <div className="flex items-center gap-2">
+                  <ReceiptIcon className="w-4 h-4 text-slate-500" />
+                  <h2 className="text-xs font-bold text-slate-800">Add Proforma Invoice</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateProformaModalOpen(false)}
+                  className="w-5 h-5 bg-[#D9534F] hover:bg-[#C9302C] text-white flex items-center justify-center rounded-xs transition cursor-pointer"
+                  title="Close"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const parsedAmount = parseFloat(proformaFormData.amount) || 0;
+                  const parsedDiscount = parseFloat(proformaFormData.discount) || 0;
+                  const parsedAdjustment = parseFloat(proformaFormData.adjustment) || 0;
+                  const net = Math.max(0, parsedAmount - parsedDiscount);
+                  const vatRateNum = proformaFormData.vatType === 'With VAT' ? (parseFloat(proformaFormData.vatRate) || 0) : 0;
+                  const vatAmt = (net * vatRateNum) / 100;
+                  const total = net + vatAmt + parsedAdjustment;
+                  setProformas((prev) => [
+                    ...prev,
+                    {
+                      id: `pi_${Date.now()}`,
+                      slNo: prev.length + 1,
+                      piNumber: proformaFormData.proformaNumber,
+                      issueDate: proformaFormData.invoiceDate,
+                      owner: currentUser?.name || 'Super Admin',
+                      ownerAvatar: currentUser?.avatar,
+                      customer: proformaFormData.customer || 'N/A',
+                      opportunityTitle: proformaFormData.opportunityOrder,
+                      quotationRef: proformaFormData.quotation,
+                      amount: parsedAmount,
+                      vatAmount: vatAmt,
+                      totalAmount: total || parsedAmount,
+                      status: 'Pending',
+                    } as CrmProformaInvoice,
+                  ]);
+                  setIsCreateProformaModalOpen(false);
+                  setProformaFormData({
+                    customer: '', quotation: '', opportunityOrder: '',
+                    proformaNumber: 'CTPI#' + (1001 + Math.floor(Math.random() * 100)),
+                    invoiceDate: new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+                    lpoDate: '', lpoNumber: '', invoiceType: 'File Upload',
+                    vatType: 'With VAT', amount: '', discount: '', adjustment: '',
+                    remarks: '', vatRate: '5', document: null,
+                  });
+                }}
+                className="p-4 sm:p-6"
+              >
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-3.5 text-xs text-slate-700">
+
+                  {/* ── LEFT COLUMN ── */}
+                  <div className="space-y-3.5">
+
+                    {/* Customer */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">
+                        Customer <span className="text-red-500">*</span>
+                      </label>
+                      <div className="sm:col-span-2">
+                        <select
+                          required
+                          value={proformaFormData.customer}
+                          onChange={(e) => {
+                            const custName = e.target.value;
+                            if (!custName) {
+                              setProformaFormData((prev) => ({
+                                ...prev,
+                                customer: '',
+                                quotation: '',
+                                opportunityOrder: '',
+                              }));
+                              return;
+                            }
+
+                            // Match opportunities for selected customer
+                            const matchingOpps = salesOpportunities?.filter(
+                              (o) =>
+                                (o.customer && o.customer.trim().toLowerCase() === custName.trim().toLowerCase()) ||
+                                ((o as any).companyName && (o as any).companyName.trim().toLowerCase() === custName.trim().toLowerCase())
+                            ) || [];
+
+                            // Match quotations for selected customer
+                            const matchingQuotes = liveQuotations?.filter(
+                              (q) => q.customer && q.customer.trim().toLowerCase() === custName.trim().toLowerCase()
+                            ) || [];
+
+                            const topQuote = matchingQuotes[0];
+                            const topOpp = matchingOpps[0];
+
+                            const quoteRef = topQuote ? topQuote.quotationNumber : '';
+                            const oppRef = topOpp ? `${topOpp.reference || topOpp.opportunityCode || 'OPP'} / ${topOpp.title}` : '';
+
+                            const amountVal = topQuote?.subtotal !== undefined
+                              ? String(topQuote.subtotal)
+                              : topQuote?.grossAmount !== undefined
+                              ? String(topQuote.grossAmount)
+                              : topOpp?.amount !== undefined
+                              ? String(topOpp.amount)
+                              : '';
+
+                            const discountVal = topQuote?.discountTotal !== undefined && topQuote.discountTotal > 0
+                              ? String(topQuote.discountTotal)
+                              : topQuote?.discountAmount !== undefined && topQuote.discountAmount > 0
+                              ? String(topQuote.discountAmount)
+                              : '';
+
+                            const adjustmentVal = topQuote?.shippingCharges !== undefined && topQuote.shippingCharges > 0
+                              ? String(topQuote.shippingCharges)
+                              : '';
+
+                            const vatRateVal = topQuote?.vatRate !== undefined
+                              ? String(topQuote.vatRate)
+                              : topOpp?.vatRate !== undefined
+                              ? String(topOpp.vatRate)
+                              : '5';
+
+                            const vatTypeVal = (topQuote?.vatAmount && topQuote.vatAmount > 0) || (topQuote?.vatRate && topQuote.vatRate > 0) || topOpp?.vatType
+                              ? (topOpp?.vatType || 'With VAT')
+                              : 'With VAT';
+
+                            const lpoNumVal = (topOpp as any)?.lpoNumber || (topQuote as any)?.lpoNumber || '';
+                            const lpoDateVal = (topOpp as any)?.lpoDate || (topQuote as any)?.lpoDate || '';
+                            const remarksVal = topQuote?.subject || topOpp?.title || '';
+
+                            setProformaFormData((prev) => ({
+                              ...prev,
+                              customer: custName,
+                              quotation: quoteRef || prev.quotation,
+                              opportunityOrder: oppRef || prev.opportunityOrder,
+                              amount: amountVal || prev.amount,
+                              discount: discountVal || prev.discount,
+                              adjustment: adjustmentVal || prev.adjustment,
+                              vatRate: vatRateVal,
+                              vatType: vatTypeVal,
+                              lpoNumber: lpoNumVal || prev.lpoNumber,
+                              lpoDate: lpoDateVal || prev.lpoDate,
+                              remarks: remarksVal || prev.remarks,
+                            }));
+                          }}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 bg-white"
+                        >
+                          <option value="">Select Customer</option>
+                          {(() => {
+                            const names = new Set<string>();
+                            customers?.forEach((c) => {
+                              const n = c.companyName || c.customerName || (c as any).name;
+                              if (n) names.add(n.trim());
+                            });
+                            salesOpportunities?.forEach((o) => { if (o.customer) names.add(o.customer.trim()); });
+                            return Array.from(names).sort().map((n) => <option key={n} value={n}>{n}</option>);
+                          })()}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Quotation */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">Quotation</label>
+                      <div className="sm:col-span-2">
+                        <select
+                          value={proformaFormData.quotation}
+                          onChange={(e) => {
+                            const quoteVal = e.target.value;
+                            if (!quoteVal) {
+                              setProformaFormData((prev) => ({ ...prev, quotation: '' }));
+                              return;
+                            }
+                            const matchedQuote = liveQuotations?.find((q) => q.quotationNumber === quoteVal || q.id === quoteVal);
+                            if (!matchedQuote) {
+                              setProformaFormData((prev) => ({ ...prev, quotation: quoteVal }));
+                              return;
+                            }
+
+                            // Match opportunity for this quotation
+                            const matchedOpp = salesOpportunities?.find(
+                              (o) =>
+                                (matchedQuote.opportunityId && o.id === matchedQuote.opportunityId) ||
+                                (matchedQuote.opportunityCode && (o.opportunityCode === matchedQuote.opportunityCode || o.reference === matchedQuote.opportunityCode)) ||
+                                (o.customer && o.customer.trim().toLowerCase() === (matchedQuote.customer || '').trim().toLowerCase())
+                            );
+
+                            const oppRef = matchedOpp ? `${matchedOpp.reference || matchedOpp.opportunityCode || 'OPP'} / ${matchedOpp.title}` : '';
+                            const amountVal = matchedQuote.subtotal !== undefined
+                              ? String(matchedQuote.subtotal)
+                              : matchedQuote.grossAmount !== undefined
+                              ? String(matchedQuote.grossAmount)
+                              : matchedQuote.totalAmount !== undefined
+                              ? String(matchedQuote.totalAmount)
+                              : '';
+
+                            const discountVal = matchedQuote.discountTotal !== undefined && matchedQuote.discountTotal > 0
+                              ? String(matchedQuote.discountTotal)
+                              : matchedQuote.discountAmount !== undefined && matchedQuote.discountAmount > 0
+                              ? String(matchedQuote.discountAmount)
+                              : '';
+
+                            const adjustmentVal = matchedQuote.shippingCharges !== undefined && matchedQuote.shippingCharges > 0
+                              ? String(matchedQuote.shippingCharges)
+                              : '';
+
+                            const vatRateVal = matchedQuote.vatRate !== undefined ? String(matchedQuote.vatRate) : '5';
+                            const vatTypeVal = (matchedQuote.vatAmount && matchedQuote.vatAmount > 0) || (matchedQuote.vatRate && matchedQuote.vatRate > 0)
+                              ? 'With VAT'
+                              : 'Without VAT';
+
+                            const lpoNumVal = (matchedOpp as any)?.lpoNumber || (matchedQuote as any)?.lpoNumber || '';
+                            const lpoDateVal = (matchedOpp as any)?.lpoDate || (matchedQuote as any)?.lpoDate || '';
+
+                            setProformaFormData((prev) => ({
+                              ...prev,
+                              quotation: quoteVal,
+                              customer: matchedQuote.customer || prev.customer,
+                              opportunityOrder: oppRef || prev.opportunityOrder,
+                              amount: amountVal || prev.amount,
+                              discount: discountVal || prev.discount,
+                              adjustment: adjustmentVal || prev.adjustment,
+                              vatRate: vatRateVal,
+                              vatType: vatTypeVal,
+                              lpoNumber: lpoNumVal || prev.lpoNumber,
+                              lpoDate: lpoDateVal || prev.lpoDate,
+                              remarks: matchedQuote.subject || prev.remarks,
+                            }));
+                          }}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 bg-white"
+                        >
+                          <option value="">Select Quotation</option>
+                          {(() => {
+                            const filtered = proformaFormData.customer
+                              ? liveQuotations?.filter((q) => q.customer?.trim().toLowerCase() === proformaFormData.customer.trim().toLowerCase())
+                              : liveQuotations;
+                            const list = filtered && filtered.length > 0 ? filtered : liveQuotations;
+                            return list?.map((q) => (
+                              <option key={q.id} value={q.quotationNumber}>
+                                {q.quotationNumber} — {q.subject || q.customer} ({q.customer})
+                              </option>
+                            ));
+                          })()}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Invoice Date */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">Invoice Date</label>
+                      <div className="sm:col-span-2">
+                        <CezconDateInput
+                          value={proformaFormData.invoiceDate}
+                          onChange={(val) => setProformaFormData({ ...proformaFormData, invoiceDate: val })}
+                        />
+                      </div>
+                    </div>
+
+                    {/* LPO Number */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">LPO Number</label>
+                      <div className="sm:col-span-2">
+                        <input
+                          type="text"
+                          value={proformaFormData.lpoNumber}
+                          onChange={(e) => setProformaFormData({ ...proformaFormData, lpoNumber: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Amount */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">
+                        Amount <span className="text-red-500">*</span>
+                      </label>
+                      <div className="sm:col-span-2">
+                        <input
+                          type="number"
+                          step="any"
+                          value={proformaFormData.amount}
+                          onChange={(e) => setProformaFormData({ ...proformaFormData, amount: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* VAT */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">VAT</label>
+                      <div className="sm:col-span-2 flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={proformaFormData.vatRate}
+                          onChange={(e) => setProformaFormData({ ...proformaFormData, vatRate: e.target.value })}
+                          className="w-20 px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 text-center"
+                        />
+                        <span className="text-xs text-slate-500 font-medium">%</span>
+                        <input
+                          type="text"
+                          readOnly
+                          placeholder="VAT Amount"
+                          value={(() => {
+                            const net = Math.max(0, (parseFloat(proformaFormData.amount) || 0) - (parseFloat(proformaFormData.discount) || 0));
+                            const rate = proformaFormData.vatType === 'With VAT' ? (parseFloat(proformaFormData.vatRate) || 0) : 0;
+                            const vat = (net * rate) / 100;
+                            return vat ? vat.toFixed(2) : '';
+                          })()}
+                          className="flex-1 px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-600 bg-slate-50 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Total Amount */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">Total Amount</label>
+                      <div className="sm:col-span-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={(() => {
+                            const net = Math.max(0, (parseFloat(proformaFormData.amount) || 0) - (parseFloat(proformaFormData.discount) || 0));
+                            const rate = proformaFormData.vatType === 'With VAT' ? (parseFloat(proformaFormData.vatRate) || 0) : 0;
+                            const vat = (net * rate) / 100;
+                            const total = net + vat + (parseFloat(proformaFormData.adjustment) || 0);
+                            return total ? total.toFixed(2) : '';
+                          })()}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-600 bg-slate-50 focus:outline-none font-semibold"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Remarks */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-start gap-2">
+                      <label className="text-slate-700 font-medium pt-1.5">Remarks</label>
+                      <div className="sm:col-span-2">
+                        <textarea
+                          rows={3}
+                          value={proformaFormData.remarks}
+                          onChange={(e) => setProformaFormData({ ...proformaFormData, remarks: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── RIGHT COLUMN ── */}
+                  <div className="space-y-3.5">
+
+                    {/* Opportunity / Order */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">
+                        Opportunity/Order <span className="text-red-500">*</span>
+                      </label>
+                      <div className="sm:col-span-2">
+                        <select
+                          value={proformaFormData.opportunityOrder}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (!val) {
+                              setProformaFormData((prev) => ({ ...prev, opportunityOrder: '' }));
+                              return;
+                            }
+                            const matchedOpp = salesOpportunities?.find(
+                              (o) => `${o.reference || o.opportunityCode || 'OPP'} / ${o.title}` === val || o.id === val
+                            );
+
+                            const oppCust = matchedOpp?.customer || '';
+                            const matchedQuote = liveQuotations?.find(
+                              (q) =>
+                                (matchedOpp && q.opportunityId && q.opportunityId === matchedOpp.id) ||
+                                (matchedOpp && q.opportunityCode && (q.opportunityCode === matchedOpp.opportunityCode || q.opportunityCode === matchedOpp.reference)) ||
+                                (oppCust && q.customer && q.customer.trim().toLowerCase() === oppCust.trim().toLowerCase())
+                            );
+
+                            const amountVal = matchedQuote?.subtotal !== undefined
+                              ? String(matchedQuote.subtotal)
+                              : matchedOpp?.amount !== undefined
+                              ? String(matchedOpp.amount)
+                              : '';
+
+                            const discountVal = matchedQuote?.discountTotal !== undefined && matchedQuote.discountTotal > 0
+                              ? String(matchedQuote.discountTotal)
+                              : '';
+
+                            const adjustmentVal = matchedQuote?.shippingCharges !== undefined && matchedQuote.shippingCharges > 0
+                              ? String(matchedQuote.shippingCharges)
+                              : '';
+
+                            const vatTypeVal = matchedOpp?.vatType || (matchedQuote?.vatAmount ? 'With VAT' : 'With VAT');
+                            const vatRateVal = String(matchedQuote?.vatRate ?? matchedOpp?.vatRate ?? '5');
+
+                            setProformaFormData((prev) => ({
+                              ...prev,
+                              opportunityOrder: val,
+                              customer: matchedOpp?.customer || prev.customer,
+                              quotation: matchedQuote?.quotationNumber || prev.quotation,
+                              amount: amountVal || prev.amount,
+                              discount: discountVal || prev.discount,
+                              adjustment: adjustmentVal || prev.adjustment,
+                              vatType: vatTypeVal,
+                              vatRate: vatRateVal,
+                              lpoNumber: (matchedOpp as any)?.lpoNumber || (matchedQuote as any)?.lpoNumber || prev.lpoNumber,
+                              lpoDate: (matchedOpp as any)?.lpoDate || (matchedQuote as any)?.lpoDate || prev.lpoDate,
+                              remarks: matchedQuote?.subject || matchedOpp?.title || prev.remarks,
+                            }));
+                          }}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 bg-white"
+                        >
+                          <option value="">Select Opportunity</option>
+                          {(() => {
+                            const filtered = proformaFormData.customer
+                              ? salesOpportunities?.filter(
+                                  (o) =>
+                                    (o.customer && o.customer.trim().toLowerCase() === proformaFormData.customer.trim().toLowerCase()) ||
+                                    ((o as any).companyName && (o as any).companyName.trim().toLowerCase() === proformaFormData.customer.trim().toLowerCase())
+                                )
+                              : salesOpportunities;
+                            const list = filtered && filtered.length > 0 ? filtered : salesOpportunities;
+                            return list?.map((o) => {
+                              const label = `${o.reference || o.opportunityCode || 'OPP'} / ${o.title}`;
+                              return <option key={o.id} value={label}>{label} ({o.customer})</option>;
+                            });
+                          })()}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Proforma Number */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">
+                        Proforma Number <span className="text-red-500">*</span>
+                      </label>
+                      <div className="sm:col-span-2 relative">
+                        <input
+                          type="text"
+                          required
+                          value={proformaFormData.proformaNumber}
+                          onChange={(e) => setProformaFormData({ ...proformaFormData, proformaNumber: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 bg-slate-50 pr-8"
+                        />
+                        <button
+                          type="button"
+                          title="Auto Generate"
+                          onClick={() => setProformaFormData({ ...proformaFormData, proformaNumber: 'CTPI#' + (1001 + Math.floor(Math.random() * 999)) })}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-cyan-500 hover:text-cyan-600 cursor-pointer"
+                        >
+                          <Settings className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* LPO Date */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">LPO Date</label>
+                      <div className="sm:col-span-2">
+                        <CezconDateInput
+                          placeholder="DD-MM-YYYY"
+                          value={proformaFormData.lpoDate}
+                          onChange={(val) => setProformaFormData({ ...proformaFormData, lpoDate: val })}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Type */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">Type</label>
+                      <div className="sm:col-span-2 flex gap-2">
+                        <select
+                          value={proformaFormData.invoiceType}
+                          onChange={(e) => setProformaFormData({ ...proformaFormData, invoiceType: e.target.value })}
+                          className="flex-1 px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 bg-white"
+                        >
+                          <option value="File Upload">File Upload</option>
+                          <option value="Manual">Manual</option>
+                          <option value="Auto">Auto</option>
+                        </select>
+                        <select
+                          value={proformaFormData.vatType}
+                          onChange={(e) => setProformaFormData({ ...proformaFormData, vatType: e.target.value })}
+                          className="flex-1 px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 bg-white"
+                        >
+                          <option value="With VAT">With VAT</option>
+                          <option value="Without VAT">Without VAT</option>
+                          <option value="Zero VAT">Zero VAT</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Discount */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">Discount</label>
+                      <div className="sm:col-span-2">
+                        <input
+                          type="number"
+                          step="any"
+                          value={proformaFormData.discount}
+                          onChange={(e) => setProformaFormData({ ...proformaFormData, discount: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Adjustment */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">Adjustment</label>
+                      <div className="sm:col-span-2">
+                        <input
+                          type="number"
+                          step="any"
+                          value={proformaFormData.adjustment}
+                          onChange={(e) => setProformaFormData({ ...proformaFormData, adjustment: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* File */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                      <label className="text-slate-700 font-medium">File</label>
+                      <div className="sm:col-span-2">
+                        <input
+                          type="file"
+                          onChange={(e) => setProformaFormData({ ...proformaFormData, document: e.target.files?.[0] || null })}
+                          className="w-full text-xs text-slate-700 file:mr-3 file:py-1 file:px-2.5 file:rounded file:border file:border-slate-300 file:text-xs file:font-medium file:bg-white file:text-slate-700 file:cursor-pointer hover:file:bg-slate-50"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Actions */}
+                <div className="flex items-center justify-end gap-2 pt-5 mt-3 border-t border-slate-200">
+                  <button
+                    type="submit"
+                    className="px-6 py-1.5 bg-[#1B2A4A] hover:bg-[#111C33] text-white rounded-xs text-xs font-bold shadow-xs transition cursor-pointer"
+                  >
+                    Submit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateProformaModalOpen(false)}
+                    className="flex items-center gap-1.5 px-4 py-1.5 bg-white border border-[#D2D6DE] hover:bg-slate-50 text-slate-700 rounded-xs text-xs font-semibold cursor-pointer transition"
+                  >
+                    <ArrowLeft className="w-3 h-3" /> Back
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : (
+            <>
+
           <div className="bg-white border border-[#E2E8F0] rounded-sm p-3 sm:p-4 shadow-xs space-y-3 text-xs">
             {/* Mobile Filter Header Toggle Button */}
             <div className="flex md:hidden items-center justify-between">
@@ -6912,20 +8146,106 @@ function SalesPipelineInner() {
                         <span className="text-[11px] text-slate-600 font-medium">{p.owner || currentUser?.name || 'shaheer'}</span>
                       </div>
 
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
-                      >
-                        <Eye className="w-3 h-3" />
-                        <span>View</span>
-                      </button>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenProformaActionId((prev) => (prev === p.id ? null : p.id));
+                          }}
+                          className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#008080] hover:bg-[#006666] text-white rounded text-[11px] font-medium shadow-2xs cursor-pointer transition select-none"
+                          title="Actions"
+                        >
+                          <Settings className="w-3.5 h-3.5 text-white" />
+                          <span className="text-white text-[10px] leading-none">▾</span>
+                        </button>
+
+                        {openProformaActionId === p.id && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-40 bg-transparent"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenProformaActionId(null);
+                              }}
+                            />
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute right-0 bottom-full mb-1 w-32 bg-white border border-slate-200 rounded shadow-[0_8px_24px_rgba(0,0,0,0.2)] z-50 py-1 text-left text-xs font-normal"
+                            >
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenProformaActionId(null);
+                                  setShowProformaAlertBanner(true);
+                                  setViewingProforma(p);
+                                }}
+                                className="w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
+                              >
+                                <Contact className="w-3.5 h-3.5 text-slate-700" />
+                                <span>View</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenProformaActionId(null);
+                                  setProformaFormData({
+                                    customer: p.customer || '',
+                                    quotation: p.quotationRef || '',
+                                    opportunityOrder: p.opportunityTitle || '',
+                                    proformaNumber: p.piNumber,
+                                    invoiceDate: p.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+                                    lpoDate: (p as any).lpoDate || '',
+                                    lpoNumber: (p as any).lpoNumber || '',
+                                    invoiceType: (p as any).invoiceType || 'File Upload',
+                                    vatType: p.vatAmount > 0 ? 'With VAT' : 'Without VAT',
+                                    amount: String(p.amount || ''),
+                                    discount: String((p as any).discount || ''),
+                                    adjustment: String((p as any).adjustment || ''),
+                                    remarks: (p as any).remarks || '',
+                                    vatRate: '5',
+                                    document: null,
+                                  });
+                                  setIsCreateProformaModalOpen(true);
+                                }}
+                                className="w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
+                              >
+                                <Edit2 className="w-3.5 h-3.5 text-slate-700" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenProformaActionId(null);
+                                  if (confirm(`Are you sure you want to delete proforma invoice ${p.piNumber}?`)) {
+                                    setProformas((prev) => {
+                                      const updated = prev.filter((item) => item.id !== p.id);
+                                      if (typeof window !== 'undefined') {
+                                        localStorage.setItem('crm_proforma_invoices', JSON.stringify(updated));
+                                      }
+                                      return updated;
+                                    });
+                                  }
+                                }}
+                                className="w-full px-3 py-1.5 flex items-center gap-2 text-red-600 hover:bg-red-50 transition cursor-pointer text-xs"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
             </div>
 
             {/* Table (Desktop Viewports) */}
-            <div className="hidden md:block overflow-x-auto w-full">
+            <div className="hidden md:block overflow-x-auto w-full min-h-[300px] pb-24">
               <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
                 <thead>
                   <tr className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-semibold select-none">
@@ -6957,7 +8277,10 @@ function SalesPipelineInner() {
                       return true;
                     })
                     .map((p) => (
-                      <tr key={p.id} className="hover:bg-[#F0FDF4]/40 transition-colors">
+                      <tr
+                        key={p.id}
+                        className={`transition-colors ${openProformaActionId === p.id ? 'relative z-50 bg-[#F0FDF4]/60' : 'hover:bg-[#F0FDF4]/40'}`}
+                      >
                         {/* SL.No */}
                         <td className="p-2.5 text-center text-slate-600 font-medium">{p.slNo}</td>
 
@@ -6967,7 +8290,13 @@ function SalesPipelineInner() {
                             <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center text-red-600 text-[10px] font-bold shrink-0">
                               📄
                             </span>
-                            <span className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer">
+                            <span
+                              onClick={() => {
+                                setShowProformaAlertBanner(true);
+                                setViewingProforma(p);
+                              }}
+                              className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer"
+                            >
                               {p.piNumber}
                             </span>
                           </div>
@@ -7050,15 +8379,101 @@ function SalesPipelineInner() {
                         </td>
 
                         {/* Actions */}
-                        <td className="p-2.5 text-center">
+                        <td className="p-2.5 text-center relative">
                           <button
                             type="button"
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
-                            title="View Proforma Invoice"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenProformaActionId((prev) => (prev === p.id ? null : p.id));
+                            }}
+                            className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#008080] hover:bg-[#006666] text-white rounded text-[11px] font-medium shadow-2xs cursor-pointer transition select-none"
+                            title="Actions"
                           >
-                            <Eye className="w-3 h-3" />
-                            <ChevronDown className="w-2.5 h-2.5" />
+                            <Settings className="w-3.5 h-3.5 text-white" />
+                            <span className="text-white text-[10px] leading-none">▾</span>
                           </button>
+
+                          {/* Action Dropdown Menu matching Reference UI */}
+                          {openProformaActionId === p.id && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-40 bg-transparent"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenProformaActionId(null);
+                                }}
+                              />
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-2 top-full mt-1 w-32 bg-white border border-slate-200 rounded shadow-[0_8px_24px_rgba(0,0,0,0.2)] z-50 py-1 text-left text-xs font-normal"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenProformaActionId(null);
+                                    setShowProformaAlertBanner(true);
+                                    setViewingProforma(p);
+                                  }}
+                                  className="w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
+                                >
+                                  <Contact className="w-3.5 h-3.5 text-slate-700" />
+                                  <span>View</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenProformaActionId(null);
+                                    setProformaFormData({
+                                      customer: p.customer || '',
+                                      quotation: p.quotationRef || '',
+                                      opportunityOrder: p.opportunityTitle || '',
+                                      proformaNumber: p.piNumber,
+                                      invoiceDate: p.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+                                      lpoDate: (p as any).lpoDate || '',
+                                      lpoNumber: (p as any).lpoNumber || '',
+                                      invoiceType: (p as any).invoiceType || 'File Upload',
+                                      vatType: p.vatAmount > 0 ? 'With VAT' : 'Without VAT',
+                                      amount: String(p.amount || ''),
+                                      discount: String((p as any).discount || ''),
+                                      adjustment: String((p as any).adjustment || ''),
+                                      remarks: (p as any).remarks || '',
+                                      vatRate: '5',
+                                      document: null,
+                                    });
+                                    setIsCreateProformaModalOpen(true);
+                                  }}
+                                  className="w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5 text-slate-700" />
+                                  <span>Edit</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenProformaActionId(null);
+                                    if (confirm(`Are you sure you want to delete proforma invoice ${p.piNumber}?`)) {
+                                      setProformas((prev) => {
+                                        const updated = prev.filter((item) => item.id !== p.id);
+                                        if (typeof window !== 'undefined') {
+                                          localStorage.setItem('crm_proforma_invoices', JSON.stringify(updated));
+                                        }
+                                        return updated;
+                                      });
+                                    }
+                                  }}
+                                  className="w-full px-3 py-1.5 flex items-center gap-2 text-red-600 hover:bg-red-50 transition cursor-pointer text-xs"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -7091,6 +8506,10 @@ function SalesPipelineInner() {
               </div>
             </div>
           </div>
+
+
+            </>
+          )}
         </div>
       )}
 
@@ -7406,7 +8825,12 @@ function SalesPipelineInner() {
                             type="text"
                             placeholder="Search location"
                             value={addInvoiceData.location}
-                            onChange={(e) => setAddInvoiceData({ ...addInvoiceData, location: e.target.value })}
+                            onChange={(e) => {
+                              setAddInvoiceData({ ...addInvoiceData, location: e.target.value });
+                              setInvoiceLocationDropdownOpen(true);
+                            }}
+                            onFocus={() => setInvoiceLocationDropdownOpen(true)}
+                            onBlur={() => setTimeout(() => setInvoiceLocationDropdownOpen(false), 150)}
                             className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 pr-7"
                           />
                           {addInvoiceData.location && (
@@ -7418,6 +8842,28 @@ function SalesPipelineInner() {
                               <X className="w-3.5 h-3.5" />
                             </button>
                           )}
+                          {invoiceLocationDropdownOpen && (() => {
+                            const filtered = UAE_LOCATIONS.filter((loc) =>
+                              loc.toLowerCase().includes(addInvoiceData.location.toLowerCase())
+                            );
+                            return filtered.length > 0 ? (
+                              <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white border border-slate-200 rounded shadow-lg max-h-48 overflow-y-auto">
+                                {filtered.map((loc) => (
+                                  <button
+                                    key={loc}
+                                    type="button"
+                                    onMouseDown={() => {
+                                      setAddInvoiceData({ ...addInvoiceData, location: loc });
+                                      setInvoiceLocationDropdownOpen(false);
+                                    }}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors"
+                                  >
+                                    {loc}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null;
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -8477,7 +9923,12 @@ function SalesPipelineInner() {
                             type="text"
                             placeholder="Search location"
                             value={addInvoiceData.location}
-                            onChange={(e) => setAddInvoiceData({ ...addInvoiceData, location: e.target.value })}
+                            onChange={(e) => {
+                              setAddInvoiceData({ ...addInvoiceData, location: e.target.value });
+                              setInvoiceLocationDropdownOpen(true);
+                            }}
+                            onFocus={() => setInvoiceLocationDropdownOpen(true)}
+                            onBlur={() => setTimeout(() => setInvoiceLocationDropdownOpen(false), 150)}
                             className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 pr-8"
                           />
                           {addInvoiceData.location && (
@@ -8489,6 +9940,28 @@ function SalesPipelineInner() {
                               <X className="w-3.5 h-3.5" />
                             </button>
                           )}
+                          {invoiceLocationDropdownOpen && (() => {
+                            const filtered = UAE_LOCATIONS.filter((loc) =>
+                              loc.toLowerCase().includes(addInvoiceData.location.toLowerCase())
+                            );
+                            return filtered.length > 0 ? (
+                              <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white border border-slate-200 rounded shadow-lg max-h-48 overflow-y-auto">
+                                {filtered.map((loc) => (
+                                  <button
+                                    key={loc}
+                                    type="button"
+                                    onMouseDown={() => {
+                                      setAddInvoiceData({ ...addInvoiceData, location: loc });
+                                      setInvoiceLocationDropdownOpen(false);
+                                    }}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors"
+                                  >
+                                    {loc}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null;
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -13043,18 +14516,18 @@ function SalesPipelineInner() {
         };
 
         // Live Table Items Extraction
-        const rawItems = (pOpp as any)?.enquiryItems || (pOpp as any)?.items;
+        const rawItems = (pOpp as any)?.enquiryItems || (pOpp as any)?.items || (pOpp as any)?.lineItems;
         const tableItems = Array.isArray(rawItems) && rawItems.length > 0
           ? rawItems.map((item: any, idx: number) => {
             const q = Number(item.qty) || 1;
             const p = Number(item.price) || (pAmt / q);
-            const t = Number(item.priceTotal) || (q * p);
+            const t = Number(item.priceTotal) || Number(item.total) || (q * p);
             return {
               sl: idx + 1,
-              code: item.code || 'CT25F2',
-              description: item.description || item.title || pOpp?.title || 'WATER COOLER 2 TAP 25 USG COOLTECH CT25F2',
-              unit: item.unit || 'EACH',
-              brand: item.brand || 'COOLTECH',
+              code: item.code || '',
+              description: item.description || item.title || '',
+              unit: item.unit || 'Each',
+              brand: item.brand || '',
               qty: q,
               price: p,
               total: t,
@@ -13063,23 +14536,24 @@ function SalesPipelineInner() {
           : [
             {
               sl: 1,
-              code: (pOpp as any)?.itemCode || (pOpp as any)?.code || (pOpp?.title?.toLowerCase().includes('water') ? 'CT25F2' : (pOpp?.title?.toLowerCase().includes('portable') ? 'NPAC15C' : 'CT25F2')),
-              description: pOpp?.title || (pAmt === 21002 ? 'WATER COOLER 2 TAP 25 USG COOLTECH CT25F2' : '14000 BTU PORTABLE AC'),
-              unit: (pOpp as any)?.unit || 'EACH',
-              brand: (pOpp as any)?.brand || (pOpp?.title?.toLowerCase().includes('cooltech') || pOpp?.title?.toLowerCase().includes('water') ? 'COOLTECH' : 'NOBEL'),
-              qty: (pOpp as any)?.qty || (pAmt === 21002 ? 5 : (pAmt === 3900 ? 3 : 1)),
-              price: (pAmt === 21002 ? (21002 / 5) : (pAmt === 3900 ? 1300 : pAmt)),
+              code: (pOpp as any)?.itemCode || (pOpp as any)?.code || '',
+              description: pOpp?.title || (pOpp as any)?.description || '',
+              unit: (pOpp as any)?.unit || 'Each',
+              brand: (pOpp as any)?.brand || '',
+              qty: Number((pOpp as any)?.qty) || 1,
+              price: pAmt / (Number((pOpp as any)?.qty) || 1),
               total: pAmt,
             },
           ];
 
-        const liveQuoteNumber = (pOpp as any)?.quotationNumber || (pOpp as any)?.quoteNumber || (pOpp?.opportunityCode ? pOpp.opportunityCode.replace('CTEQ', 'CTSQ') : 'CTSQ#4359');
-        const liveOwner = pOpp?.owner || 'NEBIN BENNY';
-        const livePhone = pOpp?.phone || '+971552346792';
-        const liveCustomer = pOpp?.customer || 'SAIT SPECIALIZED ENGINEERING AND CONTRACTING';
-        const liveLocation = (pOpp as any)?.location || (pOpp as any)?.address || 'MOHAMED BIN ZAYED CITY - ME-9';
-        const liveTrn = (pOpp as any)?.trn || '1002 1390 7700 003';
-        const liveTerms = termsAndConditionsText || (pOpp as any)?.termsAndConditions || (pOpp as any)?.terms;
+        const liveQuoteNumber = (pOpp as any)?.quotationNumber || (pOpp as any)?.quoteNumber || (pOpp?.opportunityCode ? pOpp.opportunityCode.replace('CTEQ', 'CTSQ') : '');
+        const liveOwner = pOpp?.owner || (pOpp as any)?.preparedBy || '';
+        const livePhone = pOpp?.phone || (pOpp as any)?.preparedByMobile || '';
+        const liveCustomer = pOpp?.customer || '';
+        const liveLocation = (pOpp as any)?.location || (pOpp as any)?.address || '';
+        const liveTrn = (pOpp as any)?.trn || (pOpp as any)?.trnNumber || '';
+        const liveContact = (pOpp as any)?.contactPerson || (pOpp as any)?.attn || '';
+        const liveTerms = termsAndConditionsText || (pOpp as any)?.termsAndConditions || (pOpp as any)?.terms || '';
 
         return (
           <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-50 flex flex-col justify-start items-stretch">
@@ -13097,7 +14571,7 @@ function SalesPipelineInner() {
                 <div className="flex items-center gap-2 text-xs">
                   <FileText className="w-4 h-4 text-cyan-400" />
                   <span className="font-semibold tracking-wide text-slate-100">
-                    {liveQuoteNumber}_1791196223.pdf
+                    {liveQuoteNumber || 'Quotation'}.pdf
                   </span>
                 </div>
               </div>
@@ -13204,7 +14678,7 @@ function SalesPipelineInner() {
 
                     {/* Right: Contact Details */}
                     <div className="col-span-4 text-[10px] text-slate-700 space-y-0.5 text-right font-medium">
-                      <p><span className="font-bold text-slate-800">Tel :</span> +971 2 585 0123</p>
+                      <p><span className="font-bold text-slate-800">Tel :</span> +971 2 565 0123</p>
                       <p><span className="font-bold text-slate-800">Mobile :</span> +971 55 946 0123</p>
                       <p><span className="font-bold text-slate-800">Email :</span> info@cooltechuae.com</p>
                       <p><span className="font-bold text-slate-800">Website :</span> www.cooltechuae.com</p>
@@ -13222,15 +14696,26 @@ function SalesPipelineInner() {
                       <p className="font-bold text-slate-900 text-xs uppercase pt-0.5">
                         {liveCustomer}
                       </p>
-                      <p className="text-[11px] text-slate-700">
-                        {liveLocation}
-                      </p>
-                      <p className="text-[11px] text-slate-700">
-                        <span className="font-semibold text-slate-800">Phone :</span> {livePhone}
-                      </p>
-                      <p className="text-[11px] text-slate-700">
-                        <span className="font-semibold text-slate-800">TRN :</span> {liveTrn}
-                      </p>
+                      {liveContact ? (
+                        <p className="text-[11px] text-slate-700">
+                          <span className="font-semibold text-slate-800">Attn :</span> {liveContact}
+                        </p>
+                      ) : null}
+                      {liveLocation ? (
+                        <p className="text-[11px] text-slate-700">
+                          {liveLocation}
+                        </p>
+                      ) : null}
+                      {livePhone ? (
+                        <p className="text-[11px] text-slate-700">
+                          <span className="font-semibold text-slate-800">Mobile :</span> {livePhone}
+                        </p>
+                      ) : null}
+                      {liveTrn ? (
+                        <p className="text-[11px] text-slate-700">
+                          <span className="font-semibold text-slate-800">TRN :</span> {liveTrn}
+                        </p>
+                      ) : null}
                     </div>
 
                     {/* Right: Quotation Details */}
@@ -13239,9 +14724,11 @@ function SalesPipelineInner() {
                         Quotation Details
                       </div>
                       <div className="space-y-0.5 pt-0.5">
-                        <p><span className="font-medium text-slate-600">Quotation Number :</span> <span className="font-bold">{liveQuoteNumber}/rev01</span></p>
-                        <p><span className="font-medium text-slate-600">Quotation Date :</span> <span className="font-bold">{toDisplayDateFormat(pOpp?.opportunityDate) || pOpp?.opportunityDate || '05-10-2026'}</span></p>
-                        <p><span className="font-medium text-slate-600">Prepared By :</span> <span className="font-bold">{liveOwner}</span></p>
+                        <p><span className="font-medium text-slate-600">Quotation Number :</span> <span className="font-bold">{liveQuoteNumber}</span></p>
+                        <p><span className="font-medium text-slate-600">Quotation Date :</span> <span className="font-bold">{toDisplayDateFormat(pOpp?.opportunityDate) || pOpp?.opportunityDate || ''}</span></p>
+                        {liveOwner ? (
+                          <p><span className="font-medium text-slate-600">Prepared By :</span> <span className="font-bold">{liveOwner}</span></p>
+                        ) : null}
                         <p><span className="font-medium text-slate-600">No. of Pages :</span> 1</p>
                       </div>
                     </div>
@@ -13273,8 +14760,8 @@ function SalesPipelineInner() {
                             <td className="py-3 px-2.5">{item.unit}</td>
                             <td className="py-3 px-2.5">{item.brand}</td>
                             {showQty && <td className="py-3 px-2.5 text-center font-medium">{item.qty}</td>}
-                            {showPrice && <td className="py-3 px-2.5 text-right font-medium">{item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
-                            {showTotal && <td className="py-3 px-2.5 text-right font-medium">{item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
+                            {showPrice && <td className="py-3 px-2.5 text-right font-medium">{(Number(item.price) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
+                            {showTotal && <td className="py-3 px-2.5 text-right font-medium">{(Number(item.total) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
                           </tr>
                         ))}
 
@@ -13316,39 +14803,25 @@ function SalesPipelineInner() {
                   </div>
 
                   {/* Terms & Conditions Section */}
-                  <div className="pt-2 space-y-1.5 text-[11px] text-slate-800">
-                    <div className="border-l-2 border-[#0088CC] pl-1.5 font-bold text-[#0088CC] text-xs mb-2">
-                      Terms &amp; Conditions
-                    </div>
-                    {liveTerms && liveTerms.trim() ? (
+                  {liveTerms && liveTerms.trim() ? (
+                    <div className="pt-2 space-y-1.5 text-[11px] text-slate-800">
+                      <div className="border-l-2 border-[#0088CC] pl-1.5 font-bold text-[#0088CC] text-xs mb-2">
+                        Terms &amp; Conditions
+                      </div>
                       <div className="space-y-1 text-slate-800 font-medium whitespace-pre-line">
                         {liveTerms}
                       </div>
-                    ) : (
-                      <div className="space-y-1 text-slate-800 font-medium">
-                        <p><span className="font-bold">PRICE</span> : In AED, DDP</p>
-                        <p><span className="font-bold">PAYMENT TERMS</span>: CASH/CDC/Bank Transfer</p>
-                        <p><span className="font-bold">DELIVERY</span> : 2-3 DAYS ARO, SUBJECT TO PRIOR SALE</p>
-                        <p><span className="font-bold">VALIDITY</span> : 7 Days</p>
-                        <p className="font-bold pt-1">WARRANTY FOR WATER COOLER</p>
-                        <p>1. One Year for unit &amp; 5 Years for compressor as per the manufacturer&apos;s terms.</p>
-                        <p>2. Warranty limited for manufacturing defect only</p>
-                      </div>
-                    )}
-
-                    <div className="pt-3 space-y-2 text-[10.5px] text-slate-700 leading-relaxed">
-                      <p>We hope we are in line with your requirement &amp; expecting a purchase order from your side to proceed further.</p>
-                      <p>Please feel free to call me or mail me for any clarification that you may deem required in the proposal.</p>
                     </div>
+                  ) : null}
 
-                    {/* Sign-off / Prepared By Section */}
+                  {/* Sign-off / Prepared By Section */}
+                  {liveOwner ? (
                     <div className="pt-4 space-y-0.5 text-[11px]">
                       <p className="font-bold text-slate-900">For COOL TECHNOLOGIES</p>
-                      <p className="font-bold text-slate-900 pt-1">{liveOwner || 'MUHAMMED AHSAN P V'}</p>
-                      <p className="text-slate-600 text-[10px]">Sales Engineer</p>
-                      <p className="text-slate-600 text-[10px]">Phone: {livePhone || '+971509980095'}</p>
+                      <p className="font-bold text-slate-900 pt-1">{liveOwner}</p>
+                      {livePhone ? <p className="text-slate-600 text-[10px]">Phone: {livePhone}</p> : null}
                     </div>
-                  </div>
+                  ) : null}
                 </div>
 
                 {/* Document Bottom Footer */}
@@ -13458,10 +14931,10 @@ function SalesPipelineInner() {
             const p = (Number(item.price) || 0) * currencyMultiplier;
             return {
               sl: idx + 1,
-              code: item.code || inv.referenceNumber || 'CT25F2',
-              description: item.description || inv.description || inv.opportunityOrderRef || 'WATER COOLER 2 TAP 25 USG COOLTECH CT25F2',
+              code: item.code || inv.referenceNumber || 'CT-PROD',
+              description: item.description || inv.description || inv.opportunityOrderRef || 'AC',
               unit: item.unit || 'Each',
-              brand: item.brand || 'COOLTEC',
+              brand: item.brand || 'SUPER GENERAL',
               qty: q,
               price: p,
               total: q * p,
@@ -13470,22 +14943,29 @@ function SalesPipelineInner() {
           : [
             {
               sl: 1,
-              code: inv.referenceNumber || 'CT25F2',
-              description: inv.description || inv.opportunityOrderRef || 'WATER COOLER 2 TAP 25 USG COOLTECH CT25F2',
+              code: inv.referenceNumber || 'CT-PROD',
+              description: inv.description || inv.opportunityOrderRef || 'AC',
               unit: 'Each',
-              brand: 'COOLTEC',
+              brand: 'SUPER GENERAL',
               qty: 1,
               price: pAmt,
               total: pAmt,
             },
           ];
 
-        const liveInvoiceNumber = inv.invoiceNumber || 'CTINV#15226';
+        const isProforma = Boolean(
+          (inv as any).isProforma ||
+          inv.invoiceNumber?.startsWith('CTPI') ||
+          inv.invoiceNumber?.startsWith('PRN') ||
+          activeTab === 'proforma'
+        );
+
+        const liveInvoiceNumber = inv.invoiceNumber || (isProforma ? 'PRN-1' : 'CTINV#15226');
         const livePhone = inv.phone || '+971 50 669 3043';
         const liveCustomer = inv.customer || 'Customer';
-        const liveAttention = inv.attention || inv.contactPerson || 'Mr. Rashad';
+        const liveAttention = inv.attention || inv.contactPerson || '';
         const liveLocation = inv.location || 'Abu Dhabi, UAE';
-        const liveTrn = inv.trnNumber || '1002 1390 7700 003';
+        const liveTrn = inv.trnNumber || '100 004 337 000 003';
         const liveTerms = inv.termsConditions || '1. Payment is due within 30 days.\n2. Goods once sold will not be taken back.\n3. Warranty as per manufacturer terms.';
 
         return (
@@ -13504,7 +14984,7 @@ function SalesPipelineInner() {
                 <div className="flex items-center gap-2 text-xs">
                   <FileText className="w-4 h-4 text-cyan-400" />
                   <span className="font-semibold tracking-wide text-slate-100">
-                    {liveInvoiceNumber}_Tax_Invoice.pdf
+                    {liveInvoiceNumber}_{isProforma ? 'Proforma_Invoice' : 'Tax_Invoice'}.pdf
                   </span>
                 </div>
               </div>
@@ -13601,10 +15081,10 @@ function SalesPipelineInner() {
                       </p>
                     </div>
 
-                    {/* Center: TAX INVOICE Headline */}
+                    {/* Center: INVOICE Headline */}
                     <div className="col-span-3 text-center pt-2">
                       <h2 className="text-xl font-bold text-slate-900 tracking-normal uppercase">
-                        TAX INVOICE
+                        {isProforma ? 'PROFORMA INVOICE' : 'TAX INVOICE'}
                       </h2>
                     </div>
 
@@ -13612,7 +15092,7 @@ function SalesPipelineInner() {
                     <div className="col-span-4 text-[10px] text-slate-800 space-y-0.5 text-right font-medium">
                       <div className="inline-grid grid-cols-[48px_auto] gap-x-1 text-left text-[10px]">
                         <span className="font-bold text-slate-900">Tel</span>
-                        <span>: +971 2 585 0123</span>
+                        <span>: +971 2 565 0123</span>
                         <span className="font-bold text-slate-900">Mobile</span>
                         <span>: +971 55 946 0123</span>
                         <span className="font-bold text-slate-900">Email</span>
@@ -13620,90 +15100,141 @@ function SalesPipelineInner() {
                         <span className="font-bold text-slate-900">Website</span>
                         <span>: www.cooltechuae.com</span>
                         <span className="font-bold text-slate-900">TRN</span>
-                        <span>: 100 004 337 000 003</span>
+                        <span>: {liveTrn}</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* 3 Columns Info Section (Exact Cezcon CRM layout) */}
-                  <div className="grid grid-cols-12 gap-4 pt-3 border-t border-slate-200 text-xs">
-                    {/* Column 1: Billed To */}
-                    <div className="col-span-5 space-y-1">
-                      <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
-                        <span className="text-slate-400 font-normal">|</span>
-                        <span>Billed To</span>
-                      </div>
-                      <div className="font-black text-[12px] sm:text-[13px] text-slate-900 uppercase leading-snug">
-                        {liveCustomer}
-                      </div>
-                      {liveLocation && (
-                        <p className="text-[10px] text-slate-600 leading-tight">{liveLocation}</p>
-                      )}
-                      {livePhone && (
-                        <p className="text-[10px] text-slate-600 leading-tight">Phone: {livePhone}</p>
-                      )}
-                    </div>
-
-                    {/* Column 2: Invoice Details */}
-                    <div className="col-span-4 space-y-1">
-                      <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
-                        <span className="text-slate-400 font-normal">|</span>
-                        <span>Invoice Details</span>
-                      </div>
-                      <div className="space-y-0.5 text-[11px] text-slate-800">
-                        <div className="grid grid-cols-[85px_auto] gap-1">
-                          <span className="text-[#0088CC] font-semibold">Invoice#</span>
-                          <span className="font-bold text-slate-900">: {liveInvoiceNumber}</span>
+                  {/* Header Info Section */}
+                  {isProforma ? (
+                    <div className="grid grid-cols-12 gap-4 pt-3 border-t border-slate-200 text-xs">
+                      {/* Column 1: Billed To */}
+                      <div className="col-span-7 space-y-1">
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
+                          <span className="text-slate-400 font-normal">|</span>
+                          <span>Billed To</span>
                         </div>
-                        <div className="grid grid-cols-[85px_auto] gap-1">
-                          <span className="text-slate-600">Invoice Date</span>
-                          <span className="font-medium text-slate-900">: {inv.issueDate}</span>
+                        <div className="font-bold text-[13px] text-slate-900 leading-snug">
+                          {liveCustomer}
                         </div>
-                        <div className="grid grid-cols-[85px_auto] gap-1">
-                          <span className="text-slate-600">Opportunity #</span>
-                          <span className="font-medium text-slate-900">: {inv.opportunityOrderRef || '—'}</span>
-                        </div>
-                        {liveAttention && (
-                          <div className="grid grid-cols-[85px_auto] gap-1">
-                            <span className="text-slate-600">Attention</span>
-                            <span className="font-medium text-slate-900">: {liveAttention}</span>
-                          </div>
+                        {liveLocation && (
+                          <p className="text-[10px] text-slate-600 leading-tight">{liveLocation}</p>
+                        )}
+                        {livePhone && (
+                          <p className="text-[10px] text-slate-600 leading-tight">Phone: {livePhone}</p>
                         )}
                       </div>
-                    </div>
 
-                    {/* Column 3: Payment Record */}
-                    <div className="col-span-3 space-y-1">
-                      <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
-                        <span className="text-slate-400 font-normal">|</span>
-                        <span>Payment Record</span>
-                      </div>
-                      <div className="space-y-0.5 text-[11px] text-slate-800">
-                        <div className="grid grid-cols-[80px_auto] gap-1">
-                          <span className="text-slate-600">Paid Amount</span>
-                          <span className="font-medium text-slate-900">: {((inv.paidAmount || 0) * currencyMultiplier).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      {/* Column 2: Proforma Invoice Details */}
+                      <div className="col-span-5 space-y-1">
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
+                          <span className="text-slate-400 font-normal">|</span>
+                          <span>Proforma Details</span>
                         </div>
-                        <div className="grid grid-cols-[80px_auto] gap-1">
-                          <span className="text-slate-600">Due Amount</span>
-                          <span className="font-bold text-slate-900">: {(inv.balanceAmount ? Number(inv.balanceAmount) * currencyMultiplier : pGrandTotal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <div className="space-y-0.5 text-[11px] text-slate-800">
+                          <div className="grid grid-cols-[100px_auto] gap-1">
+                            <span className="text-slate-600 font-normal">Invoice#</span>
+                            <span className="font-bold text-slate-900">: {liveInvoiceNumber}</span>
+                          </div>
+                          <div className="grid grid-cols-[100px_auto] gap-1">
+                            <span className="text-slate-600 font-normal">Invoice Date</span>
+                            <span className="font-medium text-slate-900">: {inv.issueDate}</span>
+                          </div>
+                          {inv.opportunityOrderRef ? (
+                            <div className="grid grid-cols-[100px_auto] gap-1">
+                              <span className="text-slate-600 font-normal">Opportunity #</span>
+                              <span className="font-medium text-slate-900">: {inv.opportunityOrderRef}</span>
+                            </div>
+                          ) : null}
+                          {liveAttention ? (
+                            <div className="grid grid-cols-[100px_auto] gap-1">
+                              <span className="text-slate-600 font-normal">Attention</span>
+                              <span className="font-medium text-slate-900">: {liveAttention}</span>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="grid grid-cols-12 gap-4 pt-3 border-t border-slate-200 text-xs">
+                      {/* Column 1: Billed To */}
+                      <div className="col-span-5 space-y-1">
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
+                          <span className="text-slate-400 font-normal">|</span>
+                          <span>Billed To</span>
+                        </div>
+                        <div className="font-black text-[12px] sm:text-[13px] text-slate-900 uppercase leading-snug">
+                          {liveCustomer}
+                        </div>
+                        {liveLocation && (
+                          <p className="text-[10px] text-slate-600 leading-tight">{liveLocation}</p>
+                        )}
+                        {livePhone && (
+                          <p className="text-[10px] text-slate-600 leading-tight">Phone: {livePhone}</p>
+                        )}
+                      </div>
+
+                      {/* Column 2: Invoice Details */}
+                      <div className="col-span-4 space-y-1">
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
+                          <span className="text-slate-400 font-normal">|</span>
+                          <span>Invoice Details</span>
+                        </div>
+                        <div className="space-y-0.5 text-[11px] text-slate-800">
+                          <div className="grid grid-cols-[85px_auto] gap-1">
+                            <span className="text-[#0088CC] font-semibold">Invoice#</span>
+                            <span className="font-bold text-slate-900">: {liveInvoiceNumber}</span>
+                          </div>
+                          <div className="grid grid-cols-[85px_auto] gap-1">
+                            <span className="text-slate-600">Invoice Date</span>
+                            <span className="font-medium text-slate-900">: {inv.issueDate}</span>
+                          </div>
+                          <div className="grid grid-cols-[85px_auto] gap-1">
+                            <span className="text-slate-600">Opportunity #</span>
+                            <span className="font-medium text-slate-900">: {inv.opportunityOrderRef || '—'}</span>
+                          </div>
+                          {liveAttention && (
+                            <div className="grid grid-cols-[85px_auto] gap-1">
+                              <span className="text-slate-600">Attention</span>
+                              <span className="font-medium text-slate-900">: {liveAttention}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Column 3: Payment Record */}
+                      <div className="col-span-3 space-y-1">
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
+                          <span className="text-slate-400 font-normal">|</span>
+                          <span>Payment Record</span>
+                        </div>
+                        <div className="space-y-0.5 text-[11px] text-slate-800">
+                          <div className="grid grid-cols-[80px_auto] gap-1">
+                            <span className="text-slate-600">Paid Amount</span>
+                            <span className="font-medium text-slate-900">: {((inv.paidAmount || 0) * currencyMultiplier).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="grid grid-cols-[80px_auto] gap-1">
+                            <span className="text-slate-600">Due Amount</span>
+                            <span className="font-bold text-slate-900">: {(inv.balanceAmount ? Number(inv.balanceAmount) * currencyMultiplier : pGrandTotal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Line Items & Summary Table (Exact Cezcon CRM Layout) */}
                   <div className="pt-2">
                     <table className="w-full text-left text-[11px] border-collapse border border-slate-300">
                       <thead>
                         <tr className="bg-[#8E95A0] text-white font-semibold">
-                          <th className="py-1.5 px-2 text-center w-9">SL</th>
+                          <th className="py-1.5 px-2 text-center w-9">SL.</th>
                           <th className="py-1.5 px-2 w-24">Code</th>
                           <th className="py-1.5 px-2">Item Description</th>
                           <th className="py-1.5 px-2 w-14">Unit</th>
                           <th className="py-1.5 px-2 w-20">Brand</th>
                           {showQty && <th className="py-1.5 px-2 text-center w-12">Qty</th>}
-                          {showPrice && <th className="py-1.5 px-2 text-right w-24">Price</th>}
-                          {showTotal && <th className="py-1.5 px-2 text-right w-24">Amount</th>}
+                          {showPrice && <th className="py-1.5 px-2 text-right w-24">Price ({currencySymbol})</th>}
+                          {showTotal && <th className="py-1.5 px-2 text-right w-24">Total ({currencySymbol})</th>}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-300 text-slate-800">
@@ -13716,9 +15247,9 @@ function SalesPipelineInner() {
                             </td>
                             <td className="py-2 px-2 text-slate-700">{item.unit}</td>
                             <td className="py-2 px-2 text-slate-700">{item.brand}</td>
-                            {showQty && <td className="py-2 px-2 text-center font-normal text-slate-900">{item.qty}</td>}
-                            {showPrice && <td className="py-2 px-2 text-right font-normal text-slate-900">{item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
-                            {showTotal && <td className="py-2 px-2 text-right font-bold text-slate-900">{item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
+                            {showQty && <td className="py-2 px-2 text-center font-normal text-slate-900">{item.qty ?? 1}</td>}
+                            {showPrice && <td className="py-2 px-2 text-right font-normal text-slate-900">{(Number(item.price) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
+                            {showTotal && <td className="py-2 px-2 text-right font-bold text-slate-900">{(Number(item.total) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>}
                           </tr>
                         ))}
 
@@ -13732,7 +15263,7 @@ function SalesPipelineInner() {
                               {tableItems.reduce((acc: number, curr: any) => acc + (curr.qty || 1), 0)}
                             </td>
                           )}
-                          {showPrice && <td></td>}
+                          {showPrice && showTotal && <td></td>}
                           {showTotal && (
                             <td className="py-1.5 px-2 text-right font-bold text-slate-900">
                               {pAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -13743,7 +15274,7 @@ function SalesPipelineInner() {
                         {/* VAT Row */}
                         {isWithVat && (
                           <tr className="border-b border-slate-300">
-                            <td colSpan={summaryColSpan} className="py-1.5 px-2 text-right text-slate-800">
+                            <td colSpan={5 + (showQty ? 1 : 0) + (showPrice && showTotal ? 1 : 0)} className="py-1.5 px-2 text-right text-slate-800">
                               VAT ({vatRateNum}%)
                             </td>
                             <td className="py-1.5 px-2 text-right text-slate-900 font-medium">
@@ -13755,7 +15286,7 @@ function SalesPipelineInner() {
                         {/* Adjustment Row if any */}
                         {pAdj !== 0 && (
                           <tr className="border-b border-slate-300">
-                            <td colSpan={summaryColSpan} className="py-1.5 px-2 text-right text-slate-800">
+                            <td colSpan={5 + (showQty ? 1 : 0) + (showPrice && showTotal ? 1 : 0)} className="py-1.5 px-2 text-right text-slate-800">
                               Adjustment
                             </td>
                             <td className="py-1.5 px-2 text-right text-slate-900 font-medium">
@@ -13765,9 +15296,9 @@ function SalesPipelineInner() {
                         )}
 
                         {/* Grand Total Row */}
-                        <tr className="border-b border-slate-300">
-                          <td colSpan={summaryColSpan} className="py-2 px-2 text-right font-bold text-slate-900 text-xs">
-                            Grand Total in {currencySymbol}
+                        <tr className="border-b-2 border-slate-400">
+                          <td colSpan={5 + (showQty ? 1 : 0) + (showPrice && showTotal ? 1 : 0)} className="py-2 px-2 text-right font-bold text-slate-900 text-xs">
+                            Grand Total ({currencySymbol})
                           </td>
                           <td className="py-2 px-2 text-right font-bold text-slate-900 text-xs">
                             {pGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -13778,19 +15309,80 @@ function SalesPipelineInner() {
                   </div>
 
                   {/* Amount in words */}
-                  <div className="pt-2 space-y-0.5">
-                    <p className="font-bold text-slate-900 text-xs">Amount in words</p>
-                    <p className="font-bold text-slate-900 text-xs">
+                  <div className="pt-2 flex items-baseline gap-2">
+                    <span className="font-bold text-slate-900 text-xs shrink-0">Amount in Words:</span>
+                    <span className="font-bold text-slate-900 text-xs">
                       {numberToWords(pGrandTotal, isUSD)}
-                    </p>
+                    </span>
                   </div>
+
+                  {/* Bank Details & Representative Section for Proforma Invoice */}
+                  {isProforma && (
+                    <div className="pt-4 space-y-4">
+                      {Boolean((inv as any).bankName || (inv as any).bankAccountNo || (inv as any).bankDetails) && (
+                        <div className="space-y-1 text-[11px] text-slate-800">
+                          <div className="flex items-center gap-1 text-[11px] text-slate-700 font-bold mb-1">
+                            <span className="text-slate-400 font-normal">|</span>
+                            <span>Bank Details</span>
+                          </div>
+                          <div className="grid grid-cols-[140px_auto] gap-y-0.5 text-[11px]">
+                            {(inv as any).bankName && (
+                              <>
+                                <span className="font-medium text-slate-700">Bank name</span>
+                                <span className="font-medium text-slate-900">: {(inv as any).bankName}</span>
+                              </>
+                            )}
+                            {(inv as any).bankBranch && (
+                              <>
+                                <span className="font-medium text-slate-700">Bank Branch</span>
+                                <span className="font-medium text-slate-900">: {(inv as any).bankBranch}</span>
+                              </>
+                            )}
+                            {(inv as any).bankAccountName && (
+                              <>
+                                <span className="font-medium text-slate-700">Bank Account Name</span>
+                                <span className="font-medium text-slate-900">: {(inv as any).bankAccountName}</span>
+                              </>
+                            )}
+                            {(inv as any).bankAccountNo && (
+                              <>
+                                <span className="font-medium text-slate-700">Bank Account No</span>
+                                <span className="font-medium text-slate-900">: {(inv as any).bankAccountNo}</span>
+                              </>
+                            )}
+                            {(inv as any).swift && (
+                              <>
+                                <span className="font-medium text-slate-700">Swift</span>
+                                <span className="font-medium text-slate-900">: {(inv as any).swift}</span>
+                              </>
+                            )}
+                            {(inv as any).iban && (
+                              <>
+                                <span className="font-medium text-slate-700">IBAN</span>
+                                <span className="font-medium text-slate-900">: {(inv as any).iban}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {inv.owner && (
+                        <div className="pt-1 text-[11px] space-y-0.5">
+                          <p className="font-bold text-slate-900 uppercase">{inv.owner}</p>
+                          {inv.phone && <p className="font-medium text-slate-800">{inv.phone}</p>}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Document Bottom Footer */}
-                <div className="pt-12 flex justify-between text-[10px] text-slate-400">
-                  <span>This is a computer generated tax invoice.</span>
-                  <span>Page 1 of 1</span>
-                </div>
+                {!isProforma && (
+                  <div className="pt-12 flex justify-between text-[10px] text-slate-400">
+                    <span>This is a computer generated tax invoice.</span>
+                    <span>Page 1 of 1</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

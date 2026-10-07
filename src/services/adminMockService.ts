@@ -312,15 +312,16 @@ export const adminMockService = {
     ) {
       const superAdminUser = {
         id: 'usr_superadmin',
-        name: 'System Super Admin',
+        name: 'Nafal',
         email: 'superadmin@gmail.com',
         username: 'superadmin',
         phone: '+971 50 123 4567',
         role: 'Admin' as const,
+        position: 'CEO',
         organizationId: 'org_platform_root',
         organizationName: 'Global Platform',
         status: 'Active' as const,
-        designation: 'Super Administrator',
+        designation: 'CEO / Super Administrator',
         department: 'Platform Engineering',
         createdAt: '2026-01-01',
         updatedAt: '2026-09-25',

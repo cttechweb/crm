@@ -51,33 +51,40 @@ export function EnterpriseTopHeader() {
   const roles: UserRole[] = ['Super Admin', 'Admin', 'Manager', 'Employee'];
 
   const getDisplayRole = (role?: string, user?: MockAuthUser | null) => {
-    if (!role) return 'Admin';
+    if (user?.position) return user.position;
+
+    if (!role) return 'COO';
     const r = role.toLowerCase();
 
-    if (r === 'super_admin' || r.includes('super')) return 'Super Admin';
-    if (r === 'admin') return 'Admin';
+    if (r === 'super_admin' || r.includes('super')) return 'CEO';
+    if (r === 'admin') return 'COO';
 
     if (r === 'manager' || r.includes('manager')) {
-      // Return specific manager type: "Sales Manager", "Marketing Manager", etc.
       const specific =
         user?.managerType ||
         user?.designation ||
-        user?.department;
-      if (specific && specific.toLowerCase() !== 'manager') return specific;
-      return 'Manager';
+        user?.department ||
+        '';
+      const s = specific.toLowerCase();
+      if (s.includes('sales')) return 'CSO';
+      if (s.includes('purchase')) return 'CPO';
+      if (specific && s !== 'manager') return specific;
+      return 'CSO';
     }
 
     if (r === 'employee' || r === 'worker') {
-      // Return specific employee type: "Sales Employee", "Marketing Employee", etc.
       const specific =
         user?.employeeType ||
         user?.designation ||
-        user?.department;
-      if (specific && specific.toLowerCase() !== 'employee') return specific;
-      return 'Employee';
+        user?.department ||
+        '';
+      const s = specific.toLowerCase();
+      if (s.includes('purchase')) return 'Purchase Employee';
+      if (specific && s !== 'employee') return specific;
+      return 'Sales Employee';
     }
 
-    return 'Admin';
+    return 'COO';
   };
 
   const isEmployeeUser = currentUser?.role === 'employee' || currentUser?.role === 'worker' || currentRole === 'Employee' || currentRole === 'Worker';

@@ -84,7 +84,6 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Delivery Note', href: '/sales?tab=delivery', iconName: 'Table' },
     ],
   },
-  /* Temporarily hidden: Purchase
   {
     id: 'purchase',
     label: 'Purchase',
@@ -102,7 +101,6 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Manufacturing', href: '/purchase?tab=manufacturing', iconName: 'Factory' },
     ],
   },
-  */
   {
     id: 'reports',
     label: 'Report',
@@ -287,7 +285,6 @@ export const MANAGER_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Sales Reports', href: '/manager/reports?type=sales', iconName: 'BarChart3' },
     ],
   },
-  /* Temporarily hidden: Purchase
   {
     id: 'manager-purchase',
     label: 'Purchase',
@@ -305,7 +302,6 @@ export const MANAGER_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Purchase Reports', href: '/manager/reports?type=purchase', iconName: 'FileText' },
     ],
   },
-  */
   {
     id: 'manager-reports',
     label: 'Report',

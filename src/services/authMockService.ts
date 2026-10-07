@@ -60,16 +60,69 @@ export interface MockAuthUser {
   organizationName: string;
   avatar?: string;
   designation?: string;
+  position?: string;
   department?: string;
   profileType?: string;
   managerType?: string;
   employeeType?: string;
   managerId?: string | number | null;
+  reportsTo?: string | number | null;
+  teamId?: string | null;
   dataScope?: string;
   modulePermissions?: UserModulePermissions;
   actionPermissions?: UserActionPermissions;
   firebaseUid?: string;
 }
+
+export const POSITION_HIERARCHY_CONFIG: Record<
+  string,
+  {
+    crmRole: 'Super Admin' | 'Admin' | 'Manager' | 'Employee';
+    department: 'Executive' | 'Management' | 'Sales' | 'Purchase';
+    reportsToPositions: string[];
+  }
+> = {
+  'CEO': {
+    crmRole: 'Super Admin',
+    department: 'Executive',
+    reportsToPositions: [],
+  },
+  'COO': {
+    crmRole: 'Admin',
+    department: 'Management',
+    reportsToPositions: ['CEO'],
+  },
+  'CSO': {
+    crmRole: 'Manager',
+    department: 'Sales',
+    reportsToPositions: ['COO'],
+  },
+  'CPO': {
+    crmRole: 'Manager',
+    department: 'Purchase',
+    reportsToPositions: ['COO'],
+  },
+  'Sales Manager': {
+    crmRole: 'Manager',
+    department: 'Sales',
+    reportsToPositions: ['CSO'],
+  },
+  'Sales Employee': {
+    crmRole: 'Employee',
+    department: 'Sales',
+    reportsToPositions: ['Sales Manager', 'CSO'],
+  },
+  'Purchase Manager': {
+    crmRole: 'Manager',
+    department: 'Purchase',
+    reportsToPositions: ['CPO'],
+  },
+  'Purchase Employee': {
+    crmRole: 'Employee',
+    department: 'Purchase',
+    reportsToPositions: ['Purchase Manager', 'CPO'],
+  },
+};
 
 /**
  * Final CRM Role Hierarchy & Authority Matrix
@@ -463,12 +516,14 @@ const MOCK_CREDENTIALS: Array<{
       redirectUrl: '/dashboard',
       user: {
         id: 'usr_superadmin_001',
-        name: 'System Super Admin',
+        name: 'Nafal',
         email: 'superadmin@gmail.com',
         role: 'super_admin',
+        position: 'CEO',
+        department: 'Executive',
         organizationId: 'org_platform_root',
         organizationName: 'Platform Central',
-        designation: 'System Administrator',
+        designation: 'CEO / Super Admin',
       },
     },
     {
@@ -480,10 +535,12 @@ const MOCK_CREDENTIALS: Array<{
         name: 'Cool Admin',
         email: 'cooladmin@gmail.com',
         role: 'admin',
+        position: 'COO',
+        department: 'Management',
         organizationId: 'org_cool_tech_001',
         organizationName: 'Cool Technologies LLC',
         avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-        designation: 'Managing Director / Business Admin',
+        designation: 'COO / Admin',
       },
     },
     {
@@ -495,12 +552,13 @@ const MOCK_CREDENTIALS: Array<{
         name: 'Muhammed Shemin',
         email: 'shemin@gmail.com',
         role: 'admin',
+        position: 'COO',
         organizationId: 'org_cool_tech_001',
         organizationName: 'Cool Technologies LLC',
         avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-        designation: 'Managing Director / Business Admin',
+        designation: 'COO / Business Admin',
         profileType: 'Admin',
-        department: 'Administration',
+        department: 'Management',
       },
     },
     {
@@ -512,6 +570,8 @@ const MOCK_CREDENTIALS: Array<{
         name: 'Enterprise Admin',
         email: 'admin@cooltechuae.com',
         role: 'admin',
+        position: 'COO',
+        department: 'Management',
         organizationId: 'org_cool_tech_001',
         organizationName: 'Cool Technologies LLC',
         avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
@@ -524,12 +584,14 @@ const MOCK_CREDENTIALS: Array<{
       redirectUrl: '/dashboard',
       user: {
         id: 'usr_superadmin_001',
-        name: 'System Super Admin',
+        name: 'Nafal',
         email: 'superadmin@crmplatform.io',
         role: 'super_admin',
+        position: 'CEO',
+        department: 'Executive',
         organizationId: 'org_platform_root',
         organizationName: 'Platform Central',
-        designation: 'System Administrator',
+        designation: 'CEO / Super Admin',
       },
     },
     // --- Pre-configured Managers ---
@@ -542,10 +604,12 @@ const MOCK_CREDENTIALS: Array<{
         name: 'Manager 1',
         email: 'manager1@company.com',
         role: 'manager',
+        position: 'CSO',
+        department: 'Sales',
         organizationId: 'org_cool_tech_001',
         organizationName: 'Cool Technologies LLC',
         avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-        designation: 'Sales Manager',
+        designation: 'CSO / Sales Manager',
         profileType: 'Manager',
         managerType: 'Sales Manager',
       },
@@ -590,7 +654,7 @@ const MOCK_CREDENTIALS: Array<{
       redirectUrl: '/manager/dashboard',
       user: {
         id: 'mgr_2',
-        name: 'Manager 2',
+        name: 'Rashid Ali',
         email: 'manager2@test.com',
         role: 'manager',
         organizationId: 'org_cool_tech_001',
@@ -599,6 +663,43 @@ const MOCK_CREDENTIALS: Array<{
         designation: 'Purchase Manager',
         profileType: 'Manager',
         managerType: 'Purchase Manager',
+        department: 'Purchase',
+      },
+    },
+    {
+      email: 'purchasemanager@gmail.com',
+      password: 'manager@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'usr_rashid_001',
+        name: 'Rashid Ali',
+        email: 'purchasemanager@gmail.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
+        designation: 'Purchase Manager',
+        profileType: 'Manager',
+        managerType: 'Purchase Manager',
+        department: 'Purchase',
+      },
+    },
+    {
+      email: 'purchase.manager@gmail.com',
+      password: 'manager@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'usr_rashid_001',
+        name: 'Rashid Ali',
+        email: 'purchase.manager@gmail.com',
+        role: 'manager',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
+        designation: 'Purchase Manager',
+        profileType: 'Manager',
+        managerType: 'Purchase Manager',
+        department: 'Purchase',
       },
     },
     {
@@ -794,6 +895,42 @@ const MOCK_CREDENTIALS: Array<{
         employeeType: 'Marketing Employee',
         department: 'Marketing',
         managerId: 'mgr_3',
+      },
+    },
+    {
+      email: 'purchaseemp@gmail.com',
+      password: 'emp@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_faisal_001',
+        name: 'Faisal Khan',
+        email: 'purchaseemp@gmail.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Purchase Employee',
+        profileType: 'Employee',
+        employeeType: 'Purchase Employee',
+        department: 'Purchase',
+        managerId: 'usr_rashid_001',
+      },
+    },
+    {
+      email: 'purchase.emp@gmail.com',
+      password: 'emp@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'emp_faisal_001',
+        name: 'Faisal Khan',
+        email: 'purchase.emp@gmail.com',
+        role: 'employee',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: 'Purchase Employee',
+        profileType: 'Employee',
+        employeeType: 'Purchase Employee',
+        department: 'Purchase',
+        managerId: 'usr_rashid_001',
       },
     },
     // --- Pre-configured Employees ---
@@ -1681,7 +1818,26 @@ export const authMockService = {
       const data = localStorage.getItem('cool_crm_auth');
       if (!data) return null;
       const parsed = JSON.parse(data);
-      return parsed.user || null;
+      if (parsed && parsed.user) {
+        const u = parsed.user;
+        if (u.name === 'System Super Admin' || (u.role === 'super_admin' && (!u.name || u.name === 'System Super Admin'))) {
+          u.name = 'Nafal';
+        }
+        if (!u.position) {
+          const r = String(u.role || '').toLowerCase();
+          if (r === 'super_admin' || r.includes('super')) u.position = 'CEO';
+          else if (r === 'admin') u.position = 'COO';
+          else if (r === 'manager') {
+            const s = (u.managerType || u.designation || u.department || '').toLowerCase();
+            u.position = s.includes('purchase') ? 'CPO' : 'CSO';
+          } else if (r === 'employee' || r === 'worker') {
+            const s = (u.employeeType || u.designation || u.department || '').toLowerCase();
+            u.position = s.includes('purchase') ? 'Purchase Employee' : 'Sales Employee';
+          }
+        }
+        return u;
+      }
+      return null;
     } catch {
       return null;
     }

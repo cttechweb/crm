@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   Home,
   CheckSquare,
@@ -25,31 +25,84 @@ import {
   DollarSign,
   Users,
   BarChart3,
+  Key,
+  ThumbsUp,
+  CreditCard,
+  FileSpreadsheet,
+  Receipt,
+  Table,
+  Contact,
+  Boxes,
+  FilePlus,
+  FileCheck,
+  Truck,
+  Tag,
+  Store,
+  Factory,
+  Sliders,
+  Languages,
+  Printer,
+  Flag,
+  ShoppingCart,
+  Clock,
+  Activity,
+  Globe,
+  Upload,
+  ArrowDownToLine,
 } from 'lucide-react';
 import { ENTERPRISE_NAV_ITEMS, MANAGER_NAV_ITEMS, EnterpriseNavItem } from '@/config/enterprise-navigation';
 import { NavDropdown } from '@/components/layout/NavDropdown';
 import { authMockService } from '@/services/authMockService';
 import { cn } from '@/lib/utils';
 
-const HEADER_ICONS: Record<string, (isActive: boolean) => React.ReactNode> = {
-  Home: (active) => <Home className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  CheckSquare: (active) => <CheckSquare className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  Radio: (active) => <Radio className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  Megaphone: (active) => <Megaphone className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  ListChecks: (active) => <ListChecks className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  Shield: (active) => <Shield className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  Hourglass: (active) => <Hourglass className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  Package: (active) => <Package className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  FileText: (active) => <FileText className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  Wrench: (active) => <Wrench className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  Target: (active) => <Target className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  UserCheck: (active) => <UserCheck className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  Calendar: (active) => <Calendar className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  Briefcase: (active) => <Briefcase className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  Bell: (active) => <Bell className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  DollarSign: (active) => <DollarSign className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  Users: (active) => <Users className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
-  BarChart3: (active) => <BarChart3 className={cn('w-3.5 h-3.5 flex-shrink-0', active ? 'text-white' : 'text-[#2563EB]')} />,
+const renderHeaderIcon = (name?: string, active: boolean = false) => {
+  const cls = cn('w-3.5 h-3.5 flex-shrink-0 transition-colors', active ? 'text-white' : 'text-[#2563EB]');
+
+  switch (name) {
+    case 'Home': return <Home className={cls} />;
+    case 'CheckSquare': return <CheckSquare className={cls} />;
+    case 'Radio': return <Radio className={cls} />;
+    case 'Megaphone': return <Megaphone className={cls} />;
+    case 'ListChecks': return <ListChecks className={cls} />;
+    case 'Shield': return <Shield className={cls} />;
+    case 'Hourglass': return <Hourglass className={cls} />;
+    case 'Key': return <Key className={cls} />;
+    case 'ThumbsUp': return <ThumbsUp className={cls} />;
+    case 'CreditCard': return <CreditCard className={cls} />;
+    case 'FileSpreadsheet': return <FileSpreadsheet className={cls} />;
+    case 'Receipt': return <Receipt className={cls} />;
+    case 'Table': return <Table className={cls} />;
+    case 'Contact': return <Contact className={cls} />;
+    case 'Package': return <Package className={cls} />;
+    case 'FileText': return <FileText className={cls} />;
+    case 'Wrench': return <Wrench className={cls} />;
+    case 'Target': return <Target className={cls} />;
+    case 'UserCheck': return <UserCheck className={cls} />;
+    case 'Calendar': return <Calendar className={cls} />;
+    case 'Briefcase': return <Briefcase className={cls} />;
+    case 'Bell': return <Bell className={cls} />;
+    case 'DollarSign': return <DollarSign className={cls} />;
+    case 'Users': return <Users className={cls} />;
+    case 'BarChart3': return <BarChart3 className={cls} />;
+    case 'Boxes': return <Boxes className={cls} />;
+    case 'FilePlus': return <FilePlus className={cls} />;
+    case 'FileCheck': return <FileCheck className={cls} />;
+    case 'Truck': return <Truck className={cls} />;
+    case 'Tag': return <Tag className={cls} />;
+    case 'Store': return <Store className={cls} />;
+    case 'Factory': return <Factory className={cls} />;
+    case 'Sliders': return <Sliders className={cls} />;
+    case 'Languages': return <Languages className={cls} />;
+    case 'Printer': return <Printer className={cls} />;
+    case 'Flag': return <Flag className={cls} />;
+    case 'ShoppingCart': return <ShoppingCart className={cls} />;
+    case 'Clock': return <Clock className={cls} />;
+    case 'Activity': return <Activity className={cls} />;
+    case 'Globe': return <Globe className={cls} />;
+    case 'Upload': return <Upload className={cls} />;
+    case 'ArrowDownToLine': return <ArrowDownToLine className={cls} />;
+    default: return <Hourglass className={cls} />;
+  }
 };
 
 const SALES_EMPLOYEE_NAV_ITEMS: EnterpriseNavItem[] = [
@@ -136,6 +189,9 @@ const SALES_EMPLOYEE_NAV_ITEMS: EnterpriseNavItem[] = [
 
 export function EnterpriseNavbar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get('tab') || searchParams.get('sub') || searchParams.get('type');
+
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -143,21 +199,71 @@ export function EnterpriseNavbar() {
   const navContainerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    const user = authMockService.getCurrentUser();
-    if (user) {
-      setCurrentUser(user);
-      if (user.role) {
-        setUserRole(user.role.toLowerCase());
+    const syncUser = () => {
+      const user = authMockService.getCurrentUser();
+      if (user) {
+        setCurrentUser(user);
+        if (user.role) {
+          setUserRole(user.role.toLowerCase());
+        }
       }
-    }
+    };
+    syncUser();
+    const unsub = authMockService.onAuthStateChanged((u) => {
+      if (u) {
+        setCurrentUser(u);
+        if (u.role) setUserRole(u.role.toLowerCase());
+      }
+    });
+    window.addEventListener('storage', syncUser);
+    window.addEventListener('crm_auth_updated', syncUser);
+    return () => {
+      unsub();
+      window.removeEventListener('storage', syncUser);
+      window.removeEventListener('crm_auth_updated', syncUser);
+    };
   }, []);
-
-  const isWorkerPath = pathname.startsWith('/worker') || pathname.startsWith('/employee');
-  const isManagerPath = pathname.startsWith('/manager');
 
   const activeNavItems = useMemo(() => {
-    return ENTERPRISE_NAV_ITEMS;
-  }, []);
+    const user = currentUser || (typeof window !== 'undefined' ? authMockService.getCurrentUser() : null);
+    if (!user) return ENTERPRISE_NAV_ITEMS;
+
+    const role = (user.role || '').toLowerCase();
+    const isSuper = role === 'super_admin' || role === 'super admin' || (user.profileType || '').toLowerCase().includes('super admin');
+    const isAdmin = role === 'admin' || Boolean(user.isAdmin) || (user.profileType || '').toLowerCase().includes('admin');
+
+    if (isSuper || isAdmin) {
+      return ENTERPRISE_NAV_ITEMS;
+    }
+
+    const dept = (user.department || '').toLowerCase();
+    const mgrType = (user.managerType || '').toLowerCase();
+    const empType = (user.employeeType || '').toLowerCase();
+    const desig = (user.designation || '').toLowerCase();
+    const pos = (user.position || '').toLowerCase();
+    const name = (user.name || '').toLowerCase();
+
+    const isSales = dept === 'sales' || mgrType.includes('sales') || empType.includes('sales') || desig.includes('sales') || pos === 'cso' || name.includes('shibil') || name.includes('shaheer') || name.includes('adhil');
+    const isPurchase = dept === 'purchase' || mgrType.includes('purchase') || empType.includes('purchase') || desig.includes('purchase') || pos === 'cpo' || name.includes('rashid') || name.includes('faisal');
+
+    return ENTERPRISE_NAV_ITEMS.filter((item) => {
+      // Sales personnel do not have Purchase access
+      if (isSales && item.id === 'purchase') return false;
+
+      // Purchase personnel do not have Sales / Lead / Customer access
+      if (isPurchase && (item.id === 'sales' || item.id === 'leads' || item.id === 'customers')) return false;
+
+      // Check explicit modulePermissions if present
+      if (user.modulePermissions) {
+        if (item.id === 'purchase' && user.modulePermissions.purchase === false) return false;
+        if (item.id === 'sales' && user.modulePermissions.sales === false) return false;
+        if (item.id === 'leads' && user.modulePermissions.leads === false) return false;
+        if (item.id === 'customers' && user.modulePermissions.customers === false) return false;
+      }
+
+      return true;
+    });
+  }, [currentUser]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -174,7 +280,7 @@ export function EnterpriseNavbar() {
   useEffect(() => {
     setActiveMenu(null);
     setMobileMenuOpen(false);
-  }, [pathname]);
+  }, [pathname, currentTab]);
 
   const menuTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -231,6 +337,46 @@ export function EnterpriseNavbar() {
               (item.id !== 'dashboard' && pathname.startsWith(`/${item.id}`));
             const isHighlighted = isMenuOpen || isRouteActive;
 
+            // Find active child matching current route / tab if item is active
+            const activeChild = (() => {
+              if (!isRouteActive || !item.children || item.children.length === 0) return null;
+
+              if (currentTab) {
+                const tabMatch = item.children.find(
+                  (c) => c.href && (c.href.includes(`tab=${currentTab}`) || c.href.includes(`sub=${currentTab}`) || c.href.includes(`type=${currentTab}`))
+                );
+                if (tabMatch) return tabMatch;
+
+                for (const c of item.children) {
+                  if (c.children) {
+                    const nestedMatch = c.children.find(
+                      (nc) => nc.href && (nc.href.includes(`tab=${currentTab}`) || nc.href.includes(`sub=${currentTab}`) || nc.href.includes(`type=${currentTab}`))
+                    );
+                    if (nestedMatch) return nestedMatch;
+                  }
+                }
+              }
+
+              // Exact path match in children
+              const pathMatch = item.children.find((c) => c.href === pathname);
+              if (pathMatch) return pathMatch;
+
+              // Default fallback for /sales if no tab param is present -> Opportunity
+              if (item.id === 'sales' && pathname === '/sales') {
+                return item.children.find((c) => c.href?.includes('opportunities')) || item.children[0];
+              }
+
+              // Default fallback for /purchase if no tab param is present -> Stock
+              if (item.id === 'purchase' && pathname === '/purchase') {
+                return item.children.find((c) => c.href?.includes('stock')) || item.children[0];
+              }
+
+              return null;
+            })();
+
+            const displayLabel = isRouteActive && activeChild ? activeChild.label : item.label;
+            const displayIconName = isRouteActive && activeChild?.iconName ? activeChild.iconName : item.iconName;
+
             // Direct link for Dashboard / Report / Leads / Tasks
             if (!hasChildren && item.path) {
               return (
@@ -248,7 +394,7 @@ export function EnterpriseNavbar() {
                       : 'text-slate-800 hover:bg-blue-50 hover:text-[#2563EB]'
                   )}
                 >
-                  <span>{HEADER_ICONS[item.iconName]?.(isRouteActive)}</span>
+                  <span>{renderHeaderIcon(item.iconName, isRouteActive)}</span>
                   <span>{item.label}</span>
                   {item.badge && (
                     <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[#DC2626] text-white text-[10px] font-extrabold leading-none shadow-2xs">
@@ -277,12 +423,12 @@ export function EnterpriseNavbar() {
                     isMenuOpen
                       ? 'bg-[#002B49] text-white shadow-xs'
                       : isRouteActive
-                        ? 'bg-[#2563EB] text-white shadow-xs'
+                        ? 'bg-[#002B49] text-white shadow-xs'
                         : 'text-slate-800 hover:bg-blue-50 hover:text-[#2563EB]'
                   )}
                 >
-                  <span>{HEADER_ICONS[item.iconName]?.(isHighlighted)}</span>
-                  <span>{item.label}</span>
+                  <span>{renderHeaderIcon(displayIconName, isHighlighted)}</span>
+                  <span>{displayLabel}</span>
                   {item.badge && (
                     <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[#DC2626] text-white text-[10px] font-extrabold leading-none shadow-2xs">
                       {item.badge}
@@ -315,9 +461,17 @@ export function EnterpriseNavbar() {
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
             <span className="text-xs font-bold text-slate-800 truncate">
-              {activeNavItems.find(
-                (i) => i.path === pathname || (i.id !== 'dashboard' && pathname.startsWith(`/${i.id}`))
-              )?.label || 'Navigation'}
+              {(() => {
+                const activeItem = activeNavItems.find(
+                  (i) => i.path === pathname || (i.id !== 'dashboard' && pathname.startsWith(`/${i.id}`))
+                );
+                if (!activeItem) return 'Navigation';
+                if (currentTab && activeItem.children) {
+                  const match = activeItem.children.find((c) => c.href && c.href.includes(`tab=${currentTab}`));
+                  if (match) return match.label;
+                }
+                return activeItem.label;
+              })()}
             </span>
           </div>
           <button
@@ -365,6 +519,22 @@ export function EnterpriseNavbar() {
                   item.path === pathname ||
                   (item.id !== 'dashboard' && pathname.startsWith(`/${item.id}`));
 
+                const activeChild = (() => {
+                  if (!isRouteActive || !item.children || item.children.length === 0) return null;
+                  if (currentTab) {
+                    const tabMatch = item.children.find(
+                      (c) => c.href && (c.href.includes(`tab=${currentTab}`) || c.href.includes(`sub=${currentTab}`))
+                    );
+                    if (tabMatch) return tabMatch;
+                  }
+                  return item.children.find((c) => c.href === pathname) ||
+                    (item.id === 'sales' && pathname === '/sales' ? item.children[0] : null) ||
+                    (item.id === 'purchase' && pathname === '/purchase' ? item.children[0] : null);
+                })();
+
+                const displayLabel = isRouteActive && activeChild ? activeChild.label : item.label;
+                const displayIconName = isRouteActive && activeChild?.iconName ? activeChild.iconName : item.iconName;
+
                 if (!hasChildren && item.path) {
                   return (
                     <Link
@@ -379,7 +549,7 @@ export function EnterpriseNavbar() {
                       )}
                     >
                       <div className="flex items-center gap-2.5">
-                        {HEADER_ICONS[item.iconName]?.(isRouteActive)}
+                        {renderHeaderIcon(item.iconName, isRouteActive)}
                         <span>{item.label}</span>
                       </div>
                       {item.badge && (
@@ -404,8 +574,8 @@ export function EnterpriseNavbar() {
                       )}
                     >
                       <div className="flex items-center gap-2.5">
-                        {HEADER_ICONS[item.iconName]?.(isRouteActive)}
-                        <span>{item.label}</span>
+                        {renderHeaderIcon(displayIconName, isRouteActive)}
+                        <span>{displayLabel}</span>
                       </div>
                       <ChevronDown
                         className={cn(
