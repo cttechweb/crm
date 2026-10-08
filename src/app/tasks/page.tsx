@@ -54,7 +54,12 @@ function TasksContent() {
   const searchParams = useSearchParams();
   const initialView = (searchParams.get('view') || 'all') as TaskTab;
 
-  const { tasks, addTask, updateTask, toggleTaskStatus, deleteTask, users, leads, customers, salesOpportunities, campaigns, invoices } = useEnterpriseCrm();
+  const {
+    tasks, addTask, updateTask, toggleTaskStatus, deleteTask,
+    users, leads, addLead, customers, addCustomer,
+    salesOpportunities, addOpportunity, campaigns, addCampaign,
+    invoices, addInvoice
+  } = useEnterpriseCrm();
   const currentUser = authMockService.getCurrentUser();
   const defaultUser = currentUser?.name || users[0]?.name || 'shaheer';
 
@@ -107,6 +112,16 @@ function TasksContent() {
     addNote: false,
     noteText: '',
   });
+  const [changeStatusTask, setChangeStatusTask] = useState<CrmTask | null>(null);
+  const [changeStatusForm, setChangeStatusForm] = useState({
+    status: 'Pending',
+    dueDate: '',
+    dueTime: '06:00 PM',
+    priority: 'Mid',
+    comments: '',
+    addNote: false,
+    noteText: '',
+  });
   const [actionMenuTaskId, setActionMenuTaskId] = useState<string | null>(null);
 
   // Add Form State
@@ -139,6 +154,7 @@ function TasksContent() {
   const [assignTargetAssignee, setAssignTargetAssignee] = useState('');
   const [assignSelectedIds, setAssignSelectedIds] = useState<string[]>([]);
   const [isTaskDropdownOpen, setIsTaskDropdownOpen] = useState(false);
+  const [isPlusTaskDropdownOpen, setIsPlusTaskDropdownOpen] = useState(false);
   const [isAddGenericOpen, setIsAddGenericOpen] = useState(false);
   const [genericTemplate, setGenericTemplate] = useState('');
   const [isAddLeadTaskOpen, setIsAddLeadTaskOpen] = useState(false);
@@ -160,17 +176,841 @@ function TasksContent() {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
   const [invoiceTemplate, setInvoiceTemplate] = useState('');
 
+  // Task Templates State & Management (+ New Template functionality)
+  const [customTemplates, setCustomTemplates] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cezcon_task_templates');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return [];
+  });
+
+  const baseTemplates = useMemo(() => [
+    'Follow-up Template',
+    'Customer Meeting',
+    'Payment Reminder',
+    'Product Demo',
+    'Delivery Coordination',
+    'Service Request',
+    'General Enquiry',
+    'Lead Qualification',
+    'Site Inspection Call',
+    'Quotation Discussion',
+    'Demo Scheduling',
+    'Closing Followup',
+    'Price Quotation Call',
+    'Technical Compliance Review',
+    'Commercial Negotiation',
+    'Payment Collection',
+    'Delivery Followup',
+    'Relationship Building Call',
+    'Executive Meeting',
+    'Technical Consultation',
+    'Service Follow-up',
+    'Campaign Outreach Call',
+    'Email Marketing Review',
+    'Lead Response Follow-up',
+    'Promo Launch Action',
+    'Payment Reminder Call',
+    'Tax Invoice Submission',
+    'Payment Collection Follow-up',
+    'Overdue Invoice Escalation',
+  ], []);
+
+  const allTemplates = useMemo(() => {
+    const combined = [...baseTemplates, ...customTemplates];
+    return Array.from(new Set(combined.filter(Boolean)));
+  }, [baseTemplates, customTemplates]);
+
+  const [isAddTemplateModalOpen, setIsAddTemplateModalOpen] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [targetTemplateField, setTargetTemplateField] = useState<'generic' | 'lead' | 'customer' | 'opp' | 'contact' | 'campaign' | 'invoice'>('generic');
+
+  const handleSaveNewTemplate = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newTemplateName.trim();
+    if (!trimmed) {
+      alert('Please enter a template name');
+      return;
+    }
+    if (!customTemplates.includes(trimmed) && !baseTemplates.includes(trimmed)) {
+      const updated = [...customTemplates, trimmed];
+      setCustomTemplates(updated);
+      try {
+        localStorage.setItem('cezcon_task_templates', JSON.stringify(updated));
+      } catch (err) {}
+    }
+
+    if (targetTemplateField === 'generic') setGenericTemplate(trimmed);
+    else if (targetTemplateField === 'lead') setLeadTemplate(trimmed);
+    else if (targetTemplateField === 'customer') setCustomerTemplate(trimmed);
+    else if (targetTemplateField === 'opp') setOppTemplate(trimmed);
+    else if (targetTemplateField === 'contact') setContactTemplate(trimmed);
+    else if (targetTemplateField === 'campaign') setCampaignTemplate(trimmed);
+    else if (targetTemplateField === 'invoice') setInvoiceTemplate(trimmed);
+
+    setNewTemplateName('');
+    setIsAddTemplateModalOpen(false);
+  };
+
+  const renderAddTemplateModal = () => {
+    if (!isAddTemplateModalOpen) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-150">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+          <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-tight">
+              <Plus className="w-4 h-4 text-blue-600" />
+              <span>Add New Template</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIsAddTemplateModalOpen(false);
+                setNewTemplateName('');
+              }}
+              className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+              title="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <form onSubmit={handleSaveNewTemplate} className="p-5 space-y-4 text-xs">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Template Name <span className="text-red-600">*</span>
+              </label>
+              <input
+                type="text"
+                value={newTemplateName}
+                onChange={(e) => setNewTemplateName(e.target.value)}
+                placeholder="e.g., Warranty Followup, Site Inspection, Urgent Review"
+                autoFocus
+                required
+                className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+              />
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                This new template will be saved and immediately selectable across all task forms.
+              </p>
+            </div>
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddTemplateModalOpen(false);
+                  setNewTemplateName('');
+                }}
+                className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Save Template</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  // Quick-Add States for Left Form Fields (Contact, Lead, Customer, Opportunity, Campaign, Invoice)
+  const [isAddContactModalOpen, setIsAddContactModalOpen] = useState(false);
+  const [newContactForm, setNewContactForm] = useState({ contactPerson: '', customerName: '', phone: '', email: '' });
+
+  const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
+  const [newLeadForm, setNewLeadForm] = useState({ company: '', name: '', phone: '', email: '' });
+
+  const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false);
+  const [newCustomerForm, setNewCustomerForm] = useState({ customerName: '', contactPerson: '', phone: '', email: '' });
+
+  const [isAddOppModalOpen, setIsAddOppModalOpen] = useState(false);
+  const [newOppForm, setNewOppForm] = useState({ title: '', customer: '', value: '25000' });
+
+  const [isAddCampaignModalOpen, setIsAddCampaignModalOpen] = useState(false);
+  const [newCampaignForm, setNewCampaignForm] = useState({ name: '', type: 'Email', budget: '5000' });
+
+  const [isAddInvoiceModalOpen, setIsAddInvoiceModalOpen] = useState(false);
+  const [newInvoiceForm, setNewInvoiceForm] = useState({ invoiceNumber: '', customer: '', amount: '7500' });
+
+  const renderEntityModals = () => {
+    return (
+      <>
+        {/* Add Contact Modal */}
+        {isAddContactModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-150">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+              <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-tight">
+                  <Plus className="w-4 h-4 text-blue-600" />
+                  <span>+ New Contact</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddContactModalOpen(false)}
+                  className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+                  title="Close"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newContactForm.contactPerson.trim()) {
+                    alert('Please enter a contact name');
+                    return;
+                  }
+                  const person = newContactForm.contactPerson.trim();
+                  const comp = newContactForm.customerName.trim() || `${person} Enterprise`;
+                  addCustomer({
+                    customerName: comp,
+                    contactPerson: person,
+                    phone: newContactForm.phone.trim() || '+971 50 123 4567',
+                    email: newContactForm.email.trim() || 'contact@client.com',
+                    owner: defaultUser,
+                    companyGroup: 'Commercial',
+                    status: 'Active',
+                    totalDeals: 0,
+                    totalSpend: 0,
+                    lastActivity: 'Contact added via Task quick add',
+                  });
+                  setSelectedContactId(person);
+                  setNewContactForm({ contactPerson: '', customerName: '', phone: '', email: '' });
+                  setIsAddContactModalOpen(false);
+                }}
+                className="p-5 space-y-3.5 text-xs"
+              >
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Contact Person Name <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newContactForm.contactPerson}
+                    onChange={(e) => setNewContactForm({ ...newContactForm, contactPerson: e.target.value })}
+                    placeholder="e.g., Tariq Al Mansoori"
+                    autoFocus
+                    required
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Company / Organization Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newContactForm.customerName}
+                    onChange={(e) => setNewContactForm({ ...newContactForm, customerName: e.target.value })}
+                    placeholder="e.g., Dubai Properties Group"
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Phone</label>
+                    <input
+                      type="text"
+                      value={newContactForm.phone}
+                      onChange={(e) => setNewContactForm({ ...newContactForm, phone: e.target.value })}
+                      placeholder="+971 50 123 4567"
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={newContactForm.email}
+                      onChange={(e) => setNewContactForm({ ...newContactForm, email: e.target.value })}
+                      placeholder="tariq@client.com"
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddContactModalOpen(false)}
+                    className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Contact</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Add Lead Modal */}
+        {isAddLeadModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-150">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+              <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-tight">
+                  <Plus className="w-4 h-4 text-blue-600" />
+                  <span>+ New Lead</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddLeadModalOpen(false)}
+                  className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+                  title="Close"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newLeadForm.company.trim() && !newLeadForm.name.trim()) {
+                    alert('Please enter Company or Contact Name');
+                    return;
+                  }
+                  const leadId = `lead-${Date.now()}`;
+                  addLead({
+                    leadDate: new Date().toISOString().split('T')[0],
+                    leadSpecification: 'Created via Task Quick Add',
+                    contactDetails: {
+                      company: newLeadForm.company.trim() || newLeadForm.name.trim(),
+                      name: newLeadForm.name.trim() || newLeadForm.company.trim(),
+                      phone: newLeadForm.phone.trim() || '+971 50 123 4567',
+                      email: newLeadForm.email.trim() || 'lead@client.com',
+                    },
+                    owner: defaultUser,
+                    leadAssigned: { name: defaultUser },
+                    createdBy: defaultUser,
+                    rating: 'Warm',
+                    value: 25000,
+                    source: 'Direct',
+                    status: 'New',
+                    lastActivity: 'Lead created via Task quick add',
+                    lastActivityDate: new Date().toISOString().split('T')[0],
+                  });
+                  setSelectedLeadId(leadId);
+                  setNewLeadForm({ company: '', name: '', phone: '', email: '' });
+                  setIsAddLeadModalOpen(false);
+                }}
+                className="p-5 space-y-3.5 text-xs"
+              >
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Company / Business Name <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newLeadForm.company}
+                    onChange={(e) => setNewLeadForm({ ...newLeadForm, company: e.target.value })}
+                    placeholder="e.g., Al Futtaim Real Estate"
+                    autoFocus
+                    required
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Contact Person Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newLeadForm.name}
+                    onChange={(e) => setNewLeadForm({ ...newLeadForm, name: e.target.value })}
+                    placeholder="e.g., Karim Salem"
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Phone</label>
+                    <input
+                      type="text"
+                      value={newLeadForm.phone}
+                      onChange={(e) => setNewLeadForm({ ...newLeadForm, phone: e.target.value })}
+                      placeholder="+971 50 000 0000"
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={newLeadForm.email}
+                      onChange={(e) => setNewLeadForm({ ...newLeadForm, email: e.target.value })}
+                      placeholder="info@alfuttaim.com"
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddLeadModalOpen(false)}
+                    className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Lead</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Add Customer Modal */}
+        {isAddCustomerModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-150">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+              <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-tight">
+                  <Plus className="w-4 h-4 text-blue-600" />
+                  <span>+ New Customer</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddCustomerModalOpen(false)}
+                  className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+                  title="Close"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newCustomerForm.customerName.trim()) {
+                    alert('Please enter Customer Name');
+                    return;
+                  }
+                  const custId = `cust-${Date.now()}`;
+                  addCustomer({
+                    customerName: newCustomerForm.customerName.trim(),
+                    contactPerson: newCustomerForm.contactPerson.trim() || 'Manager',
+                    phone: newCustomerForm.phone.trim() || '+971 50 123 4567',
+                    email: newCustomerForm.email.trim() || 'info@customer.com',
+                    owner: defaultUser,
+                    companyGroup: 'Commercial',
+                    status: 'Active',
+                    totalDeals: 0,
+                    totalSpend: 0,
+                    lastActivity: 'Customer created via Task quick add',
+                  });
+                  setSelectedCustomerId(custId);
+                  setNewCustomerForm({ customerName: '', contactPerson: '', phone: '', email: '' });
+                  setIsAddCustomerModalOpen(false);
+                }}
+                className="p-5 space-y-3.5 text-xs"
+              >
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Customer Name <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newCustomerForm.customerName}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, customerName: e.target.value })}
+                    placeholder="e.g., Al Habtoor Trading LLC"
+                    autoFocus
+                    required
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Contact Person
+                  </label>
+                  <input
+                    type="text"
+                    value={newCustomerForm.contactPerson}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, contactPerson: e.target.value })}
+                    placeholder="e.g., Rashid Al Nuaimi"
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Phone</label>
+                    <input
+                      type="text"
+                      value={newCustomerForm.phone}
+                      onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
+                      placeholder="+971 50 000 0000"
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={newCustomerForm.email}
+                      onChange={(e) => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
+                      placeholder="rashid@habtoor.com"
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddCustomerModalOpen(false)}
+                    className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Customer</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Add Opportunity Modal */}
+        {isAddOppModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-150">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+              <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-tight">
+                  <Plus className="w-4 h-4 text-blue-600" />
+                  <span>+ New Opportunity / Order</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddOppModalOpen(false)}
+                  className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+                  title="Close"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newOppForm.title.trim()) {
+                    alert('Please enter Opportunity Title');
+                    return;
+                  }
+                  const oppId = `opp-${Date.now()}`;
+                  const code = `OPP-${Date.now().toString().slice(-4)}`;
+                  addOpportunity({
+                    opportunityCode: code,
+                    title: newOppForm.title.trim(),
+                    customer: newOppForm.customer.trim() || 'General Client LLC',
+                    amount: Number(newOppForm.value || 0),
+                    stage: 'Opportunity',
+                    probability: 50,
+                    owner: defaultUser,
+                    expectedClose: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                  });
+                  setSelectedOppId(oppId);
+                  setNewOppForm({ title: '', customer: '', value: '25000' });
+                  setIsAddOppModalOpen(false);
+                }}
+                className="p-5 space-y-3.5 text-xs"
+              >
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Opportunity / Order Title <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newOppForm.title}
+                    onChange={(e) => setNewOppForm({ ...newOppForm, title: e.target.value })}
+                    placeholder="e.g., 500KG Ice Flaker Machine supply"
+                    autoFocus
+                    required
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Customer Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newOppForm.customer}
+                    onChange={(e) => setNewOppForm({ ...newOppForm, customer: e.target.value })}
+                    placeholder="e.g., DAMAC Properties"
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Expected Value (AED)
+                  </label>
+                  <input
+                    type="number"
+                    value={newOppForm.value}
+                    onChange={(e) => setNewOppForm({ ...newOppForm, value: e.target.value })}
+                    placeholder="25000"
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddOppModalOpen(false)}
+                    className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Opportunity</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Add Campaign Modal */}
+        {isAddCampaignModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-150">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+              <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-tight">
+                  <Plus className="w-4 h-4 text-blue-600" />
+                  <span>+ New Campaign</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddCampaignModalOpen(false)}
+                  className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+                  title="Close"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newCampaignForm.name.trim()) {
+                    alert('Please enter Campaign Name');
+                    return;
+                  }
+                  const cmpId = `cmp-${Date.now()}`;
+                  addCampaign({
+                    name: newCampaignForm.name.trim(),
+                    type: newCampaignForm.type || 'Email',
+                    status: 'Active',
+                    budget: Number(newCampaignForm.budget || 0),
+                    startDate: new Date().toISOString().split('T')[0],
+                    endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    owner: { name: defaultUser },
+                  });
+                  setSelectedCampaignId(cmpId);
+                  setNewCampaignForm({ name: '', type: 'Email', budget: '5000' });
+                  setIsAddCampaignModalOpen(false);
+                }}
+                className="p-5 space-y-3.5 text-xs"
+              >
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Campaign Name <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newCampaignForm.name}
+                    onChange={(e) => setNewCampaignForm({ ...newCampaignForm, name: e.target.value })}
+                    placeholder="e.g., Summer Cooling Equipment Expo 2026"
+                    autoFocus
+                    required
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Channel Type</label>
+                    <select
+                      value={newCampaignForm.type}
+                      onChange={(e) => setNewCampaignForm({ ...newCampaignForm, type: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                    >
+                      <option value="Email">Email</option>
+                      <option value="SMS">SMS</option>
+                      <option value="Social">Social</option>
+                      <option value="Event">Event</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Budget (AED)</label>
+                    <input
+                      type="number"
+                      value={newCampaignForm.budget}
+                      onChange={(e) => setNewCampaignForm({ ...newCampaignForm, budget: e.target.value })}
+                      placeholder="5000"
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddCampaignModalOpen(false)}
+                    className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Campaign</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Add Invoice Modal */}
+        {isAddInvoiceModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-150">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+              <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-tight">
+                  <Plus className="w-4 h-4 text-blue-600" />
+                  <span>+ New Invoice</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddInvoiceModalOpen(false)}
+                  className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+                  title="Close"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const invNum = newInvoiceForm.invoiceNumber.trim() || `INV-${Date.now().toString().slice(-4)}`;
+                  const invId = `inv-${Date.now()}`;
+                  const numAmt = Number(newInvoiceForm.amount || 0);
+                  addInvoice({
+                    slNo: Date.now() % 10000,
+                    invoiceNumber: invNum,
+                    customer: newInvoiceForm.customer.trim() || 'General Client LLC',
+                    status: 'Unpaid',
+                    issueDate: new Date().toISOString().split('T')[0],
+                    dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    amount: numAmt,
+                    subtotal: numAmt,
+                    vatAmount: numAmt * 0.05,
+                    totalAmount: numAmt * 1.05,
+                    paidAmount: 0,
+                    balanceAmount: numAmt * 1.05,
+                    owner: defaultUser,
+                  });
+                  setSelectedInvoiceId(invId);
+                  setNewInvoiceForm({ invoiceNumber: '', customer: '', amount: '7500' });
+                  setIsAddInvoiceModalOpen(false);
+                }}
+                className="p-5 space-y-3.5 text-xs"
+              >
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Invoice Number <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newInvoiceForm.invoiceNumber}
+                    onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, invoiceNumber: e.target.value })}
+                    placeholder="e.g., INV-2026-0099"
+                    autoFocus
+                    required
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Customer Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newInvoiceForm.customer}
+                    onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, customer: e.target.value })}
+                    placeholder="e.g., EMAAR Properties PJSC"
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Amount (AED)
+                  </label>
+                  <input
+                    type="number"
+                    value={newInvoiceForm.amount}
+                    onChange={(e) => setNewInvoiceForm({ ...newInvoiceForm, amount: e.target.value })}
+                    placeholder="7500"
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddInvoiceModalOpen(false)}
+                    className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Invoice</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
+
   // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = () => {
       setActionMenuTaskId(null);
       setIsTaskDropdownOpen(false);
+      setIsPlusTaskDropdownOpen(false);
     };
-    if (actionMenuTaskId || isTaskDropdownOpen) {
+    if (actionMenuTaskId || isTaskDropdownOpen || isPlusTaskDropdownOpen) {
       window.addEventListener('click', handleClickOutside);
       return () => window.removeEventListener('click', handleClickOutside);
     }
-  }, [actionMenuTaskId, isTaskDropdownOpen]);
+  }, [actionMenuTaskId, isTaskDropdownOpen, isPlusTaskDropdownOpen]);
 
   // Reset Filters
   const handleResetFilters = () => {
@@ -544,6 +1384,279 @@ function TasksContent() {
               <button
                 type="submit"
                 className="px-4 py-1.5 rounded bg-[#002B49] hover:bg-[#001E33] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+              >
+                Update
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
+  // ── CHANGE TASK STATUS MODAL (Matches Cezcon CRM Screenshot 1) ───────
+  const handleOpenChangeStatus = (task: CrmTask) => {
+    let mappedStatus = 'Pending';
+    const stLower = (task.status || '').toLowerCase();
+    if (stLower.includes('progress')) mappedStatus = 'Progress';
+    else if (stLower.includes('complete') || stLower.includes('reviewed')) mappedStatus = 'Completed';
+    else mappedStatus = 'Pending';
+
+    let mappedPriority = 'Mid';
+    const prLower = (task.priority || '').toLowerCase();
+    if (prLower === 'low') mappedPriority = 'Low';
+    else if (prLower === 'high' || prLower === 'urgent') mappedPriority = 'High';
+    else mappedPriority = 'Mid';
+
+    setChangeStatusTask(task);
+    setChangeStatusForm({
+      status: mappedStatus,
+      dueDate: task.dueDate || new Date().toISOString().split('T')[0],
+      dueTime: task.dueTime || '06:00 PM',
+      priority: mappedPriority,
+      comments: task.description || '',
+      addNote: false,
+      noteText: '',
+    });
+  };
+
+  const handleUpdateChangeStatus = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!changeStatusTask) return;
+
+    let targetStatus: TaskStatus = 'Pending';
+    if (changeStatusForm.status === 'Progress') targetStatus = 'In Progress';
+    else if (changeStatusForm.status === 'Completed') targetStatus = 'Completed';
+    else targetStatus = 'Pending';
+
+    let targetPriority: TaskPriority = 'Medium';
+    if (changeStatusForm.priority === 'Low') targetPriority = 'Low';
+    else if (changeStatusForm.priority === 'High') targetPriority = 'High';
+    else targetPriority = 'Medium';
+
+    const updates: Partial<CrmTask> = {
+      status: targetStatus,
+      priority: targetPriority,
+      dueDate: changeStatusForm.dueDate,
+      dueTime: changeStatusForm.dueTime,
+    };
+
+    if (targetStatus === 'Completed') {
+      updates.progress = 100;
+    } else if (targetStatus === 'In Progress') {
+      updates.progress = 50;
+    }
+
+    if (changeStatusForm.comments) {
+      updates.description = changeStatusForm.comments;
+    }
+
+    if (changeStatusForm.addNote && changeStatusForm.noteText) {
+      updates.description =
+        (updates.description ? `${updates.description}\n` : '') + `[Note]: ${changeStatusForm.noteText}`;
+    }
+
+    updateTask(changeStatusTask.id, updates);
+    if (viewingTaskInfo && viewingTaskInfo.id === changeStatusTask.id) {
+      setViewingTaskInfo({ ...viewingTaskInfo, ...updates });
+    }
+    setChangeStatusTask(null);
+  };
+
+  const renderChangeStatusModal = () => {
+    if (!changeStatusTask) return null;
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs animate-in fade-in duration-150 font-sans">
+        <div className="fixed inset-0" onClick={() => setChangeStatusTask(null)} />
+        <div className="relative z-10 bg-white rounded-lg border border-slate-300 max-w-lg w-full shadow-2xl overflow-hidden text-xs">
+          {/* Header */}
+          <div className="border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+            <h3 className="font-bold text-slate-800 text-sm sm:text-base">Change Task Status</h3>
+            <button
+              type="button"
+              onClick={() => setChangeStatusTask(null)}
+              className="text-slate-400 hover:text-slate-600 cursor-pointer p-0.5 text-lg leading-none transition-colors"
+              title="Close"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleUpdateChangeStatus} className="p-6 space-y-4">
+            {/* Status (Segmented Buttons: Pending, Progress, Completed) */}
+            <div className="grid grid-cols-12 gap-3 items-center">
+              <label className="col-span-3 text-xs font-semibold text-slate-700">
+                Status
+              </label>
+              <div className="col-span-9 flex items-center gap-1.5">
+                {(['Pending', 'Progress', 'Completed'] as const).map((st) => {
+                  const isSelected = changeStatusForm.status === st;
+                  const activeColor =
+                    st === 'Pending'
+                      ? 'bg-[#F5A623] text-white shadow-2xs font-bold'
+                      : st === 'Progress'
+                      ? 'bg-[#0284C7] text-white shadow-2xs font-bold'
+                      : 'bg-[#10B981] text-white shadow-2xs font-bold';
+
+                  return (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setChangeStatusForm({ ...changeStatusForm, status: st })}
+                      className={`px-3.5 py-1 text-xs font-medium rounded-xs cursor-pointer transition-colors ${
+                        isSelected
+                          ? activeColor
+                          : 'bg-[#EAEFF5] text-slate-700 hover:bg-slate-200 border border-slate-200'
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Due Date & Time */}
+            <div className="grid grid-cols-12 gap-3 items-center">
+              <label className="col-span-3 text-xs font-semibold text-slate-700">
+                Due Date
+              </label>
+              <div className="col-span-9 grid grid-cols-2 gap-2">
+                {/* Date Input */}
+                <div className="relative flex items-center">
+                  <input
+                    type="date"
+                    required
+                    value={changeStatusForm.dueDate}
+                    onChange={(e) => setChangeStatusForm({ ...changeStatusForm, dueDate: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs pr-12"
+                  />
+                  <div className="absolute right-1.5 flex items-center gap-1 text-slate-400">
+                    {changeStatusForm.dueDate && (
+                      <button
+                        type="button"
+                        onClick={() => setChangeStatusForm({ ...changeStatusForm, dueDate: '' })}
+                        className="hover:text-slate-600 cursor-pointer p-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                    <Calendar className="w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Time Input */}
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    placeholder="06:00 PM"
+                    value={changeStatusForm.dueTime}
+                    onChange={(e) => setChangeStatusForm({ ...changeStatusForm, dueTime: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs pr-12"
+                  />
+                  <div className="absolute right-1.5 flex items-center gap-1 text-slate-400">
+                    {changeStatusForm.dueTime && (
+                      <button
+                        type="button"
+                        onClick={() => setChangeStatusForm({ ...changeStatusForm, dueTime: '' })}
+                        className="hover:text-slate-600 cursor-pointer p-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                    <Clock className="w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Priority (Segmented Buttons: Low, Mid, High) */}
+            <div className="grid grid-cols-12 gap-3 items-center">
+              <label className="col-span-3 text-xs font-semibold text-slate-700">
+                Priority
+              </label>
+              <div className="col-span-9 flex items-center gap-1.5">
+                {(['Low', 'Mid', 'High'] as const).map((pr) => {
+                  const isSelected = changeStatusForm.priority === pr;
+                  const activeColor =
+                    pr === 'Low'
+                      ? 'bg-[#0284C7] text-white shadow-2xs font-bold'
+                      : pr === 'Mid'
+                      ? 'bg-[#F5A623] text-white shadow-2xs font-bold'
+                      : 'bg-[#DC2626] text-white shadow-2xs font-bold';
+
+                  return (
+                    <button
+                      key={pr}
+                      type="button"
+                      onClick={() => setChangeStatusForm({ ...changeStatusForm, priority: pr })}
+                      className={`px-3.5 py-1 text-xs font-medium rounded-xs cursor-pointer transition-colors ${
+                        isSelected
+                          ? activeColor
+                          : 'bg-[#EAEFF5] text-slate-700 hover:bg-slate-200 border border-slate-200'
+                      }`}
+                    >
+                      {pr}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Comments */}
+            <div className="grid grid-cols-12 gap-3 items-start">
+              <label className="col-span-3 text-xs font-semibold text-slate-700 pt-1.5">
+                Comments
+              </label>
+              <div className="col-span-9">
+                <textarea
+                  rows={3}
+                  value={changeStatusForm.comments}
+                  onChange={(e) => setChangeStatusForm({ ...changeStatusForm, comments: e.target.value })}
+                  placeholder=""
+                  className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y shadow-2xs"
+                />
+              </div>
+            </div>
+
+            {/* Add Note */}
+            <div className="grid grid-cols-12 gap-3 items-center">
+              <label className="col-span-3 text-xs font-semibold text-slate-700">
+                Add Note
+              </label>
+              <div className="col-span-9 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="changeStatusAddNoteCheckbox"
+                  checked={changeStatusForm.addNote}
+                  onChange={(e) => setChangeStatusForm({ ...changeStatusForm, addNote: e.target.checked })}
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                {changeStatusForm.addNote && (
+                  <input
+                    type="text"
+                    placeholder="Enter note..."
+                    value={changeStatusForm.noteText}
+                    onChange={(e) => setChangeStatusForm({ ...changeStatusForm, noteText: e.target.value })}
+                    className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="border-t border-slate-100 pt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setChangeStatusTask(null)}
+                className="px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+              >
+                Close
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-1.5 rounded bg-[#002B49] hover:bg-[#001E33] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
               >
                 Update
               </button>
@@ -1281,6 +2394,8 @@ function TasksContent() {
   if (viewingTaskInfo) {
     return (
       <div className="space-y-3.5 pb-28 sm:pb-32 w-full animate-in fade-in duration-150">
+        {renderChangeStatusModal()}
+        {renderPostponeModal()}
         {/* Full Page Cezcon-Style Task Detail Workbench */}
         <div className="bg-white rounded-lg border border-slate-300 shadow-sm flex flex-col text-xs overflow-hidden">
           {/* Top Notice Header Strip */}
@@ -1397,16 +2512,27 @@ function TasksContent() {
                       </td>
                     </tr>
 
-                    {/* Status */}
+                    {/* Status (Clickable to open Change Task Status modal) */}
                     <tr>
                       <td className="bg-[#FAFBFD] py-2.5 px-3.5 font-bold text-slate-700 border-r border-slate-200">
                         Status
                       </td>
                       <td className="py-2.5 px-3.5">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-bold bg-[#F5A623] text-white shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenChangeStatus(viewingTaskInfo)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold text-white shadow-2xs transition-all cursor-pointer hover:shadow-xs ${
+                            (viewingTaskInfo.status || '').toLowerCase().includes('progress')
+                              ? 'bg-[#0284C7] hover:bg-[#0369a1]'
+                              : (viewingTaskInfo.status || '').toLowerCase().includes('complete') || (viewingTaskInfo.status || '').toLowerCase().includes('reviewed')
+                              ? 'bg-[#10B981] hover:bg-[#059669]'
+                              : 'bg-[#F5A623] hover:bg-[#E09612]'
+                          }`}
+                          title="Click to Change Task Status"
+                        >
                           <Edit2 className="w-2.5 h-2.5" />
                           <span>{viewingTaskInfo.status}</span>
-                        </span>
+                        </button>
                       </td>
                     </tr>
 
@@ -1459,16 +2585,27 @@ function TasksContent() {
                       </td>
                     </tr>
 
-                    {/* Priority */}
+                    {/* Priority (Clickable to open Change Task Status modal) */}
                     <tr>
                       <td className="bg-[#FAFBFD] py-2.5 px-3.5 font-bold text-slate-700 border-r border-slate-200">
                         Priority
                       </td>
                       <td className="py-2.5 px-3.5">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-bold bg-[#F5A623] text-white shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenChangeStatus(viewingTaskInfo)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-bold text-white shadow-2xs transition-all cursor-pointer hover:shadow-xs ${
+                            (viewingTaskInfo.priority || '').toLowerCase() === 'low'
+                              ? 'bg-[#0284C7] hover:bg-[#0369a1]'
+                              : (viewingTaskInfo.priority || '').toLowerCase() === 'high' || (viewingTaskInfo.priority || '').toLowerCase() === 'urgent'
+                              ? 'bg-[#DC2626] hover:bg-[#B91C1C]'
+                              : 'bg-[#F5A623] hover:bg-[#E09612]'
+                          }`}
+                          title="Click to Change Priority / Status"
+                        >
                           <Edit2 className="w-2.5 h-2.5" />
-                          <span>{viewingTaskInfo.priority === 'High' ? 'Mid' : viewingTaskInfo.priority}</span>
-                        </span>
+                          <span>{viewingTaskInfo.priority === 'High' ? 'High' : viewingTaskInfo.priority === 'Low' ? 'Low' : 'Mid'}</span>
+                        </button>
                       </td>
                     </tr>
                   </tbody>
@@ -1604,6 +2741,8 @@ function TasksContent() {
   if (isAddGenericOpen) {
     return (
       <div className="space-y-3 pb-28 font-sans text-slate-800">
+        {renderAddTemplateModal()}
+        {renderEntityModals()}
         <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
           {/* Top Header Banner */}
           <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
@@ -1651,21 +2790,41 @@ function TasksContent() {
               <label className="sm:w-28 text-xs font-medium text-slate-700 shrink-0">
                 Template <span className="text-red-600 font-bold">*</span>
               </label>
-              <div className="flex-1">
+              <div className="flex-1 flex items-center gap-1.5">
                 <select
                   value={genericTemplate}
-                  onChange={(e) => setGenericTemplate(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value === '__ADD_NEW__') {
+                      setTargetTemplateField('generic');
+                      setIsAddTemplateModalOpen(true);
+                    } else {
+                      setGenericTemplate(e.target.value);
+                    }
+                  }}
                   className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                 >
                   <option value="">Select Template</option>
-                  <option value="Follow-up Template">Follow-up Template</option>
-                  <option value="Customer Meeting">Customer Meeting</option>
-                  <option value="Payment Reminder">Payment Reminder</option>
-                  <option value="Product Demo">Product Demo</option>
-                  <option value="Delivery Coordination">Delivery Coordination</option>
-                  <option value="Service Request">Service Request</option>
-                  <option value="General Enquiry">General Enquiry</option>
+                  {allTemplates.map((tpl) => (
+                    <option key={tpl} value={tpl}>
+                      {tpl}
+                    </option>
+                  ))}
+                  <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                    + New Template...
+                  </option>
                 </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTargetTemplateField('generic');
+                    setIsAddTemplateModalOpen(true);
+                  }}
+                  className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                  title="Add New Template"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>New</span>
+                </button>
               </div>
             </div>
 
@@ -1694,6 +2853,8 @@ function TasksContent() {
   if (isAddLeadTaskOpen) {
     return (
       <div className="space-y-3 pb-28 font-sans text-slate-800">
+        {renderAddTemplateModal()}
+        {renderEntityModals()}
         <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
           {/* Top Header Banner */}
           <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
@@ -1743,15 +2904,21 @@ function TasksContent() {
             className="p-6 text-xs text-slate-700"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-              {/* Lead Field */}
+              {/* Lead Field (LEFT FIELD with + New) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
                   Lead <span className="text-red-600 font-bold">*</span>
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-1.5">
                   <select
                     value={selectedLeadId}
-                    onChange={(e) => setSelectedLeadId(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setIsAddLeadModalOpen(true);
+                      } else {
+                        setSelectedLeadId(e.target.value);
+                      }
+                    }}
                     required
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
@@ -1769,29 +2936,62 @@ function TasksContent() {
                         <option value="LEAD#1084 - SOBHA REALTY LLC">LEAD#1084 - SOBHA REALTY LLC</option>
                       </>
                     )}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                      + New Lead...
+                    </option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddLeadModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                    title="Add New Lead"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Template Field */}
+              {/* Template Field (RIGHT FIELD with + New) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
                   Template <span className="text-red-600 font-bold">*</span>
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-1.5">
                   <select
                     value={leadTemplate}
-                    onChange={(e) => setLeadTemplate(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setTargetTemplateField('lead');
+                        setIsAddTemplateModalOpen(true);
+                      } else {
+                        setLeadTemplate(e.target.value);
+                      }
+                    }}
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
                     <option value="">Select Template</option>
-                    <option value="Follow-up Template">Follow-up Template</option>
-                    <option value="Lead Qualification">Lead Qualification</option>
-                    <option value="Site Inspection Call">Site Inspection Call</option>
-                    <option value="Quotation Discussion">Quotation Discussion</option>
-                    <option value="Demo Scheduling">Demo Scheduling</option>
-                    <option value="Closing Followup">Closing Followup</option>
+                    {allTemplates.map((tpl) => (
+                      <option key={tpl} value={tpl}>
+                        {tpl}
+                      </option>
+                    ))}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                      + New Template...
+                    </option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetTemplateField('lead');
+                      setIsAddTemplateModalOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                    title="Add New Template"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1821,6 +3021,8 @@ function TasksContent() {
   if (isAddCustomerTaskOpen) {
     return (
       <div className="space-y-3 pb-28 font-sans text-slate-800">
+        {renderAddTemplateModal()}
+        {renderEntityModals()}
         <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
           {/* Top Header Banner */}
           <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
@@ -1870,15 +3072,21 @@ function TasksContent() {
             className="p-6 text-xs text-slate-700"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-              {/* Customer Name Field */}
+              {/* Customer Name Field (LEFT FIELD with + New) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <label className="sm:w-28 text-xs font-medium text-slate-700 shrink-0">
                   Customer Name <span className="text-red-600 font-bold">*</span>
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-1.5">
                   <select
                     value={selectedCustomerId}
-                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setIsAddCustomerModalOpen(true);
+                      } else {
+                        setSelectedCustomerId(e.target.value);
+                      }
+                    }}
                     required
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
@@ -1896,30 +3104,62 @@ function TasksContent() {
                         <option value="AL HABTOOR GROUP">AL HABTOOR GROUP</option>
                       </>
                     )}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                      + New Customer...
+                    </option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddCustomerModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                    title="Add New Customer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Template Field */}
+              {/* Template Field (RIGHT FIELD with + New) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <label className="sm:w-28 text-xs font-medium text-slate-700 shrink-0">
                   Template <span className="text-red-600 font-bold">*</span>
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-1.5">
                   <select
                     value={customerTemplate}
-                    onChange={(e) => setCustomerTemplate(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setTargetTemplateField('customer');
+                        setIsAddTemplateModalOpen(true);
+                      } else {
+                        setCustomerTemplate(e.target.value);
+                      }
+                    }}
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
                     <option value="">Select Template</option>
-                    <option value="Follow-up Template">Follow-up Template</option>
-                    <option value="Customer Meeting">Customer Meeting</option>
-                    <option value="Payment Reminder">Payment Reminder</option>
-                    <option value="Product Demo">Product Demo</option>
-                    <option value="Delivery Coordination">Delivery Coordination</option>
-                    <option value="Service Request">Service Request</option>
-                    <option value="General Enquiry">General Enquiry</option>
+                    {allTemplates.map((tpl) => (
+                      <option key={tpl} value={tpl}>
+                        {tpl}
+                      </option>
+                    ))}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                      + New Template...
+                    </option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetTemplateField('customer');
+                      setIsAddTemplateModalOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                    title="Add New Template"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1949,6 +3189,8 @@ function TasksContent() {
   if (isAddOppTaskOpen) {
     return (
       <div className="space-y-3 pb-28 font-sans text-slate-800">
+        {renderAddTemplateModal()}
+        {renderEntityModals()}
         <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
           {/* Top Header Banner */}
           <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
@@ -2000,15 +3242,21 @@ function TasksContent() {
             className="p-6 text-xs text-slate-700"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-              {/* Opportunity / Order Field */}
+              {/* Opportunity / Order Field (LEFT FIELD with + New) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">
                   Opportunity / Order <span className="text-red-600 font-bold">*</span>
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-1.5">
                   <select
                     value={selectedOppId}
-                    onChange={(e) => setSelectedOppId(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setIsAddOppModalOpen(true);
+                      } else {
+                        setSelectedOppId(e.target.value);
+                      }
+                    }}
                     required
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
@@ -2026,29 +3274,62 @@ function TasksContent() {
                         <option value="ORD#2019 HVAC DUCTING / SOBHA REALTY">ORD#2019 HVAC DUCTING / SOBHA REALTY</option>
                       </>
                     )}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                      + New Opportunity...
+                    </option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddOppModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                    title="Add New Opportunity"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Template Field */}
+              {/* Template Field (RIGHT FIELD with + New) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
                   Template <span className="text-red-600 font-bold">*</span>
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-1.5">
                   <select
                     value={oppTemplate}
-                    onChange={(e) => setOppTemplate(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setTargetTemplateField('opp');
+                        setIsAddTemplateModalOpen(true);
+                      } else {
+                        setOppTemplate(e.target.value);
+                      }
+                    }}
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
                     <option value="">Select Template</option>
-                    <option value="Follow-up Template">Follow-up Template</option>
-                    <option value="Price Quotation Call">Price Quotation Call</option>
-                    <option value="Technical Compliance Review">Technical Compliance Review</option>
-                    <option value="Commercial Negotiation">Commercial Negotiation</option>
-                    <option value="Payment Collection">Payment Collection</option>
-                    <option value="Delivery Followup">Delivery Followup</option>
+                    {allTemplates.map((tpl) => (
+                      <option key={tpl} value={tpl}>
+                        {tpl}
+                      </option>
+                    ))}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                      + New Template...
+                    </option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetTemplateField('opp');
+                      setIsAddTemplateModalOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                    title="Add New Template"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -2078,6 +3359,8 @@ function TasksContent() {
   if (isAddContactTaskOpen) {
     return (
       <div className="space-y-3 pb-28 font-sans text-slate-800">
+        {renderAddTemplateModal()}
+        {renderEntityModals()}
         <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
           {/* Top Header Banner */}
           <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
@@ -2125,15 +3408,21 @@ function TasksContent() {
             className="p-6 text-xs text-slate-700"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-              {/* Contact Field */}
+              {/* Contact Field (LEFT FIELD with + New) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <label className="sm:w-24 text-xs font-medium text-slate-700 shrink-0">
                   Contact <span className="text-red-600 font-bold">*</span>
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-1.5">
                   <select
                     value={selectedContactId}
-                    onChange={(e) => setSelectedContactId(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setIsAddContactModalOpen(true);
+                      } else {
+                        setSelectedContactId(e.target.value);
+                      }
+                    }}
                     required
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
@@ -2153,29 +3442,62 @@ function TasksContent() {
                         <option value="Sarah Jenkins">Sarah Jenkins - SOBHA REALTY</option>
                       </>
                     )}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                      + New Contact...
+                    </option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddContactModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                    title="Add New Contact"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Template Field */}
+              {/* Template Field (RIGHT FIELD with + New) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
                   Template <span className="text-red-600 font-bold">*</span>
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-1.5">
                   <select
                     value={contactTemplate}
-                    onChange={(e) => setContactTemplate(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setTargetTemplateField('contact');
+                        setIsAddTemplateModalOpen(true);
+                      } else {
+                        setContactTemplate(e.target.value);
+                      }
+                    }}
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
                     <option value="">Select Template</option>
-                    <option value="Follow-up Template">Follow-up Template</option>
-                    <option value="Relationship Building Call">Relationship Building Call</option>
-                    <option value="Executive Meeting">Executive Meeting</option>
-                    <option value="Technical Consultation">Technical Consultation</option>
-                    <option value="Service Follow-up">Service Follow-up</option>
-                    <option value="General Enquiry">General Enquiry</option>
+                    {allTemplates.map((tpl) => (
+                      <option key={tpl} value={tpl}>
+                        {tpl}
+                      </option>
+                    ))}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                      + New Template...
+                    </option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetTemplateField('contact');
+                      setIsAddTemplateModalOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                    title="Add New Template"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -2205,6 +3527,8 @@ function TasksContent() {
   if (isAddCampaignTaskOpen) {
     return (
       <div className="space-y-3 pb-28 font-sans text-slate-800">
+        {renderAddTemplateModal()}
+        {renderEntityModals()}
         <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
           {/* Top Header Banner */}
           <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
@@ -2254,15 +3578,21 @@ function TasksContent() {
             className="p-6 text-xs text-slate-700"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-              {/* Campaign Field */}
+              {/* Campaign Field (LEFT FIELD with + New) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <label className="sm:w-24 text-xs font-medium text-slate-700 shrink-0">
                   Campaign <span className="text-red-600 font-bold">*</span>
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-1.5">
                   <select
                     value={selectedCampaignId}
-                    onChange={(e) => setSelectedCampaignId(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setIsAddCampaignModalOpen(true);
+                      } else {
+                        setSelectedCampaignId(e.target.value);
+                      }
+                    }}
                     required
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
@@ -2281,29 +3611,62 @@ function TasksContent() {
                         <option value="Social Media Promo 2026">Social Media Promo 2026</option>
                       </>
                     )}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                      + New Campaign...
+                    </option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddCampaignModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                    title="Add New Campaign"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Template Field */}
+              {/* Template Field (RIGHT FIELD with + New) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
                   Template <span className="text-red-600 font-bold">*</span>
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-1.5">
                   <select
                     value={campaignTemplate}
-                    onChange={(e) => setCampaignTemplate(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setTargetTemplateField('campaign');
+                        setIsAddTemplateModalOpen(true);
+                      } else {
+                        setCampaignTemplate(e.target.value);
+                      }
+                    }}
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
                     <option value="">Select Template</option>
-                    <option value="Follow-up Template">Follow-up Template</option>
-                    <option value="Campaign Outreach Call">Campaign Outreach Call</option>
-                    <option value="Email Marketing Review">Email Marketing Review</option>
-                    <option value="Lead Response Follow-up">Lead Response Follow-up</option>
-                    <option value="Promo Launch Action">Promo Launch Action</option>
-                    <option value="General Enquiry">General Enquiry</option>
+                    {allTemplates.map((tpl) => (
+                      <option key={tpl} value={tpl}>
+                        {tpl}
+                      </option>
+                    ))}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                      + New Template...
+                    </option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetTemplateField('campaign');
+                      setIsAddTemplateModalOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                    title="Add New Template"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -2333,6 +3696,8 @@ function TasksContent() {
   if (isAddInvoiceTaskOpen) {
     return (
       <div className="space-y-3 pb-28 font-sans text-slate-800">
+        {renderAddTemplateModal()}
+        {renderEntityModals()}
         <div className="bg-white border border-slate-200 rounded-sm shadow-2xs overflow-hidden font-sans text-slate-800">
           {/* Top Header Banner */}
           <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs">
@@ -2384,15 +3749,21 @@ function TasksContent() {
             className="p-6 text-xs text-slate-700"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-              {/* Invoice Field */}
+              {/* Invoice Field (LEFT FIELD with + New) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
                   Invoice <span className="text-red-600 font-bold">*</span>
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-1.5">
                   <select
                     value={selectedInvoiceId}
-                    onChange={(e) => setSelectedInvoiceId(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setIsAddInvoiceModalOpen(true);
+                      } else {
+                        setSelectedInvoiceId(e.target.value);
+                      }
+                    }}
                     required
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
@@ -2411,29 +3782,62 @@ function TasksContent() {
                         <option value="INV-2026-004 - FOCUS EMC KITCHENS">INV-2026-004 - FOCUS EMC KITCHENS</option>
                       </>
                     )}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                      + New Invoice...
+                    </option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddInvoiceModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                    title="Add New Invoice"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Template Field */}
+              {/* Template Field (RIGHT FIELD with + New) */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <label className="sm:w-20 text-xs font-medium text-slate-700 shrink-0">
                   Template <span className="text-red-600 font-bold">*</span>
                 </label>
-                <div className="flex-1">
+                <div className="flex-1 flex items-center gap-1.5">
                   <select
                     value={invoiceTemplate}
-                    onChange={(e) => setInvoiceTemplate(e.target.value)}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setTargetTemplateField('invoice');
+                        setIsAddTemplateModalOpen(true);
+                      } else {
+                        setInvoiceTemplate(e.target.value);
+                      }
+                    }}
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   >
                     <option value="">Select Template</option>
-                    <option value="Follow-up Template">Follow-up Template</option>
-                    <option value="Payment Reminder Call">Payment Reminder Call</option>
-                    <option value="Tax Invoice Submission">Tax Invoice Submission</option>
-                    <option value="Payment Collection Follow-up">Payment Collection Follow-up</option>
-                    <option value="Overdue Invoice Escalation">Overdue Invoice Escalation</option>
-                    <option value="General Enquiry">General Enquiry</option>
+                    {allTemplates.map((tpl) => (
+                      <option key={tpl} value={tpl}>
+                        {tpl}
+                      </option>
+                    ))}
+                    <option value="__ADD_NEW__" className="font-bold text-blue-600 bg-blue-50">
+                      + New Template...
+                    </option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetTemplateField('invoice');
+                      setIsAddTemplateModalOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-[#0B2A4A] hover:bg-[#071D33] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer shrink-0"
+                    title="Add New Template"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -3124,6 +4528,7 @@ function TasksContent() {
                     onClick={(e) => {
                       e.stopPropagation();
                       setIsTaskDropdownOpen((prev) => !prev);
+                      setIsPlusTaskDropdownOpen(false);
                     }}
                     className="flex items-center justify-center gap-1 px-3 py-1.5 rounded bg-[#22C55E] hover:bg-[#16A34A] text-white font-bold transition-colors cursor-pointer shadow-2xs text-xs whitespace-nowrap"
                   >
@@ -3171,6 +4576,56 @@ function TasksContent() {
                                 setFormData((prev) => ({ ...prev, taskType: item.type as any }));
                                 setIsAddModalOpen(true);
                               }
+                            }}
+                            className="w-full text-left px-3.5 py-2 text-xs hover:bg-slate-50 flex items-center gap-2.5 text-slate-700 hover:text-slate-900 font-medium transition-colors cursor-pointer"
+                          >
+                            <Icon className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                            <span>{item.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. + TASK Dropdown Button */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsPlusTaskDropdownOpen((prev) => !prev);
+                      setIsTaskDropdownOpen(false);
+                    }}
+                    className="flex items-center justify-center gap-1 px-3 py-1.5 rounded bg-[#22C55E] hover:bg-[#16A34A] text-white font-bold transition-colors cursor-pointer shadow-2xs text-xs whitespace-nowrap"
+                  >
+                    <span>+ TASK</span>
+                    <ChevronDown className={cn("w-3.5 h-3.5 ml-0.5 transition-transform duration-150", isPlusTaskDropdownOpen && "rotate-180")} />
+                  </button>
+
+                  {isPlusTaskDropdownOpen && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded border border-slate-200 shadow-xl py-1 z-50 text-slate-700 animate-in fade-in zoom-in-95 duration-100"
+                    >
+                      {[
+                        { label: 'Generic Task', icon: Wrench, action: () => setIsAddGenericOpen(true) },
+                        { label: 'Lead Task', icon: List, action: () => setIsAddLeadTaskOpen(true) },
+                        { label: 'Customer Task', icon: Shield, action: () => setIsAddCustomerTaskOpen(true) },
+                        { label: 'Opportunity Task', icon: Key, action: () => setIsAddOppTaskOpen(true) },
+                        { label: 'Contact Task', icon: User, action: () => setIsAddContactTaskOpen(true) },
+                        { label: 'Campaign Task', icon: DollarSign, action: () => setIsAddCampaignTaskOpen(true) },
+                        { label: 'Invoice Task', icon: FileText, action: () => setIsAddInvoiceTaskOpen(true) },
+                        { label: 'Standard Task Form', icon: CheckCircle2, action: () => setIsAddModalOpen(true) },
+                      ].map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <button
+                            key={item.label}
+                            type="button"
+                            onClick={() => {
+                              setIsPlusTaskDropdownOpen(false);
+                              item.action();
                             }}
                             className="w-full text-left px-3.5 py-2 text-xs hover:bg-slate-50 flex items-center gap-2.5 text-slate-700 hover:text-slate-900 font-medium transition-colors cursor-pointer"
                           >
@@ -3567,12 +5022,23 @@ function TasksContent() {
 
                           {/* Priority Badge */}
                           <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-[#F5A623] text-white shadow-2xs">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenChangeStatus(task)}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold text-white shadow-2xs transition-all cursor-pointer hover:shadow-xs ${
+                                (task.priority || '').toLowerCase() === 'low'
+                                  ? 'bg-[#0284C7] hover:bg-[#0369a1]'
+                                  : (task.priority || '').toLowerCase() === 'high' || (task.priority || '').toLowerCase() === 'urgent'
+                                  ? 'bg-[#DC2626] hover:bg-[#B91C1C]'
+                                  : 'bg-[#F5A623] hover:bg-[#E09612]'
+                              }`}
+                              title="Click to Change Status / Priority"
+                            >
                               <Edit2 className="w-2.5 h-2.5" />
                               <span>
-                                {task.priority === 'High' ? 'Mid' : task.priority}
+                                {task.priority === 'High' ? 'High' : task.priority === 'Low' ? 'Low' : 'Mid'}
                               </span>
-                            </span>
+                            </button>
                           </td>
 
                           {/* Action: Gear Dropdown */}
@@ -3636,7 +5102,20 @@ function TasksContent() {
                                     <span>Postpone</span>
                                   </button>
 
-                                  {/* 4. Mark as Completed */}
+                                  {/* 4. Change Status */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleOpenChangeStatus(task);
+                                      setActionMenuTaskId(null);
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 transition-colors text-slate-800 cursor-pointer text-left font-normal"
+                                  >
+                                    <Edit2 className="w-4 h-4 text-amber-500 shrink-0 stroke-[1.75]" />
+                                    <span>Change Status</span>
+                                  </button>
+
+                                  {/* 5. Mark as Completed */}
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -3649,7 +5128,7 @@ function TasksContent() {
                                     <span>Mark as Completed</span>
                                   </button>
 
-                                  {/* 5. Delete */}
+                                  {/* 6. Delete */}
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -3861,6 +5340,9 @@ function TasksContent() {
           </form>
         </Modal>
       )}
+
+      {/* ── MODAL: Change Task Status Modal matching Cezcon CRM Screenshot ── */}
+      {renderChangeStatusModal()}
 
       {/* ── MODAL: Postpone Task Modal matching Cezcon CRM Screenshot ── */}
       {renderPostponeModal()}

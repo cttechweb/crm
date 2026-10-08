@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ListChecks,
@@ -34,6 +34,7 @@ import {
   Smartphone,
   HelpCircle,
   Globe,
+  Lightbulb,
 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { BackButton } from '@/components/ui/BackButton';
@@ -92,6 +93,34 @@ export function LeadsContent() {
   const [tagsFilter, setTagsFilter] = useState('');
   const [showFiltersMobile, setShowFiltersMobile] = useState(false);
 
+  // UAE Locations list
+  const UAE_LOCATIONS = [
+    'Abu Dhabi', 'Dubai', 'Sharjah', 'Ajman', 'Umm Al Quwain', 'Ras Al Khaimah', 'Fujairah',
+    'Al Ain', 'Bur Dubai', 'Deira', 'Jumeirah', 'Karama', 'Mirdif', 'Satwa',
+    'Barsha', 'Jebel Ali', 'Dubai Marina', 'Downtown Dubai', 'Business Bay',
+    'DIFC', 'JLT', 'JVC', 'Mussafah', 'Khalifa City', 'Ruwais', 'Madinat Zayed',
+    'Shahama', 'Al Quoz', 'Al Nahda', 'Dip', 'TECOM', 'Silicon Oasis', 'Academic City',
+    'Al Qusais', 'Al Rashidiya', 'Oud Metha', 'Al Barsha', 'Motor City', 'Sports City',
+    'Discovery Gardens', 'International City', 'Al Warqa', 'Umm Suqeim', 'Al Safa',
+    'Palm Jumeirah', 'The Greens', 'The Views', 'Remraam', 'Town Square', 'Dubai South',
+    'Al Majaz', 'Al Nahda (Sharjah)', 'Al Khan', 'Industrial Area', 'Hamriyah', 'Halwan',
+    'Al Jurf', 'Ajman Industrial', 'Al Hamidiyah', 'Al Rashidiya (Ajman)',
+  ];
+  const [isLeadLocationDropdownOpen, setIsLeadLocationDropdownOpen] = useState(false);
+  const leadLocationRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (leadLocationRef.current && !leadLocationRef.current.contains(e.target as Node)) {
+        setIsLeadLocationDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   // Table Controls & Pagination
   const [search, setSearch] = useState('');
   const [pageSize, setPageSize] = useState(10);
@@ -100,7 +129,46 @@ export function LeadsContent() {
 
   // Modals & Action States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isQuickAddBizOppOpen, setIsQuickAddBizOppOpen] = useState(false);
+  const [newBizOppTitle, setNewBizOppTitle] = useState('');
+  const [businessOpportunities, setBusinessOpportunities] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cezcon_business_opportunities_v2');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((item: any) => (typeof item === 'string' ? item : item.title)).filter(Boolean);
+          }
+        }
+      } catch (e) {}
+    }
+    return [
+      'Chiller Overhaul',
+      'HVAC Installation',
+      'Commercial Construction',
+      'Industrial Cooling',
+      'Facility Maintenance',
+      'Under Warranty Services - UWSR',
+      'Repair and Maintenance of Air Cooler',
+      'Repair & Maintenance of DX Air Conditioners',
+      'Facility Management',
+      'Central Chiller Overhaul & 3-Year Commercial AMC Contract',
+      'Duct Fabrication & Air Distribution Installation',
+      'Building Management System (BMS) Automation',
+      'Other Opportunity',
+    ];
+  });
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadOwner, setUploadOwner] = useState('Nafal');
+  const [uploadSource, setUploadSource] = useState('');
+  const [uploadCampaign, setUploadCampaign] = useState('');
+  const [uploadBusinessOpportunity, setUploadBusinessOpportunity] = useState('');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadDateFormat, setUploadDateFormat] = useState('MM/DD/YYYY');
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const uploadFileInputRef = useRef<HTMLInputElement>(null);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<CrmLead | null>(null);
@@ -1022,23 +1090,61 @@ export function LeadsContent() {
                     <MapPin className="w-3.5 h-3.5 text-[#0284C7] shrink-0" />
                     <span>Location</span>
                   </label>
-                  <div className="sm:col-span-9 relative flex items-center">
+                  <div className="sm:col-span-9 relative" ref={leadLocationRef}>
                     <input
                       type="text"
                       placeholder="Search location"
                       value={newLead.location}
-                      onChange={(e) => setNewLead({ ...newLead, location: e.target.value })}
+                      onChange={(e) => {
+                        setNewLead({ ...newLead, location: e.target.value });
+                        setIsLeadLocationDropdownOpen(true);
+                      }}
+                      onFocus={() => setIsLeadLocationDropdownOpen(true)}
                       className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs pr-7"
                     />
                     {newLead.location && (
                       <button
                         type="button"
-                        onClick={() => setNewLead({ ...newLead, location: '' })}
-                        className="absolute right-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        onClick={() => {
+                          setNewLead({ ...newLead, location: '' });
+                          setIsLeadLocationDropdownOpen(false);
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
                     )}
+                    {isLeadLocationDropdownOpen && (() => {
+                      const filtered = UAE_LOCATIONS.filter((loc) =>
+                        loc.toLowerCase().includes((newLead.location || '').toLowerCase())
+                      );
+                      return (
+                        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                          {filtered.length > 0 ? (
+                            filtered.map((loc) => (
+                              <button
+                                key={loc}
+                                type="button"
+                                onMouseDown={() => {
+                                  setNewLead({ ...newLead, location: loc });
+                                  setIsLeadLocationDropdownOpen(false);
+                                }}
+                                className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors flex items-center justify-between"
+                              >
+                                <span>{loc}</span>
+                                {newLead.location === loc && (
+                                  <span className="text-blue-600 font-bold text-[10px]">✓</span>
+                                )}
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-3 py-2 text-xs text-slate-400">
+                              No matching locations found
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1328,20 +1434,37 @@ export function LeadsContent() {
                   <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
                     Business Opportunity
                   </label>
-                  <div className="sm:col-span-9 relative">
-                    <select
-                      value={newLead.businessOpportunity}
-                      onChange={(e) => setNewLead({ ...newLead, businessOpportunity: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 appearance-none shadow-2xs cursor-pointer pr-8"
+                  <div className="sm:col-span-9 flex items-center gap-1.5">
+                    <div className="relative flex-1">
+                      <select
+                        value={newLead.businessOpportunity}
+                        onChange={(e) => setNewLead({ ...newLead, businessOpportunity: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 appearance-none shadow-2xs cursor-pointer pr-8"
+                      >
+                        <option value="">Select Business Opportunity</option>
+                        {businessOpportunities.map((op) => (
+                          <option key={op} value={op}>
+                            {op}
+                          </option>
+                        ))}
+                        {newLead.businessOpportunity && !businessOpportunities.includes(newLead.businessOpportunity) && (
+                          <option value={newLead.businessOpportunity}>{newLead.businessOpportunity}</option>
+                        )}
+                      </select>
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewBizOppTitle('');
+                        setIsQuickAddBizOppOpen(true);
+                      }}
+                      className="bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-bold px-2.5 py-1.5 rounded flex items-center gap-1 shrink-0 shadow-2xs transition-colors cursor-pointer"
+                      title="Add New Business Opportunity"
                     >
-                      <option value="">Select Business Opportunity</option>
-                      <option value="HVAC Installation">HVAC Installation</option>
-                      <option value="Commercial Construction">Commercial Construction</option>
-                      <option value="Industrial Cooling">Industrial Cooling</option>
-                      <option value="Facility Maintenance">Facility Maintenance</option>
-                      <option value="Chiller Overhaul">Chiller Overhaul</option>
-                    </select>
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>New</span>
+                    </button>
                   </div>
                 </div>
 
@@ -1380,6 +1503,532 @@ export function LeadsContent() {
               >
                 ← Back
               </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Quick Add Business Opportunity Modal */}
+        {isQuickAddBizOppOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-5 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                    <Plus className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-900">Add Business Opportunity</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickAddBizOppOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const trimmed = newBizOppTitle.trim();
+                  if (!trimmed) return;
+
+                  let updatedList = [...businessOpportunities];
+                  if (!updatedList.includes(trimmed)) {
+                    updatedList = [trimmed, ...updatedList];
+                    setBusinessOpportunities(updatedList);
+                    try {
+                      const currentSavedRaw = localStorage.getItem('cezcon_business_opportunities_v2');
+                      let currentSaved: any[] = [];
+                      if (currentSavedRaw) {
+                        currentSaved = JSON.parse(currentSavedRaw);
+                      }
+                      const exists = currentSaved.some(
+                        (item: any) =>
+                          (typeof item === 'string' ? item : item.title)?.toLowerCase() ===
+                          trimmed.toLowerCase()
+                      );
+                      if (!exists) {
+                        const newItem = { id: Date.now(), title: trimmed };
+                        localStorage.setItem(
+                          'cezcon_business_opportunities_v2',
+                          JSON.stringify([newItem, ...currentSaved])
+                        );
+                      }
+                    } catch (err) {}
+                  }
+
+                  setNewLead((prev) => ({ ...prev, businessOpportunity: trimmed }));
+                  setIsQuickAddBizOppOpen(false);
+                  setNewBizOppTitle('');
+                }}
+                className="space-y-3 pt-3 text-xs"
+              >
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">
+                    Opportunity Title / Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={newBizOppTitle}
+                    onChange={(e) => setNewBizOppTitle(e.target.value)}
+                    placeholder="e.g. Chiller Retrofitting & AMC"
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsQuickAddBizOppOpen(false)}
+                    className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white font-semibold rounded shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 text-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Save & Select</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (isUploadModalOpen) {
+    const handleDownloadFormat = () => {
+      const csvHeader =
+        'Lead Date,Salutation,Contact Name,Business Mobile,Personal Mobile,Telephone,Email,Customer Name,Website,Designation,Nationality,Source,Campaign,Business Opportunity,Location,Comments,Rating,Status\n';
+      const sampleRow1 =
+        '10/07/2026,Mr.,Mohammed Ahmed,501234567,,041234567,ahmed@example.com,Al Futtaim Engineering,https://alfuttaim.com,Procurement Director,UAE,Website Inbound,DIRECT - 2026,Chiller Overhaul,Dubai,Urgent inquiry for 25TR chiller,HOT,Pending\n';
+      const sampleRow2 =
+        '10/07/2026,Eng.,Suresh Kumar,559876543,,029876543,suresh@etihadair.com,Etihad Airways Tech,https://etihad.com,Facilities Manager,India,Google Ad,GOOGLE AD 2025,HVAC Installation,Abu Dhabi,Annual maintenance contract discussion,WARM,Contacted\n';
+      const blob = new Blob([csvHeader + sampleRow1 + sampleRow2], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Lead_Upload_Format.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+
+    const handleUploadSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!uploadFile) {
+        setUploadError('Please choose a file to upload.');
+        return;
+      }
+
+      setUploadError(null);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const text = event.target?.result as string;
+          if (!text) {
+            setUploadError('Uploaded file is empty.');
+            return;
+          }
+
+          const lines = text.split(/\r\n|\n/).filter((l) => l.trim().length > 0);
+          if (lines.length <= 1) {
+            // Create a record from filename
+            addLead({
+              leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+              assignedDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+              leadAssigned: {
+                name: uploadOwner || 'Nafal',
+                avatar: getEmployeePhoto(uploadOwner) || '',
+              },
+              contactDetails: {
+                salutation: 'Mr.',
+                name: uploadFile.name.replace(/\.[^/.]+$/, '').toUpperCase(),
+                phone: '+971 50 123 4567',
+                company: 'Uploaded Client Co.',
+                email: 'info@uploadedclient.com',
+                whatsapp: '+971 50 123 4567',
+              },
+              createdBy: currentUser?.name || 'Nafal',
+              owner: uploadOwner || 'Nafal',
+              ownerAvatar: getEmployeePhoto(uploadOwner) || '',
+              assignedEmployee: uploadOwner || 'Nafal',
+              source: uploadSource || 'Website Inbound',
+              campaign: uploadCampaign || 'DIRECT - 2026',
+              businessOpportunity: uploadBusinessOpportunity || 'Chiller Overhaul',
+              rating: 'Warm',
+              status: 'Pending',
+              leadSpecification: 'Batch imported via Excel/CSV upload',
+              lastActivity: 'Just uploaded',
+              value: 0,
+            });
+          } else {
+            const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+            const dataRows = lines.slice(1);
+
+            dataRows.forEach((row, idx) => {
+              const cols = row.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+              if (cols.length > 0 && cols.some((c) => c.length > 0)) {
+                const nameIdx = headers.findIndex((h) => h.includes('contact') || h.includes('name'));
+                const compIdx = headers.findIndex((h) => h.includes('company') || h.includes('customer'));
+                const phoneIdx = headers.findIndex((h) => h.includes('mobile') || h.includes('phone'));
+                const emailIdx = headers.findIndex((h) => h.includes('email'));
+                const locIdx = headers.findIndex((h) => h.includes('location') || h.includes('city'));
+
+                const leadPhone = (phoneIdx !== -1 ? cols[phoneIdx] : cols[2]) || '+971 50 123 4567';
+
+                addLead({
+                  leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+                  assignedDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+                  leadAssigned: {
+                    name: uploadOwner || 'Nafal',
+                    avatar: getEmployeePhoto(uploadOwner) || '',
+                  },
+                  contactDetails: {
+                    salutation: 'Mr.',
+                    name: (nameIdx !== -1 ? cols[nameIdx] : cols[1]) || `Lead #${idx + 1}`,
+                    phone: leadPhone,
+                    company: (compIdx !== -1 ? cols[compIdx] : cols[0]) || 'Corporate Enterprise',
+                    email: (emailIdx !== -1 ? cols[emailIdx] : '') || '',
+                    whatsapp: leadPhone,
+                  },
+                  createdBy: currentUser?.name || 'Nafal',
+                  owner: uploadOwner || 'Nafal',
+                  ownerAvatar: getEmployeePhoto(uploadOwner) || '',
+                  assignedEmployee: uploadOwner || 'Nafal',
+                  source: uploadSource || 'Website Inbound',
+                  campaign: uploadCampaign || 'DIRECT - 2026',
+                  businessOpportunity: uploadBusinessOpportunity || 'Chiller Overhaul',
+                  location: (locIdx !== -1 ? cols[locIdx] : '') || 'Dubai',
+                  rating: 'Warm',
+                  status: 'Pending',
+                  leadSpecification: `Imported from ${uploadFile.name}`,
+                  lastActivity: 'Just uploaded',
+                  value: 0,
+                });
+              }
+            });
+          }
+
+          setUploadSuccess(`Successfully imported leads from ${uploadFile.name}!`);
+          setTimeout(() => {
+            setIsUploadModalOpen(false);
+            setUploadFile(null);
+            setUploadSuccess(null);
+          }, 600);
+        } catch (err) {
+          setUploadError('Failed to parse file. Please verify CSV/Excel format.');
+        }
+      };
+      reader.readAsText(uploadFile);
+    };
+
+    return (
+      <div className="space-y-3 pb-8 text-[#212529] animate-in fade-in duration-150">
+        <div className="bg-white border border-slate-200 rounded shadow-xs overflow-hidden">
+          {/* Top Header Bar */}
+          <div className="px-4 py-2 bg-[#FAFBFD] border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-600 font-bold text-sm">≡</span>
+              <span className="font-bold text-slate-800 text-xs">Add lead</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadFormat}
+                className="bg-[#0F2844] hover:bg-[#1E3A5F] text-white text-xs font-semibold px-2.5 py-1 rounded-[3px] flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                title="Download Excel / CSV Template Format"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download Format</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUploadError(null);
+                  setUploadSuccess(null);
+                  setIsUploadModalOpen(false);
+                }}
+                className="w-5 h-5 rounded-[2px] bg-[#E11D48] text-white flex items-center justify-center hover:bg-[#BE123C] transition-colors cursor-pointer font-black text-xs shadow-2xs"
+                title="Close"
+              >
+                <X className="w-3.5 h-3.5 stroke-[3]" />
+              </button>
+            </div>
+          </div>
+
+          {/* Form + Tips 2-Column Section */}
+          <form onSubmit={handleUploadSubmit} className="p-5 sm:p-7 space-y-6 text-xs">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
+              {/* ── LEFT COLUMN: Form Inputs ── */}
+              <div className="lg:col-span-5 space-y-4">
+                {/* 1. Lead Owner */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-4 text-xs font-semibold text-slate-700">
+                    Lead Owner
+                  </label>
+                  <div className="sm:col-span-8 relative flex items-center border border-slate-300 rounded bg-white px-2.5 py-1 focus-within:border-blue-500 shadow-2xs">
+                    {renderUserAvatar(uploadOwner, undefined, 'w-5 h-5 mr-2 shrink-0')}
+                    <select
+                      value={uploadOwner}
+                      onChange={(e) => setUploadOwner(e.target.value)}
+                      className="w-full bg-transparent text-slate-800 text-xs font-medium focus:outline-none cursor-pointer pr-4 appearance-none"
+                    >
+                      {assignableUsers.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name} {u.role ? `(${u.role})` : ''}
+                        </option>
+                      ))}
+                      {uploadOwner && !assignableUsers.some((u) => u.name === uploadOwner) && (
+                        <option value={uploadOwner}>{uploadOwner}</option>
+                      )}
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 2. Source */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-4 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <span>Source</span>
+                    <HelpCircle className="w-3.5 h-3.5 text-slate-800 fill-slate-800 text-white" />
+                  </label>
+                  <div className="sm:col-span-8 relative">
+                    <select
+                      value={uploadSource}
+                      onChange={(e) => setUploadSource(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 appearance-none shadow-2xs cursor-pointer pr-8"
+                    >
+                      <option value="">Select Source</option>
+                      <option value="Website Inbound">Website Inbound</option>
+                      <option value="Google Ad">Google Ad</option>
+                      <option value="Direct">Direct</option>
+                      <option value="Referral">Referral</option>
+                      <option value="LinkedIn">LinkedIn</option>
+                      <option value="Exhibition / Event">Exhibition / Event</option>
+                      <option value="Phone Call">Phone Call</option>
+                      <option value="CT WEB">CT WEB</option>
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 3. Campaign */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-4 text-xs font-semibold text-slate-700 flex items-center gap-1">
+                    <span>Campaign</span>
+                    <HelpCircle className="w-3.5 h-3.5 text-slate-800 fill-slate-800 text-white" />
+                  </label>
+                  <div className="sm:col-span-8 relative">
+                    <select
+                      value={uploadCampaign}
+                      onChange={(e) => setUploadCampaign(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 appearance-none shadow-2xs cursor-pointer pr-8"
+                    >
+                      <option value="">Select Campaign</option>
+                      {campaigns.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                      <option value="SIMPLE LIFE - 2025">SIMPLE LIFE - 2025</option>
+                      <option value="GOOGLE AD 2025">GOOGLE AD 2025</option>
+                      <option value="YELLOW PAGES-UAE.COM - 2025">YELLOW PAGES-UAE.COM - 2025</option>
+                      <option value="DIRECT - 2026">DIRECT - 2026</option>
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 4. Business Opportunity */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-4 text-xs font-semibold text-slate-700">
+                    Business Opportunity
+                  </label>
+                  <div className="sm:col-span-8 relative">
+                    <select
+                      value={uploadBusinessOpportunity}
+                      onChange={(e) => setUploadBusinessOpportunity(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 appearance-none shadow-2xs cursor-pointer pr-8"
+                    >
+                      <option value="">Select Business Opportunity</option>
+                      {businessOpportunities.map((op) => (
+                        <option key={op} value={op}>
+                          {op}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 5. Upload File */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-start pt-1">
+                  <label className="sm:col-span-4 text-xs font-semibold text-slate-700 flex items-center gap-1 pt-1.5">
+                    <span>Upload File</span>
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <div className="sm:col-span-8 space-y-2">
+                    <input
+                      type="file"
+                      ref={uploadFileInputRef}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setUploadFile(file);
+                        if (file) setUploadError(null);
+                      }}
+                      accept=".xlsx,.xls,.csv"
+                      className="hidden"
+                    />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => uploadFileInputRef.current?.click()}
+                        className="bg-[#E11D48] hover:bg-[#BE123C] text-white text-xs font-semibold px-3 py-1.5 rounded-[3px] shadow-2xs transition-colors cursor-pointer"
+                      >
+                        Choose file
+                      </button>
+                      <span className="text-xs text-slate-600 truncate max-w-[200px]">
+                        {uploadFile ? uploadFile.name : 'No file chosen'}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Maximum Records : 200 | File Format: XLSX , XLS and CSV
+                    </p>
+
+                    {uploadError && (
+                      <p className="text-[11px] text-red-600 font-medium animate-in fade-in">
+                        ⚠️ {uploadError}
+                      </p>
+                    )}
+                    {uploadSuccess && (
+                      <p className="text-[11px] text-emerald-600 font-medium animate-in fade-in">
+                        ✓ {uploadSuccess}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── RIGHT COLUMN: Upload Tips ── */}
+              <div className="lg:col-span-7 bg-[#FCFDFF] border border-slate-200/80 rounded p-4 text-[11.5px] leading-relaxed text-slate-700 space-y-2.5">
+                <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs border-b border-slate-100 pb-2">
+                  <span className="text-amber-500 text-sm">💡</span>
+                  <span>Upload Tips</span>
+                </div>
+
+                <ul className="space-y-1.5 list-none pl-0 text-slate-600">
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-slate-400 font-bold">•</span>
+                    <span>Download format of excel file.</span>
+                  </li>
+                  <li className="flex items-start gap-1.5 text-[#E11D48] font-medium leading-normal">
+                    <span className="text-[#E11D48] font-bold">•</span>
+                    <span>
+                      Use a single date format uniformly throughout the Excel file. Enter the date in MM/DD/YYYY format. If you used a different format, select the date column in the excel sheet and change its format accordingly (Select Date Column and Change Format)
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-slate-400 font-bold">•</span>
+                    <span>Duplicate entry checks are performed for company, phone number, and website.</span>
+                  </li>
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-slate-400 font-bold">•</span>
+                    <span>Update telephone, business mobile, personal mobile and WhatsApp with country code.</span>
+                  </li>
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-slate-400 font-bold">•</span>
+                    <span>Separate multiple tags and emails with commas in the Excel cell.</span>
+                  </li>
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-slate-400 font-bold">•</span>
+                    <span>Choose default source, campaign, and business opportunity from the upload form.</span>
+                  </li>
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-slate-400 font-bold">•</span>
+                    <span>
+                      If you have new sources, campaigns, or opportunities that are not yet added, please insert them into the CRM software first (skip this step if they are already recorded), then ensure the same data is entered into the Excel sheet as it appears in the CRM.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-slate-400 font-bold">•</span>
+                    <span>Upload Excel file Using &apos;Choose file&apos; Button.</span>
+                  </li>
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-slate-400 font-bold">•</span>
+                    <span>
+                      Please ensure that the data you&apos;ve uploaded is accurate; if it&apos;s not, please take a moment to edit it from the list.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-slate-400 font-bold">•</span>
+                    <span>
+                      Choose the correct date format if the uploaded Excel sheet does not use the default excel date format (MM/DD/YYYY)
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-1.5">
+                    <span className="text-slate-400 font-bold">•</span>
+                    <span>Finally, click the submit button to insert the lead data.</span>
+                  </li>
+                  <li className="flex items-start gap-1.5 text-[#E11D48] font-medium leading-normal">
+                    <span className="text-[#E11D48] font-bold">•</span>
+                    <span>
+                      Duplicate entries will be highlighted in red. Please review the company name, phone number, and website. You can either update or delete them. If you do not need to add any information, simply close the form.
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* ── BOTTOM BAR: Date format & Actions ── */}
+            <div className="border-t border-slate-200 pt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-slate-700 font-normal shrink-0">
+                  Date Format of Excel
+                </label>
+                <div className="relative">
+                  <select
+                    value={uploadDateFormat}
+                    onChange={(e) => setUploadDateFormat(e.target.value)}
+                    className="bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 shadow-2xs pr-8 cursor-pointer"
+                  >
+                    <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                    <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                    <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    <option value="DD-MM-YYYY">DD-MM-YYYY</option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="submit"
+                  className="px-5 py-1.5 rounded bg-[#0F2844] hover:bg-[#0A1D33] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                >
+                  Submit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUploadError(null);
+                    setUploadSuccess(null);
+                    setIsUploadModalOpen(false);
+                  }}
+                  className="px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+                >
+                  ← Back
+                </button>
+              </div>
             </div>
           </form>
         </div>

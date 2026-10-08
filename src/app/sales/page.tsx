@@ -122,6 +122,7 @@ function SalesPipelineInner() {
     deleteOpportunity,
     updateOpportunity,
     customers,
+    addCustomer,
     campaigns,
     users,
     quotations: contextQuotations,
@@ -157,7 +158,18 @@ function SalesPipelineInner() {
   const [selectedOrder, setSelectedOrder] = useState<CrmSalesOrder | null>(null);
 
   // Proforma State
-  const [proformas, setProformas] = useState<CrmProformaInvoice[]>(mockProformaInvoices);
+  const [proformas, setProformas] = useState<CrmProformaInvoice[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('crm_proforma_invoices');
+        if (saved !== null) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (e) {}
+    }
+    return mockProformaInvoices;
+  });
   const [proformaSearch, setProformaSearch] = useState<string>('');
   const [isCreateProformaModalOpen, setIsCreateProformaModalOpen] = useState(false);
   const [openProformaActionId, setOpenProformaActionId] = useState<string | null>(null);
@@ -242,31 +254,37 @@ function SalesPipelineInner() {
   }, [activeTab, invoiceIdParam, invoices]);
 
   // Proforma localStorage sync
+  const [isProformaLoaded, setIsProformaLoaded] = useState(false);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('crm_proforma_invoices');
-        if (saved) {
+        if (saved !== null) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
             setProformas(parsed);
           }
+        } else {
+          localStorage.setItem('crm_proforma_invoices', JSON.stringify(mockProformaInvoices));
         }
       } catch (e) {
         // ignore
+      } finally {
+        setIsProformaLoaded(true);
       }
     }
   }, []);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && proformas && proformas.length > 0) {
+    if (isProformaLoaded && typeof window !== 'undefined') {
       try {
         localStorage.setItem('crm_proforma_invoices', JSON.stringify(proformas));
       } catch (e) {
         // ignore
       }
     }
-  }, [proformas]);
+  }, [proformas, isProformaLoaded]);
 
   // Open Edit Invoice with 100% Live Data
   const handleOpenEditInvoice = (inv: CrmInvoice) => {
@@ -656,6 +674,45 @@ function SalesPipelineInner() {
   const [oppPrefix, setOppPrefix] = useState('CTEQ#');
   const [oppNextNumber, setOppNextNumber] = useState('7133');
 
+  // Quick Add Customer state for Opportunity form
+  const [isQuickAddCustomerOpen, setIsQuickAddCustomerOpen] = useState(false);
+  const [quickCustomerForm, setQuickCustomerForm] = useState({
+    companyName: '',
+    contactPerson: '',
+    phone: '',
+    email: '',
+  });
+
+  const handleQuickAddCustomerSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickCustomerForm.companyName.trim()) return;
+    const name = quickCustomerForm.companyName.trim();
+    if (addCustomer) {
+      addCustomer({
+        companyName: name,
+        customerName: name,
+        contactPerson: quickCustomerForm.contactPerson.trim(),
+        phone: quickCustomerForm.phone.trim(),
+        email: quickCustomerForm.email.trim(),
+        status: 'Active',
+        owner: oppFormData.owner || 'Nafal',
+      } as any);
+    }
+    setOppFormData((prev) => ({
+      ...prev,
+      customer: name,
+      contactPerson: quickCustomerForm.contactPerson.trim() || prev.contactPerson,
+      phone: quickCustomerForm.phone.trim() || prev.phone,
+    }));
+    setQuickCustomerForm({
+      companyName: '',
+      contactPerson: '',
+      phone: '',
+      email: '',
+    });
+    setIsQuickAddCustomerOpen(false);
+  };
+
   const openOppNumModal = () => {
     const currentVal = oppFormData.opportunityCode || 'CTEQ#7133';
     const match = currentVal.match(/^(.*?)(\d+)$/);
@@ -667,6 +724,69 @@ function SalesPipelineInner() {
       setOppNextNumber('7133');
     }
     setIsOppNumModalOpen(true);
+  };
+
+  // Invoice Number Settings Modal State (Exact Cezcon CRM modal)
+  const [isInvoiceNumModalOpen, setIsInvoiceNumModalOpen] = useState(false);
+  const [invoicePrefix, setInvoicePrefix] = useState('CTINV#');
+  const [invoiceNextNumber, setInvoiceNextNumber] = useState('15629');
+
+  const openInvoiceNumModal = () => {
+    const currentVal = addInvoiceData.invoiceNumber || 'CTINV#15629';
+    const match = currentVal.match(/^(.*?)(\d+)$/);
+    if (match) {
+      setInvoicePrefix(match[1]);
+      setInvoiceNextNumber(match[2]);
+    } else {
+      setInvoicePrefix('CTINV#');
+      setInvoiceNextNumber('15629');
+    }
+    setIsInvoiceNumModalOpen(true);
+  };
+
+  const handleSaveInvoiceNumber = (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalCode = `${invoicePrefix}${invoiceNextNumber}`;
+    setAddInvoiceData((prev) => ({ ...prev, invoiceNumber: finalCode }));
+    setIsInvoiceNumModalOpen(false);
+  };
+
+  // Quick Add Customer state for Invoice form
+  const [isQuickAddInvoiceCustomerOpen, setIsQuickAddInvoiceCustomerOpen] = useState(false);
+  const [quickInvoiceCustomerForm, setQuickInvoiceCustomerForm] = useState({
+    companyName: '',
+    contactPerson: '',
+    phone: '',
+    email: '',
+  });
+
+  const handleQuickAddInvoiceCustomerSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickInvoiceCustomerForm.companyName.trim()) return;
+    const name = quickInvoiceCustomerForm.companyName.trim();
+    if (addCustomer) {
+      addCustomer({
+        companyName: name,
+        customerName: name,
+        contactPerson: quickInvoiceCustomerForm.contactPerson.trim(),
+        phone: quickInvoiceCustomerForm.phone.trim(),
+        email: quickInvoiceCustomerForm.email.trim(),
+        status: 'Active',
+        owner: currentUser?.name || 'shaheer',
+      } as any);
+    }
+    setAddInvoiceData((prev) => ({
+      ...prev,
+      customer: name,
+      attention: quickInvoiceCustomerForm.contactPerson.trim() || prev.attention,
+    }));
+    setQuickInvoiceCustomerForm({
+      companyName: '',
+      contactPerson: '',
+      phone: '',
+      email: '',
+    });
+    setIsQuickAddInvoiceCustomerOpen(false);
   };
 
   const handleSaveOppNumSettings = (e: React.FormEvent) => {
@@ -2298,6 +2418,97 @@ function SalesPipelineInner() {
                   </div>
                 </div>
 
+                {/* Quick Add Customer Modal */}
+                {isQuickAddCustomerOpen && (
+                  <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-5 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                            <Plus className="w-4 h-4" />
+                          </div>
+                          <h3 className="text-sm font-bold text-slate-900">Add New Customer</h3>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsQuickAddCustomerOpen(false)}
+                          className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleQuickAddCustomerSubmit} className="space-y-3 pt-3 text-xs">
+                        <div>
+                          <label className="block text-slate-700 font-semibold mb-1">
+                            Company / Customer Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Al Habtoor Engineering"
+                            value={quickCustomerForm.companyName}
+                            onChange={(e) => setQuickCustomerForm({ ...quickCustomerForm, companyName: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-700 font-semibold mb-1">Contact Person</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. John Doe"
+                            value={quickCustomerForm.contactPerson}
+                            onChange={(e) => setQuickCustomerForm({ ...quickCustomerForm, contactPerson: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-slate-700 font-semibold mb-1">Phone / Mobile</label>
+                            <input
+                              type="text"
+                              placeholder="+971 50 123 4567"
+                              value={quickCustomerForm.phone}
+                              onChange={(e) => setQuickCustomerForm({ ...quickCustomerForm, phone: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-slate-700 font-semibold mb-1">Email</label>
+                            <input
+                              type="email"
+                              placeholder="info@company.com"
+                              value={quickCustomerForm.email}
+                              onChange={(e) => setQuickCustomerForm({ ...quickCustomerForm, email: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setIsQuickAddCustomerOpen(false)}
+                            className="px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-semibold text-xs transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-3 py-1.5 rounded bg-[#16A34A] hover:bg-[#15803D] text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Save &amp; Select</span>
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
                 {/* 2. Main Form Body (2-Column Grid) */}
                 <form onSubmit={handleCreateOpportunity} className="p-4 sm:p-6 flex-1 space-y-4">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-3.5 text-[11px]">
@@ -2308,36 +2519,47 @@ function SalesPipelineInner() {
                         <label className="sm:w-36 font-semibold text-slate-700 shrink-0">
                           Customer Name <span className="text-red-500">*</span>
                         </label>
-                        <select
-                          required
-                          value={oppFormData.customer}
-                          onChange={(e) => {
-                            const custName = e.target.value;
-                            const found = customers.find(
-                              (c) => (c.customerName || c.companyName) === custName
-                            );
-                            setOppFormData({
-                              ...oppFormData,
-                              customer: custName,
-                              contactPerson: found?.contactPerson || oppFormData.contactPerson,
-                              phone: found?.phone || oppFormData.phone,
-                            });
-                          }}
-                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                        >
-                          <option value="">Select Customer</option>
-                          {oppFormData.customer && !customers.some((c) => (c.customerName || c.companyName) === oppFormData.customer) && (
-                            <option value={oppFormData.customer}>{oppFormData.customer}</option>
-                          )}
-                          {customers.map((c) => (
-                            <option key={c.id} value={c.customerName || c.companyName}>
-                              {c.customerName || c.companyName}
-                            </option>
-                          ))}
-                          <option value="AL HABTOOR ENGINEERING">AL HABTOOR ENGINEERING</option>
-                          <option value="EMAAR PROPERTIES">EMAAR PROPERTIES</option>
-                          <option value="SMART GROUP OF COMPANIES">SMART GROUP OF COMPANIES</option>
-                        </select>
+                        <div className="flex-1 flex items-center gap-1.5">
+                          <select
+                            required
+                            value={oppFormData.customer}
+                            onChange={(e) => {
+                              const custName = e.target.value;
+                              const found = customers.find(
+                                (c) => (c.customerName || c.companyName) === custName
+                              );
+                              setOppFormData({
+                                ...oppFormData,
+                                customer: custName,
+                                contactPerson: found?.contactPerson || oppFormData.contactPerson,
+                                phone: found?.phone || oppFormData.phone,
+                              });
+                            }}
+                            className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="">Select Customer</option>
+                            {oppFormData.customer && !customers.some((c) => (c.customerName || c.companyName) === oppFormData.customer) && (
+                              <option value={oppFormData.customer}>{oppFormData.customer}</option>
+                            )}
+                            {customers.map((c) => (
+                              <option key={c.id} value={c.customerName || c.companyName}>
+                                {c.customerName || c.companyName}
+                              </option>
+                            ))}
+                            <option value="AL HABTOOR ENGINEERING">AL HABTOOR ENGINEERING</option>
+                            <option value="EMAAR PROPERTIES">EMAAR PROPERTIES</option>
+                            <option value="SMART GROUP OF COMPANIES">SMART GROUP OF COMPANIES</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setIsQuickAddCustomerOpen(true)}
+                            className="bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-bold px-2.5 py-1.5 rounded flex items-center gap-1 shrink-0 shadow-2xs transition-colors cursor-pointer"
+                            title="Add New Customer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>New</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Opportunity Owner */}
@@ -9530,6 +9752,159 @@ function SalesPipelineInner() {
                   <span className="text-xs font-semibold text-slate-700">Invoice Details</span>
                 </div>
 
+                {/* Quick Add Customer Modal for Invoice */}
+                {isQuickAddInvoiceCustomerOpen && (
+                  <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-5 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                            <Plus className="w-4 h-4" />
+                          </div>
+                          <h3 className="text-sm font-bold text-slate-900">Add New Customer</h3>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsQuickAddInvoiceCustomerOpen(false)}
+                          className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleQuickAddInvoiceCustomerSubmit} className="space-y-3 pt-3 text-xs">
+                        <div>
+                          <label className="block text-slate-700 font-semibold mb-1">
+                            Company / Customer Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Al Habtoor Engineering"
+                            value={quickInvoiceCustomerForm.companyName}
+                            onChange={(e) => setQuickInvoiceCustomerForm({ ...quickInvoiceCustomerForm, companyName: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-700 font-semibold mb-1">Contact Person</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. John Doe"
+                            value={quickInvoiceCustomerForm.contactPerson}
+                            onChange={(e) => setQuickInvoiceCustomerForm({ ...quickInvoiceCustomerForm, contactPerson: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-slate-700 font-semibold mb-1">Phone / Mobile</label>
+                            <input
+                              type="text"
+                              placeholder="+971 50 123 4567"
+                              value={quickInvoiceCustomerForm.phone}
+                              onChange={(e) => setQuickInvoiceCustomerForm({ ...quickInvoiceCustomerForm, phone: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-slate-700 font-semibold mb-1">Email</label>
+                            <input
+                              type="email"
+                              placeholder="info@company.com"
+                              value={quickInvoiceCustomerForm.email}
+                              onChange={(e) => setQuickInvoiceCustomerForm({ ...quickInvoiceCustomerForm, email: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setIsQuickAddInvoiceCustomerOpen(false)}
+                            className="px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-semibold text-xs transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-3 py-1.5 rounded bg-[#16A34A] hover:bg-[#15803D] text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Save &amp; Select</span>
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+                {/* Invoice Number Settings Modal (Exact Cezcon UI) */}
+                {isInvoiceNumModalOpen && (
+                  <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+                    <div className="bg-white rounded-lg shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden text-slate-800 animate-in zoom-in-95 duration-150 font-sans">
+                      <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between bg-white">
+                        <h3 className="text-sm font-bold text-slate-900">Invoice Number</h3>
+                        <button
+                          type="button"
+                          onClick={() => setIsInvoiceNumModalOpen(false)}
+                          className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleSaveInvoiceNumber} className="p-5 space-y-3.5 text-xs">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                          <label className="sm:w-28 font-semibold text-slate-700 shrink-0">
+                            Prefix
+                          </label>
+                          <input
+                            type="text"
+                            value={invoicePrefix}
+                            onChange={(e) => setInvoicePrefix(e.target.value)}
+                            className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                          <label className="sm:w-28 font-semibold text-slate-700 shrink-0">
+                            Next Number <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={invoiceNextNumber}
+                            onChange={(e) => setInvoiceNextNumber(e.target.value)}
+                            className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-3.5 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setIsInvoiceNumModalOpen(false)}
+                            className="px-3.5 py-1.5 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-semibold text-xs transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-1.5 rounded bg-[#0A2540] hover:bg-[#061B30] text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
                 {/* Form Content */}
                 <form
                   onSubmit={(e) => {
@@ -9585,9 +9960,9 @@ function SalesPipelineInner() {
                           />
                           <button
                             type="button"
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-cyan-500 hover:text-cyan-600 cursor-pointer"
-                            title="Auto Generate"
-                            onClick={() => setAddInvoiceData({ ...addInvoiceData, invoiceNumber: 'CTINV#' + Math.floor(15000 + Math.random() * 1000) })}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-cyan-500 hover:text-cyan-600 cursor-pointer p-0.5"
+                            title="Invoice Number Settings"
+                            onClick={openInvoiceNumModal}
                           >
                             <Settings className="w-3.5 h-3.5" />
                           </button>
@@ -9599,7 +9974,7 @@ function SalesPipelineInner() {
                         <label className="text-slate-700 font-medium">
                           Customer <span className="text-red-500">*</span>
                         </label>
-                        <div className="sm:col-span-2">
+                        <div className="sm:col-span-2 flex items-center gap-1.5">
                           <select
                             required
                             value={addInvoiceData.customer}
@@ -9662,7 +10037,7 @@ function SalesPipelineInner() {
                                 description: desc || prev.description,
                               }));
                             }}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 bg-white"
+                            className="flex-1 px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 bg-white"
                           >
                             <option value="">Select Customer</option>
                             {(() => {
@@ -9705,6 +10080,15 @@ function SalesPipelineInner() {
                                 ));
                             })()}
                           </select>
+                          <button
+                            type="button"
+                            onClick={() => setIsQuickAddInvoiceCustomerOpen(true)}
+                            className="bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-bold px-2.5 py-1.5 rounded flex items-center gap-1 shrink-0 shadow-2xs transition-colors cursor-pointer"
+                            title="Add New Customer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>New</span>
+                          </button>
                         </div>
                       </div>
 

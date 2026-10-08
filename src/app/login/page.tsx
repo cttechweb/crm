@@ -163,8 +163,8 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setActivePreviewTab('overview')}
                 className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${activePreviewTab === 'overview'
-                    ? 'bg-[#0284C7] text-white font-bold shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#0284C7] text-white font-bold shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
                   }`}
               >
                 Overview
@@ -173,8 +173,8 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setActivePreviewTab('sales')}
                 className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${activePreviewTab === 'sales'
-                    ? 'bg-[#0284C7] text-white font-bold shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#0284C7] text-white font-bold shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
                   }`}
               >
                 Sales Funnel
@@ -183,8 +183,8 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setActivePreviewTab('pipeline')}
                 className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${activePreviewTab === 'pipeline'
-                    ? 'bg-[#0284C7] text-white font-bold shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[#0284C7] text-white font-bold shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
                   }`}
               >
                 Recent Deals

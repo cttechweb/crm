@@ -241,6 +241,31 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
     }
   };
 
+  // Quotation Number Settings Modal State (Exact Cezcon CRM modal)
+  const [isQuoteNumModalOpen, setIsQuoteNumModalOpen] = useState(false);
+  const [quotePrefix, setQuotePrefix] = useState('CTSQ#');
+  const [quoteNextNumber, setQuoteNextNumber] = useState('4438');
+
+  const openQuoteNumModal = () => {
+    const currentVal = formQuoteNumber || 'CTSQ#4438';
+    const match = currentVal.match(/^(.*?)(\d+)$/);
+    if (match) {
+      setQuotePrefix(match[1]);
+      setQuoteNextNumber(match[2]);
+    } else {
+      setQuotePrefix(currentVal);
+      setQuoteNextNumber('');
+    }
+    setIsQuoteNumModalOpen(true);
+  };
+
+  const handleSaveQuoteNumber = (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalCode = `${quotePrefix}${quoteNextNumber}`;
+    setFormQuoteNumber(finalCode);
+    setIsQuoteNumModalOpen(false);
+  };
+
   const handleStartCreate = () => {
     setSelectedQuote(null);
     setQuoteToEdit(null);
@@ -491,6 +516,26 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
   const handleSubmitProforma = (e: React.FormEvent) => {
     e.preventDefault();
     if (!proformaTargetQuote) return;
+
+    try {
+      const newPi = {
+        id: `pi_${Date.now()}`,
+        slNo: Date.now() % 10000,
+        piNumber: profInvoiceNum || `CTPI#${Date.now().toString().slice(-4)}`,
+        issueDate: profInvoiceDate || new Date().toISOString().split('T')[0],
+        customer: proformaTargetQuote.customer || '',
+        opportunityTitle: proformaTargetQuote.subject || '',
+        quotationRef: proformaTargetQuote.quotationNumber || '',
+        amount: profNumAmount,
+        vatAmount: profCalculatedVat,
+        totalAmount: profGrandTotal,
+        status: 'Pending',
+        owner: proformaTargetQuote.owner || 'Super Admin',
+      };
+      const saved = localStorage.getItem('crm_proforma_invoices');
+      const existing = saved ? JSON.parse(saved) : [];
+      localStorage.setItem('crm_proforma_invoices', JSON.stringify([newPi, ...existing]));
+    } catch (err) {}
 
     convertQuotationToSalesOrder(proformaTargetQuote.id);
     updateQuotation(proformaTargetQuote.id, {
@@ -1621,7 +1666,14 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
                       onChange={(e) => setFormQuoteNumber(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded px-2.5 pr-8 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                     />
-                    <Settings className="w-3.5 h-3.5 text-cyan-600 absolute right-2.5 top-2 pointer-events-none" />
+                    <button
+                      type="button"
+                      onClick={openQuoteNumModal}
+                      className="absolute right-2 top-1.5 p-0.5 text-cyan-600 hover:text-cyan-700 cursor-pointer transition-colors"
+                      title="Quotation Number Settings"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
 
@@ -4084,6 +4136,71 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
         quotation={quoteForVoucher}
         format={selectedPrintFormat}
       />
+
+      {/* ── QUOTATION NUMBER SETTINGS MODAL (EXACT CEZCON CRM IMAGE 3) ── */}
+      {isQuoteNumModalOpen && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-lg shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden text-slate-800 animate-in zoom-in-95 duration-150 font-sans">
+            {/* Modal Header */}
+            <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between bg-white">
+              <h3 className="text-sm font-bold text-slate-900">Quotation Number</h3>
+              <button
+                type="button"
+                onClick={() => setIsQuoteNumModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleSaveQuoteNumber} className="p-5 space-y-3.5 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <label className="sm:w-28 font-semibold text-slate-700 shrink-0">
+                  Prefix
+                </label>
+                <input
+                  type="text"
+                  value={quotePrefix}
+                  onChange={(e) => setQuotePrefix(e.target.value)}
+                  className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <label className="sm:w-28 font-semibold text-slate-700 shrink-0">
+                  Next Number <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={quoteNextNumber}
+                  onChange={(e) => setQuoteNextNumber(e.target.value)}
+                  className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-2 pt-3.5 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsQuoteNumModalOpen(false)}
+                  className="px-3.5 py-1.5 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded bg-[#0A2540] hover:bg-[#061B30] text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                >
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

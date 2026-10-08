@@ -827,11 +827,10 @@ export default function DashboardPage() {
                   </td>
                   <td className="py-2.5 px-4 text-center">
                     <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        row.status === 'Exceeded' || row.status === 'Achieved'
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${row.status === 'Exceeded' || row.status === 'Achieved'
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                           : 'bg-blue-50 text-blue-700 border border-blue-200'
-                      }`}
+                        }`}
                     >
                       {row.status}
                     </span>

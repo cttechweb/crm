@@ -35,10 +35,14 @@ import {
   ArrowLeftRight,
   Upload,
   Phone,
+  Trash2,
+  BookOpen,
 } from 'lucide-react';
 import { mockCezconStockItems, mockStockTransfers } from '@/data/mockEnterpriseData';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { CrmCezconStock, CrmStockTransfer } from '@/types/enterprise-crm';
+import { ProductSettingItem } from '@/types/settings';
+import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { cn } from '@/lib/utils';
 
 // Helper Barcode Component
@@ -265,29 +269,285 @@ function PurchasePageInner() {
   const [productSearch, setProductSearch] = useState<string>('');
   const [productRowsPerPage, setProductRowsPerPage] = useState<number>(10);
 
-  const [stockItems, setStockItems] = useState<CrmCezconStock[]>(mockCezconStockItems);
+  // Unit Sub-Tab States
+  const [unitsList, setUnitsList] = useState<string[]>([
+    'Each',
+    'Roll',
+    'Mtr',
+    'Pcs',
+    'No',
+    'Set',
+    'Kg',
+  ]);
+  const [unitSearch, setUnitSearch] = useState<string>('');
+  const [unitRowsPerPage, setUnitRowsPerPage] = useState<number>(10);
+  const [isAddUnitModalOpen, setIsAddUnitModalOpen] = useState<boolean>(false);
+  const [editingUnitIndex, setEditingUnitIndex] = useState<number | null>(null);
+  const [unitInputName, setUnitInputName] = useState<string>('');
+  const [activeUnitActionDropdown, setActiveUnitActionDropdown] = useState<number | null>(null);
+
+  // Brand Sub-Tab States
+  const [brandsList, setBrandsList] = useState<string[]>([
+    'MIDEA',
+    'LG',
+    'AKAI',
+    'MITSUBISHI',
+    'O GENERAL',
+    'CARRIER',
+    'NOBEL',
+    'CLIVET',
+    'SUPER',
+  ]);
+  const [brandSearch, setBrandSearch] = useState<string>('');
+  const [brandRowsPerPage, setBrandRowsPerPage] = useState<number>(10);
+  const [isAddBrandModalOpen, setIsAddBrandModalOpen] = useState<boolean>(false);
+  const [editingBrandIndex, setEditingBrandIndex] = useState<number | null>(null);
+  const [brandInputName, setBrandInputName] = useState<string>('');
+  const [activeBrandActionDropdown, setActiveBrandActionDropdown] = useState<number | null>(null);
+
+  // Category Sub-Tab States
+  const [categoriesList, setCategoriesList] = useState<string[]>([
+    'SPLIT AC',
+    'CASSETTE AC',
+    'INFRARED COOKER',
+    'DUCTED AC',
+    'PACKAGE AC',
+    'VRF / VRV',
+    'ACCESSORIES',
+  ]);
+  const [categorySearch, setCategorySearch] = useState<string>('');
+  const [categoryRowsPerPage, setCategoryRowsPerPage] = useState<number>(10);
+  const [isAddCategoryModalOpen, setIsAddCategoryModalOpen] = useState<boolean>(false);
+  const [editingCategoryIndex, setEditingCategoryIndex] = useState<number | null>(null);
+  const [categoryInputName, setCategoryInputName] = useState<string>('');
+  const [activeCategoryActionDropdown, setActiveCategoryActionDropdown] = useState<number | null>(null);
+
+  const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
+
+  useEffect(() => {
+    const syncUser = () => {
+      const u = authMockService.getCurrentUser();
+      if (u) setCurrentUser(u);
+    };
+    syncUser();
+    const unsub = authMockService.onAuthStateChanged((u) => {
+      if (u) setCurrentUser(u);
+    });
+    window.addEventListener('storage', syncUser);
+    window.addEventListener('crm_auth_updated', syncUser);
+    return () => {
+      unsub();
+      window.removeEventListener('storage', syncUser);
+      window.removeEventListener('crm_auth_updated', syncUser);
+    };
+  }, []);
+
+  const [stockItems, setStockItems] = useState<CrmCezconStock[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cezcon_products_master_live');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((p: any, idx: number) => ({
+              id: String(p.id || idx + 1),
+              slNo: idx + 1,
+              serialNo: p.serialNo || '',
+              code: p.code || p.sku || `CQ4N-XMI${idx + 10}S`,
+              name: p.name || 'Unnamed Product',
+              image: p.image || p.thumbnailImage || '',
+              unit: p.unit || 'Pcs',
+              brand: p.brand || 'MIDEA',
+              category: p.category || 'SPLIT AC',
+              type: p.type || 'Product',
+              purchaseRate: Number(p.purchaseRate) || 0,
+              sellingPrice: Number(p.sellingPrice || p.basePrice) || 0,
+              status: p.status === false || p.status === 'Inactive' ? 'Inactive' : 'Active',
+              store: p.store || 'Main Warehouse - Bay A',
+              stock: Number(p.currentStock || p.stock) || 0,
+              currentStock: Number(p.currentStock || p.stock) || 0,
+              minimumStock: Number(p.minStock || p.minimumStock) || 0,
+              createdBy: p.createdBy || (p.createdByRole === 'employee' ? 'Purchase Employee' : 'Rashid Ali'),
+              createdByRole: p.createdByRole || (p.createdById && String(p.createdById).startsWith('emp_') ? 'employee' : 'manager'),
+              createdById: p.createdById || (p.createdByRole === 'employee' ? 'emp_faisal_001' : 'usr_rashid_001'),
+              createdByEmail: p.createdByEmail || (p.createdByRole === 'employee' ? 'purchaseemp@gmail.com' : 'purchasemanager@gmail.com'),
+              owner: p.owner || p.createdBy || 'Rashid Ali',
+            }));
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load stockItems from storage', e);
+      }
+    }
+    return mockCezconStockItems;
+  });
+
+  // Live Sync with Settings and CRM Products
+  useEffect(() => {
+    const syncProducts = () => {
+      try {
+        const saved = localStorage.getItem('cezcon_products_master_live');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setStockItems(
+              parsed.map((p: any, idx: number) => ({
+                id: String(p.id || idx + 1),
+                slNo: idx + 1,
+                serialNo: p.serialNo || '',
+                code: p.code || p.sku || `CQ4N-XMI${idx + 10}S`,
+                name: p.name || 'Unnamed Product',
+                image: p.image || p.thumbnailImage || '',
+                unit: p.unit || 'Pcs',
+                brand: p.brand || 'MIDEA',
+                category: p.category || 'SPLIT AC',
+                type: p.type || 'Product',
+                purchaseRate: Number(p.purchaseRate) || 0,
+                sellingPrice: Number(p.sellingPrice || p.basePrice) || 0,
+                status: p.status === false || p.status === 'Inactive' ? 'Inactive' : 'Active',
+                store: p.store || 'Main Warehouse - Bay A',
+                stock: Number(p.currentStock || p.stock) || 0,
+                currentStock: Number(p.currentStock || p.stock) || 0,
+                minimumStock: Number(p.minStock || p.minimumStock) || 0,
+                createdBy: p.createdBy || (p.createdByRole === 'employee' ? 'Purchase Employee' : 'Rashid Ali'),
+                createdByRole: p.createdByRole || (p.createdById && String(p.createdById).startsWith('emp_') ? 'employee' : 'manager'),
+                createdById: p.createdById || (p.createdByRole === 'employee' ? 'emp_faisal_001' : 'usr_rashid_001'),
+                createdByEmail: p.createdByEmail || (p.createdByRole === 'employee' ? 'purchaseemp@gmail.com' : 'purchasemanager@gmail.com'),
+                owner: p.owner || p.createdBy || 'Rashid Ali',
+              }))
+            );
+          }
+        }
+      } catch (e) {
+        console.error('Failed to sync products', e);
+      }
+    };
+
+    window.addEventListener('crm_products_updated', syncProducts);
+    window.addEventListener('storage', syncProducts);
+    return () => {
+      window.removeEventListener('crm_products_updated', syncProducts);
+      window.removeEventListener('storage', syncProducts);
+    };
+  }, []);
+
   const [transfers, setTransfers] = useState<CrmStockTransfer[]>(mockStockTransfers);
 
-  // Filtered Products / Services
+  // Add Product View Form State (Exact Cezcon CRM layout)
+  const [productViewMode, setProductViewMode] = useState<'list' | 'add' | 'view'>('list');
+  const [productDetailTab, setProductDetailTab] = useState<'movement' | 'adjustment' | 'images'>('movement');
+  const [viewStoreFilter, setViewStoreFilter] = useState<string>('Select Store');
+  const [viewCustomerFilter, setViewCustomerFilter] = useState<string>('Select Customer');
+  const [viewDateRange, setViewDateRange] = useState<string>('01-10-2026 - 07-10-2026');
+  const [productFormData, setProductFormData] = useState({
+    serialNumber: '',
+    code: '',
+    name: '',
+    thumbnailName: '',
+    unit: 'Select Unit',
+    category: 'Select Category',
+    purchaseRate: '',
+    sellingPrice: '',
+    store: 'Select Store',
+    currentStock: '',
+    minimumStock: '',
+    type: 'Product',
+    imagesCountText: '',
+    brand: 'Select Brand',
+    additionalDescription: '',
+    wordCount: 0,
+  });
+
+  const [activeProductActionDropdownId, setActiveProductActionDropdownId] = useState<string | null>(null);
+  const [viewingProduct, setViewingProduct] = useState<CrmCezconStock | null>(null);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setActiveProductActionDropdownId(null);
+      setActiveUnitActionDropdown(null);
+      setActiveBrandActionDropdown(null);
+      setActiveCategoryActionDropdown(null);
+    };
+    if (activeProductActionDropdownId !== null || activeUnitActionDropdown !== null || activeBrandActionDropdown !== null || activeCategoryActionDropdown !== null) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [activeProductActionDropdownId, activeUnitActionDropdown, activeBrandActionDropdown, activeCategoryActionDropdown]);
+
+  const filteredUnits = useMemo(() => {
+    if (!unitSearch.trim()) return unitsList;
+    return unitsList.filter((u) => u.toLowerCase().includes(unitSearch.toLowerCase()));
+  }, [unitsList, unitSearch]);
+
+  const filteredBrands = useMemo(() => {
+    if (!brandSearch.trim()) return brandsList;
+    return brandsList.filter((b) => b.toLowerCase().includes(brandSearch.toLowerCase()));
+  }, [brandsList, brandSearch]);
+
+  const filteredCategories = useMemo(() => {
+    if (!categorySearch.trim()) return categoriesList;
+    return categoriesList.filter((c) => c.toLowerCase().includes(categorySearch.toLowerCase()));
+  }, [categoriesList, categorySearch]);
+
+  // Filtered Products / Services with Strict Role-Based Visibility Scoping
   const filteredProducts = useMemo(() => {
-    return mockCezconStockItems.filter((item) => {
+    const user = currentUser || (typeof window !== 'undefined' ? authMockService.getCurrentUser() : null);
+    const role = (user?.role || '').toLowerCase();
+    const profile = (user?.profileType || '').toLowerCase();
+    const isSuperAdmin = role === 'super_admin' || role === 'super admin' || profile.includes('super admin');
+    const isAdmin = role === 'admin' || Boolean((user as any)?.isAdmin) || profile.includes('admin');
+    const isManager = role === 'manager' || profile.includes('manager') || Boolean((user as any)?.managerType);
+    const isEmployee = role === 'employee' || profile.includes('employee') || (!isSuperAdmin && !isAdmin && !isManager);
+
+    const currentUserId = String(user?.id || '').toLowerCase();
+    const currentUserName = (user?.name || '').toLowerCase();
+    const currentUserEmail = (user?.email || '').toLowerCase();
+
+    return stockItems.filter((item) => {
+      // 1. Role-Based Data Scoping:
+      if (isEmployee) {
+        // Purchase Employee: ONLY see products created by themselves!
+        const itemCreatedById = String(item.createdById || '').toLowerCase();
+        const itemCreatedByEmail = (item.createdByEmail || '').toLowerCase();
+        const itemCreatedByName = (item.createdBy || '').toLowerCase();
+        const itemRole = (item.createdByRole || '').toLowerCase();
+
+        const isCreatedByMe =
+          (itemCreatedById && itemCreatedById === currentUserId) ||
+          (itemCreatedByEmail && itemCreatedByEmail === currentUserEmail) ||
+          (itemCreatedByName && itemCreatedByName === currentUserName);
+
+        // Hide manager-created, admin-created, or other employees' products from this employee
+        if (!isCreatedByMe || itemRole === 'manager' || itemRole === 'admin' || itemRole === 'super_admin') {
+          return false;
+        }
+      } else if (isManager) {
+        // Purchase Manager sees products created by themselves + all purchase employee items
+      }
+      // Super Admin and Admin see all products across the company
+
+      // 2. Search & Filter Criteria:
       if (productSearch) {
         const q = productSearch.toLowerCase();
-        const matchName = item.name.toLowerCase().includes(q);
-        const matchCode = item.code.toLowerCase().includes(q);
-        const matchBrand = item.brand.toLowerCase().includes(q);
-        const matchCategory = item.category.toLowerCase().includes(q);
+        const matchName = (item.name || '').toLowerCase().includes(q);
+        const matchCode = (item.code || '').toLowerCase().includes(q);
+        const matchBrand = (item.brand || '').toLowerCase().includes(q);
+        const matchCategory = (item.category || '').toLowerCase().includes(q);
         if (!matchName && !matchCode && !matchBrand && !matchCategory) return false;
       }
       if (productCategory !== 'Select' && item.category !== productCategory) return false;
       if (productBrand !== 'Select' && item.brand !== productBrand) return false;
       if (productUnit !== 'Select' && item.unit !== productUnit) return false;
       if (productType !== 'All' && item.type !== productType) return false;
-      if (productStatus !== 'All' && item.status !== productStatus) return false;
+      if (productStatus !== 'All') {
+        const itemStatus = item.status === 'Inactive' ? 'Inactive' : 'Active';
+        if (itemStatus !== productStatus) return false;
+      }
       if (productStore !== 'All Store' && item.store !== productStore) return false;
       return true;
     });
-  }, [productSearch, productCategory, productBrand, productUnit, productType, productStatus, productStore]);
+  }, [stockItems, currentUser, productSearch, productCategory, productBrand, productUnit, productType, productStatus, productStore]);
 
   // Filtered Suppliers
   const filteredSuppliers = useMemo(() => {
@@ -1501,298 +1761,2080 @@ function PurchasePageInner() {
         {/* ========================================================= */}
         {mainTab === 'products' && (
           <>
-            {/* Top 2-Row Filter Criteria Card with Header and Action Buttons */}
-            <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs">
-              {/* Card Header with 3 Action Buttons */}
-              <div className="px-4 py-2.5 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2 font-semibold text-slate-700 text-xs">
-                  <span className="text-sm">🗂️</span>
-                  <span>Product/Services</span>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
+            {productSubTab === 'products' && (
+              <>
+                {productViewMode === 'view' && viewingProduct ? (
+              /* ========================================================= */
+              /* PRODUCT DETAILS VIEW (Exact Cezcon CRM Layout - Image 1)  */
+              /* ========================================================= */
+              <div className="bg-white border border-[#CBD5E1] rounded-sm shadow-xs overflow-hidden text-xs animate-in fade-in duration-150">
+                {/* Header bar with check icon and red close button */}
+                <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-semibold text-slate-700 text-xs">
+                    <span className="w-4 h-4 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-[10px] font-bold">✓</span>
+                    <span>Product or Services</span>
+                  </div>
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#0B1E2E] hover:bg-[#020617] text-white text-xs font-medium rounded-xs shadow-xs cursor-pointer transition"
+                    onClick={() => {
+                      setProductViewMode('list');
+                      setViewingProduct(null);
+                    }}
+                    className="w-5 h-5 bg-[#DC2626] hover:bg-[#B91C1C] text-white flex items-center justify-center rounded-xs transition-colors cursor-pointer"
+                    title="Close"
                   >
-                    <ArrowDownToLine className="w-3.5 h-3.5" />
-                    <span>Download Barcode</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#0B1E2E] hover:bg-[#020617] text-white text-xs font-medium rounded-xs shadow-xs cursor-pointer transition"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Update / Import Product/Service</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-semibold uppercase rounded-xs shadow-xs cursor-pointer transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ PRODUCT/SERVICE</span>
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              </div>
 
-              {/* 2-Row Filter Grid */}
-              <div className="p-4 space-y-3 bg-white">
-                {/* Row 1 */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-slate-600 font-medium block">Select Category</label>
-                    <select
-                      value={productCategory}
-                      onChange={(e) => setProductCategory(e.target.value)}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                    >
-                      <option value="Select">Select</option>
-                      <option value="CASSETTE AC">CASSETTE AC</option>
-                      <option value="SPLIT AC">SPLIT AC</option>
-                      <option value="REFRIGERATOR">REFRIGERATOR</option>
-                    </select>
-                  </div>
+                {/* Two-Column Layout */}
+                <div className="p-4 grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  {/* Left Column: Product Attributes & Stock Details */}
+                  <div className="lg:col-span-3 border border-slate-200 rounded-sm bg-white overflow-hidden text-xs flex flex-col justify-between">
+                    <div>
+                      <div className="p-4 space-y-3">
+                        {/* Top image box and code */}
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-slate-500 font-bold tracking-wider block uppercase">CODE</span>
+                            <BarcodeView code={viewingProduct.code} />
+                          </div>
+                          <NoImageAvailable />
+                        </div>
 
-                  <div className="space-y-1">
-                    <label className="text-slate-600 font-medium block">Select Brand</label>
-                    <select
-                      value={productBrand}
-                      onChange={(e) => setProductBrand(e.target.value)}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                    >
-                      <option value="Select">Select</option>
-                      <option value="MIDEA">MIDEA</option>
-                      <option value="LG">LG</option>
-                      <option value="AKAI">AKAI</option>
-                      <option value="MITSUBISHI">MITSUBISHI</option>
-                      <option value="O GENERAL">O GENERAL</option>
-                      <option value="CARRIER">CARRIER</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-slate-600 font-medium block">Select Unit</label>
-                    <select
-                      value={productUnit}
-                      onChange={(e) => setProductUnit(e.target.value)}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                    >
-                      <option value="Select">Select</option>
-                      <option value="Pcs">Pcs</option>
-                      <option value="Each">Each</option>
-                      <option value="Set">Set</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-slate-600 font-medium block">Select Type</label>
-                    <select
-                      value={productType}
-                      onChange={(e) => setProductType(e.target.value)}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                    >
-                      <option value="All">All</option>
-                      <option value="Product">Product</option>
-                      <option value="Service">Service</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Row 2 */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-slate-600 font-medium block">Select Status</label>
-                    <select
-                      value={productStatus}
-                      onChange={(e) => setProductStatus(e.target.value)}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                    >
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                      <option value="All">All</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-slate-600 font-medium block">Select Store</label>
-                    <select
-                      value={productStore}
-                      onChange={(e) => setProductStore(e.target.value)}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                    >
-                      <option value="All Store">All Store</option>
-                      <option value="Main Warehouse - Bay A">Main Warehouse - Bay A</option>
-                      <option value="Hardware Depot - Austin">Hardware Depot - Austin</option>
-                      <option value="Central Spares Hub">Central Spares Hub</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Table Card */}
-            <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs">
-              {/* Controls */}
-              <div className="p-3 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-slate-100">
-                <div className="flex items-center gap-2 text-xs text-slate-600">
-                  <span>Shows</span>
-                  <select
-                    value={productRowsPerPage}
-                    onChange={(e) => setProductRowsPerPage(Number(e.target.value))}
-                    className="px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-700 cursor-pointer focus:outline-none"
-                  >
-                    <option value={10}>10</option>
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
-                  </select>
-                  <span>Rows</span>
-                </div>
-
-                <div className="relative w-full sm:w-64">
-                  <input
-                    type="text"
-                    placeholder="Search"
-                    value={productSearch}
-                    onChange={(e) => setProductSearch(e.target.value)}
-                    className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
-                  />
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
-                </div>
-              </div>
-
-              {/* Native Mobile Product Cards */}
-              <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
-                {filteredProducts.map((item) => (
-                  <div key={item.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
-                    <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
-                      <div>
-                        <span className="font-bold text-slate-900 text-xs">{item.name}</span>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium">
-                            {item.category}
-                          </span>
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 font-semibold">
-                            {item.brand}
-                          </span>
+                        {/* Attributes */}
+                        <div className="space-y-2.5 pt-2 border-t border-slate-100">
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">NAME</span>
+                            <span className="font-semibold text-slate-800 text-xs">{viewingProduct.name}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">UNIT</span>
+                            <span className="font-semibold text-slate-800 text-xs">{viewingProduct.unit}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">BRAND</span>
+                            <span className="font-semibold text-slate-800 text-xs">{viewingProduct.brand}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">CATEGORY</span>
+                            <span className="font-semibold text-slate-800 text-xs">{viewingProduct.category}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">TYPE</span>
+                            <span className="font-semibold text-slate-800 text-xs">{viewingProduct.type}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">PURCHASE RATE</span>
+                            <span className="font-bold text-slate-900 text-xs">
+                              {viewingProduct.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">SELLING PRICE</span>
+                            <span className="font-bold text-slate-900 text-xs">
+                              {viewingProduct.sellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#10B981] text-white">
-                        {item.status}
-                      </span>
-                    </div>
 
-                    <div className="flex items-center justify-center py-1 bg-slate-50/80 rounded border border-slate-100">
-                      <BarcodeView code={item.code} />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 py-1.5 border-t border-b border-slate-100 text-center bg-slate-50/50 rounded">
-                      <div>
-                        <div className="text-[10px] text-slate-500">Purchase Rate</div>
-                        <div className="font-semibold text-slate-800">
-                          {item.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
-                        </div>
+                      {/* Stock Details Header and List */}
+                      <div className="bg-slate-100/80 px-3 py-1.5 font-bold text-slate-700 text-center text-[11px] border-t border-b border-slate-200">
+                        STOCK DETAILS
                       </div>
-                      <div>
-                        <div className="text-[10px] text-slate-500">Selling Price</div>
-                        <div className="font-bold text-slate-900">
-                          {item.sellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
+                      <div className="p-3 space-y-2 text-xs text-slate-700 font-medium">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">CT</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400">:</span>
+                            <span className="font-bold text-slate-800">{viewingProduct.currentStock || viewingProduct.stock || 0}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">M-42 OFFICE</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400">:</span>
+                            <span className="font-bold text-slate-800">0</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">M-42 SHOP</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400">:</span>
+                            <span className="font-bold text-slate-800">0</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-200 font-bold">
+                          <span className="text-slate-700 uppercase">TOTAL STOCK</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400">:</span>
+                            <span className="font-bold text-slate-900">{viewingProduct.currentStock || viewingProduct.stock || 0}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-[11px] text-slate-500">Unit: <strong className="text-slate-700">{item.unit}</strong></span>
+                    {/* Edit & Delete Action Buttons */}
+                    <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-center gap-2">
                       <button
                         type="button"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#0B1E2E] text-white rounded text-xs cursor-pointer"
+                        onClick={() => {
+                          setEditingProductId(viewingProduct.id);
+                          setProductFormData({
+                            serialNumber: viewingProduct.serialNo || '',
+                            code: viewingProduct.code || '',
+                            name: viewingProduct.name || '',
+                            thumbnailName: '',
+                            unit: viewingProduct.unit || 'Select Unit',
+                            category: viewingProduct.category || 'Select Category',
+                            purchaseRate: String(viewingProduct.purchaseRate || ''),
+                            sellingPrice: String(viewingProduct.sellingPrice || ''),
+                            store: viewingProduct.store || 'Select Store',
+                            currentStock: String(viewingProduct.currentStock || viewingProduct.stock || ''),
+                            minimumStock: String(viewingProduct.minimumStock || ''),
+                            type: viewingProduct.type || 'Product',
+                            imagesCountText: '',
+                            brand: viewingProduct.brand || 'Select Brand',
+                            additionalDescription: '',
+                            wordCount: 0,
+                          });
+                          setProductViewMode('add');
+                        }}
+                        className="inline-flex items-center gap-1 px-3 py-1 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xs font-semibold text-xs transition cursor-pointer"
                       >
-                        <Settings className="w-3.5 h-3.5" />
-                        <span>Action</span>
+                        <SquarePen className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`Are you sure you want to delete ${viewingProduct.name}?`)) {
+                            const updated = stockItems.filter((i) => i.id !== viewingProduct.id);
+                            setStockItems(updated);
+                            try {
+                              const existingRaw = localStorage.getItem('cezcon_products_master_live');
+                              const existingList = existingRaw ? JSON.parse(existingRaw) : [];
+                              if (Array.isArray(existingList)) {
+                                const filtered = existingList.filter((x: any) => String(x.id) !== String(viewingProduct.id));
+                                localStorage.setItem('cezcon_products_master_live', JSON.stringify(filtered));
+                                window.dispatchEvent(new Event('crm_products_updated'));
+                              }
+                            } catch (err) {
+                              console.error('Failed to delete product', err);
+                            }
+                            setProductViewMode('list');
+                            setViewingProduct(null);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 px-3 py-1 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-xs font-semibold text-xs transition cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
                       </button>
                     </div>
                   </div>
-                ))}
-              </div>
 
-              {/* Table (Desktop Viewports) */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse min-w-[1300px]">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
-                      <th className="p-2.5 w-12 text-center border-r border-slate-200">SL.No</th>
-                      <th className="p-2.5 w-24 text-center border-r border-slate-200">Serial No.</th>
-                      <th className="p-2.5 w-48 text-center border-r border-slate-200">Code</th>
-                      <th className="p-2.5 border-r border-slate-200">Name</th>
-                      <th className="p-2.5 w-24 text-center border-r border-slate-200">Image</th>
-                      <th className="p-2.5 w-16 text-center border-r border-slate-200">Unit</th>
-                      <th className="p-2.5 w-24 border-r border-slate-200">Brand</th>
-                      <th className="p-2.5 w-32 border-r border-slate-200">Category</th>
-                      <th className="p-2.5 w-20 text-center border-r border-slate-200">
-                        <span className="inline-flex items-center gap-0.5">
-                          Type
-                          <span className="text-[10px] text-slate-400">❓</span>
+                  {/* Right Column: Sub-Tabs & Movement Report */}
+                  <div className="lg:col-span-9 space-y-4">
+                    {/* Top Sub Tabs */}
+                    <div className="flex items-center border-b border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setProductDetailTab('movement')}
+                        className={cn(
+                          'px-4 py-2 font-semibold text-xs border-b-2 transition-colors cursor-pointer',
+                          productDetailTab === 'movement'
+                            ? 'border-[#DC2626] text-slate-800 bg-white font-bold'
+                            : 'border-transparent text-slate-500 hover:text-slate-700'
+                        )}
+                      >
+                        Stock Movement
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProductDetailTab('adjustment')}
+                        className={cn(
+                          'px-4 py-2 font-semibold text-xs border-b-2 transition-colors cursor-pointer',
+                          productDetailTab === 'adjustment'
+                            ? 'border-[#DC2626] text-slate-800 bg-white font-bold'
+                            : 'border-transparent text-slate-500 hover:text-slate-700'
+                        )}
+                      >
+                        Stock Adjustment
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProductDetailTab('images')}
+                        className={cn(
+                          'px-4 py-2 font-semibold text-xs border-b-2 transition-colors cursor-pointer',
+                          productDetailTab === 'images'
+                            ? 'border-[#DC2626] text-slate-800 bg-white font-bold'
+                            : 'border-transparent text-slate-500 hover:text-slate-700'
+                        )}
+                      >
+                        Images
+                      </button>
+                    </div>
+
+                    {/* Filters Bar */}
+                    <div className="p-3 bg-white border border-slate-200 rounded-sm flex flex-wrap items-center gap-2.5">
+                      <div className="w-44">
+                        <select
+                          value={viewStoreFilter}
+                          onChange={(e) => setViewStoreFilter(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 cursor-pointer"
+                        >
+                          <option value="Select Store">Select Store</option>
+                          <option value="CT">CT</option>
+                          <option value="M-42 OFFICE">M-42 OFFICE</option>
+                          <option value="M-42 SHOP">M-42 SHOP</option>
+                        </select>
+                      </div>
+                      <div className="w-44">
+                        <select
+                          value={viewCustomerFilter}
+                          onChange={(e) => setViewCustomerFilter(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 cursor-pointer"
+                        >
+                          <option value="Select Customer">Select Customer</option>
+                          <option value="All Customers">All Customers</option>
+                        </select>
+                      </div>
+                      <div className="relative w-56">
+                        <input
+                          type="text"
+                          value={viewDateRange}
+                          onChange={(e) => setViewDateRange(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 pr-7"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setViewDateRange('')}
+                          className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 px-4 py-1.5 bg-[#0B1E2E] hover:bg-[#020617] text-white rounded-xs font-semibold text-xs transition cursor-pointer shadow-xs"
+                      >
+                        <Search className="w-3.5 h-3.5" />
+                        <span>Submit</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xs font-semibold text-xs transition cursor-pointer shadow-xs"
+                      >
+                        <ArrowDownToLine className="w-3.5 h-3.5" />
+                        <span>Excel</span>
+                      </button>
+                    </div>
+
+                    {/* Black Banner / Card Header */}
+                    <div className="bg-[#000000] text-white p-4 rounded-sm space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 border-b border-slate-800 pb-2">
+                        <h2 className="font-extrabold text-sm tracking-wide uppercase">{viewingProduct.name}</h2>
+                        <span className="text-xs text-slate-300 font-mono">
+                          Date: <strong className="text-white font-semibold">07 Oct 2026</strong>
                         </span>
-                      </th>
-                      <th className="p-2.5 text-right w-28 border-r border-slate-200">Purchase Rate</th>
-                      <th className="p-2.5 text-right w-24 border-r border-slate-200">Selling Price</th>
-                      <th className="p-2.5 text-center w-20 border-r border-slate-200">Status</th>
-                      <th className="p-2.5 text-center w-16">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {filteredProducts.map((item) => (
-                      <tr key={item.id} className="hover:bg-blue-50/40 transition-colors">
-                        <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{item.slNo}</td>
-                        <td className="p-2.5 text-center text-slate-400 border-r border-slate-100">{item.serialNo || ''}</td>
-                        <td className="p-2.5 border-r border-slate-100 text-center">
-                          <BarcodeView code={item.code} />
-                        </td>
-                        <td className="p-2.5 border-r border-slate-100 font-medium text-slate-800">{item.name}</td>
-                        <td className="p-2.5 text-center border-r border-slate-100">
-                          <NoImageAvailable />
-                        </td>
-                        <td className="p-2.5 text-center text-slate-700 border-r border-slate-100">{item.unit}</td>
-                        <td className="p-2.5 text-slate-700 border-r border-slate-100">{item.brand}</td>
-                        <td className="p-2.5 text-slate-700 border-r border-slate-100">{item.category}</td>
-                        <td className="p-2.5 text-center text-slate-700 border-r border-slate-100">{item.type}</td>
-                        <td className="p-2.5 text-right font-medium text-slate-800 border-r border-slate-100">
-                          {item.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="p-2.5 text-right font-medium text-slate-700 border-r border-slate-100">
-                          {item.sellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="p-2.5 text-center border-r border-slate-100">
-                          <button
-                            type="button"
-                            className="w-8 h-4.5 bg-[#10B981] rounded-full relative p-0.5 inline-block transition cursor-pointer shadow-xs"
-                            title="Active status toggle"
-                          >
-                            <span className="w-3.5 h-3.5 bg-white rounded-full block ml-auto shadow-xs"></span>
-                          </button>
-                        </td>
-                        <td className="p-2.5 text-center">
-                          <button
-                            type="button"
-                            className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#0B1E2E] hover:bg-[#020617] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition mx-auto"
-                            title="Actions"
-                          >
-                            <Settings className="w-3.5 h-3.5" />
-                            <ChevronDown className="w-2.5 h-2.5 text-slate-300" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-1 gap-x-4 text-xs font-mono">
+                        <div>
+                          <span className="text-slate-400">CODE : </span>
+                          <span className="font-bold text-white">{viewingProduct.code}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">UNIT : </span>
+                          <span className="font-bold text-white">{viewingProduct.unit}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">BRAND : </span>
+                          <span className="font-bold text-white">{viewingProduct.brand}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">CATEGORY : </span>
+                          <span className="font-bold text-white">{viewingProduct.category}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">COST : </span>
+                          <span className="font-bold text-white">
+                            {viewingProduct.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">PRICE : </span>
+                          <span className="font-bold text-white">
+                            {viewingProduct.sellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
 
-              {/* Footer */}
-              <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
-                <div>
-                  Showing 1 to {filteredProducts.length} of {filteredProducts.length} entries
+                    {/* Stock Movement Section */}
+                    <div className="space-y-3">
+                      <div className="text-center font-bold text-slate-800 text-xs underline">
+                        Stock Movement Of The Period : From 01-10-2026 To 07-10-2026
+                      </div>
+
+                      <div className="overflow-x-auto border border-slate-200 rounded-sm">
+                        <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                          <thead>
+                            <tr className="bg-[#00828A] text-white font-semibold select-none">
+                              <th className="p-2 border-r border-teal-600/40 w-16 text-center">Sl No.</th>
+                              <th className="p-2 border-r border-teal-600/40 w-28 text-center">Date</th>
+                              <th className="p-2 border-r border-teal-600/40 w-24">Number</th>
+                              <th className="p-2 border-r border-teal-600/40 w-32">Customer</th>
+                              <th className="p-2 border-r border-teal-600/40">Description</th>
+                              <th className="p-2 border-r border-teal-600/40 w-20 text-center">StockIn</th>
+                              <th className="p-2 border-r border-teal-600/40 w-20 text-center">StockOut</th>
+                              <th className="p-2 w-20 text-right">Stock</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 bg-white">
+                            <tr className="hover:bg-slate-50 transition">
+                              <td className="p-2 text-center text-slate-500 border-r border-slate-100">1</td>
+                              <td className="p-2 text-center text-slate-700 border-r border-slate-100">01-10-2026</td>
+                              <td className="p-2 text-slate-400 border-r border-slate-100">-</td>
+                              <td className="p-2 text-slate-400 border-r border-slate-100">-</td>
+                              <td className="p-2 font-medium text-slate-800 border-r border-slate-100">Opening Stock</td>
+                              <td className="p-2 text-center text-slate-400 border-r border-slate-100">-</td>
+                              <td className="p-2 text-center text-slate-400 border-r border-slate-100">-</td>
+                              <td className="p-2 text-right font-bold text-[#DC2626]">
+                                {viewingProduct.currentStock || viewingProduct.stock || 0}
+                              </td>
+                            </tr>
+                            <tr className="bg-slate-50 font-bold">
+                              <td colSpan={5} className="p-2 text-right border-r border-slate-200">
+                                Total
+                              </td>
+                              <td className="p-2 text-center border-r border-slate-200">-</td>
+                              <td className="p-2 text-center border-r border-slate-200">-</td>
+                              <td className="p-2 text-right text-[#DC2626] font-bold">
+                                Closing Stock : {viewingProduct.currentStock || viewingProduct.stock || 0}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : productViewMode === 'add' ? (
+              /* ========================================================= */
+              /* ADD PRODUCT/SERVICE/RAW MATERIAL/ASSET VIEW (Image 1)     */
+              /* ========================================================= */
+              <div className="bg-white border border-[#CBD5E1] rounded-sm shadow-xs overflow-hidden text-xs animate-in fade-in duration-150">
+                {/* Header with red close icon */}
+                <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-semibold text-slate-700 text-xs">
+                    <FileText className="w-4 h-4 text-slate-500" />
+                    <span>{editingProductId ? 'Edit Product/Service/Raw Material/Asset' : 'Add Product/Service/Raw Material/Asset'}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProductViewMode('list');
+                      setEditingProductId(null);
+                    }}
+                    className="w-5 h-5 bg-[#DC2626] hover:bg-[#B91C1C] text-white flex items-center justify-center rounded-xs transition-colors cursor-pointer"
+                    title="Close"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Form Fields */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const activeUser = currentUser || (typeof window !== 'undefined' ? authMockService.getCurrentUser() : null);
+                    const userRole = (activeUser?.role || '').toLowerCase();
+                    const isEmp = userRole === 'employee' || (activeUser?.profileType || '').toLowerCase().includes('employee');
+                    const creatorRole = isEmp ? 'employee' : (userRole === 'admin' ? 'admin' : userRole.includes('super') ? 'super_admin' : 'manager');
+
+                    const targetId = editingProductId || String(Date.now());
+                    const existingProduct = editingProductId ? stockItems.find((i) => i.id === editingProductId) : null;
+
+                    const savedProduct: CrmCezconStock = {
+                      id: String(targetId),
+                      slNo: existingProduct?.slNo || stockItems.length + 1,
+                      serialNo: productFormData.serialNumber || '',
+                      code: productFormData.code || (existingProduct?.code || `CQ4N-XMI${Math.floor(10 + Math.random() * 90)}S`),
+                      name: productFormData.name || 'New Product',
+                      image: existingProduct?.image || '',
+                      unit: productFormData.unit !== 'Select Unit' ? productFormData.unit : (existingProduct?.unit || 'Pcs'),
+                      brand: productFormData.brand !== 'Select Brand' ? productFormData.brand : (existingProduct?.brand || 'MIDEA'),
+                      category: productFormData.category !== 'Select Category' ? productFormData.category : (existingProduct?.category || 'SPLIT AC'),
+                      type: productFormData.type,
+                      purchaseRate: Number(productFormData.purchaseRate) || 0,
+                      sellingPrice: Number(productFormData.sellingPrice) || 0,
+                      status: existingProduct?.status || 'Active',
+                      store: productFormData.store !== 'Select Store' ? productFormData.store : (existingProduct?.store || 'Main Warehouse - Bay A'),
+                      stock: Number(productFormData.currentStock) || 0,
+                      currentStock: Number(productFormData.currentStock) || 0,
+                      minimumStock: Number(productFormData.minimumStock) || 0,
+                      createdBy: existingProduct?.createdBy || activeUser?.name || (isEmp ? 'Purchase Employee' : 'Rashid Ali'),
+                      createdByRole: existingProduct?.createdByRole || creatorRole,
+                      createdById: existingProduct?.createdById || (activeUser?.id ? String(activeUser.id) : (isEmp ? 'emp_faisal_001' : 'usr_rashid_001')),
+                      createdByEmail: existingProduct?.createdByEmail || activeUser?.email || (isEmp ? 'purchaseemp@gmail.com' : 'purchasemanager@gmail.com'),
+                      owner: existingProduct?.owner || activeUser?.name || (isEmp ? 'Purchase Employee' : 'Rashid Ali'),
+                    };
+
+                    const updatedItems = editingProductId
+                      ? stockItems.map((item) => (item.id === editingProductId ? savedProduct : item))
+                      : [savedProduct, ...stockItems];
+
+                    setStockItems(updatedItems);
+
+                    // Persist to unified localStorage master
+                    try {
+                      const productSettingItem: ProductSettingItem = {
+                        id: Number(targetId) || Date.now(),
+                        sku: savedProduct.code,
+                        code: savedProduct.code,
+                        serialNo: savedProduct.serialNo,
+                        name: savedProduct.name,
+                        category: savedProduct.category,
+                        brand: savedProduct.brand,
+                        unit: savedProduct.unit,
+                        type: savedProduct.type as any,
+                        purchaseRate: savedProduct.purchaseRate,
+                        sellingPrice: savedProduct.sellingPrice,
+                        basePrice: savedProduct.sellingPrice,
+                        status: true,
+                        store: savedProduct.store,
+                        currentStock: savedProduct.currentStock,
+                        minStock: savedProduct.minimumStock,
+                        additionalDescription: productFormData.additionalDescription,
+                        createdBy: savedProduct.createdBy,
+                        createdByRole: savedProduct.createdByRole,
+                        createdById: savedProduct.createdById,
+                        createdByEmail: savedProduct.createdByEmail,
+                        owner: savedProduct.owner,
+                      };
+
+                      const existingRaw = localStorage.getItem('cezcon_products_master_live');
+                      const existingList = existingRaw ? JSON.parse(existingRaw) : [];
+                      const filteredList = Array.isArray(existingList) ? existingList.filter((x: any) => String(x.id) !== String(targetId)) : [];
+                      const mergedList = [productSettingItem, ...filteredList];
+                      localStorage.setItem('cezcon_products_master_live', JSON.stringify(mergedList));
+                      window.dispatchEvent(new Event('crm_products_updated'));
+                    } catch (err) {
+                      console.error('Failed to persist product to localStorage', err);
+                    }
+
+                    setEditingProductId(null);
+                    setProductViewMode('list');
+                    setProductFormData({
+                      serialNumber: '',
+                      code: '',
+                      name: '',
+                      thumbnailName: '',
+                      unit: 'Select Unit',
+                      category: 'Select Category',
+                      purchaseRate: '',
+                      sellingPrice: '',
+                      store: 'Select Store',
+                      currentStock: '',
+                      minimumStock: '',
+                      type: 'Product',
+                      imagesCountText: '',
+                      brand: 'Select Brand',
+                      additionalDescription: '',
+                      wordCount: 0,
+                    });
+                  }}
+                  className="p-4 sm:p-6"
+                >
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-3">
+                    {/* Left Column */}
+                    <div className="space-y-3">
+                      {/* Serial Number */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                        <label className="text-slate-700 font-medium text-xs">Serial Number</label>
+                        <div className="sm:col-span-2">
+                          <input
+                            type="text"
+                            placeholder="Serial Number"
+                            value={productFormData.serialNumber}
+                            onChange={(e) => setProductFormData({ ...productFormData, serialNumber: e.target.value })}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Name * */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                        <label className="text-slate-700 font-medium text-xs flex items-center gap-1">
+                          Name <span className="text-red-500">*</span>
+                        </label>
+                        <div className="sm:col-span-2">
+                          <input
+                            type="text"
+                            required
+                            placeholder="Name"
+                            value={productFormData.name}
+                            onChange={(e) => setProductFormData({ ...productFormData, name: e.target.value })}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Thumbnail Image */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                        <label className="text-slate-700 font-medium text-xs">Thumbnail Image</label>
+                        <div className="sm:col-span-2 flex items-center gap-2">
+                          <label className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded text-xs text-slate-700 cursor-pointer font-medium transition">
+                            Choose file
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                setProductFormData({ ...productFormData, thumbnailName: file ? file.name : 'No file chosen' });
+                              }}
+                              className="hidden"
+                            />
+                          </label>
+                          <span className="text-xs text-slate-500 truncate">{productFormData.thumbnailName || 'No file chosen'}</span>
+                        </div>
+                      </div>
+
+                      {/* Unit */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                        <label className="text-slate-700 font-medium text-xs">Unit</label>
+                        <div className="sm:col-span-2">
+                          <select
+                            value={productFormData.unit}
+                            onChange={(e) => setProductFormData({ ...productFormData, unit: e.target.value })}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
+                          >
+                            <option value="Select Unit">Select Unit</option>
+                            <option value="Pcs">Pcs</option>
+                            <option value="Set">Set</option>
+                            <option value="Each">Each</option>
+                            <option value="Box">Box</option>
+                            <option value="Meter">Meter</option>
+                            <option value="Kg">Kg</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Category */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                        <label className="text-slate-700 font-medium text-xs">Category</label>
+                        <div className="sm:col-span-2">
+                          <select
+                            value={productFormData.category}
+                            onChange={(e) => setProductFormData({ ...productFormData, category: e.target.value })}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
+                          >
+                            <option value="Select Category">Select Category</option>
+                            <option value="CASSETTE AC">CASSETTE AC</option>
+                            <option value="SPLIT AC">SPLIT AC</option>
+                            <option value="REFRIGERATOR">REFRIGERATOR</option>
+                            <option value="ACCESSORIES">ACCESSORIES</option>
+                            <option value="SPARE PARTS">SPARE PARTS</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Purchase Rate */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                        <label className="text-slate-700 font-medium text-xs">Purchase Rate</label>
+                        <div className="sm:col-span-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="Enter Purchase Rate"
+                            value={productFormData.purchaseRate}
+                            onChange={(e) => setProductFormData({ ...productFormData, purchaseRate: e.target.value })}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Selling Price */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                        <label className="text-slate-700 font-medium text-xs">Selling Price</label>
+                        <div className="sm:col-span-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="Enter Selling Price"
+                            value={productFormData.sellingPrice}
+                            onChange={(e) => setProductFormData({ ...productFormData, sellingPrice: e.target.value })}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Store */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                        <label className="text-slate-700 font-medium text-xs">Store</label>
+                        <div className="sm:col-span-2">
+                          <select
+                            value={productFormData.store}
+                            onChange={(e) => setProductFormData({ ...productFormData, store: e.target.value })}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
+                          >
+                            <option value="Select Store">Select Store</option>
+                            <option value="Main Warehouse - Bay A">Main Warehouse - Bay A</option>
+                            <option value="Central Spares Hub">Central Spares Hub</option>
+                            <option value="Hardware Depot - Austin">Hardware Depot - Austin</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Current Stock */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                        <label className="text-slate-700 font-medium text-xs">Current Stock</label>
+                        <div className="sm:col-span-2">
+                          <input
+                            type="number"
+                            placeholder="Enter Current Stock"
+                            value={productFormData.currentStock}
+                            onChange={(e) => setProductFormData({ ...productFormData, currentStock: e.target.value })}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Minimum Stock */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                        <label className="text-slate-700 font-medium text-xs">Minimum Stock</label>
+                        <div className="sm:col-span-2">
+                          <input
+                            type="number"
+                            placeholder="Enter minimum stock"
+                            value={productFormData.minimumStock}
+                            onChange={(e) => setProductFormData({ ...productFormData, minimumStock: e.target.value })}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="space-y-3 flex flex-col justify-between">
+                      <div className="space-y-3">
+                        {/* Code */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                          <label className="text-slate-700 font-medium text-xs">Code</label>
+                          <div className="sm:col-span-2">
+                            <input
+                              type="text"
+                              placeholder="Last Product/Service/Raw Material Code CQ4N-XMI48S"
+                              value={productFormData.code}
+                              onChange={(e) => setProductFormData({ ...productFormData, code: e.target.value })}
+                              className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Type */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                          <label className="text-slate-700 font-medium text-xs">Type</label>
+                          <div className="sm:col-span-2">
+                            <select
+                              value={productFormData.type}
+                              onChange={(e) => setProductFormData({ ...productFormData, type: e.target.value })}
+                              className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
+                            >
+                              <option value="Product">Product</option>
+                              <option value="Service">Service</option>
+                              <option value="Raw Material">Raw Material</option>
+                              <option value="Asset">Asset</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Images */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                          <label className="text-slate-700 font-medium text-xs flex items-center gap-1">
+                            Images
+                            <span className="w-3.5 h-3.5 rounded-full bg-slate-800 text-white text-[9px] font-bold flex items-center justify-center cursor-pointer" title="Upload multiple product images">
+                              ?
+                            </span>
+                          </label>
+                          <div className="sm:col-span-2 flex items-center gap-2">
+                            <label className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded text-xs text-slate-700 cursor-pointer font-medium transition">
+                              Choose files
+                              <input
+                                type="file"
+                                multiple
+                                accept="image/*"
+                                onChange={(e) => {
+                                  const files = e.target.files;
+                                  setProductFormData({
+                                    ...productFormData,
+                                    imagesCountText: files && files.length > 0 ? `${files.length} file(s) chosen` : 'No file chosen',
+                                  });
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                            <span className="text-xs text-slate-500 truncate">{productFormData.imagesCountText || 'No file chosen'}</span>
+                          </div>
+                        </div>
+
+                        {/* Brand */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                          <label className="text-slate-700 font-medium text-xs">Brand</label>
+                          <div className="sm:col-span-2">
+                            <select
+                              value={productFormData.brand}
+                              onChange={(e) => setProductFormData({ ...productFormData, brand: e.target.value })}
+                              className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
+                            >
+                              <option value="Select Brand">Select Brand</option>
+                              <option value="MIDEA">MIDEA</option>
+                              <option value="LG">LG</option>
+                              <option value="AKAI">AKAI</option>
+                              <option value="MITSUBISHI">MITSUBISHI</option>
+                              <option value="O GENERAL">O GENERAL</option>
+                              <option value="CARRIER">CARRIER</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Additional Description with Rich Text Editor */}
+                        <div className="space-y-1.5 pt-1">
+                          <label className="text-slate-700 font-medium text-xs block">Additional Description</label>
+                          <div className="border border-slate-300 rounded overflow-hidden bg-white shadow-2xs">
+                            {/* Rich Text Toolbar */}
+                            <div className="p-1.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-1 text-slate-700 select-none">
+                              <button
+                                type="button"
+                                onClick={() => document.execCommand('undo')}
+                                className="p-1 rounded hover:bg-slate-200 text-slate-700 cursor-pointer text-xs"
+                                title="Undo"
+                              >
+                                ↺
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => document.execCommand('redo')}
+                                className="p-1 rounded hover:bg-slate-200 text-slate-700 cursor-pointer text-xs"
+                                title="Redo"
+                              >
+                                ↻
+                              </button>
+                              <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
+                              <select
+                                onChange={(e) => document.execCommand('formatBlock', false, e.target.value)}
+                                className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[11px] text-slate-700 cursor-pointer"
+                              >
+                                <option value="p">Paragraph</option>
+                                <option value="h1">Heading 1</option>
+                                <option value="h2">Heading 2</option>
+                                <option value="h3">Heading 3</option>
+                              </select>
+                              <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
+                              <button
+                                type="button"
+                                onClick={() => document.execCommand('bold')}
+                                className="w-6 h-6 rounded hover:bg-slate-200 font-bold text-xs flex items-center justify-center cursor-pointer"
+                                title="Bold"
+                              >
+                                B
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => document.execCommand('italic')}
+                                className="w-6 h-6 rounded hover:bg-slate-200 italic text-xs flex items-center justify-center cursor-pointer"
+                                title="Italic"
+                              >
+                                I
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => document.execCommand('underline')}
+                                className="w-6 h-6 rounded hover:bg-slate-200 underline text-xs flex items-center justify-center cursor-pointer"
+                                title="Underline"
+                              >
+                                U
+                              </button>
+                              <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
+                              <button
+                                type="button"
+                                onClick={() => document.execCommand('justifyLeft')}
+                                className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
+                                title="Align Left"
+                              >
+                                ≡
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => document.execCommand('justifyCenter')}
+                                className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
+                                title="Align Center"
+                              >
+                                ≣
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => document.execCommand('justifyRight')}
+                                className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
+                                title="Align Right"
+                              >
+                                ≡
+                              </button>
+                              <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
+                              <button
+                                type="button"
+                                onClick={() => document.execCommand('insertUnorderedList')}
+                                className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
+                                title="Bullet List"
+                              >
+                                •≡
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => document.execCommand('insertOrderedList')}
+                                className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
+                                title="Numbered List"
+                              >
+                                1.≡
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => document.execCommand('outdent')}
+                                className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
+                                title="Decrease Indent"
+                              >
+                                ←|
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => document.execCommand('indent')}
+                                className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
+                                title="Increase Indent"
+                              >
+                                |→
+                              </button>
+                              <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const url = prompt('Enter link URL:');
+                                  if (url) document.execCommand('createLink', false, url);
+                                }}
+                                className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
+                                title="Insert Link"
+                              >
+                                🔗
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const url = prompt('Enter image URL:');
+                                  if (url) document.execCommand('insertImage', false, url);
+                                }}
+                                className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
+                                title="Insert Image"
+                              >
+                                🖼️
+                              </button>
+                            </div>
+
+                            {/* Editable Area */}
+                            <div
+                              contentEditable
+                              onInput={(e) => {
+                                const text = e.currentTarget.innerText || '';
+                                setProductFormData({
+                                  ...productFormData,
+                                  additionalDescription: e.currentTarget.innerHTML,
+                                  wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
+                                });
+                              }}
+                              className="p-3 min-h-[160px] max-h-[220px] overflow-y-auto text-xs text-slate-800 focus:outline-none bg-white"
+                              style={{ minHeight: '160px' }}
+                            />
+
+                            {/* Word Count Footer */}
+                            <div className="px-3 py-1 bg-slate-50 border-t border-slate-100 text-right text-[10px] text-slate-400 font-medium">
+                              {productFormData.wordCount || 0} words
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Form Bottom Actions */}
+                  <div className="mt-6 pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                    <button
+                      type="submit"
+                      className="px-5 py-1.5 bg-[#0B1E2E] hover:bg-[#020617] text-white text-xs font-semibold rounded-xs shadow-xs cursor-pointer transition"
+                    >
+                      Submit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProductViewMode('list')}
+                      className="inline-flex items-center gap-1 px-4 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-medium rounded-xs shadow-xs cursor-pointer transition"
+                    >
+                      <span>←</span>
+                      <span>Back</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : (
+              /* ========================================================= */
+              /* PRODUCT / SERVICE LIST TABLE VIEW (Image 2)               */
+              /* ========================================================= */
+              <>
+                {/* Top 2-Row Filter Criteria Card with Header and Action Buttons */}
+                <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs">
+                  {/* Card Header with 3 Action Buttons */}
+                  <div className="px-4 py-2.5 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 font-semibold text-slate-700 text-xs">
+                      <span className="text-sm">🗂️</span>
+                      <span>Product/Services</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#0B1E2E] hover:bg-[#020617] text-white text-xs font-medium rounded-xs shadow-xs cursor-pointer transition"
+                      >
+                        <ArrowDownToLine className="w-3.5 h-3.5" />
+                        <span>Download Barcode</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#0B1E2E] hover:bg-[#020617] text-white text-xs font-medium rounded-xs shadow-xs cursor-pointer transition"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Update / Import Product/Service</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingProductId(null);
+                          setProductFormData({
+                            serialNumber: '',
+                            code: '',
+                            name: '',
+                            thumbnailName: '',
+                            unit: 'Select Unit',
+                            category: 'Select Category',
+                            purchaseRate: '',
+                            sellingPrice: '',
+                            store: 'Select Store',
+                            currentStock: '',
+                            minimumStock: '',
+                            type: 'Product',
+                            imagesCountText: '',
+                            brand: 'Select Brand',
+                            additionalDescription: '',
+                            wordCount: 0,
+                          });
+                          setProductViewMode('add');
+                        }}
+                        className="inline-flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-semibold uppercase rounded-xs shadow-xs cursor-pointer transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ PRODUCT/SERVICE</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 2-Row Filter Grid */}
+                  <div className="p-4 space-y-3 bg-white">
+                    {/* Row 1 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-slate-600 font-medium block">Select Category</label>
+                        <select
+                          value={productCategory}
+                          onChange={(e) => setProductCategory(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                        >
+                          <option value="Select">Select</option>
+                          <option value="CASSETTE AC">CASSETTE AC</option>
+                          <option value="SPLIT AC">SPLIT AC</option>
+                          <option value="REFRIGERATOR">REFRIGERATOR</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-slate-600 font-medium block">Select Brand</label>
+                        <select
+                          value={productBrand}
+                          onChange={(e) => setProductBrand(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                        >
+                          <option value="Select">Select</option>
+                          <option value="MIDEA">MIDEA</option>
+                          <option value="LG">LG</option>
+                          <option value="AKAI">AKAI</option>
+                          <option value="MITSUBISHI">MITSUBISHI</option>
+                          <option value="O GENERAL">O GENERAL</option>
+                          <option value="CARRIER">CARRIER</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-slate-600 font-medium block">Select Unit</label>
+                        <select
+                          value={productUnit}
+                          onChange={(e) => setProductUnit(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                        >
+                          <option value="Select">Select</option>
+                          <option value="Pcs">Pcs</option>
+                          <option value="Each">Each</option>
+                          <option value="Set">Set</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-slate-600 font-medium block">Select Type</label>
+                        <select
+                          value={productType}
+                          onChange={(e) => setProductType(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                        >
+                          <option value="All">All</option>
+                          <option value="Product">Product</option>
+                          <option value="Service">Service</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Row 2 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-slate-600 font-medium block">Select Status</label>
+                        <select
+                          value={productStatus}
+                          onChange={(e) => setProductStatus(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                        >
+                          <option value="Active">Active</option>
+                          <option value="Inactive">Inactive</option>
+                          <option value="All">All</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-slate-600 font-medium block">Select Store</label>
+                        <select
+                          value={productStore}
+                          onChange={(e) => setProductStore(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                        >
+                          <option value="All Store">All Store</option>
+                          <option value="Main Warehouse - Bay A">Main Warehouse - Bay A</option>
+                          <option value="Hardware Depot - Austin">Hardware Depot - Austin</option>
+                          <option value="Central Spares Hub">Central Spares Hub</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Table Card */}
+                <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs">
+                  {/* Controls */}
+                  <div className="p-3 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <span>Shows</span>
+                      <select
+                        value={productRowsPerPage}
+                        onChange={(e) => setProductRowsPerPage(Number(e.target.value))}
+                        className="px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-700 cursor-pointer focus:outline-none"
+                      >
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                      <span>Rows</span>
+                    </div>
+
+                    <div className="relative w-full sm:w-64">
+                      <input
+                        type="text"
+                        placeholder="Search"
+                        value={productSearch}
+                        onChange={(e) => setProductSearch(e.target.value)}
+                        className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
+                      />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
+                    </div>
+                  </div>
+
+                  {/* Native Mobile Product Cards */}
+                  <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
+                    {filteredProducts.map((item) => (
+                      <div key={item.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
+                        <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
+                          <div>
+                            <span className="font-bold text-slate-900 text-xs">{item.name}</span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium">
+                                {item.category}
+                              </span>
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 font-semibold">
+                                {item.brand}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#10B981] text-white">
+                            {item.status}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-center py-1 bg-slate-50/80 rounded border border-slate-100">
+                          <BarcodeView code={item.code} />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 py-1.5 border-t border-b border-slate-100 text-center bg-slate-50/50 rounded">
+                          <div>
+                            <div className="text-[10px] text-slate-500">Purchase Rate</div>
+                            <div className="font-semibold text-slate-800">
+                              {item.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-slate-500">Selling Price</div>
+                            <div className="font-bold text-slate-900">
+                              {item.sellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-[11px] text-slate-500">Unit: <strong className="text-slate-700">{item.unit}</strong></span>
+                          <div className="relative inline-block text-left">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveProductActionDropdownId(
+                                  activeProductActionDropdownId === item.id ? null : item.id
+                                );
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#00828A] hover:bg-[#006D75] text-white rounded-xs text-xs font-semibold cursor-pointer shadow-xs transition"
+                            >
+                              <Settings className="w-3.5 h-3.5" />
+                              <ChevronDown className="w-2.5 h-2.5 text-teal-100" />
+                            </button>
+
+                            {activeProductActionDropdownId === item.id && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-0 bottom-full mb-1 w-32 bg-white border border-slate-200 rounded shadow-xl py-1 z-50 text-xs text-left"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setViewingProduct(item);
+                                    setProductViewMode('view');
+                                    setActiveProductActionDropdownId(null);
+                                  }}
+                                  className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-700 transition cursor-pointer text-left font-normal"
+                                >
+                                  <BookOpen className="w-3.5 h-3.5 text-slate-600" />
+                                  <span>View</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingProductId(item.id);
+                                    setProductFormData({
+                                      serialNumber: item.serialNo || '',
+                                      code: item.code || '',
+                                      name: item.name || '',
+                                      thumbnailName: '',
+                                      unit: item.unit || 'Select Unit',
+                                      category: item.category || 'Select Category',
+                                      purchaseRate: String(item.purchaseRate || ''),
+                                      sellingPrice: String(item.sellingPrice || ''),
+                                      store: item.store || 'Select Store',
+                                      currentStock: String(item.currentStock || item.stock || ''),
+                                      minimumStock: String(item.minimumStock || ''),
+                                      type: item.type || 'Product',
+                                      imagesCountText: '',
+                                      brand: item.brand || 'Select Brand',
+                                      additionalDescription: '',
+                                      wordCount: 0,
+                                    });
+                                    setProductViewMode('add');
+                                    setActiveProductActionDropdownId(null);
+                                  }}
+                                  className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-700 transition cursor-pointer text-left font-normal"
+                                >
+                                  <SquarePen className="w-3.5 h-3.5 text-slate-600" />
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm(`Are you sure you want to delete ${item.name}?`)) {
+                                      const updated = stockItems.filter((i) => i.id !== item.id);
+                                      setStockItems(updated);
+                                      try {
+                                        const existingRaw = localStorage.getItem('cezcon_products_master_live');
+                                        const existingList = existingRaw ? JSON.parse(existingRaw) : [];
+                                        if (Array.isArray(existingList)) {
+                                          const filtered = existingList.filter((x: any) => String(x.id) !== String(item.id));
+                                          localStorage.setItem('cezcon_products_master_live', JSON.stringify(filtered));
+                                          window.dispatchEvent(new Event('crm_products_updated'));
+                                        }
+                                      } catch (err) {
+                                        console.error('Failed to delete product', err);
+                                      }
+                                    }
+                                    setActiveProductActionDropdownId(null);
+                                  }}
+                                  className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition cursor-pointer text-left font-normal"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Table (Desktop Viewports) */}
+                  <div className="hidden md:block overflow-x-auto min-h-[220px] pb-16">
+                    <table className="w-full text-left text-xs border-collapse min-w-[1300px]">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
+                          <th className="p-2.5 w-12 text-center border-r border-slate-200">SL.No</th>
+                          <th className="p-2.5 w-24 text-center border-r border-slate-200">Serial No.</th>
+                          <th className="p-2.5 w-48 text-center border-r border-slate-200">Code</th>
+                          <th className="p-2.5 border-r border-slate-200">Name</th>
+                          <th className="p-2.5 w-24 text-center border-r border-slate-200">Image</th>
+                          <th className="p-2.5 w-16 text-center border-r border-slate-200">Unit</th>
+                          <th className="p-2.5 w-24 border-r border-slate-200">Brand</th>
+                          <th className="p-2.5 w-32 border-r border-slate-200">Category</th>
+                          <th className="p-2.5 w-20 text-center border-r border-slate-200">
+                            <span className="inline-flex items-center gap-0.5">
+                              Type
+                              <span className="text-[10px] text-slate-400">❓</span>
+                            </span>
+                          </th>
+                          <th className="p-2.5 text-right w-28 border-r border-slate-200">Purchase Rate</th>
+                          <th className="p-2.5 text-right w-24 border-r border-slate-200">Selling Price</th>
+                          <th className="p-2.5 text-center w-20 border-r border-slate-200">Status</th>
+                          <th className="p-2.5 text-center w-20">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {filteredProducts.map((item) => (
+                          <tr key={item.id} className="hover:bg-blue-50/40 transition-colors">
+                            <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{item.slNo}</td>
+                            <td className="p-2.5 text-center text-slate-400 border-r border-slate-100">{item.serialNo || ''}</td>
+                            <td className="p-2.5 border-r border-slate-100 text-center">
+                              <BarcodeView code={item.code} />
+                            </td>
+                            <td className="p-2.5 border-r border-slate-100 font-medium text-slate-800">{item.name}</td>
+                            <td className="p-2.5 text-center border-r border-slate-100">
+                              <NoImageAvailable />
+                            </td>
+                            <td className="p-2.5 text-center text-slate-700 border-r border-slate-100">{item.unit}</td>
+                            <td className="p-2.5 text-slate-700 border-r border-slate-100">{item.brand}</td>
+                            <td className="p-2.5 text-slate-700 border-r border-slate-100">{item.category}</td>
+                            <td className="p-2.5 text-center text-slate-700 border-r border-slate-100">{item.type}</td>
+                            <td className="p-2.5 text-right font-medium text-slate-800 border-r border-slate-100">
+                              {item.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="p-2.5 text-right font-medium text-slate-700 border-r border-slate-100">
+                              {item.sellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="p-2.5 text-center border-r border-slate-100">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newStatus = item.status === 'Active' ? 'Inactive' : 'Active';
+                                  const updated = stockItems.map((p) => (p.id === item.id ? { ...p, status: newStatus } : p));
+                                  setStockItems(updated);
+                                  try {
+                                    const existingRaw = localStorage.getItem('cezcon_products_master_live');
+                                    const existingList = existingRaw ? JSON.parse(existingRaw) : [];
+                                    if (Array.isArray(existingList)) {
+                                      const updatedList = existingList.map((x: any) =>
+                                        String(x.id) === String(item.id) ? { ...x, status: newStatus === 'Active' } : x
+                                      );
+                                      localStorage.setItem('cezcon_products_master_live', JSON.stringify(updatedList));
+                                      window.dispatchEvent(new Event('crm_products_updated'));
+                                    }
+                                  } catch (err) {
+                                    console.error('Failed to toggle status', err);
+                                  }
+                                }}
+                                className={cn(
+                                  'w-8 h-4.5 rounded-full relative p-0.5 inline-block transition cursor-pointer shadow-xs',
+                                  item.status === 'Active' ? 'bg-[#10B981]' : 'bg-slate-300'
+                                )}
+                                title={item.status === 'Active' ? 'Active (Click to Deactivate)' : 'Inactive (Click to Activate)'}
+                              >
+                                <span
+                                  className={cn(
+                                    'w-3.5 h-3.5 bg-white rounded-full block shadow-xs transition-transform',
+                                    item.status === 'Active' ? 'ml-auto' : 'mr-auto'
+                                  )}
+                                ></span>
+                              </button>
+                            </td>
+                            <td className="p-2.5 text-center relative">
+                              <div className="relative inline-block text-left">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveProductActionDropdownId(
+                                      activeProductActionDropdownId === item.id ? null : item.id
+                                    );
+                                  }}
+                                  className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#00828A] hover:bg-[#006D75] text-white rounded-xs text-xs font-semibold cursor-pointer shadow-xs transition mx-auto"
+                                  title="Actions"
+                                >
+                                  <Settings className="w-3.5 h-3.5" />
+                                  <ChevronDown className="w-2.5 h-2.5 text-teal-100" />
+                                </button>
+
+                                {activeProductActionDropdownId === item.id && (
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="absolute right-0 top-full mt-1 w-28 bg-white border border-slate-200 rounded shadow-xl py-1 z-50 text-xs text-left animate-in fade-in zoom-in-95 duration-700"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setViewingProduct(item);
+                                        setProductViewMode('view');
+                                        setActiveProductActionDropdownId(null);
+                                      }}
+                                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-700 transition cursor-pointer text-left font-normal"
+                                    >
+                                      <BookOpen className="w-3.5 h-3.5 text-slate-600" />
+                                      <span>View</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingProductId(item.id);
+                                        setProductFormData({
+                                          serialNumber: item.serialNo || '',
+                                          code: item.code || '',
+                                          name: item.name || '',
+                                          thumbnailName: '',
+                                          unit: item.unit || 'Select Unit',
+                                          category: item.category || 'Select Category',
+                                          purchaseRate: String(item.purchaseRate || ''),
+                                          sellingPrice: String(item.sellingPrice || ''),
+                                          store: item.store || 'Select Store',
+                                          currentStock: String(item.currentStock || item.stock || ''),
+                                          minimumStock: String(item.minimumStock || ''),
+                                          type: item.type || 'Product',
+                                          imagesCountText: '',
+                                          brand: item.brand || 'Select Brand',
+                                          additionalDescription: '',
+                                          wordCount: 0,
+                                        });
+                                        setProductViewMode('add');
+                                        setActiveProductActionDropdownId(null);
+                                      }}
+                                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-700 transition cursor-pointer text-left font-normal"
+                                    >
+                                      <SquarePen className="w-3.5 h-3.5 text-slate-600" />
+                                      <span>Edit</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (confirm(`Are you sure you want to delete ${item.name}?`)) {
+                                          const updated = stockItems.filter((i) => i.id !== item.id);
+                                          setStockItems(updated);
+                                          try {
+                                            const existingRaw = localStorage.getItem('cezcon_products_master_live');
+                                            const existingList = existingRaw ? JSON.parse(existingRaw) : [];
+                                            if (Array.isArray(existingList)) {
+                                              const filtered = existingList.filter((x: any) => String(x.id) !== String(item.id));
+                                              localStorage.setItem('cezcon_products_master_live', JSON.stringify(filtered));
+                                              window.dispatchEvent(new Event('crm_products_updated'));
+                                            }
+                                          } catch (err) {
+                                            console.error('Failed to delete product', err);
+                                          }
+                                        }
+                                        setActiveProductActionDropdownId(null);
+                                      }}
+                                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition cursor-pointer text-left font-normal"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                      <span>Delete</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
+                    <div>
+                      Showing 1 to {filteredProducts.length} of {filteredProducts.length} entries
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+            {/* ========================================================= */}
+            {/* UNIT SUB-TAB TABLE VIEW (Exact Cezcon CRM Layout - Image 1)*/}
+            {/* ========================================================= */}
+            {productSubTab === 'unit' && (
+              <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs animate-in fade-in duration-100">
+                {/* Header with Title and + UNIT Button */}
+                <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-semibold text-slate-700 text-xs">
+                    <span className="text-sm">🗂️</span>
+                    <span>Units</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingUnitIndex(null);
+                      setUnitInputName('');
+                      setIsAddUnitModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-semibold uppercase rounded-xs shadow-xs cursor-pointer transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ UNIT</span>
+                  </button>
+                </div>
+
+                {/* Controls: Rows per page & Search */}
+                <div className="p-3 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2 text-xs text-slate-600">
+                    <span>Show</span>
+                    <select
+                      value={unitRowsPerPage}
+                      onChange={(e) => setUnitRowsPerPage(Number(e.target.value))}
+                      className="px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-700 cursor-pointer focus:outline-none"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
+                    <span>Rows</span>
+                  </div>
+
+                  <div className="relative w-full sm:w-64">
+                    <input
+                      type="text"
+                      placeholder="Search"
+                      value={unitSearch}
+                      onChange={(e) => setUnitSearch(e.target.value)}
+                      className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
+                    />
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto min-h-[220px] pb-12">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
+                        <th className="p-2.5 w-20 text-center border-r border-slate-200">SL.No</th>
+                        <th className="p-2.5 border-r border-slate-200">Unit</th>
+                        <th className="p-2.5 text-center w-28">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {filteredUnits.slice(0, unitRowsPerPage).map((unitName, index) => (
+                        <tr key={index} className="hover:bg-blue-50/40 transition-colors">
+                          <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100 w-20">
+                            {index + 1}
+                          </td>
+                          <td className="p-2.5 border-r border-slate-100 font-medium text-slate-800">
+                            {unitName}
+                          </td>
+                          <td className="p-2.5 text-center relative w-28">
+                            <div className="relative inline-block text-left">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveUnitActionDropdown(activeUnitActionDropdown === index ? null : index);
+                                }}
+                                className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#00828A] hover:bg-[#006D75] text-white rounded-xs text-xs font-semibold cursor-pointer shadow-xs transition mx-auto"
+                                title="Actions"
+                              >
+                                <Settings className="w-3.5 h-3.5" />
+                                <ChevronDown className="w-2.5 h-2.5 text-teal-100" />
+                              </button>
+
+                              {activeUnitActionDropdown === index && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute right-0 top-full mt-1 w-28 bg-white border border-slate-200 rounded shadow-xl py-1 z-50 text-xs text-left animate-in fade-in zoom-in-95 duration-100"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingUnitIndex(index);
+                                      setUnitInputName(unitName);
+                                      setIsAddUnitModalOpen(true);
+                                      setActiveUnitActionDropdown(null);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-700 transition cursor-pointer text-left font-normal"
+                                  >
+                                    <SquarePen className="w-3.5 h-3.5 text-slate-600" />
+                                    <span>Edit</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (confirm(`Are you sure you want to delete unit "${unitName}"?`)) {
+                                        const updated = unitsList.filter((_, i) => i !== index);
+                                        setUnitsList(updated);
+                                      }
+                                      setActiveUnitActionDropdown(null);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition cursor-pointer text-left font-normal"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer */}
+                <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
+                  <div>
+                    Showing 1 to {filteredUnits.length} of {filteredUnits.length} entries
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button className="px-2 py-1 border border-slate-200 rounded bg-slate-50 text-slate-500 hover:bg-slate-100">
+                      «
+                    </button>
+                    <button className="px-2.5 py-1 border border-blue-500 rounded bg-[#0284C7] text-white font-semibold">
+                      1
+                    </button>
+                    <button className="px-2 py-1 border border-slate-200 rounded bg-slate-50 text-slate-500 hover:bg-slate-100">
+                      »
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Add / Edit Unit Modal */}
+            {isAddUnitModalOpen && (
+              <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 backdrop-blur-2xs">
+                <div className="bg-white rounded shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden text-xs animate-in zoom-in-95">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between font-semibold text-slate-700">
+                    <span>{editingUnitIndex !== null ? 'Edit Unit' : 'Add Unit'}</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddUnitModalOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!unitInputName.trim()) return;
+                      if (editingUnitIndex !== null) {
+                        const updated = [...unitsList];
+                        updated[editingUnitIndex] = unitInputName.trim();
+                        setUnitsList(updated);
+                      } else {
+                        setUnitsList([...unitsList, unitInputName.trim()]);
+                      }
+                      setIsAddUnitModalOpen(false);
+                      setUnitInputName('');
+                      setEditingUnitIndex(null);
+                    }}
+                    className="p-4 space-y-3"
+                  >
+                    <div>
+                      <label className="block font-medium text-slate-700 mb-1">Unit Name *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Pcs, Kg, Box, Each"
+                        value={unitInputName}
+                        onChange={(e) => setUnitInputName(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddUnitModalOpen(false)}
+                        className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 cursor-pointer font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-1.5 bg-[#0B1E2E] hover:bg-[#020617] text-white rounded font-semibold cursor-pointer transition"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* BRAND SUB-TAB TABLE VIEW (Exact Cezcon CRM Layout)         */}
+            {/* ========================================================= */}
+            {productSubTab === 'brand' && (
+              <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs animate-in fade-in duration-100">
+                {/* Header with Title and + BRAND Button */}
+                <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-semibold text-slate-700 text-xs">
+                    <span className="text-sm">🏷️</span>
+                    <span>Brands</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingBrandIndex(null);
+                      setBrandInputName('');
+                      setIsAddBrandModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-semibold uppercase rounded-xs shadow-xs cursor-pointer transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ BRAND</span>
+                  </button>
+                </div>
+
+                {/* Controls: Rows per page & Search */}
+                <div className="p-3 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2 text-xs text-slate-600">
+                    <span>Show</span>
+                    <select
+                      value={brandRowsPerPage}
+                      onChange={(e) => setBrandRowsPerPage(Number(e.target.value))}
+                      className="px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-700 cursor-pointer focus:outline-none"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
+                    <span>Rows</span>
+                  </div>
+
+                  <div className="relative w-full sm:w-64">
+                    <input
+                      type="text"
+                      placeholder="Search"
+                      value={brandSearch}
+                      onChange={(e) => setBrandSearch(e.target.value)}
+                      className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
+                    />
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto min-h-[220px] pb-12">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
+                        <th className="p-2.5 w-20 text-center border-r border-slate-200">SL.No</th>
+                        <th className="p-2.5 border-r border-slate-200">Brand</th>
+                        <th className="p-2.5 text-center w-28">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {filteredBrands.slice(0, brandRowsPerPage).map((brandName, index) => (
+                        <tr key={index} className="hover:bg-blue-50/40 transition-colors">
+                          <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100 w-20">
+                            {index + 1}
+                          </td>
+                          <td className="p-2.5 border-r border-slate-100 font-medium text-slate-800">
+                            {brandName}
+                          </td>
+                          <td className="p-2.5 text-center relative w-28">
+                            <div className="relative inline-block text-left">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveBrandActionDropdown(activeBrandActionDropdown === index ? null : index);
+                                }}
+                                className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#00828A] hover:bg-[#006D75] text-white rounded-xs text-xs font-semibold cursor-pointer shadow-xs transition mx-auto"
+                                title="Actions"
+                              >
+                                <Settings className="w-3.5 h-3.5" />
+                                <ChevronDown className="w-2.5 h-2.5 text-teal-100" />
+                              </button>
+
+                              {activeBrandActionDropdown === index && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute right-0 top-full mt-1 w-28 bg-white border border-slate-200 rounded shadow-xl py-1 z-50 text-xs text-left animate-in fade-in zoom-in-95 duration-100"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingBrandIndex(index);
+                                      setBrandInputName(brandName);
+                                      setIsAddBrandModalOpen(true);
+                                      setActiveBrandActionDropdown(null);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-700 transition cursor-pointer text-left font-normal"
+                                  >
+                                    <SquarePen className="w-3.5 h-3.5 text-slate-600" />
+                                    <span>Edit</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (confirm(`Are you sure you want to delete brand "${brandName}"?`)) {
+                                        const updated = brandsList.filter((_, i) => i !== index);
+                                        setBrandsList(updated);
+                                      }
+                                      setActiveBrandActionDropdown(null);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition cursor-pointer text-left font-normal"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer */}
+                <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
+                  <div>
+                    Showing 1 to {filteredBrands.length} of {filteredBrands.length} entries
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button className="px-2 py-1 border border-slate-200 rounded bg-slate-50 text-slate-500 hover:bg-slate-100">
+                      «
+                    </button>
+                    <button className="px-2.5 py-1 border border-blue-500 rounded bg-[#0284C7] text-white font-semibold">
+                      1
+                    </button>
+                    <button className="px-2 py-1 border border-slate-200 rounded bg-slate-50 text-slate-500 hover:bg-slate-100">
+                      »
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Add / Edit Brand Modal */}
+            {isAddBrandModalOpen && (
+              <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 backdrop-blur-2xs">
+                <div className="bg-white rounded shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden text-xs animate-in zoom-in-95">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between font-semibold text-slate-700">
+                    <span>{editingBrandIndex !== null ? 'Edit Brand' : 'Add Brand'}</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddBrandModalOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!brandInputName.trim()) return;
+                      if (editingBrandIndex !== null) {
+                        const updated = [...brandsList];
+                        updated[editingBrandIndex] = brandInputName.trim();
+                        setBrandsList(updated);
+                      } else {
+                        setBrandsList([...brandsList, brandInputName.trim()]);
+                      }
+                      setIsAddBrandModalOpen(false);
+                      setBrandInputName('');
+                      setEditingBrandIndex(null);
+                    }}
+                    className="p-4 space-y-3"
+                  >
+                    <div>
+                      <label className="block font-medium text-slate-700 mb-1">Brand Name *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. MIDEA, LG, CARRIER"
+                        value={brandInputName}
+                        onChange={(e) => setBrandInputName(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddBrandModalOpen(false)}
+                        className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 cursor-pointer font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-1.5 bg-[#0B1E2E] hover:bg-[#020617] text-white rounded font-semibold cursor-pointer transition"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* CATEGORY SUB-TAB TABLE VIEW (Exact Cezcon CRM Layout)      */}
+            {/* ========================================================= */}
+            {productSubTab === 'category' && (
+              <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs animate-in fade-in duration-100">
+                {/* Header with Title and + CATEGORY Button */}
+                <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-semibold text-slate-700 text-xs">
+                    <span className="text-sm">🔖</span>
+                    <span>Categories</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingCategoryIndex(null);
+                      setCategoryInputName('');
+                      setIsAddCategoryModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-semibold uppercase rounded-xs shadow-xs cursor-pointer transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ CATEGORY</span>
+                  </button>
+                </div>
+
+                {/* Controls: Rows per page & Search */}
+                <div className="p-3 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2 text-xs text-slate-600">
+                    <span>Show</span>
+                    <select
+                      value={categoryRowsPerPage}
+                      onChange={(e) => setCategoryRowsPerPage(Number(e.target.value))}
+                      className="px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-700 cursor-pointer focus:outline-none"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
+                    <span>Rows</span>
+                  </div>
+
+                  <div className="relative w-full sm:w-64">
+                    <input
+                      type="text"
+                      placeholder="Search"
+                      value={categorySearch}
+                      onChange={(e) => setCategorySearch(e.target.value)}
+                      className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
+                    />
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto min-h-[220px] pb-12">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
+                        <th className="p-2.5 w-20 text-center border-r border-slate-200">SL.No</th>
+                        <th className="p-2.5 border-r border-slate-200">Category</th>
+                        <th className="p-2.5 text-center w-28">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {filteredCategories.slice(0, categoryRowsPerPage).map((catName, index) => (
+                        <tr key={index} className="hover:bg-blue-50/40 transition-colors">
+                          <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100 w-20">
+                            {index + 1}
+                          </td>
+                          <td className="p-2.5 border-r border-slate-100 font-medium text-slate-800">
+                            {catName}
+                          </td>
+                          <td className="p-2.5 text-center relative w-28">
+                            <div className="relative inline-block text-left">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveCategoryActionDropdown(activeCategoryActionDropdown === index ? null : index);
+                                }}
+                                className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#00828A] hover:bg-[#006D75] text-white rounded-xs text-xs font-semibold cursor-pointer shadow-xs transition mx-auto"
+                                title="Actions"
+                              >
+                                <Settings className="w-3.5 h-3.5" />
+                                <ChevronDown className="w-2.5 h-2.5 text-teal-100" />
+                              </button>
+
+                              {activeCategoryActionDropdown === index && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute right-0 top-full mt-1 w-28 bg-white border border-slate-200 rounded shadow-xl py-1 z-50 text-xs text-left animate-in fade-in zoom-in-95 duration-100"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingCategoryIndex(index);
+                                      setCategoryInputName(catName);
+                                      setIsAddCategoryModalOpen(true);
+                                      setActiveCategoryActionDropdown(null);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-700 transition cursor-pointer text-left font-normal"
+                                  >
+                                    <SquarePen className="w-3.5 h-3.5 text-slate-600" />
+                                    <span>Edit</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (confirm(`Are you sure you want to delete category "${catName}"?`)) {
+                                        const updated = categoriesList.filter((_, i) => i !== index);
+                                        setCategoriesList(updated);
+                                      }
+                                      setActiveCategoryActionDropdown(null);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition cursor-pointer text-left font-normal"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer */}
+                <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
+                  <div>
+                    Showing 1 to {filteredCategories.length} of {filteredCategories.length} entries
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button className="px-2 py-1 border border-slate-200 rounded bg-slate-50 text-slate-500 hover:bg-slate-100">
+                      «
+                    </button>
+                    <button className="px-2.5 py-1 border border-blue-500 rounded bg-[#0284C7] text-white font-semibold">
+                      1
+                    </button>
+                    <button className="px-2 py-1 border border-slate-200 rounded bg-slate-50 text-slate-500 hover:bg-slate-100">
+                      »
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Add / Edit Category Modal */}
+            {isAddCategoryModalOpen && (
+              <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 backdrop-blur-2xs">
+                <div className="bg-white rounded shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden text-xs animate-in zoom-in-95">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between font-semibold text-slate-700">
+                    <span>{editingCategoryIndex !== null ? 'Edit Category' : 'Add Category'}</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddCategoryModalOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!categoryInputName.trim()) return;
+                      if (editingCategoryIndex !== null) {
+                        const updated = [...categoriesList];
+                        updated[editingCategoryIndex] = categoryInputName.trim();
+                        setCategoriesList(updated);
+                      } else {
+                        setCategoriesList([...categoriesList, categoryInputName.trim()]);
+                      }
+                      setIsAddCategoryModalOpen(false);
+                      setCategoryInputName('');
+                      setEditingCategoryIndex(null);
+                    }}
+                    className="p-4 space-y-3"
+                  >
+                    <div>
+                      <label className="block font-medium text-slate-700 mb-1">Category Name *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. SPLIT AC, CASSETTE AC"
+                        value={categoryInputName}
+                        onChange={(e) => setCategoryInputName(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddCategoryModalOpen(false)}
+                        className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 cursor-pointer font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-1.5 bg-[#0B1E2E] hover:bg-[#020617] text-white rounded font-semibold cursor-pointer transition"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </>
         )}
 

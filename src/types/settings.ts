@@ -295,6 +295,11 @@ export interface ProductSettingItem {
   currentStock?: number;
   minStock?: number;
   additionalDescription?: string;
+  createdBy?: string;
+  createdByRole?: string;
+  createdById?: string;
+  createdByEmail?: string;
+  owner?: string;
 }
 
 export interface ProductUnitItem {

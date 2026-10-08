@@ -586,8 +586,15 @@ export interface CrmCezconStock {
   sellingPrice: number;
   minStock?: string;
   stock: number;
+  currentStock?: number;
+  minimumStock?: number;
   store?: string;
   status?: string;
+  createdBy?: string;
+  createdByRole?: string;
+  createdById?: string;
+  createdByEmail?: string;
+  owner?: string;
 }
 
 export interface CrmStockTransfer {

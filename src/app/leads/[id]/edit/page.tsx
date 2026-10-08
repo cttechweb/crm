@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useMemo, use } from 'react';
+import React, { useState, useMemo, use, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   FileEdit,
+  Plus,
   X,
   Calendar,
   Check,
@@ -279,10 +280,65 @@ export default function EditLeadPage({ params }: PageProps) {
   );
   const [status, setStatus] = useState<string>(lead.status || 'Contacted');
   const [businessOpportunity, setBusinessOpportunity] = useState(lead.businessOpportunity || '');
+  const [isQuickAddBizOppOpen, setIsQuickAddBizOppOpen] = useState(false);
+  const [newBizOppTitle, setNewBizOppTitle] = useState('');
+  const [businessOpportunities, setBusinessOpportunities] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cezcon_business_opportunities_v2');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((item: any) => (typeof item === 'string' ? item : item.title)).filter(Boolean);
+          }
+        }
+      } catch (e) {}
+    }
+    return [
+      'Chiller Overhaul',
+      'HVAC Installation',
+      'Commercial Construction',
+      'Industrial Cooling',
+      'Facility Maintenance',
+      'Under Warranty Services - UWSR',
+      'Repair and Maintenance of Air Cooler',
+      'Repair & Maintenance of DX Air Conditioners',
+      'Facility Management',
+      'Central Chiller Overhaul & 3-Year Commercial AMC Contract',
+      'Duct Fabrication & Air Distribution Installation',
+      'Building Management System (BMS) Automation',
+      'Other Opportunity',
+    ];
+  });
   const [location, setLocation] = useState(lead.location || '');
+  const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
+  const locationRef = useRef<HTMLDivElement>(null);
   const [comments, setComments] = useState(
     lead.comments || 'PROVIDED PRICE FOR SUPER GENERAL PORTABLE AC - SGP204T3'
   );
+
+  const UAE_LOCATIONS = [
+    'Abu Dhabi', 'Dubai', 'Sharjah', 'Ajman', 'Umm Al Quwain', 'Ras Al Khaimah', 'Fujairah',
+    'Al Ain', 'Bur Dubai', 'Deira', 'Jumeirah', 'Karama', 'Mirdif', 'Satwa',
+    'Barsha', 'Jebel Ali', 'Dubai Marina', 'Downtown Dubai', 'Business Bay',
+    'DIFC', 'JLT', 'JVC', 'Mussafah', 'Khalifa City', 'Ruwais', 'Madinat Zayed',
+    'Shahama', 'Al Quoz', 'Al Nahda', 'Dip', 'TECOM', 'Silicon Oasis', 'Academic City',
+    'Al Qusais', 'Al Rashidiya', 'Oud Metha', 'Al Barsha', 'Motor City', 'Sports City',
+    'Discovery Gardens', 'International City', 'Al Warqa', 'Umm Suqeim', 'Al Safa',
+    'Palm Jumeirah', 'The Greens', 'The Views', 'Remraam', 'Town Square', 'Dubai South',
+    'Al Majaz', 'Al Nahda (Sharjah)', 'Al Khan', 'Industrial Area', 'Hamriyah', 'Halwan',
+    'Al Jurf', 'Ajman Industrial', 'Al Hamidiyah', 'Al Rashidiya (Ajman)',
+  ];
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (locationRef.current && !locationRef.current.contains(event.target as Node)) {
+        setIsLocationDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const COUNTRY_DIAL_RULES: Record<string, { minDigits: number; maxDigits: number; label: string; placeholder: string }> = {
     '+971': { minDigits: 9, maxDigits: 9, label: 'UAE', placeholder: '50 123 4567' },
@@ -741,31 +797,72 @@ export default function EditLeadPage({ params }: PageProps) {
               </div>
             </div>
 
-            {/* 10. Location Search */}
+            {/* 10. Location Search Dropdown */}
             <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-1.5 sm:gap-4">
               <label className="sm:col-span-4 text-slate-700 font-normal flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-[#006f8e]" />
                 <span>Location</span>
               </label>
-              <div className="sm:col-span-8 relative flex items-center">
-                <input
-                  type="text"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="Search location"
-                  className="w-full border border-slate-300 rounded-[3px] bg-white px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] pr-8 focus:outline-none focus:border-[#006f8e] shadow-2xs"
-                />
-                {location ? (
-                  <button
-                    type="button"
-                    onClick={() => setLocation('')}
-                    className="absolute right-2 text-slate-400 hover:text-slate-600 p-0.5"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                ) : (
-                  <span className="absolute right-2.5 text-slate-400 text-xs pointer-events-none">⊗</span>
-                )}
+              <div className="sm:col-span-8 relative" ref={locationRef}>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    value={location}
+                    onChange={(e) => {
+                      setLocation(e.target.value);
+                      setIsLocationDropdownOpen(true);
+                    }}
+                    onFocus={() => setIsLocationDropdownOpen(true)}
+                    placeholder="Search location"
+                    className="w-full border border-slate-300 rounded-[3px] bg-white px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] pr-8 focus:outline-none focus:border-[#006f8e] shadow-2xs"
+                  />
+                  {location ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocation('');
+                        setIsLocationDropdownOpen(false);
+                      }}
+                      className="absolute right-2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <span className="absolute right-2.5 text-slate-400 text-xs pointer-events-none">▼</span>
+                  )}
+                </div>
+
+                {isLocationDropdownOpen && (() => {
+                  const filtered = UAE_LOCATIONS.filter((loc) =>
+                    loc.toLowerCase().includes((location || '').toLowerCase())
+                  );
+                  return (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-[3px] shadow-lg max-h-48 overflow-y-auto">
+                      {filtered.length > 0 ? (
+                        filtered.map((loc) => (
+                          <button
+                            key={loc}
+                            type="button"
+                            onMouseDown={() => {
+                              setLocation(loc);
+                              setIsLocationDropdownOpen(false);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-[#eef8fb] hover:text-[#006f8e] cursor-pointer transition-colors flex items-center justify-between"
+                          >
+                            <span>{loc}</span>
+                            {location === loc && (
+                              <span className="text-[#006f8e] font-bold text-[10px]">✓</span>
+                            )}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-xs text-slate-400">
+                          No matching locations found
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -1021,20 +1118,37 @@ export default function EditLeadPage({ params }: PageProps) {
               <label className="sm:col-span-4 text-slate-700 font-normal">
                 Business Opportunity
               </label>
-              <div className="sm:col-span-8 relative">
-                <select
-                  value={businessOpportunity}
-                  onChange={(e) => setBusinessOpportunity(e.target.value)}
-                  className="w-full border border-slate-300 rounded-[3px] bg-white px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] focus:outline-none focus:border-[#006f8e] shadow-2xs appearance-none cursor-pointer pr-6"
+              <div className="sm:col-span-8 flex items-center gap-1.5">
+                <div className="relative flex-1">
+                  <select
+                    value={businessOpportunity}
+                    onChange={(e) => setBusinessOpportunity(e.target.value)}
+                    className="w-full border border-slate-300 rounded-[3px] bg-white px-3 py-1.5 text-slate-800 text-xs sm:text-[13px] focus:outline-none focus:border-[#006f8e] shadow-2xs appearance-none cursor-pointer pr-6"
+                  >
+                    <option value="">Select</option>
+                    {businessOpportunities.map((op) => (
+                      <option key={op} value={op}>
+                        {op}
+                      </option>
+                    ))}
+                    {businessOpportunity && !businessOpportunities.includes(businessOpportunity) && (
+                      <option value={businessOpportunity}>{businessOpportunity}</option>
+                    )}
+                  </select>
+                  <span className="absolute right-2.5 top-2.5 pointer-events-none text-slate-500 text-[10px]">▼</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewBizOppTitle('');
+                    setIsQuickAddBizOppOpen(true);
+                  }}
+                  className="bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-bold px-2.5 py-1.5 rounded-[3px] flex items-center gap-1 shrink-0 shadow-2xs transition-colors cursor-pointer"
+                  title="Add New Business Opportunity"
                 >
-                  <option value="">Select</option>
-                  <option value="HVAC Installation">HVAC Installation</option>
-                  <option value="Commercial Construction">Commercial Construction</option>
-                  <option value="Industrial Fittings">Industrial Fittings</option>
-                  <option value="Preventive Maintenance SLA">Preventive Maintenance SLA</option>
-                  <option value="Chiller Replacement">Chiller Replacement</option>
-                </select>
-                <span className="absolute right-2.5 top-2.5 pointer-events-none text-slate-500 text-[10px]">▼</span>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>New</span>
+                </button>
               </div>
             </div>
 
@@ -1077,6 +1191,99 @@ export default function EditLeadPage({ params }: PageProps) {
           </button>
         </div>
       </form>
+
+      {/* Quick Add Business Opportunity Modal */}
+      {isQuickAddBizOppOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-5 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900">Add Business Opportunity</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQuickAddBizOppOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const trimmed = newBizOppTitle.trim();
+                if (!trimmed) return;
+
+                let updatedList = [...businessOpportunities];
+                if (!updatedList.includes(trimmed)) {
+                  updatedList = [trimmed, ...updatedList];
+                  setBusinessOpportunities(updatedList);
+                  try {
+                    const currentSavedRaw = localStorage.getItem('cezcon_business_opportunities_v2');
+                    let currentSaved: any[] = [];
+                    if (currentSavedRaw) {
+                      currentSaved = JSON.parse(currentSavedRaw);
+                    }
+                    const exists = currentSaved.some(
+                      (item: any) =>
+                        (typeof item === 'string' ? item : item.title)?.toLowerCase() ===
+                        trimmed.toLowerCase()
+                    );
+                    if (!exists) {
+                      const newItem = { id: Date.now(), title: trimmed };
+                      localStorage.setItem(
+                        'cezcon_business_opportunities_v2',
+                        JSON.stringify([newItem, ...currentSaved])
+                      );
+                    }
+                  } catch (err) {}
+                }
+
+                setBusinessOpportunity(trimmed);
+                setIsQuickAddBizOppOpen(false);
+                setNewBizOppTitle('');
+              }}
+              className="space-y-3 pt-3 text-xs"
+            >
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Opportunity Title / Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={newBizOppTitle}
+                  onChange={(e) => setNewBizOppTitle(e.target.value)}
+                  placeholder="e.g. Chiller Retrofitting & AMC"
+                  className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#006f8e] shadow-2xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickAddBizOppOpen(false)}
+                  className="px-3 py-1.5 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white font-semibold rounded shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 text-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Save & Select</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
