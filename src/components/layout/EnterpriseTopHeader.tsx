@@ -80,8 +80,10 @@ export function EnterpriseTopHeader() {
         '';
       const s = specific.toLowerCase();
       if (s.includes('purchase')) return 'Purchase Employee';
-      if (specific && s !== 'employee') return specific;
-      return 'Sales Employee';
+      if (specific && s !== 'employee' && s !== 'sales employee') {
+        return specific;
+      }
+      return 'Sales Executive';
     }
 
     return 'COO';

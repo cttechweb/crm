@@ -44,6 +44,7 @@ const ALL_ORGANIZATIONAL_POSITIONS = [
   'COO',
   'CSO',
   'Sales Manager',
+  'Sales Executive',
   'Sales Employee',
   'CPO',
   'Purchase Manager',
@@ -123,6 +124,7 @@ export function UsersTab({
   ];
 
   const EMPLOYEE_TYPE_OPTIONS = [
+    'Sales Executive',
     'Sales Employee',
     'Purchase Employee',
     'Marketing Employee',
@@ -230,6 +232,21 @@ export function UsersTab({
   const [customActionInput, setCustomActionInput] = useState('');
 
   const [editingUserId, setEditingUserId] = useState<number | string | null>(null);
+
+  // Custom Organizational Positions State
+  const [customPositions, setCustomPositions] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cezcon_custom_org_positions');
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [isAddingNewPosition, setIsAddingNewPosition] = useState(false);
+  const [newPositionInput, setNewPositionInput] = useState('');
 
   // Mobile & DOB Enhancements
   const [isCountryCodeDropdownOpen, setIsCountryCodeDropdownOpen] = useState(false);
@@ -349,11 +366,12 @@ export function UsersTab({
 
   // Available positions based on the session's authority
   const availablePositionsForSession = useMemo(() => {
+    const allPositions = Array.from(new Set([...ALL_ORGANIZATIONAL_POSITIONS, ...customPositions]));
     if (isSuperAdminSession) {
-      return ALL_ORGANIZATIONAL_POSITIONS;
+      return allPositions;
     }
     if (isAdminSession) {
-      return ALL_ORGANIZATIONAL_POSITIONS.filter((pos) => pos !== 'CEO' && pos !== 'COO');
+      return allPositions.filter((pos) => pos !== 'CEO' && pos !== 'COO');
     }
     if (isManagerSession) {
       const mgrTitle = (
@@ -363,15 +381,15 @@ export function UsersTab({
         ''
       ).toLowerCase();
       if (mgrTitle.includes('purchase') || mgrTitle.includes('cpo')) {
-        return ['Purchase Employee'];
+        return allPositions.filter((p) => p.toLowerCase().includes('purchase') || (!['CEO', 'COO', 'CSO', 'CPO', 'Sales Manager'].includes(p) && customPositions.includes(p)));
       }
       if (mgrTitle.includes('sales') || mgrTitle.includes('cso')) {
-        return ['Sales Employee'];
+        return allPositions.filter((p) => p.toLowerCase().includes('sales') || (!['CEO', 'COO', 'CSO', 'CPO', 'Purchase Manager'].includes(p) && customPositions.includes(p)));
       }
-      return ['Sales Employee', 'Purchase Employee'];
+      return allPositions.filter((p) => !['CEO', 'COO', 'CSO', 'CPO'].includes(p));
     }
-    return [];
-  }, [isSuperAdminSession, isAdminSession, isManagerSession, loggedInUser]);
+    return allPositions;
+  }, [isSuperAdminSession, isAdminSession, isManagerSession, loggedInUser, customPositions]);
 
   // Derive which employee type this manager's department maps to
   const managerDeptType = useMemo(() => {
@@ -384,11 +402,11 @@ export function UsersTab({
       loggedInUser?.profileType ||
       ''
     ).toLowerCase();
-    if (mgrType.includes('sales') || mgrType.includes('cso')) return 'Sales Employee';
+    if (mgrType.includes('sales') || mgrType.includes('cso')) return 'Sales Executive';
     if (mgrType.includes('purchase') || mgrType.includes('cpo')) return 'Purchase Employee';
     if (mgrType.includes('marketing') || mgrType.includes('market')) return 'Marketing Employee';
     if (mgrType.includes('operation')) return 'Operations Employee';
-    return 'Sales Employee';
+    return 'Sales Executive';
   }, [isManagerSession, loggedInUser]);
 
   // For manager sessions: only their department employee type is available
@@ -676,8 +694,8 @@ export function UsersTab({
         name: 'shaheer',
         email: 'shaheer@gmail.com',
         username: 'shaheer@cooltechuae.com',
-        profileType: 'Sales Employee',
-        employeeType: 'Sales Employee',
+        profileType: 'Sales Executive',
+        employeeType: 'Sales Executive',
         designation: 'Sales Executive',
         department: 'Sales',
         managerId: 'usr_shibil_001',
@@ -693,9 +711,9 @@ export function UsersTab({
         name: 'adhil',
         email: 'adhil@gmail.com',
         username: 'adhil@cooltechuae.com',
-        profileType: 'Sales Employee',
-        employeeType: 'Sales Employee',
-        designation: 'Sales Representative',
+        profileType: 'Sales Executive',
+        employeeType: 'Sales Executive',
+        designation: 'Sales Executive',
         department: 'Sales',
         managerId: 'usr_shibil_001',
         phone: '+971 56 881 1334',
@@ -1018,11 +1036,11 @@ export function UsersTab({
       department: '',
       profile: 'Select Profile',
       managerType: 'Sales Manager',
-      employeeType: 'Sales Employee',
+      employeeType: 'Sales Executive',
       assignedManagerId: '',
       businessOpportunity: 'None selected',
       businessOpportunityAll: true,
-      designation: 'Sales Representative',
+      designation: 'Sales Executive',
       signatureImage: null,
       avatarImage: null,
       loginPermission: 'Web & Mobile',
@@ -1076,11 +1094,11 @@ export function UsersTab({
       department: user.department || '',
       profile: user.profileType || 'Select Profile',
       managerType: user.managerType || 'Sales Manager',
-      employeeType: user.employeeType || 'Sales Employee',
+      employeeType: user.employeeType || 'Sales Executive',
       assignedManagerId: String(user.managerId || user.reportsTo || user.reportingManagerId || ''),
       businessOpportunity: user.businessOpportunity || 'None selected',
       businessOpportunityAll: true,
-      designation: user.designation || user.managerType || user.employeeType || 'Sales Representative',
+      designation: user.designation || user.managerType || user.employeeType || 'Sales Executive',
       signatureImage: user.signatureImage || null,
       avatarImage: user.avatarImage || null,
       loginPermission: (user.loginPermission as any) || 'Web & Mobile',
@@ -1864,8 +1882,99 @@ export function UsersTab({
                     <label className="block text-xs font-bold text-slate-800">
                       Organizational Position <span className="text-red-500">*</span>
                     </label>
-                    <span className="text-[10px] text-slate-500">Hierarchy Structure</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingNewPosition(true);
+                          setNewPositionInput('');
+                        }}
+                        className="text-xs text-[#1677FF] hover:underline font-semibold cursor-pointer flex items-center gap-0.5"
+                      >
+                        + Add New
+                      </button>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-[10px] text-slate-500">Hierarchy Structure</span>
+                    </div>
                   </div>
+
+                  {isAddingNewPosition && (
+                    <div className="p-2 bg-white border border-slate-300 rounded text-xs space-y-1.5 animate-in fade-in shadow-2xs">
+                      <span className="text-[11px] font-semibold text-slate-700">Add New Organizational Position:</span>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={newPositionInput}
+                          onChange={(e) => setNewPositionInput(e.target.value)}
+                          placeholder="e.g. Senior Project Manager"
+                          className="flex-1 bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (newPositionInput.trim()) {
+                                const val = newPositionInput.trim();
+                                if (!customPositions.includes(val) && !ALL_ORGANIZATIONAL_POSITIONS.includes(val)) {
+                                  const updated = [...customPositions, val];
+                                  setCustomPositions(updated);
+                                  try {
+                                    localStorage.setItem('cezcon_custom_org_positions', JSON.stringify(updated));
+                                  } catch (err) {
+                                    console.error(err);
+                                  }
+                                }
+                                setUserFormData((prev) => ({
+                                  ...prev,
+                                  position: val,
+                                  designation: prev.designation || val,
+                                }));
+                                setIsAddingNewPosition(false);
+                                setNewPositionInput('');
+                              }
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newPositionInput.trim()) {
+                              const val = newPositionInput.trim();
+                              if (!customPositions.includes(val) && !ALL_ORGANIZATIONAL_POSITIONS.includes(val)) {
+                                const updated = [...customPositions, val];
+                                setCustomPositions(updated);
+                                try {
+                                  localStorage.setItem('cezcon_custom_org_positions', JSON.stringify(updated));
+                                } catch (err) {
+                                  console.error(err);
+                                }
+                              }
+                              setUserFormData((prev) => ({
+                                ...prev,
+                                position: val,
+                                designation: prev.designation || val,
+                              }));
+                              setIsAddingNewPosition(false);
+                              setNewPositionInput('');
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-[#1677FF] hover:bg-[#0958d9] text-white rounded font-semibold text-xs transition-colors cursor-pointer"
+                        >
+                          Add
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingNewPosition(false);
+                            setNewPositionInput('');
+                          }}
+                          className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <select
                     value={userFormData.position}
                     onChange={(e) => {

@@ -643,7 +643,7 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
                       ))
                     ) : (
                       <>
-                        <option value="Shaheer">Shaheer (Sales Employee)</option>
+                        <option value="Shaheer">Shaheer (Sales Executive)</option>
                         <option value="Muhammed Shibil">Muhammed Shibil (Sales Manager)</option>
                         <option value="MUHAMMED AHSAN P V">MUHAMMED AHSAN P V (Sales Engineer)</option>
                         <option value="Nafal">Nafal (Sales Executive)</option>

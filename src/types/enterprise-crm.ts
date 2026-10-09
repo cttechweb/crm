@@ -281,6 +281,7 @@ export type UserPosition =
   | 'CSO'
   | 'CPO'
   | 'Sales Manager'
+  | 'Sales Executive'
   | 'Sales Employee'
   | 'Purchase Manager'
   | 'Purchase Employee'
