@@ -553,6 +553,99 @@ function CustomersContent() {
   const [businessMobileTouched, setBusinessMobileTouched] = useState(false);
   const [personalMobileTouched, setPersonalMobileTouched] = useState(false);
 
+  const [existingContactsList, setExistingContactsList] = useState<
+    Array<{
+      id: string;
+      name: string;
+      salutation?: string;
+      designation?: string;
+      personalMobile?: string;
+      businessMobile?: string;
+      email?: string;
+      spokenLanguage?: string;
+      nationality?: string;
+      address?: string;
+      comments?: string;
+      isPrimary?: boolean;
+    }>
+  >([
+    {
+      id: 'cnt_1',
+      name: 'Bishoy George',
+      salutation: 'Mr.',
+      designation: 'Managing Director',
+      personalMobile: '55 987 6543',
+      businessMobile: '50 123 4567',
+      email: 'bishoy@alshafaronline.com',
+      spokenLanguage: 'Arabic, English',
+      nationality: 'Egypt',
+      isPrimary: true,
+    },
+    {
+      id: 'cnt_2',
+      name: 'Mr. Puspak',
+      salutation: 'Mr.',
+      designation: 'Procurement Manager',
+      personalMobile: '56 432 1098',
+      businessMobile: '50 987 6543',
+      email: 'puspak@arabbtec.ae',
+      spokenLanguage: 'Hindi, English',
+      nationality: 'India',
+      isPrimary: true,
+    },
+    {
+      id: 'cnt_3',
+      name: 'Mr. Farhan',
+      salutation: 'Mr.',
+      designation: 'General Manager',
+      personalMobile: '52 334 5566',
+      businessMobile: '50 223 3445',
+      email: 'farhan@damacgroup.com',
+      spokenLanguage: 'Urdu, English',
+      nationality: 'Pakistan',
+      isPrimary: true,
+    },
+    {
+      id: 'cnt_4',
+      name: 'NIKHIL',
+      salutation: 'Mr.',
+      designation: 'Project Manager',
+      personalMobile: '54 778 9900',
+      businessMobile: '50 889 9001',
+      email: 'nikhil@danube.com',
+      spokenLanguage: 'English',
+      nationality: 'India',
+      isPrimary: false,
+    },
+    {
+      id: 'cnt_5',
+      name: 'Nafal',
+      salutation: 'Mr.',
+      designation: 'Operations Head',
+      personalMobile: '50 112 2334',
+      businessMobile: '50 998 8776',
+      email: 'nafal@cooltechuae.com',
+      spokenLanguage: 'Malayalam, English, Arabic',
+      nationality: 'India',
+      isPrimary: true,
+    },
+  ]);
+
+  const [isNewContactModalOpen, setIsNewContactModalOpen] = useState(false);
+  const [newContactFormData, setNewContactFormData] = useState({
+    salutation: 'Mr.',
+    name: '',
+    designation: '',
+    personalMobile: '',
+    businessMobile: '',
+    email: '',
+    spokenLanguage: '',
+    nationality: 'United Arab Emirates',
+    address: '',
+    comments: '',
+    isPrimary: true,
+  });
+
   // Close action menus when clicking outside
   useEffect(() => {
     const handleClickOutside = () => setActionMenuId(null);
@@ -1556,19 +1649,68 @@ function CustomersContent() {
                         {/* Left: Existing Contact */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <label className="sm:w-36 text-xs font-medium text-slate-700 shrink-0">Existing Contact</label>
-                          <div className="flex-1">
+                          <div className="flex-1 flex items-center gap-1.5">
                             <select
                               value={formData.existingContact || ''}
-                              onChange={(e) => setFormData({ ...formData, existingContact: e.target.value })}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (!val) {
+                                  setFormData((prev) => ({ ...prev, existingContact: '' }));
+                                  return;
+                                }
+                                const found = existingContactsList.find((c) => c.name === val || c.id === val);
+                                if (found) {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    existingContact: val,
+                                    contactSalutation: found.salutation || prev.contactSalutation || 'Mr.',
+                                    contactPerson: found.name || prev.contactPerson,
+                                    contactDesignation: found.designation || prev.contactDesignation,
+                                    personalMobile: found.personalMobile || prev.personalMobile,
+                                    businessMobile: found.businessMobile || prev.businessMobile,
+                                    contactEmail: found.email || prev.contactEmail,
+                                    spokenLanguage: found.spokenLanguage || prev.spokenLanguage,
+                                    nationality: found.nationality || prev.nationality,
+                                    contactAddress: found.address || prev.contactAddress,
+                                    contactComments: found.comments || prev.contactComments,
+                                    isPrimaryContact: found.isPrimary !== undefined ? found.isPrimary : prev.isPrimaryContact,
+                                  }));
+                                } else {
+                                  setFormData((prev) => ({ ...prev, existingContact: val, contactPerson: val }));
+                                }
+                              }}
                               className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
                             >
                               <option value="">Select contact</option>
-                              <option value="Bishoy George">Bishoy George</option>
-                              <option value="Mr. Puspak">Mr. Puspak</option>
-                              <option value="Mr. Farhan">Mr. Farhan</option>
-                              <option value="NIKHIL">NIKHIL</option>
-                              <option value="Nafal">Nafal</option>
+                              {existingContactsList.map((c) => (
+                                <option key={c.id || c.name} value={c.name}>
+                                  {c.name} {c.designation ? `(${c.designation})` : ''}
+                                </option>
+                              ))}
                             </select>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNewContactFormData({
+                                  salutation: 'Mr.',
+                                  name: '',
+                                  designation: '',
+                                  personalMobile: '',
+                                  businessMobile: '',
+                                  email: '',
+                                  spokenLanguage: '',
+                                  nationality: 'United Arab Emirates',
+                                  address: '',
+                                  comments: '',
+                                  isPrimary: true,
+                                });
+                                setIsNewContactModalOpen(true);
+                              }}
+                              className="px-2.5 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold inline-flex items-center gap-1 shrink-0 transition cursor-pointer shadow-xs"
+                              title="Add New Contact"
+                            >
+                              <span>+ New</span>
+                            </button>
                           </div>
                         </div>
 
@@ -3815,6 +3957,249 @@ function CustomersContent() {
                   className="px-5 py-1.5 bg-[#0088CC] hover:bg-[#0077b3] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Parent Customer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* ── MODAL: ADD NEW CONTACT ── */}
+      {isNewContactModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-sm shadow-xl border border-slate-200 w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-8">
+            {/* Modal Header */}
+            <div className="bg-[#E2E8F0] border-b border-slate-300 px-4 py-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-tight">
+                <UserCheck className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                <span>Add New Contact</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNewContactModalOpen(false)}
+                className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded-xs transition-colors cursor-pointer text-xs font-bold"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const trimmedName = newContactFormData.name.trim();
+                if (!trimmedName) return;
+
+                const newContact = {
+                  id: `cnt-${Date.now()}`,
+                  salutation: newContactFormData.salutation,
+                  name: trimmedName,
+                  designation: newContactFormData.designation,
+                  personalMobile: newContactFormData.personalMobile,
+                  businessMobile: newContactFormData.businessMobile,
+                  email: newContactFormData.email,
+                  spokenLanguage: newContactFormData.spokenLanguage,
+                  nationality: newContactFormData.nationality,
+                  address: newContactFormData.address,
+                  comments: newContactFormData.comments,
+                  isPrimary: newContactFormData.isPrimary,
+                };
+
+                setExistingContactsList((prev) => [...prev, newContact]);
+                setFormData((prev) => ({
+                  ...prev,
+                  existingContact: trimmedName,
+                  contactSalutation: newContact.salutation || 'Mr.',
+                  contactPerson: trimmedName,
+                  contactDesignation: newContact.designation,
+                  personalMobile: newContact.personalMobile,
+                  businessMobile: newContact.businessMobile,
+                  contactEmail: newContact.email,
+                  spokenLanguage: newContact.spokenLanguage,
+                  nationality: newContact.nationality,
+                  contactAddress: newContact.address,
+                  contactComments: newContact.comments,
+                  isPrimaryContact: newContact.isPrimary,
+                }));
+
+                setIsNewContactModalOpen(false);
+              }}
+              className="p-5 space-y-4 text-xs"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Contact Name */}
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Contact Name <span className="text-red-600 font-bold">*</span>
+                  </label>
+                  <div className="flex items-center">
+                    <select
+                      value={newContactFormData.salutation}
+                      onChange={(e) => setNewContactFormData({ ...newContactFormData, salutation: e.target.value })}
+                      className="bg-slate-50 border border-r-0 border-slate-300 rounded-l px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none shrink-0"
+                    >
+                      <option value="Mr.">Mr.</option>
+                      <option value="Ms.">Ms.</option>
+                      <option value="Mrs.">Mrs.</option>
+                      <option value="Dr.">Dr.</option>
+                      <option value="Eng.">Eng.</option>
+                    </select>
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      placeholder="Full contact name"
+                      value={newContactFormData.name}
+                      onChange={(e) => setNewContactFormData({ ...newContactFormData, name: e.target.value })}
+                      className="flex-1 bg-white border border-blue-400 rounded-r px-2.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+                    />
+                  </div>
+                </div>
+
+                {/* Designation */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Designation</label>
+                  <select
+                    value={newContactFormData.designation}
+                    onChange={(e) => setNewContactFormData({ ...newContactFormData, designation: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Select Designation</option>
+                    <option value="Managing Director">Managing Director</option>
+                    <option value="Procurement Officer">Procurement Officer</option>
+                    <option value="Purchase Manager">Purchase Manager</option>
+                    <option value="Project Engineer">Project Engineer</option>
+                    <option value="Operations Manager">Operations Manager</option>
+                    <option value="Sales Executive">Sales Executive</option>
+                    <option value="Accountant">Accountant</option>
+                  </select>
+                </div>
+
+                {/* Spoken Language */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Spoken Language</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. English, Arabic, Hindi"
+                    value={newContactFormData.spokenLanguage}
+                    onChange={(e) => setNewContactFormData({ ...newContactFormData, spokenLanguage: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Business Mobile */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Business Mobile</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 50 123 4567"
+                    value={newContactFormData.businessMobile}
+                    onChange={(e) => setNewContactFormData({ ...newContactFormData, businessMobile: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Personal Mobile */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Personal Mobile</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 55 987 6543"
+                    value={newContactFormData.personalMobile}
+                    onChange={(e) => setNewContactFormData({ ...newContactFormData, personalMobile: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Email */}
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    placeholder="contact@company.com"
+                    value={newContactFormData.email}
+                    onChange={(e) => setNewContactFormData({ ...newContactFormData, email: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Nationality */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Nationality</label>
+                  <select
+                    value={newContactFormData.nationality}
+                    onChange={(e) => setNewContactFormData({ ...newContactFormData, nationality: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">Select Country</option>
+                    <option value="United Arab Emirates">United Arab Emirates</option>
+                    <option value="Saudi Arabia">Saudi Arabia</option>
+                    <option value="Oman">Oman</option>
+                    <option value="Qatar">Qatar</option>
+                    <option value="Kuwait">Kuwait</option>
+                    <option value="Bahrain">Bahrain</option>
+                    <option value="India">India</option>
+                    <option value="Pakistan">Pakistan</option>
+                    <option value="Philippines">Philippines</option>
+                    <option value="Egypt">Egypt</option>
+                    <option value="Lebanon">Lebanon</option>
+                    <option value="Jordan">Jordan</option>
+                    <option value="United Kingdom">United Kingdom</option>
+                  </select>
+                </div>
+
+                {/* Primary Contact Checkbox */}
+                <div className="flex items-center gap-2 pt-6">
+                  <input
+                    type="checkbox"
+                    id="newContactIsPrimary"
+                    checked={newContactFormData.isPrimary}
+                    onChange={(e) => setNewContactFormData({ ...newContactFormData, isPrimary: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                  />
+                  <label htmlFor="newContactIsPrimary" className="text-xs font-medium text-slate-700 cursor-pointer">
+                    Set as Primary Contact
+                  </label>
+                </div>
+
+                {/* Address */}
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Address</label>
+                  <textarea
+                    rows={2}
+                    placeholder="PO Box, Street, City, etc..."
+                    value={newContactFormData.address}
+                    onChange={(e) => setNewContactFormData({ ...newContactFormData, address: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Comments */}
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Comments</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Additional notes about this contact..."
+                    value={newContactFormData.comments}
+                    onChange={(e) => setNewContactFormData({ ...newContactFormData, comments: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsNewContactModalOpen(false)}
+                  className="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded shadow-2xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white text-xs font-bold rounded shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Save & Select Contact
                 </button>
               </div>
             </form>

@@ -89,6 +89,7 @@ import {
 import { authMockService } from '@/services/authMockService';
 import { Modal } from '@/components/ui/Modal';
 import { CezconQuotationModule } from '@/components/sales/CezconQuotationModule';
+import { CezconUploadOpportunityModule } from '@/components/sales/CezconUploadOpportunityModule';
 import { CezconDateInput } from '@/components/ui/CezconDateInput';
 import { cn } from '@/lib/utils';
 
@@ -166,7 +167,7 @@ function SalesPipelineInner() {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) return parsed;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     return mockProformaInvoices;
   });
@@ -713,6 +714,107 @@ function SalesPipelineInner() {
     setIsQuickAddCustomerOpen(false);
   };
 
+  // Quick Add Business Opportunity state for Opportunity form
+  const [businessOpportunities, setBusinessOpportunities] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved =
+          localStorage.getItem('cezcon_opportunity_business_opportunities') ||
+          localStorage.getItem('crm_business_opportunities');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return [
+      'Water Coolers',
+      'HVAC Units',
+      'Chillers & VRF',
+      'Cold Storage',
+      'Duct Cleaning',
+      'Maintenance AMC',
+      'Spare Parts',
+      'Commercial Contracting',
+    ];
+  });
+
+  const [isQuickAddBizOppOpen, setIsQuickAddBizOppOpen] = useState(false);
+  const [newBizOppTitle, setNewBizOppTitle] = useState('');
+
+  const handleQuickAddBizOppSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBizOppTitle.trim()) return;
+    const title = newBizOppTitle.trim();
+    if (!businessOpportunities.includes(title)) {
+      const updated = [...businessOpportunities, title];
+      setBusinessOpportunities(updated);
+      try {
+        localStorage.setItem('cezcon_opportunity_business_opportunities', JSON.stringify(updated));
+        localStorage.setItem('crm_business_opportunities', JSON.stringify(updated));
+        window.dispatchEvent(new Event('crm_business_opportunities_updated'));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setOppFormData((prev) => ({ ...prev, businessOpportunity: title }));
+    setNewBizOppTitle('');
+    setIsQuickAddBizOppOpen(false);
+    showSalesToast(`Business Opportunity "${title}" added!`);
+  };
+
+  // Quick Add Type state for Opportunity form
+  const [opportunityTypes, setOpportunityTypes] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved =
+          localStorage.getItem('cezcon_opportunity_types') ||
+          localStorage.getItem('crm_opportunity_types');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return [
+      'New Business',
+      'Existing Customer',
+      'Renewal',
+      'Project Tender',
+      'AMC',
+      'Corporate Order',
+      'Trading',
+    ];
+  });
+
+  const [isQuickAddOppTypeOpen, setIsQuickAddOppTypeOpen] = useState(false);
+  const [newOppTypeTitle, setNewOppTypeTitle] = useState('');
+
+  const handleQuickAddOppTypeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newOppTypeTitle.trim()) return;
+    const title = newOppTypeTitle.trim();
+    if (!opportunityTypes.includes(title)) {
+      const updated = [...opportunityTypes, title];
+      setOpportunityTypes(updated);
+      try {
+        localStorage.setItem('cezcon_opportunity_types', JSON.stringify(updated));
+        localStorage.setItem('crm_opportunity_types', JSON.stringify(updated));
+        window.dispatchEvent(new Event('crm_opportunity_types_updated'));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setOppFormData((prev) => ({ ...prev, type: title }));
+    setNewOppTypeTitle('');
+    setIsQuickAddOppTypeOpen(false);
+    showSalesToast(`Opportunity Type "${title}" added!`);
+  };
+
   const openOppNumModal = () => {
     const currentVal = oppFormData.opportunityCode || 'CTEQ#7133';
     const match = currentVal.match(/^(.*?)(\d+)$/);
@@ -1020,6 +1122,33 @@ function SalesPipelineInner() {
     showSalesToast('Terms & Conditions cleared');
   };
 
+  const handleDeleteTerms = (titleToDelete?: string) => {
+    const target = titleToDelete || selectedTermsCondition;
+    if (!target) {
+      showSalesToast('Please select a Terms & Conditions template to delete');
+      return;
+    }
+
+    if (typeof window !== 'undefined' && !window.confirm(`Are you sure you want to delete the terms template "${target}"?`)) {
+      return;
+    }
+
+    const updated = { ...termsTemplates };
+    delete updated[target];
+    setTermsTemplates(updated);
+
+    try {
+      localStorage.setItem('cezcon_saved_terms_templates', JSON.stringify(updated));
+    } catch (e) {
+      console.error(e);
+    }
+
+    if (selectedTermsCondition === target) {
+      setSelectedTermsCondition('');
+    }
+    showSalesToast(`Deleted Terms & Conditions template "${target}"`);
+  };
+
   const handleAddEnquiryItem = () => {
     setEnquiryItems([
       ...enquiryItems,
@@ -1168,17 +1297,43 @@ function SalesPipelineInner() {
     router.push(`/sales?tab=${tabId}`);
   };
 
-  const subTabs = [
-    { id: 'all', label: 'All', count: 6846, icon: Search },
-    { id: 'unread', label: 'Unread', count: 27, icon: Info },
-    { id: 'open', label: 'Open', count: 2691, icon: Star, highlight: true },
-    { id: 'today', label: 'Today', count: 3, icon: Clock },
-    { id: 'overdue', label: 'Overdue', count: 2607, icon: Clock },
-    { id: 'upcoming', label: 'Upcoming', count: 81, icon: Calendar },
-    { id: 'lost', label: 'Lost', count: 459, icon: X },
-    { id: 'order', label: 'Order', count: 2696, icon: Sparkles },
-    { id: 'overview', label: 'Overview', icon: Layers },
-  ];
+  const subTabs = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const allCount = salesOpportunities.length;
+    const unreadCount = salesOpportunities.filter((o) => o.starred).length;
+    const openCount = salesOpportunities.filter((o) => o.stage !== 'Lost' && o.stage !== 'Order' && o.stage !== 'Won').length;
+    const todayCount = salesOpportunities.filter(
+      (o) =>
+        o.lastActivityRelative === 'Today' ||
+        o.opportunityDateDaysAgo === 'Today' ||
+        (o.opportunityDate && o.opportunityDate.slice(0, 10) === todayStr) ||
+        (o.createdAt && o.createdAt.slice(0, 10) === todayStr)
+    ).length;
+    const overdueCount = salesOpportunities.filter((o) => {
+      if (!o.expectedClose) return false;
+      const closeDate = new Date(o.expectedClose);
+      return !isNaN(closeDate.getTime()) && closeDate < new Date() && o.stage !== 'Won' && o.stage !== 'Order' && o.stage !== 'Lost';
+    }).length;
+    const upcomingCount = salesOpportunities.filter((o) => {
+      if (!o.expectedClose) return false;
+      const closeDate = new Date(o.expectedClose);
+      return !isNaN(closeDate.getTime()) && closeDate >= new Date();
+    }).length;
+    const lostCount = salesOpportunities.filter((o) => o.stage === 'Lost').length;
+    const orderCount = salesOpportunities.filter((o) => o.stage === 'Order' || o.stage === 'Won').length;
+
+    return [
+      { id: 'all', label: 'All', count: allCount, icon: Search },
+      { id: 'unread', label: 'Unread', count: unreadCount, icon: Info },
+      { id: 'open', label: 'Open', count: openCount, icon: Star, highlight: true },
+      { id: 'today', label: 'Today', count: todayCount, icon: Clock },
+      { id: 'overdue', label: 'Overdue', count: overdueCount, icon: Clock },
+      { id: 'upcoming', label: 'Upcoming', count: upcomingCount, icon: Calendar },
+      { id: 'lost', label: 'Lost', count: lostCount, icon: X },
+      { id: 'order', label: 'Order', count: orderCount, icon: Sparkles },
+      { id: 'overview', label: 'Overview', icon: Layers },
+    ];
+  }, [salesOpportunities]);
 
   // Filtered Opportunities
   const filteredOpportunities = useMemo(() => {
@@ -2509,6 +2664,120 @@ function SalesPipelineInner() {
                   </div>
                 )}
 
+                {/* Quick Add Business Opportunity Modal */}
+                {isQuickAddBizOppOpen && (
+                  <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-5 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                            <Plus className="w-4 h-4" />
+                          </div>
+                          <h3 className="text-sm font-bold text-slate-900">Add Business Opportunity</h3>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsQuickAddBizOppOpen(false)}
+                          className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleQuickAddBizOppSubmit} className="space-y-3 pt-3 text-xs">
+                        <div>
+                          <label className="block text-slate-700 font-semibold mb-1">
+                            Business Opportunity Title <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Chiller Overhaul & AMC"
+                            value={newBizOppTitle}
+                            onChange={(e) => setNewBizOppTitle(e.target.value)}
+                            className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setIsQuickAddBizOppOpen(false)}
+                            className="px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-semibold text-xs transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-3.5 py-1.5 rounded bg-[#16A34A] hover:bg-[#15803D] text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Save &amp; Select</span>
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+                {/* Quick Add Opportunity Type Modal */}
+                {isQuickAddOppTypeOpen && (
+                  <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-5 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#2563EB] flex items-center justify-center font-bold">
+                            <Plus className="w-4 h-4" />
+                          </div>
+                          <h3 className="text-sm font-bold text-slate-900">Add Opportunity Type</h3>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsQuickAddOppTypeOpen(false)}
+                          className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleQuickAddOppTypeSubmit} className="space-y-3 pt-3 text-xs">
+                        <div>
+                          <label className="block text-slate-700 font-semibold mb-1">
+                            Type Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Government Tender, Franchise, etc."
+                            value={newOppTypeTitle}
+                            onChange={(e) => setNewOppTypeTitle(e.target.value)}
+                            className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setIsQuickAddOppTypeOpen(false)}
+                            className="px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-semibold text-xs transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-3.5 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Save &amp; Select</span>
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
                 {/* 2. Main Form Body (2-Column Grid) */}
                 <form onSubmit={handleCreateOpportunity} className="p-4 sm:p-6 flex-1 space-y-4">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-3.5 text-[11px]">
@@ -2553,11 +2822,10 @@ function SalesPipelineInner() {
                           <button
                             type="button"
                             onClick={() => setIsQuickAddCustomerOpen(true)}
-                            className="bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-bold px-2.5 py-1.5 rounded flex items-center gap-1 shrink-0 shadow-2xs transition-colors cursor-pointer"
+                            className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer flex items-center gap-0.5 transition-colors px-1"
                             title="Add New Customer"
                           >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>New</span>
+                            <span>+ New</span>
                           </button>
                         </div>
                       </div>
@@ -2761,21 +3029,34 @@ function SalesPipelineInner() {
                       {/* Business Opportunity */}
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Business Opportunity</label>
-                        <select
-                          value={oppFormData.businessOpportunity}
-                          onChange={(e) => setOppFormData({ ...oppFormData, businessOpportunity: e.target.value })}
-                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                        >
-                          <option value="">Select Business Opportunity</option>
-                          <option value="Water Coolers">Water Coolers</option>
-                          <option value="HVAC Units">HVAC Units</option>
-                          <option value="Chillers & VRF">Chillers & VRF</option>
-                          <option value="Cold Storage">Cold Storage</option>
-                          <option value="Duct Cleaning">Duct Cleaning</option>
-                          <option value="Maintenance AMC">Maintenance AMC</option>
-                          <option value="Spare Parts">Spare Parts</option>
-                          <option value="Commercial Contracting">Commercial Contracting</option>
-                        </select>
+                        <div className="flex-1 flex items-center gap-1.5">
+                          <select
+                            value={oppFormData.businessOpportunity}
+                            onChange={(e) => setOppFormData({ ...oppFormData, businessOpportunity: e.target.value })}
+                            className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="">Select Business Opportunity</option>
+                            {businessOpportunities.map((op) => (
+                              <option key={op} value={op}>
+                                {op}
+                              </option>
+                            ))}
+                            {oppFormData.businessOpportunity && !businessOpportunities.includes(oppFormData.businessOpportunity) && (
+                              <option value={oppFormData.businessOpportunity}>{oppFormData.businessOpportunity}</option>
+                            )}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewBizOppTitle('');
+                              setIsQuickAddBizOppOpen(true);
+                            }}
+                            className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer flex items-center gap-0.5 transition-colors px-1"
+                            title="Add New Business Opportunity"
+                          >
+                            <span>+ New</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Delivery Date */}
@@ -2834,18 +3115,34 @@ function SalesPipelineInner() {
                       {/* Type */}
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Type</label>
-                        <select
-                          value={oppFormData.type}
-                          onChange={(e) => setOppFormData({ ...oppFormData, type: e.target.value })}
-                          className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                        >
-                          <option value="">Select Type</option>
-                          <option value="New Business">New Business</option>
-                          <option value="Existing Customer">Existing Customer</option>
-                          <option value="Renewal">Renewal</option>
-                          <option value="Project Tender">Project Tender</option>
-                          <option value="AMC">AMC</option>
-                        </select>
+                        <div className="flex-1 flex items-center gap-1.5">
+                          <select
+                            value={oppFormData.type}
+                            onChange={(e) => setOppFormData({ ...oppFormData, type: e.target.value })}
+                            className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="">Select Type</option>
+                            {opportunityTypes.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                            {oppFormData.type && !opportunityTypes.includes(oppFormData.type) && (
+                              <option value={oppFormData.type}>{oppFormData.type}</option>
+                            )}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewOppTypeTitle('');
+                              setIsQuickAddOppTypeOpen(true);
+                            }}
+                            className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer flex items-center gap-0.5 transition-colors px-1"
+                            title="Add New Type"
+                          >
+                            <span>+ New</span>
+                          </button>
+                        </div>
                       </div>
 
                       {/* Location */}
@@ -3403,9 +3700,24 @@ function SalesPipelineInner() {
                               <button
                                 type="button"
                                 onClick={handleClearTerms}
+                                title="Clear editor text"
                                 className="bg-[#DC2626] hover:bg-[#B91C1C] text-white text-[11px] font-semibold px-2.5 py-1 rounded flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
                               >
                                 <Trash className="w-3 h-3" /> Clear
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!selectedTermsCondition) {
+                                    showSalesToast('Please select a Terms & Conditions template to delete');
+                                    return;
+                                  }
+                                  handleDeleteTerms(selectedTermsCondition);
+                                }}
+                                title="Delete selected template"
+                                className="bg-[#DC2626] hover:bg-[#B91C1C] text-white text-[11px] font-semibold px-2.5 py-1 rounded flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-3 h-3" /> Delete
                               </button>
                               <button
                                 type="button"
@@ -3416,7 +3728,7 @@ function SalesPipelineInner() {
                                 }}
                                 className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-[11px] font-semibold px-2.5 py-1 rounded flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
                               >
-                                <Plus className="w-3.5 h-3.5" /> New
+                                <Plus className="w-3.5 h-3.5" /> + New
                               </button>
                             </div>
 
@@ -5508,6 +5820,15 @@ function SalesPipelineInner() {
                 )}
               </div>
             </div>
+          ) : isUploadModalOpen ? (
+            <div className="p-3 sm:p-4 w-full">
+              <CezconUploadOpportunityModule
+                onClose={() => setIsUploadModalOpen(false)}
+                onSuccess={() => {
+                  setIsUploadModalOpen(false);
+                }}
+              />
+            </div>
           ) : (
             /* ── NORMAL OPPORTUNITY LIST VIEW ── */
             <>
@@ -6196,13 +6517,25 @@ function SalesPipelineInner() {
                   </div>
 
                   <div className="p-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-600 bg-white">
-                    <div>Showing 1 to {paginatedOpportunities.length} of {filteredOpportunities.length} entries (Total: 2,691)</div>
+                    <div>
+                      Showing {filteredOpportunities.length === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1} to {Math.min(currentPage * rowsPerPage, filteredOpportunities.length)} of {filteredOpportunities.length} entries (Total: {salesOpportunities.length})
+                    </div>
                     <div className="flex items-center gap-1">
-                      <button type="button" className="px-2.5 py-1 border border-slate-300 rounded font-semibold bg-[#008080] text-white">
-                        1
-                      </button>
-                      <button type="button" className="px-2.5 py-1 border border-slate-300 rounded hover:bg-slate-50">2</button>
-                      <button type="button" className="px-2.5 py-1 border border-slate-300 rounded hover:bg-slate-50">3</button>
+                      {Array.from({ length: Math.max(1, totalPages) }, (_, i) => i + 1).map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setCurrentPage(p)}
+                          className={cn(
+                            'px-2.5 py-1 border rounded font-semibold cursor-pointer transition-colors',
+                            currentPage === p
+                              ? 'border-[#008080] bg-[#008080] text-white'
+                              : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-700'
+                          )}
+                        >
+                          {p}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -7194,17 +7527,17 @@ function SalesPipelineInner() {
                         );
                         const items = (matchedQuote?.items && matchedQuote.items.length > 0)
                           ? matchedQuote.items.map((it: any, idx: number) => ({
-                              id: it.id || `quote-item-${idx}`,
-                              description: it.description || it.name || it.itemDescription || 'Product Item',
-                              code: it.code || it.itemCode || 'CT-PROD',
-                              unit: it.unit || 'Each',
-                              brand: it.brand || 'SUPER GENERAL',
-                              qty: Number(it.qty || it.quantity) || 1,
-                              price: Number(it.price || it.rate || it.unitPrice) || (viewingProforma.amount / (Number(it.qty || it.quantity) || 1)),
-                              total: (Number(it.qty || it.quantity) || 1) * (Number(it.price || it.rate || it.unitPrice) || (viewingProforma.amount / (Number(it.qty || it.quantity) || 1))),
-                            }))
+                            id: it.id || `quote-item-${idx}`,
+                            description: it.description || it.name || it.itemDescription || 'Product Item',
+                            code: it.code || it.itemCode || 'CT-PROD',
+                            unit: it.unit || 'Each',
+                            brand: it.brand || 'SUPER GENERAL',
+                            qty: Number(it.qty || it.quantity) || 1,
+                            price: Number(it.price || it.rate || it.unitPrice) || (viewingProforma.amount / (Number(it.qty || it.quantity) || 1)),
+                            total: (Number(it.qty || it.quantity) || 1) * (Number(it.price || it.rate || it.unitPrice) || (viewingProforma.amount / (Number(it.qty || it.quantity) || 1))),
+                          }))
                           : ((matchedOpp as any)?.items && (matchedOpp as any).items.length > 0)
-                          ? (matchedOpp as any).items.map((it: any, idx: number) => ({
+                            ? (matchedOpp as any).items.map((it: any, idx: number) => ({
                               id: it.id || `opp-item-${idx}`,
                               description: it.description || it.name || it.itemDescription || 'Product Item',
                               code: it.code || it.itemCode || 'CT-PROD',
@@ -7214,7 +7547,7 @@ function SalesPipelineInner() {
                               price: Number(it.price || it.rate || it.unitPrice) || (viewingProforma.amount / (Number(it.qty || it.quantity) || 1)),
                               total: (Number(it.qty || it.quantity) || 1) * (Number(it.price || it.rate || it.unitPrice) || (viewingProforma.amount / (Number(it.qty || it.quantity) || 1))),
                             }))
-                          : [
+                            : [
                               {
                                 id: `proforma-item-${viewingProforma.id}`,
                                 description: viewingProforma.opportunityTitle?.split('/')[1]?.trim() || viewingProforma.opportunityTitle || 'Sales Item',
@@ -7375,16 +7708,16 @@ function SalesPipelineInner() {
                                     items: viewingProforma.items && viewingProforma.items.length > 0
                                       ? viewingProforma.items
                                       : [
-                                          {
-                                            id: 'item-1',
-                                            description: 'AC',
-                                            code: 'CT-PROD',
-                                            unit: 'Each',
-                                            brand: 'SUPER GENERAL',
-                                            qty: 1,
-                                            price: viewingProforma.amount || 9448,
-                                          },
-                                        ],
+                                        {
+                                          id: 'item-1',
+                                          description: 'AC',
+                                          code: 'CT-PROD',
+                                          unit: 'Each',
+                                          brand: 'SUPER GENERAL',
+                                          qty: 1,
+                                          price: viewingProforma.amount || 9448,
+                                        },
+                                      ],
                                     owner: viewingProforma.preparedBy || viewingProforma.owner || '',
                                     phone: viewingProforma.preparedByMobile || viewingProforma.phone || '',
                                     location: viewingProforma.location || '',
@@ -7427,16 +7760,16 @@ function SalesPipelineInner() {
                           items: viewingProforma.items && viewingProforma.items.length > 0
                             ? viewingProforma.items
                             : [
-                                {
-                                  id: 'item-1',
-                                  description: 'AC',
-                                  code: 'CT-PROD',
-                                  unit: 'Each',
-                                  brand: 'SUPER GENERAL',
-                                  qty: 1,
-                                  price: viewingProforma.amount || 9448,
-                                },
-                              ],
+                              {
+                                id: 'item-1',
+                                description: 'AC',
+                                code: 'CT-PROD',
+                                unit: 'Each',
+                                brand: 'SUPER GENERAL',
+                                qty: 1,
+                                price: viewingProforma.amount || 9448,
+                              },
+                            ],
                           owner: viewingProforma.preparedBy || viewingProforma.owner || '',
                           phone: viewingProforma.preparedByMobile || viewingProforma.phone || '',
                           location: viewingProforma.location || '',
@@ -7474,16 +7807,16 @@ function SalesPipelineInner() {
                           items: viewingProforma.items && viewingProforma.items.length > 0
                             ? viewingProforma.items
                             : [
-                                {
-                                  id: 'item-1',
-                                  description: 'AC',
-                                  code: 'CT-PROD',
-                                  unit: 'Each',
-                                  brand: 'SUPER GENERAL',
-                                  qty: 1,
-                                  price: viewingProforma.amount || 9448,
-                                },
-                              ],
+                              {
+                                id: 'item-1',
+                                description: 'AC',
+                                code: 'CT-PROD',
+                                unit: 'Each',
+                                brand: 'SUPER GENERAL',
+                                qty: 1,
+                                price: viewingProforma.amount || 9448,
+                              },
+                            ],
                           owner: viewingProforma.preparedBy || viewingProforma.owner || '',
                           phone: viewingProforma.preparedByMobile || viewingProforma.phone || '',
                           location: viewingProforma.location || '',
@@ -7681,16 +8014,16 @@ function SalesPipelineInner() {
                             const amountVal = topQuote?.subtotal !== undefined
                               ? String(topQuote.subtotal)
                               : topQuote?.grossAmount !== undefined
-                              ? String(topQuote.grossAmount)
-                              : topOpp?.amount !== undefined
-                              ? String(topOpp.amount)
-                              : '';
+                                ? String(topQuote.grossAmount)
+                                : topOpp?.amount !== undefined
+                                  ? String(topOpp.amount)
+                                  : '';
 
                             const discountVal = topQuote?.discountTotal !== undefined && topQuote.discountTotal > 0
                               ? String(topQuote.discountTotal)
                               : topQuote?.discountAmount !== undefined && topQuote.discountAmount > 0
-                              ? String(topQuote.discountAmount)
-                              : '';
+                                ? String(topQuote.discountAmount)
+                                : '';
 
                             const adjustmentVal = topQuote?.shippingCharges !== undefined && topQuote.shippingCharges > 0
                               ? String(topQuote.shippingCharges)
@@ -7699,8 +8032,8 @@ function SalesPipelineInner() {
                             const vatRateVal = topQuote?.vatRate !== undefined
                               ? String(topQuote.vatRate)
                               : topOpp?.vatRate !== undefined
-                              ? String(topOpp.vatRate)
-                              : '5';
+                                ? String(topOpp.vatRate)
+                                : '5';
 
                             const vatTypeVal = (topQuote?.vatAmount && topQuote.vatAmount > 0) || (topQuote?.vatRate && topQuote.vatRate > 0) || topOpp?.vatType
                               ? (topOpp?.vatType || 'With VAT')
@@ -7771,16 +8104,16 @@ function SalesPipelineInner() {
                             const amountVal = matchedQuote.subtotal !== undefined
                               ? String(matchedQuote.subtotal)
                               : matchedQuote.grossAmount !== undefined
-                              ? String(matchedQuote.grossAmount)
-                              : matchedQuote.totalAmount !== undefined
-                              ? String(matchedQuote.totalAmount)
-                              : '';
+                                ? String(matchedQuote.grossAmount)
+                                : matchedQuote.totalAmount !== undefined
+                                  ? String(matchedQuote.totalAmount)
+                                  : '';
 
                             const discountVal = matchedQuote.discountTotal !== undefined && matchedQuote.discountTotal > 0
                               ? String(matchedQuote.discountTotal)
                               : matchedQuote.discountAmount !== undefined && matchedQuote.discountAmount > 0
-                              ? String(matchedQuote.discountAmount)
-                              : '';
+                                ? String(matchedQuote.discountAmount)
+                                : '';
 
                             const adjustmentVal = matchedQuote.shippingCharges !== undefined && matchedQuote.shippingCharges > 0
                               ? String(matchedQuote.shippingCharges)
@@ -7958,8 +8291,8 @@ function SalesPipelineInner() {
                             const amountVal = matchedQuote?.subtotal !== undefined
                               ? String(matchedQuote.subtotal)
                               : matchedOpp?.amount !== undefined
-                              ? String(matchedOpp.amount)
-                              : '';
+                                ? String(matchedOpp.amount)
+                                : '';
 
                             const discountVal = matchedQuote?.discountTotal !== undefined && matchedQuote.discountTotal > 0
                               ? String(matchedQuote.discountTotal)
@@ -7993,10 +8326,10 @@ function SalesPipelineInner() {
                           {(() => {
                             const filtered = proformaFormData.customer
                               ? salesOpportunities?.filter(
-                                  (o) =>
-                                    (o.customer && o.customer.trim().toLowerCase() === proformaFormData.customer.trim().toLowerCase()) ||
-                                    ((o as any).companyName && (o as any).companyName.trim().toLowerCase() === proformaFormData.customer.trim().toLowerCase())
-                                )
+                                (o) =>
+                                  (o.customer && o.customer.trim().toLowerCase() === proformaFormData.customer.trim().toLowerCase()) ||
+                                  ((o as any).companyName && (o as any).companyName.trim().toLowerCase() === proformaFormData.customer.trim().toLowerCase())
+                              )
                               : salesOpportunities;
                             const list = filtered && filtered.length > 0 ? filtered : salesOpportunities;
                             return list?.map((o) => {
@@ -8132,359 +8465,157 @@ function SalesPipelineInner() {
           ) : (
             <>
 
-          <div className="bg-white border border-[#E2E8F0] rounded-sm p-3 sm:p-4 shadow-xs space-y-3 text-xs">
-            {/* Mobile Filter Header Toggle Button */}
-            <div className="flex md:hidden items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setShowProformaFiltersMobile(!showProformaFiltersMobile)}
-                className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer w-full justify-between"
-              >
-                <div className="flex items-center gap-1.5 text-blue-600">
-                  <Filter className="w-3.5 h-3.5" />
-                  <span>Filter Proforma Invoices</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 font-medium">
-                    {showProformaFiltersMobile ? 'Hide Filters' : 'Tap to filter'}
-                  </span>
-                </div>
-                <ChevronDown className={cn('w-4 h-4 text-slate-500 transition-transform', showProformaFiltersMobile ? 'rotate-180' : '')} />
-              </button>
-            </div>
-
-            <div className={cn('space-y-3', showProformaFiltersMobile ? 'block' : 'hidden md:block')}>
-              {/* Row 1 */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Select Owner</label>
-                  <select
-                    value={filterOwner}
-                    onChange={(e) => setFilterOwner(e.target.value)}
-                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+              <div className="bg-white border border-[#E2E8F0] rounded-sm p-3 sm:p-4 shadow-xs space-y-3 text-xs">
+                {/* Mobile Filter Header Toggle Button */}
+                <div className="flex md:hidden items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setShowProformaFiltersMobile(!showProformaFiltersMobile)}
+                    className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer w-full justify-between"
                   >
-                    <option value="All">All Owners</option>
-                    {users && users.length > 0 ? (
-                      users.map((u) => (
-                        <option key={u.id} value={u.name}>
-                          {u.name}
-                        </option>
-                      ))
-                    ) : (
-                      <option value={currentUser?.name || 'shaheer'}>{currentUser?.name || 'shaheer'}</option>
-                    )}
-                  </select>
+                    <div className="flex items-center gap-1.5 text-blue-600">
+                      <Filter className="w-3.5 h-3.5" />
+                      <span>Filter Proforma Invoices</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 font-medium">
+                        {showProformaFiltersMobile ? 'Hide Filters' : 'Tap to filter'}
+                      </span>
+                    </div>
+                    <ChevronDown className={cn('w-4 h-4 text-slate-500 transition-transform', showProformaFiltersMobile ? 'rotate-180' : '')} />
+                  </button>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Proforma Invoice Date</label>
-                  <div className="relative">
+                <div className={cn('space-y-3', showProformaFiltersMobile ? 'block' : 'hidden md:block')}>
+                  {/* Row 1 */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Select Owner</label>
+                      <select
+                        value={filterOwner}
+                        onChange={(e) => setFilterOwner(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                      >
+                        <option value="All">All Owners</option>
+                        {users && users.length > 0 ? (
+                          users.map((u) => (
+                            <option key={u.id} value={u.name}>
+                              {u.name}
+                            </option>
+                          ))
+                        ) : (
+                          <option value={currentUser?.name || 'shaheer'}>{currentUser?.name || 'shaheer'}</option>
+                        )}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Proforma Invoice Date</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="All Month & Year"
+                          className="w-full pl-8 pr-7 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                        />
+                        <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+                        <RotateCcw className="w-3.5 h-3.5 text-slate-400 hover:text-slate-600 cursor-pointer absolute right-2.5 top-2" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Customer</label>
+                      <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
+                        <option value="">Select Customer</option>
+                        <option value="Brightlight">Brightlight</option>
+                        <option value="SMART GROUP OF CAPANIES">SMART GROUP OF CAPANIES</option>
+                        <option value="DESERT MAN TRANSPORTING">DESERT MAN TRANSPORTING</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Opportunity</label>
+                      <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
+                        <option value="">Select Opportunity</option>
+                        <option value="EQ 2 Supply of AC and Water Cooler">EQ 2 Supply of AC and Water Cooler</option>
+                        <option value="WATER COOLERS">WATER COOLERS</option>
+                        <option value="WATER DISPENSER">WATER DISPENSER</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Row 2 */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Proforma Invoice Type</label>
+                      <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
+                        <option value="">Select Invoice Type</option>
+                        <option value="advance">Advance Proforma</option>
+                        <option value="interim">Interim Payment</option>
+                        <option value="final">Final Balance</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Product/Service</label>
+                      <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
+                        <option value="">Select Product/Service</option>
+                        <option value="AC Units">AC Units</option>
+                        <option value="Water Cooler">Water Cooler</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* MAIN PROFORMA INVOICE TABLE SECTION */}
+              <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden">
+                {/* Header with Title and + PROFORMA INVOICE Button */}
+                <div className="p-3 border-b border-slate-200 flex items-center justify-between bg-white">
+                  <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                    <ReceiptIcon className="w-4 h-4 text-slate-500" /> Proforma Invoice
+                  </h2>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateProformaModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>PROFORMA INVOICE</span>
+                  </button>
+                </div>
+
+                {/* Table Controls */}
+                <div className="p-2.5 bg-slate-50/50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                  <div className="flex items-center gap-1.5">
+                    <span>Show</span>
+                    <select
+                      value={rowsPerPage}
+                      onChange={(e) => {
+                        setRowsPerPage(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 font-medium focus:outline-none focus:border-blue-500"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
+                    <span>Rows</span>
+                  </div>
+
+                  <div className="relative w-64">
                     <input
                       type="text"
-                      placeholder="All Month & Year"
-                      className="w-full pl-8 pr-7 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                      placeholder="Search"
+                      value={proformaSearch}
+                      onChange={(e) => setProformaSearch(e.target.value)}
+                      className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
                     />
-                    <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
-                    <RotateCcw className="w-3.5 h-3.5 text-slate-400 hover:text-slate-600 cursor-pointer absolute right-2.5 top-2" />
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Customer</label>
-                  <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
-                    <option value="">Select Customer</option>
-                    <option value="Brightlight">Brightlight</option>
-                    <option value="SMART GROUP OF CAPANIES">SMART GROUP OF CAPANIES</option>
-                    <option value="DESERT MAN TRANSPORTING">DESERT MAN TRANSPORTING</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Opportunity</label>
-                  <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
-                    <option value="">Select Opportunity</option>
-                    <option value="EQ 2 Supply of AC and Water Cooler">EQ 2 Supply of AC and Water Cooler</option>
-                    <option value="WATER COOLERS">WATER COOLERS</option>
-                    <option value="WATER DISPENSER">WATER DISPENSER</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 2 */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Proforma Invoice Type</label>
-                  <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
-                    <option value="">Select Invoice Type</option>
-                    <option value="advance">Advance Proforma</option>
-                    <option value="interim">Interim Payment</option>
-                    <option value="final">Final Balance</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Product/Service</label>
-                  <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
-                    <option value="">Select Product/Service</option>
-                    <option value="AC Units">AC Units</option>
-                    <option value="Water Cooler">Water Cooler</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* MAIN PROFORMA INVOICE TABLE SECTION */}
-          <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden">
-            {/* Header with Title and + PROFORMA INVOICE Button */}
-            <div className="p-3 border-b border-slate-200 flex items-center justify-between bg-white">
-              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                <ReceiptIcon className="w-4 h-4 text-slate-500" /> Proforma Invoice
-              </h2>
-
-              <button
-                type="button"
-                onClick={() => setIsCreateProformaModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>PROFORMA INVOICE</span>
-              </button>
-            </div>
-
-            {/* Table Controls */}
-            <div className="p-2.5 bg-slate-50/50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
-              <div className="flex items-center gap-1.5">
-                <span>Show</span>
-                <select
-                  value={rowsPerPage}
-                  onChange={(e) => {
-                    setRowsPerPage(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 font-medium focus:outline-none focus:border-blue-500"
-                >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                </select>
-                <span>Rows</span>
-              </div>
-
-              <div className="relative w-64">
-                <input
-                  type="text"
-                  placeholder="Search"
-                  value={proformaSearch}
-                  onChange={(e) => setProformaSearch(e.target.value)}
-                  className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
-                />
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
-              </div>
-            </div>
-
-            {/* Native Mobile Proforma Cards (Phone Viewports) */}
-            <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
-              {proformas
-                .filter((p) => {
-                  if (proformaSearch) {
-                    const s = proformaSearch.toLowerCase();
-                    return (
-                      p.piNumber.toLowerCase().includes(s) ||
-                      p.customer.toLowerCase().includes(s) ||
-                      (p.opportunityTitle || '').toLowerCase().includes(s) ||
-                      (p.quotationRef || '').toLowerCase().includes(s)
-                    );
-                  }
-                  return true;
-                })
-                .map((p) => (
-                  <div key={p.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
-                    <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center text-red-600 text-[10px] font-bold shrink-0">
-                          📄
-                        </span>
-                        <span className="text-[#2563EB] font-bold text-xs">
-                          {p.piNumber}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-500">{p.issueDate}</span>
-                    </div>
-
-                    <div>
-                      <div className="text-[11px] font-bold text-slate-800">
-                        {p.opportunityTitle || 'EQ 2 Supply of AC and Water Cooler'}
-                      </div>
-                      {p.quotationRef && (
-                        <div className="text-[10px] text-blue-600 mt-0.5 font-medium">
-                          Quotation: {p.quotationRef}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="bg-slate-50 rounded p-2 border border-slate-100">
-                      <div className="text-slate-500 text-[10px]">Customer</div>
-                      <div className="text-[#2563EB] font-bold text-xs">{p.customer}</div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 py-1 border-t border-b border-slate-100 text-center">
-                      <div>
-                        <div className="text-[10px] text-slate-500">Amount</div>
-                        <div className="font-semibold text-slate-700">
-                          {p.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-slate-500">VAT</div>
-                        <div className="font-semibold text-slate-600">
-                          {p.vatAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-slate-500">Total</div>
-                        <div className="font-bold text-slate-900">
-                          {p.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1">
-                      <div className="flex items-center gap-1.5">
-                        {(() => {
-                          const av = (p.ownerAvatar && !p.ownerAvatar.includes('unsplash') && !p.ownerAvatar.includes('photo-')) ? p.ownerAvatar : getEmployeePhoto(p.owner);
-                          const name = p.owner || currentUser?.name || 'S';
-                          if (av) {
-                            return (
-                              <div className="w-5 h-5 rounded-full overflow-hidden bg-slate-200 shrink-0">
-                                <img src={av} alt={name} className="w-full h-full object-cover" />
-                              </div>
-                            );
-                          }
-                          return (
-                            <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-[#1E293B] to-[#334155] text-white flex items-center justify-center font-bold text-[9px] uppercase shadow-2xs shrink-0">
-                              {name[0]}
-                            </div>
-                          );
-                        })()}
-                        <span className="text-[11px] text-slate-600 font-medium">{p.owner || currentUser?.name || 'shaheer'}</span>
-                      </div>
-
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOpenProformaActionId((prev) => (prev === p.id ? null : p.id));
-                          }}
-                          className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#008080] hover:bg-[#006666] text-white rounded text-[11px] font-medium shadow-2xs cursor-pointer transition select-none"
-                          title="Actions"
-                        >
-                          <Settings className="w-3.5 h-3.5 text-white" />
-                          <span className="text-white text-[10px] leading-none">▾</span>
-                        </button>
-
-                        {openProformaActionId === p.id && (
-                          <>
-                            <div
-                              className="fixed inset-0 z-40 bg-transparent"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenProformaActionId(null);
-                              }}
-                            />
-                            <div
-                              onClick={(e) => e.stopPropagation()}
-                              className="absolute right-0 bottom-full mb-1 w-32 bg-white border border-slate-200 rounded shadow-[0_8px_24px_rgba(0,0,0,0.2)] z-50 py-1 text-left text-xs font-normal"
-                            >
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenProformaActionId(null);
-                                  setShowProformaAlertBanner(true);
-                                  setViewingProforma(p);
-                                }}
-                                className="w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
-                              >
-                                <Contact className="w-3.5 h-3.5 text-slate-700" />
-                                <span>View</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenProformaActionId(null);
-                                  setProformaFormData({
-                                    customer: p.customer || '',
-                                    quotation: p.quotationRef || '',
-                                    opportunityOrder: p.opportunityTitle || '',
-                                    proformaNumber: p.piNumber,
-                                    invoiceDate: p.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
-                                    lpoDate: (p as any).lpoDate || '',
-                                    lpoNumber: (p as any).lpoNumber || '',
-                                    invoiceType: (p as any).invoiceType || 'File Upload',
-                                    vatType: p.vatAmount > 0 ? 'With VAT' : 'Without VAT',
-                                    amount: String(p.amount || ''),
-                                    discount: String((p as any).discount || ''),
-                                    adjustment: String((p as any).adjustment || ''),
-                                    remarks: (p as any).remarks || '',
-                                    vatRate: '5',
-                                    document: null,
-                                  });
-                                  setIsCreateProformaModalOpen(true);
-                                }}
-                                className="w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
-                              >
-                                <Edit2 className="w-3.5 h-3.5 text-slate-700" />
-                                <span>Edit</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenProformaActionId(null);
-                                  if (confirm(`Are you sure you want to delete proforma invoice ${p.piNumber}?`)) {
-                                    setProformas((prev) => {
-                                      const updated = prev.filter((item) => item.id !== p.id);
-                                      if (typeof window !== 'undefined') {
-                                        localStorage.setItem('crm_proforma_invoices', JSON.stringify(updated));
-                                      }
-                                      return updated;
-                                    });
-                                  }
-                                }}
-                                className="w-full px-3 py-1.5 flex items-center gap-2 text-red-600 hover:bg-red-50 transition cursor-pointer text-xs"
-                              >
-                                <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                                <span>Delete</span>
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-
-            {/* Table (Desktop Viewports) */}
-            <div className="hidden md:block overflow-x-auto w-full min-h-[300px] pb-24">
-              <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
-                <thead>
-                  <tr className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-semibold select-none">
-                    <th className="p-2.5 w-12 text-center text-slate-600">SL.No</th>
-                    <th className="p-2.5 min-w-[130px] text-slate-600">Proforma Invoice</th>
-                    <th className="p-2.5 w-28 text-slate-600">Date</th>
-                    <th className="p-2.5 w-16 text-slate-600">Owner</th>
-                    <th className="p-2.5 min-w-[140px] text-slate-600">Customer</th>
-                    <th className="p-2.5 min-w-[240px] text-slate-600">Opportunity</th>
-                    <th className="p-2.5 w-24 text-slate-600">Quotation</th>
-                    <th className="p-2.5 w-28 text-right text-slate-600">Amount</th>
-                    <th className="p-2.5 w-20 text-right text-slate-600">VAT</th>
-                    <th className="p-2.5 w-28 text-right text-slate-600">Total</th>
-                    <th className="p-2.5 w-20 text-center text-slate-600">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 bg-white">
+                {/* Native Mobile Proforma Cards (Phone Viewports) */}
+                <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
                   {proformas
                     .filter((p) => {
                       if (proformaSearch) {
@@ -8499,235 +8630,437 @@ function SalesPipelineInner() {
                       return true;
                     })
                     .map((p) => (
-                      <tr
-                        key={p.id}
-                        className={`transition-colors ${openProformaActionId === p.id ? 'relative z-50 bg-[#F0FDF4]/60' : 'hover:bg-[#F0FDF4]/40'}`}
-                      >
-                        {/* SL.No */}
-                        <td className="p-2.5 text-center text-slate-600 font-medium">{p.slNo}</td>
-
-                        {/* Proforma Invoice Link */}
-                        <td className="p-2.5">
+                      <div key={p.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
+                        <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
                           <div className="flex items-center gap-1.5">
                             <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center text-red-600 text-[10px] font-bold shrink-0">
                               📄
                             </span>
-                            <span
-                              onClick={() => {
-                                setShowProformaAlertBanner(true);
-                                setViewingProforma(p);
-                              }}
-                              className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer"
-                            >
+                            <span className="text-[#2563EB] font-bold text-xs">
                               {p.piNumber}
                             </span>
                           </div>
-                        </td>
+                          <span className="text-[10px] text-slate-500">{p.issueDate}</span>
+                        </div>
 
-                        {/* Date */}
-                        <td className="p-2.5 whitespace-nowrap text-slate-800 font-medium">
-                          {p.issueDate}
-                        </td>
+                        <div>
+                          <div className="text-[11px] font-bold text-slate-800">
+                            {p.opportunityTitle || 'EQ 2 Supply of AC and Water Cooler'}
+                          </div>
+                          {p.quotationRef && (
+                            <div className="text-[10px] text-blue-600 mt-0.5 font-medium">
+                              Quotation: {p.quotationRef}
+                            </div>
+                          )}
+                        </div>
 
-                        {/* Owner */}
-                        <td className="p-2.5">
-                          {(() => {
-                            const av = (p.ownerAvatar && !p.ownerAvatar.includes('unsplash') && !p.ownerAvatar.includes('photo-')) ? p.ownerAvatar : getEmployeePhoto(p.owner);
-                            const name = p.owner || currentUser?.name || 'S';
-                            if (av) {
+                        <div className="bg-slate-50 rounded p-2 border border-slate-100">
+                          <div className="text-slate-500 text-[10px]">Customer</div>
+                          <div className="text-[#2563EB] font-bold text-xs">{p.customer}</div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 py-1 border-t border-b border-slate-100 text-center">
+                          <div>
+                            <div className="text-[10px] text-slate-500">Amount</div>
+                            <div className="font-semibold text-slate-700">
+                              {p.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-slate-500">VAT</div>
+                            <div className="font-semibold text-slate-600">
+                              {p.vatAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-slate-500">Total</div>
+                            <div className="font-bold text-slate-900">
+                              {p.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1">
+                          <div className="flex items-center gap-1.5">
+                            {(() => {
+                              const av = (p.ownerAvatar && !p.ownerAvatar.includes('unsplash') && !p.ownerAvatar.includes('photo-')) ? p.ownerAvatar : getEmployeePhoto(p.owner);
+                              const name = p.owner || currentUser?.name || 'S';
+                              if (av) {
+                                return (
+                                  <div className="w-5 h-5 rounded-full overflow-hidden bg-slate-200 shrink-0">
+                                    <img src={av} alt={name} className="w-full h-full object-cover" />
+                                  </div>
+                                );
+                              }
                               return (
-                                <div className="w-6 h-6 rounded-full overflow-hidden bg-slate-200 shrink-0">
-                                  <img src={av} alt={name} className="w-full h-full object-cover" />
+                                <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-[#1E293B] to-[#334155] text-white flex items-center justify-center font-bold text-[9px] uppercase shadow-2xs shrink-0">
+                                  {name[0]}
                                 </div>
                               );
-                            }
-                            return (
-                              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-[#1E293B] to-[#334155] text-white flex items-center justify-center font-bold text-[10px] uppercase shadow-2xs">
-                                {name[0]}
-                              </div>
-                            );
-                          })()}
-                        </td>
-
-                        {/* Customer */}
-                        <td className="p-2.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer">
-                              {p.customer}
-                            </span>
-                            <Info className="w-3.5 h-3.5 text-blue-500 cursor-pointer shrink-0" />
+                            })()}
+                            <span className="text-[11px] text-slate-600 font-medium">{p.owner || currentUser?.name || 'shaheer'}</span>
                           </div>
-                        </td>
 
-                        {/* Opportunity */}
-                        <td className="p-2.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[#2563EB] font-medium text-xs hover:underline cursor-pointer">
-                              {p.opportunityTitle || 'EQ 2 Supply of AC and Water Cooler'}
-                            </span>
-                            <Info className="w-3.5 h-3.5 text-blue-500 cursor-pointer shrink-0" />
-                          </div>
-                        </td>
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenProformaActionId((prev) => (prev === p.id ? null : p.id));
+                              }}
+                              className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#008080] hover:bg-[#006666] text-white rounded text-[11px] font-medium shadow-2xs cursor-pointer transition select-none"
+                              title="Actions"
+                            >
+                              <Settings className="w-3.5 h-3.5 text-white" />
+                              <span className="text-white text-[10px] leading-none">▾</span>
+                            </button>
 
-                        {/* Quotation */}
-                        <td className="p-2.5">
-                          <span className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer">
-                            {p.quotationRef || '—'}
-                          </span>
-                        </td>
-
-                        {/* Amount */}
-                        <td className="p-2.5 text-right font-medium text-slate-800 whitespace-nowrap">
-                          {p.amount.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-
-                        {/* VAT */}
-                        <td className="p-2.5 text-right font-medium text-slate-600 whitespace-nowrap">
-                          {p.vatAmount.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-
-                        {/* Total */}
-                        <td className="p-2.5 text-right font-bold text-slate-900 whitespace-nowrap">
-                          {p.totalAmount.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-
-                        {/* Actions */}
-                        <td className="p-2.5 text-center relative">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenProformaActionId((prev) => (prev === p.id ? null : p.id));
-                            }}
-                            className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#008080] hover:bg-[#006666] text-white rounded text-[11px] font-medium shadow-2xs cursor-pointer transition select-none"
-                            title="Actions"
-                          >
-                            <Settings className="w-3.5 h-3.5 text-white" />
-                            <span className="text-white text-[10px] leading-none">▾</span>
-                          </button>
-
-                          {/* Action Dropdown Menu matching Reference UI */}
-                          {openProformaActionId === p.id && (
-                            <>
-                              <div
-                                className="fixed inset-0 z-40 bg-transparent"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOpenProformaActionId(null);
-                                }}
-                              />
-                              <div
-                                onClick={(e) => e.stopPropagation()}
-                                className="absolute right-2 top-full mt-1 w-32 bg-white border border-slate-200 rounded shadow-[0_8px_24px_rgba(0,0,0,0.2)] z-50 py-1 text-left text-xs font-normal"
-                              >
-                                <button
-                                  type="button"
+                            {openProformaActionId === p.id && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-40 bg-transparent"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setOpenProformaActionId(null);
+                                  }}
+                                />
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute right-0 bottom-full mb-1 w-32 bg-white border border-slate-200 rounded shadow-[0_8px_24px_rgba(0,0,0,0.2)] z-50 py-1 text-left text-xs font-normal"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenProformaActionId(null);
+                                      setShowProformaAlertBanner(true);
+                                      setViewingProforma(p);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
+                                  >
+                                    <Contact className="w-3.5 h-3.5 text-slate-700" />
+                                    <span>View</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenProformaActionId(null);
+                                      setProformaFormData({
+                                        customer: p.customer || '',
+                                        quotation: p.quotationRef || '',
+                                        opportunityOrder: p.opportunityTitle || '',
+                                        proformaNumber: p.piNumber,
+                                        invoiceDate: p.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+                                        lpoDate: (p as any).lpoDate || '',
+                                        lpoNumber: (p as any).lpoNumber || '',
+                                        invoiceType: (p as any).invoiceType || 'File Upload',
+                                        vatType: p.vatAmount > 0 ? 'With VAT' : 'Without VAT',
+                                        amount: String(p.amount || ''),
+                                        discount: String((p as any).discount || ''),
+                                        adjustment: String((p as any).adjustment || ''),
+                                        remarks: (p as any).remarks || '',
+                                        vatRate: '5',
+                                        document: null,
+                                      });
+                                      setIsCreateProformaModalOpen(true);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5 text-slate-700" />
+                                    <span>Edit</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenProformaActionId(null);
+                                      if (confirm(`Are you sure you want to delete proforma invoice ${p.piNumber}?`)) {
+                                        setProformas((prev) => {
+                                          const updated = prev.filter((item) => item.id !== p.id);
+                                          if (typeof window !== 'undefined') {
+                                            localStorage.setItem('crm_proforma_invoices', JSON.stringify(updated));
+                                          }
+                                          return updated;
+                                        });
+                                      }
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 text-red-600 hover:bg-red-50 transition cursor-pointer text-xs"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+
+                {/* Table (Desktop Viewports) */}
+                <div className="hidden md:block overflow-x-auto w-full min-h-[300px] pb-24">
+                  <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
+                    <thead>
+                      <tr className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-semibold select-none">
+                        <th className="p-2.5 w-12 text-center text-slate-600">SL.No</th>
+                        <th className="p-2.5 min-w-[130px] text-slate-600">Proforma Invoice</th>
+                        <th className="p-2.5 w-28 text-slate-600">Date</th>
+                        <th className="p-2.5 w-16 text-slate-600">Owner</th>
+                        <th className="p-2.5 min-w-[140px] text-slate-600">Customer</th>
+                        <th className="p-2.5 min-w-[240px] text-slate-600">Opportunity</th>
+                        <th className="p-2.5 w-24 text-slate-600">Quotation</th>
+                        <th className="p-2.5 w-28 text-right text-slate-600">Amount</th>
+                        <th className="p-2.5 w-20 text-right text-slate-600">VAT</th>
+                        <th className="p-2.5 w-28 text-right text-slate-600">Total</th>
+                        <th className="p-2.5 w-20 text-center text-slate-600">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      {proformas
+                        .filter((p) => {
+                          if (proformaSearch) {
+                            const s = proformaSearch.toLowerCase();
+                            return (
+                              p.piNumber.toLowerCase().includes(s) ||
+                              p.customer.toLowerCase().includes(s) ||
+                              (p.opportunityTitle || '').toLowerCase().includes(s) ||
+                              (p.quotationRef || '').toLowerCase().includes(s)
+                            );
+                          }
+                          return true;
+                        })
+                        .map((p) => (
+                          <tr
+                            key={p.id}
+                            className={`transition-colors ${openProformaActionId === p.id ? 'relative z-50 bg-[#F0FDF4]/60' : 'hover:bg-[#F0FDF4]/40'}`}
+                          >
+                            {/* SL.No */}
+                            <td className="p-2.5 text-center text-slate-600 font-medium">{p.slNo}</td>
+
+                            {/* Proforma Invoice Link */}
+                            <td className="p-2.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center text-red-600 text-[10px] font-bold shrink-0">
+                                  📄
+                                </span>
+                                <span
+                                  onClick={() => {
                                     setShowProformaAlertBanner(true);
                                     setViewingProforma(p);
                                   }}
-                                  className="w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
+                                  className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer"
                                 >
-                                  <Contact className="w-3.5 h-3.5 text-slate-700" />
-                                  <span>View</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenProformaActionId(null);
-                                    setProformaFormData({
-                                      customer: p.customer || '',
-                                      quotation: p.quotationRef || '',
-                                      opportunityOrder: p.opportunityTitle || '',
-                                      proformaNumber: p.piNumber,
-                                      invoiceDate: p.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
-                                      lpoDate: (p as any).lpoDate || '',
-                                      lpoNumber: (p as any).lpoNumber || '',
-                                      invoiceType: (p as any).invoiceType || 'File Upload',
-                                      vatType: p.vatAmount > 0 ? 'With VAT' : 'Without VAT',
-                                      amount: String(p.amount || ''),
-                                      discount: String((p as any).discount || ''),
-                                      adjustment: String((p as any).adjustment || ''),
-                                      remarks: (p as any).remarks || '',
-                                      vatRate: '5',
-                                      document: null,
-                                    });
-                                    setIsCreateProformaModalOpen(true);
-                                  }}
-                                  className="w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5 text-slate-700" />
-                                  <span>Edit</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenProformaActionId(null);
-                                    if (confirm(`Are you sure you want to delete proforma invoice ${p.piNumber}?`)) {
-                                      setProformas((prev) => {
-                                        const updated = prev.filter((item) => item.id !== p.id);
-                                        if (typeof window !== 'undefined') {
-                                          localStorage.setItem('crm_proforma_invoices', JSON.stringify(updated));
-                                        }
-                                        return updated;
-                                      });
-                                    }
-                                  }}
-                                  className="w-full px-3 py-1.5 flex items-center gap-2 text-red-600 hover:bg-red-50 transition cursor-pointer text-xs"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                                  <span>Delete</span>
-                                </button>
+                                  {p.piNumber}
+                                </span>
                               </div>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
+                            </td>
 
-            {/* Table Footer */}
-            <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
-              <div>Showing 1 to {proformas.length} of {proformas.length} entries</div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="px-2 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
-                >
-                  &lt;
-                </button>
-                <button
-                  type="button"
-                  className="px-2.5 py-1 rounded font-semibold bg-[#008080] text-white cursor-pointer"
-                >
-                  1
-                </button>
-                <button
-                  type="button"
-                  className="px-2 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
-                >
-                  &gt;
-                </button>
+                            {/* Date */}
+                            <td className="p-2.5 whitespace-nowrap text-slate-800 font-medium">
+                              {p.issueDate}
+                            </td>
+
+                            {/* Owner */}
+                            <td className="p-2.5">
+                              {(() => {
+                                const av = (p.ownerAvatar && !p.ownerAvatar.includes('unsplash') && !p.ownerAvatar.includes('photo-')) ? p.ownerAvatar : getEmployeePhoto(p.owner);
+                                const name = p.owner || currentUser?.name || 'S';
+                                if (av) {
+                                  return (
+                                    <div className="w-6 h-6 rounded-full overflow-hidden bg-slate-200 shrink-0">
+                                      <img src={av} alt={name} className="w-full h-full object-cover" />
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-[#1E293B] to-[#334155] text-white flex items-center justify-center font-bold text-[10px] uppercase shadow-2xs">
+                                    {name[0]}
+                                  </div>
+                                );
+                              })()}
+                            </td>
+
+                            {/* Customer */}
+                            <td className="p-2.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer">
+                                  {p.customer}
+                                </span>
+                                <Info className="w-3.5 h-3.5 text-blue-500 cursor-pointer shrink-0" />
+                              </div>
+                            </td>
+
+                            {/* Opportunity */}
+                            <td className="p-2.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[#2563EB] font-medium text-xs hover:underline cursor-pointer">
+                                  {p.opportunityTitle || 'EQ 2 Supply of AC and Water Cooler'}
+                                </span>
+                                <Info className="w-3.5 h-3.5 text-blue-500 cursor-pointer shrink-0" />
+                              </div>
+                            </td>
+
+                            {/* Quotation */}
+                            <td className="p-2.5">
+                              <span className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer">
+                                {p.quotationRef || '—'}
+                              </span>
+                            </td>
+
+                            {/* Amount */}
+                            <td className="p-2.5 text-right font-medium text-slate-800 whitespace-nowrap">
+                              {p.amount.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+
+                            {/* VAT */}
+                            <td className="p-2.5 text-right font-medium text-slate-600 whitespace-nowrap">
+                              {p.vatAmount.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+
+                            {/* Total */}
+                            <td className="p-2.5 text-right font-bold text-slate-900 whitespace-nowrap">
+                              {p.totalAmount.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="p-2.5 text-center relative">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenProformaActionId((prev) => (prev === p.id ? null : p.id));
+                                }}
+                                className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#008080] hover:bg-[#006666] text-white rounded text-[11px] font-medium shadow-2xs cursor-pointer transition select-none"
+                                title="Actions"
+                              >
+                                <Settings className="w-3.5 h-3.5 text-white" />
+                                <span className="text-white text-[10px] leading-none">▾</span>
+                              </button>
+
+                              {/* Action Dropdown Menu matching Reference UI */}
+                              {openProformaActionId === p.id && (
+                                <>
+                                  <div
+                                    className="fixed inset-0 z-40 bg-transparent"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenProformaActionId(null);
+                                    }}
+                                  />
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="absolute right-2 top-full mt-1 w-32 bg-white border border-slate-200 rounded shadow-[0_8px_24px_rgba(0,0,0,0.2)] z-50 py-1 text-left text-xs font-normal"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenProformaActionId(null);
+                                        setShowProformaAlertBanner(true);
+                                        setViewingProforma(p);
+                                      }}
+                                      className="w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
+                                    >
+                                      <Contact className="w-3.5 h-3.5 text-slate-700" />
+                                      <span>View</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenProformaActionId(null);
+                                        setProformaFormData({
+                                          customer: p.customer || '',
+                                          quotation: p.quotationRef || '',
+                                          opportunityOrder: p.opportunityTitle || '',
+                                          proformaNumber: p.piNumber,
+                                          invoiceDate: p.issueDate || new Date().toLocaleDateString('en-GB').split('/').reverse().join('-'),
+                                          lpoDate: (p as any).lpoDate || '',
+                                          lpoNumber: (p as any).lpoNumber || '',
+                                          invoiceType: (p as any).invoiceType || 'File Upload',
+                                          vatType: p.vatAmount > 0 ? 'With VAT' : 'Without VAT',
+                                          amount: String(p.amount || ''),
+                                          discount: String((p as any).discount || ''),
+                                          adjustment: String((p as any).adjustment || ''),
+                                          remarks: (p as any).remarks || '',
+                                          vatRate: '5',
+                                          document: null,
+                                        });
+                                        setIsCreateProformaModalOpen(true);
+                                      }}
+                                      className="w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 hover:bg-slate-50 transition cursor-pointer text-xs"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5 text-slate-700" />
+                                      <span>Edit</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenProformaActionId(null);
+                                        if (confirm(`Are you sure you want to delete proforma invoice ${p.piNumber}?`)) {
+                                          setProformas((prev) => {
+                                            const updated = prev.filter((item) => item.id !== p.id);
+                                            if (typeof window !== 'undefined') {
+                                              localStorage.setItem('crm_proforma_invoices', JSON.stringify(updated));
+                                            }
+                                            return updated;
+                                          });
+                                        }
+                                      }}
+                                      className="w-full px-3 py-1.5 flex items-center gap-2 text-red-600 hover:bg-red-50 transition cursor-pointer text-xs"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                      <span>Delete</span>
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Table Footer */}
+                <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
+                  <div>Showing 1 to {proformas.length} of {proformas.length} entries</div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
+                    >
+                      &lt;
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2.5 py-1 rounded font-semibold bg-[#008080] text-white cursor-pointer"
+                    >
+                      1
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
+                    >
+                      &gt;
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
 
             </>
@@ -10552,64 +10885,64 @@ function SalesPipelineInner() {
                     INVOICE CREATED BY <span className="font-extrabold">{(selectedInvoice.owner && !selectedInvoice.owner.toLowerCase().includes('alex rivera') && !selectedInvoice.owner.toLowerCase().includes('nebin benny') ? selectedInvoice.owner : (currentUser?.name || 'shaheer')).toUpperCase()}</span> ON SAT {selectedInvoice.issueDate || '03-10-2026'} 2:58:36 PM
                   </span>
                 </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedInvoice(null)}
-                      className="w-5 h-5 bg-[#D9534F] hover:bg-[#C9302C] text-white flex items-center justify-center rounded-xs transition cursor-pointer"
-                      title="Close"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedInvoice(null)}
+                  className="w-5 h-5 bg-[#D9534F] hover:bg-[#C9302C] text-white flex items-center justify-center rounded-xs transition cursor-pointer"
+                  title="Close"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
 
-                  {/* Sub-tabs: Invoice / Receipt */}
-                  <div className="flex items-center gap-1 border-b border-slate-200 bg-transparent px-1 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setInvoiceDetailSubTab('invoice')}
-                      className={cn(
-                        'px-3.5 py-1.5 text-xs font-semibold flex items-center gap-1.5 border-t-2 transition cursor-pointer',
-                        invoiceDetailSubTab === 'invoice'
-                          ? 'border-[#2E7D32] text-slate-900 bg-white border-l border-r border-slate-200 -mb-px rounded-t'
-                          : 'border-transparent text-slate-500 hover:text-slate-800'
-                      )}
-                    >
-                      <FileText className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Invoice</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setInvoiceDetailSubTab('receipt')}
-                      className={cn(
-                        'px-3.5 py-1.5 text-xs font-semibold flex items-center gap-1.5 border-t-2 transition cursor-pointer',
-                        invoiceDetailSubTab === 'receipt'
-                          ? 'border-[#2E7D32] text-slate-900 bg-white border-l border-r border-slate-200 -mb-px rounded-t'
-                          : 'border-transparent text-slate-500 hover:text-slate-800'
-                      )}
-                    >
-                      <ReceiptIcon className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Receipt</span>
-                    </button>
-                  </div>
+              {/* Sub-tabs: Invoice / Receipt */}
+              <div className="flex items-center gap-1 border-b border-slate-200 bg-transparent px-1 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setInvoiceDetailSubTab('invoice')}
+                  className={cn(
+                    'px-3.5 py-1.5 text-xs font-semibold flex items-center gap-1.5 border-t-2 transition cursor-pointer',
+                    invoiceDetailSubTab === 'invoice'
+                      ? 'border-[#2E7D32] text-slate-900 bg-white border-l border-r border-slate-200 -mb-px rounded-t'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  )}
+                >
+                  <FileText className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Invoice</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceDetailSubTab('receipt')}
+                  className={cn(
+                    'px-3.5 py-1.5 text-xs font-semibold flex items-center gap-1.5 border-t-2 transition cursor-pointer',
+                    invoiceDetailSubTab === 'receipt'
+                      ? 'border-[#2E7D32] text-slate-900 bg-white border-l border-r border-slate-200 -mb-px rounded-t'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  )}
+                >
+                  <ReceiptIcon className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Receipt</span>
+                </button>
+              </div>
 
-                  {/* Main Card Container */}
-                  <div className="bg-white border border-[#E2E8F0] rounded-sm p-4 space-y-6">
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                      {/* LEFT COLUMN: Invoice Details & Payment Followup */}
-                      <div className="lg:col-span-6 space-y-4">
-                        {/* Invoice Details Card */}
-                        <div className="border border-slate-200 rounded-sm overflow-hidden bg-white shadow-2xs">
-                          <div className="px-3.5 py-2 bg-[#F5F5F5] border-b border-slate-200 flex items-center gap-2">
-                            <FileText className="w-3.5 h-3.5 text-slate-500" />
-                            <span className="text-xs font-bold text-slate-700">Invoice Details</span>
-                          </div>
-                          <div className="p-3.5 space-y-2.5 text-xs">
+              {/* Main Card Container */}
+              <div className="bg-white border border-[#E2E8F0] rounded-sm p-4 space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* LEFT COLUMN: Invoice Details & Payment Followup */}
+                  <div className="lg:col-span-6 space-y-4">
+                    {/* Invoice Details Card */}
+                    <div className="border border-slate-200 rounded-sm overflow-hidden bg-white shadow-2xs">
+                      <div className="px-3.5 py-2 bg-[#F5F5F5] border-b border-slate-200 flex items-center gap-2">
+                        <FileText className="w-3.5 h-3.5 text-slate-500" />
+                        <span className="text-xs font-bold text-slate-700">Invoice Details</span>
+                      </div>
+                      <div className="p-3.5 space-y-2.5 text-xs">
                         <div className="grid grid-cols-3 gap-2 py-0.5">
                           <span className="text-slate-600 font-medium">Invoice Owner</span>
                           <span className="col-span-2 font-bold text-slate-800 uppercase">
                             {selectedInvoice.owner &&
-                            !selectedInvoice.owner.toLowerCase().includes('alex rivera') &&
-                            !selectedInvoice.owner.toLowerCase().includes('nebin benny')
+                              !selectedInvoice.owner.toLowerCase().includes('alex rivera') &&
+                              !selectedInvoice.owner.toLowerCase().includes('nebin benny')
                               ? selectedInvoice.owner
                               : currentUser?.name || 'shaheer'}
                           </span>
@@ -10653,8 +10986,8 @@ function SalesPipelineInner() {
                           <span className="text-slate-600 font-medium">Attention</span>
                           <span className="col-span-2 font-bold text-slate-800">
                             {selectedInvoice.contactPerson &&
-                            !selectedInvoice.contactPerson.toLowerCase().includes('hala fawzi') &&
-                            !selectedInvoice.contactPerson.toLowerCase().includes('mohammad hattab')
+                              !selectedInvoice.contactPerson.toLowerCase().includes('hala fawzi') &&
+                              !selectedInvoice.contactPerson.toLowerCase().includes('mohammad hattab')
                               ? selectedInvoice.contactPerson
                               : ''}
                           </span>
@@ -14253,6 +14586,37 @@ function SalesPipelineInner() {
                   </button>
                 </div>
               </div>
+
+              {/* Saved Templates List with Delete Option */}
+              {Object.keys(termsTemplates).length > 0 && (
+                <div className="pt-3 border-t border-slate-200">
+                  <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wide mb-2 flex items-center justify-between">
+                    <span>Saved Templates ({Object.keys(termsTemplates).length})</span>
+                    <span className="text-[10px] text-slate-400 font-normal">Click trash icon to delete</span>
+                  </div>
+                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 border border-slate-200 rounded p-1.5 bg-slate-50/50">
+                    {Object.entries(termsTemplates).map(([tName, tContent]) => (
+                      <div
+                        key={tName}
+                        className="flex items-center justify-between p-2 bg-white hover:bg-slate-100/80 rounded border border-slate-200 text-xs transition gap-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-slate-800 truncate">{tName}</div>
+                          <div className="text-[10px] text-slate-500 truncate">{tContent.replace(/\n/g, ' • ')}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTerms(tName)}
+                          className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer transition shrink-0"
+                          title={`Delete "${tName}"`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </form>
           </div>
         </div>
@@ -15024,27 +15388,11 @@ function SalesPipelineInner() {
                     {/* Left: Company Logo & Details */}
                     <div className="col-span-5 space-y-1">
                       <div className="flex items-center gap-2 mb-1.5">
-                        <div className="w-10 h-10 flex items-center justify-center shrink-0">
-                          <svg viewBox="0 0 80 80" className="w-10 h-10" xmlns="http://www.w3.org/2000/svg">
-                            {/* Top cyan arcs */}
-                            <path d="M60 14 A32 32 0 0 0 18 40" fill="none" stroke="#00AEEF" strokeWidth="6" strokeLinecap="round" />
-                            <path d="M54 21 A24 24 0 0 0 24 40" fill="none" stroke="#00AEEF" strokeWidth="5.5" strokeLinecap="round" />
-                            <path d="M48 28 A16 16 0 0 0 30 40" fill="none" stroke="#00AEEF" strokeWidth="5" strokeLinecap="round" />
-                            {/* Bottom navy arcs */}
-                            <path d="M18 40 A32 32 0 0 0 60 66" fill="none" stroke="#3D405B" strokeWidth="6" strokeLinecap="round" />
-                            <path d="M24 40 A24 24 0 0 0 54 59" fill="none" stroke="#3D405B" strokeWidth="5.5" strokeLinecap="round" />
-                            <path d="M30 40 A16 16 0 0 0 48 52" fill="none" stroke="#3D405B" strokeWidth="5" strokeLinecap="round" />
-                          </svg>
-                        </div>
-                        <div>
-                          <div className="flex items-baseline gap-1 leading-none">
-                            <span className="font-black text-[18px] text-[#00AEEF] tracking-tight">COOL</span>
-                            <span className="font-bold text-[13px] text-[#3D405B] tracking-wider uppercase">TECHNOLOGIES</span>
-                          </div>
-                          <div className="text-[8px] text-slate-400 italic tracking-widest uppercase font-medium mt-0.5">
-                            the science of cooling
-                          </div>
-                        </div>
+                        <img
+                          src="/cool-tech-official-logo.png"
+                          alt="Cool Technologies - the science of cooling"
+                          className="h-12 w-auto object-contain select-none"
+                        />
                       </div>
                       <p className="font-bold text-[11px] text-slate-900 uppercase">COOL TECHNOLOGIES</p>
                       <p className="text-[10px] text-slate-600 leading-snug">
@@ -15437,27 +15785,11 @@ function SalesPipelineInner() {
                     {/* Left: Company Logo & Details */}
                     <div className="col-span-5 space-y-0.5">
                       <div className="flex items-center gap-2 mb-1.5">
-                        <div className="w-10 h-10 flex items-center justify-center shrink-0">
-                          <svg viewBox="0 0 80 80" className="w-10 h-10" xmlns="http://www.w3.org/2000/svg">
-                            {/* Top cyan arcs */}
-                            <path d="M60 14 A32 32 0 0 0 18 40" fill="none" stroke="#00AEEF" strokeWidth="6" strokeLinecap="round" />
-                            <path d="M54 21 A24 24 0 0 0 24 40" fill="none" stroke="#00AEEF" strokeWidth="5.5" strokeLinecap="round" />
-                            <path d="M48 28 A16 16 0 0 0 30 40" fill="none" stroke="#00AEEF" strokeWidth="5" strokeLinecap="round" />
-                            {/* Bottom navy arcs */}
-                            <path d="M18 40 A32 32 0 0 0 60 66" fill="none" stroke="#3D405B" strokeWidth="6" strokeLinecap="round" />
-                            <path d="M24 40 A24 24 0 0 0 54 59" fill="none" stroke="#3D405B" strokeWidth="5.5" strokeLinecap="round" />
-                            <path d="M30 40 A16 16 0 0 0 48 52" fill="none" stroke="#3D405B" strokeWidth="5" strokeLinecap="round" />
-                          </svg>
-                        </div>
-                        <div>
-                          <div className="flex items-baseline gap-1 leading-none">
-                            <span className="font-black text-[18px] text-[#00AEEF] tracking-tight">COOL</span>
-                            <span className="font-bold text-[13px] text-[#3D405B] tracking-wider uppercase">TECHNOLOGIES</span>
-                          </div>
-                          <div className="text-[8px] text-slate-400 italic tracking-widest uppercase font-medium mt-0.5">
-                            the science of cooling
-                          </div>
-                        </div>
+                        <img
+                          src="/cool-tech-official-logo.png"
+                          alt="Cool Technologies - the science of cooling"
+                          className="h-12 w-auto object-contain select-none"
+                        />
                       </div>
                       <p className="font-bold text-[11px] text-slate-900 uppercase">COOL TECHNOLOGIES</p>
                       <p className="text-[10px] text-slate-600 leading-snug">

@@ -33,6 +33,7 @@ import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { authMockService } from '@/services/authMockService';
 import { CrmSalesOpportunity, DealStage } from '@/types/enterprise-crm';
 import { cn } from '@/lib/utils';
+import { CezconUploadOpportunityModule } from './CezconUploadOpportunityModule';
 
 interface CezconOpportunityModuleProps {
   initialCreate?: boolean;
@@ -50,8 +51,9 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
 
   const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
 
-  // View state: Table list vs Creation Form
+  // View state: Table list vs Creation Form vs Upload Form
   const [isCreating, setIsCreating] = useState(initialCreate);
+  const [isUploading, setIsUploading] = useState(false);
   const [oppToEdit, setOppToEdit] = useState<CrmSalesOpportunity | null>(null);
 
   // Sub-tabs State (matching Cezcon CRM Opportunity top bar)
@@ -414,9 +416,17 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
       </div>
 
       {/* ========================================================================= */}
-      {/* VIEW A: FULL-PAGE OPPORTUNITY CREATION / EDITING FORM                     */}
+      {/* VIEW A: FULL-PAGE OPPORTUNITY CREATION / EDITING / UPLOADING FORM         */}
       {/* ========================================================================= */}
-      {isCreating ? (
+      {isUploading ? (
+        <CezconUploadOpportunityModule
+          onClose={() => setIsUploading(false)}
+          onSuccess={(count) => {
+            showToast(`${count} opportunities imported successfully!`);
+            setIsUploading(false);
+          }}
+        />
+      ) : isCreating ? (
         <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs">
           {/* Form Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-[#F8FAFC] border-b border-slate-200">
@@ -561,7 +571,7 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
                     onClick={(e) => {
                       try {
                         (e.currentTarget as HTMLInputElement).showPicker?.();
-                      } catch {}
+                      } catch { }
                     }}
                     className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
                   />
@@ -938,7 +948,7 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
-                  onClick={() => showToast('Opportunity upload dialog initialized.')}
+                  onClick={() => setIsUploading(true)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#002B49] hover:bg-[#001D32] text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer"
                 >
                   <Upload className="w-3.5 h-3.5" />

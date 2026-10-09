@@ -302,19 +302,19 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
             const liveUser = authMockService.getCurrentUser()?.name || 'shaheer';
             const sanitizedInvoices = Array.isArray(parsed)
               ? parsed.map((inv: any) => {
-                  const isMockOwner = !inv.owner || inv.owner.toLowerCase().includes('alex rivera') || inv.owner.toLowerCase().includes('nebin benny');
-                  const effectiveOwner = isMockOwner ? liveUser : inv.owner;
-                  const isMockContact =
-                    inv.contactPerson &&
-                    (inv.contactPerson.toLowerCase().includes('mohammad hattab') || inv.contactPerson.toLowerCase().includes('hala fawzi'));
-                  const realAvatar = (inv.ownerAvatar && !inv.ownerAvatar.includes('unsplash') && !inv.ownerAvatar.includes('photo-')) ? inv.ownerAvatar : (getEmployeePhoto(effectiveOwner) || undefined);
-                  return {
-                    ...inv,
-                    owner: effectiveOwner,
-                    ownerAvatar: realAvatar,
-                    contactPerson: isMockContact ? '' : (inv.contactPerson || ''),
-                  };
-                })
+                const isMockOwner = !inv.owner || inv.owner.toLowerCase().includes('alex rivera') || inv.owner.toLowerCase().includes('nebin benny');
+                const effectiveOwner = isMockOwner ? liveUser : inv.owner;
+                const isMockContact =
+                  inv.contactPerson &&
+                  (inv.contactPerson.toLowerCase().includes('mohammad hattab') || inv.contactPerson.toLowerCase().includes('hala fawzi'));
+                const realAvatar = (inv.ownerAvatar && !inv.ownerAvatar.includes('unsplash') && !inv.ownerAvatar.includes('photo-')) ? inv.ownerAvatar : (getEmployeePhoto(effectiveOwner) || undefined);
+                return {
+                  ...inv,
+                  owner: effectiveOwner,
+                  ownerAvatar: realAvatar,
+                  contactPerson: isMockContact ? '' : (inv.contactPerson || ''),
+                };
+              })
               : mockInvoices;
             setInvoices(sanitizedInvoices.length > 0 ? sanitizedInvoices : mockInvoices);
           } catch (e) {

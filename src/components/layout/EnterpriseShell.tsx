@@ -36,11 +36,12 @@ export function EnterpriseShell({ children }: { children: React.ReactNode }) {
   }, [pathname, router]);
 
   const isLoginPage = pathname === '/login';
+  const isPrintPage = pathname.startsWith('/purchase/print') || pathname.includes('/print');
 
-  if (isLoginPage) {
+  if (isLoginPage || isPrintPage) {
     return (
       <EnterpriseCrmProvider>
-        <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased w-full max-w-full">
+        <div className="min-h-screen bg-[#323639] print:bg-white text-slate-900 font-sans antialiased w-full max-w-full">
           {children}
         </div>
       </EnterpriseCrmProvider>

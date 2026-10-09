@@ -226,14 +226,30 @@ export function EnterpriseNavbar() {
 
   const activeNavItems = useMemo(() => {
     const user = currentUser || (typeof window !== 'undefined' ? authMockService.getCurrentUser() : null);
-    if (!user) return ENTERPRISE_NAV_ITEMS;
 
-    const role = (user.role || '').toLowerCase();
+    const role = (user?.role || '').toLowerCase();
+    const isEmployee = role === 'employee' || role === 'worker';
+    const isManager = role === 'manager';
+    const userDashboardPath = isEmployee
+      ? '/worker/dashboard'
+      : isManager
+        ? '/manager/dashboard'
+        : '/dashboard';
+
+    const baseNavItems = ENTERPRISE_NAV_ITEMS.map((item) => {
+      if (item.id === 'dashboard') {
+        return { ...item, path: userDashboardPath };
+      }
+      return item;
+    });
+
+    if (!user) return baseNavItems;
+
     const isSuper = role === 'super_admin' || role === 'super admin' || (user.profileType || '').toLowerCase().includes('super admin');
     const isAdmin = role === 'admin' || Boolean(user.isAdmin) || (user.profileType || '').toLowerCase().includes('admin');
 
     if (isSuper || isAdmin) {
-      return ENTERPRISE_NAV_ITEMS;
+      return baseNavItems;
     }
 
     const dept = (user.department || '').toLowerCase();
@@ -246,7 +262,7 @@ export function EnterpriseNavbar() {
     const isSales = dept === 'sales' || mgrType.includes('sales') || empType.includes('sales') || desig.includes('sales') || pos === 'cso' || name.includes('shibil') || name.includes('shaheer') || name.includes('adhil');
     const isPurchase = dept === 'purchase' || mgrType.includes('purchase') || empType.includes('purchase') || desig.includes('purchase') || pos === 'cpo' || name.includes('rashid') || name.includes('faisal');
 
-    return ENTERPRISE_NAV_ITEMS.filter((item) => {
+    return baseNavItems.filter((item) => {
       // Sales personnel do not have Purchase access
       if (isSales && item.id === 'purchase') return false;
 
@@ -334,7 +350,8 @@ export function EnterpriseNavbar() {
             const isMenuOpen = activeMenu === item.id;
             const isRouteActive =
               item.path === pathname ||
-              (item.id !== 'dashboard' && pathname.startsWith(`/${item.id}`));
+              (item.id !== 'dashboard' && pathname.startsWith(`/${item.id}`)) ||
+              (item.id === 'dashboard' && (pathname === '/dashboard' || pathname === '/manager/dashboard' || pathname === '/worker/dashboard' || pathname === '/employee/dashboard'));
             const isHighlighted = isMenuOpen || isRouteActive;
 
             // Find active child matching current route / tab if item is active
@@ -517,7 +534,8 @@ export function EnterpriseNavbar() {
                 const isMenuOpen = activeMenu === item.id;
                 const isRouteActive =
                   item.path === pathname ||
-                  (item.id !== 'dashboard' && pathname.startsWith(`/${item.id}`));
+                  (item.id !== 'dashboard' && pathname.startsWith(`/${item.id}`)) ||
+                  (item.id === 'dashboard' && (pathname === '/dashboard' || pathname === '/manager/dashboard' || pathname === '/worker/dashboard' || pathname === '/employee/dashboard'));
 
                 const activeChild = (() => {
                   if (!isRouteActive || !item.children || item.children.length === 0) return null;

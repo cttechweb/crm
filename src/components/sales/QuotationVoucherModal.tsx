@@ -201,25 +201,11 @@ export function QuotationVoucherModal({
               {/* Left: Company Logo & Details */}
               <div className="col-span-5 space-y-1">
                 <div className="flex items-center gap-2 mb-1.5">
-                  <div className="w-10 h-10 flex items-center justify-center shrink-0">
-                    <svg viewBox="0 0 80 80" className="w-10 h-10" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M60 14 A32 32 0 0 0 18 40" fill="none" stroke="#00AEEF" strokeWidth="6" strokeLinecap="round" />
-                      <path d="M54 21 A24 24 0 0 0 24 40" fill="none" stroke="#00AEEF" strokeWidth="5.5" strokeLinecap="round" />
-                      <path d="M48 28 A16 16 0 0 0 30 40" fill="none" stroke="#00AEEF" strokeWidth="5" strokeLinecap="round" />
-                      <path d="M18 40 A32 32 0 0 0 60 66" fill="none" stroke="#3D405B" strokeWidth="6" strokeLinecap="round" />
-                      <path d="M24 40 A24 24 0 0 0 54 59" fill="none" stroke="#3D405B" strokeWidth="5.5" strokeLinecap="round" />
-                      <path d="M30 40 A16 16 0 0 0 48 52" fill="none" stroke="#3D405B" strokeWidth="5" strokeLinecap="round" />
-                    </svg>
-                  </div>
-                  <div>
-                    <div className="flex items-baseline gap-1 leading-none">
-                      <span className="font-black text-[18px] text-[#00AEEF] tracking-tight">COOL</span>
-                      <span className="font-bold text-[13px] text-[#3D405B] tracking-wider uppercase">TECHNOLOGIES</span>
-                    </div>
-                    <div className="text-[8px] text-slate-400 italic tracking-widest uppercase font-medium mt-0.5">
-                      the science of cooling
-                    </div>
-                  </div>
+                  <img
+                    src="/cool-tech-official-logo.png"
+                    alt="Cool Technologies - the science of cooling"
+                    className="h-12 w-auto object-contain select-none"
+                  />
                 </div>
                 <p className="font-bold text-[11px] text-slate-900 uppercase">COOL TECHNOLOGIES</p>
                 <p className="text-[10px] text-slate-600 leading-snug">

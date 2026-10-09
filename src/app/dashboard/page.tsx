@@ -54,12 +54,26 @@ export default function DashboardPage() {
   const [repFilter, setRepFilter] = useState('all');
   const [allRegisteredUsers, setAllRegisteredUsers] = useState<Array<{ id: string; name: string; role?: string; department?: string }>>([]);
 
+  const [isRedirecting, setIsRedirecting] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const user = authMockService.getCurrentUser();
+      const role = (user?.role || '').toLowerCase();
+      return role === 'manager' || role === 'employee' || role === 'worker';
+    }
+    return false;
+  });
+
   React.useEffect(() => {
     const user = authMockService.getCurrentUser();
-    if (user?.role === 'manager') {
+    const role = (user?.role || '').toLowerCase();
+    if (role === 'manager') {
+      setIsRedirecting(true);
       router.replace('/manager/dashboard');
-    } else if (user?.role === 'employee' || user?.role === 'worker') {
+    } else if (role === 'employee' || role === 'worker') {
+      setIsRedirecting(true);
       router.replace('/worker/dashboard');
+    } else {
+      setIsRedirecting(false);
     }
   }, [router]);
 
@@ -364,6 +378,17 @@ export default function DashboardPage() {
       status: currentMonthRevenue >= liveTarget && currentMonthRevenue > 0 ? 'Achieved' : currentMonthRevenue > 0 ? 'In Progress' : 'No Data',
     },
   ];
+
+  if (isRedirecting) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center">
+        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <span>Redirecting to your dashboard...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 pb-12 w-full">
