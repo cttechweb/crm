@@ -274,4 +274,22 @@ describe('cool-tech-crm-api Authentication Test Suite', () => {
     const res = await app.request('/api/products', { method: 'GET' }, { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID });
     assert.equal(res.status, 401);
   });
+
+  // 11. CORS Preflight for Vercel Deployments
+  it('11. CORS preflight OPTIONS request from crm-*.vercel.app should return 204 with Access-Control-Allow-Origin', async () => {
+    const res = await app.request(
+      '/api/products',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://crm-g5ad.vercel.app',
+          'Access-Control-Request-Method': 'GET',
+          'Access-Control-Request-Headers': 'authorization',
+        },
+      },
+      { DB: createMockD1Database([]), FIREBASE_PROJECT_ID: PROJECT_ID }
+    );
+    assert.equal(res.status, 204);
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://crm-g5ad.vercel.app');
+  });
 });

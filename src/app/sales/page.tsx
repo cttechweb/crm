@@ -92,6 +92,8 @@ import { CezconQuotationModule } from '@/components/sales/CezconQuotationModule'
 import { CezconUploadOpportunityModule } from '@/components/sales/CezconUploadOpportunityModule';
 import { CezconDateInput } from '@/components/ui/CezconDateInput';
 import { cn } from '@/lib/utils';
+import { getLiveProducts } from '@/services/productApiService';
+import { ProductSettingItem } from '@/types/settings';
 
 function SalesPipelineInner() {
   const searchParams = useSearchParams();
@@ -1010,6 +1012,21 @@ function SalesPipelineInner() {
   ]);
   const [showAllAdditionalDesc, setShowAllAdditionalDesc] = useState(false);
 
+  // Live CRM & E-Commerce Products Catalog State
+  const [catalogProducts, setCatalogProducts] = useState<ProductSettingItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cezcon_products_master_live');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [activeProductDropdownRowId, setActiveProductDropdownRowId] = useState<string | null>(null);
+
   const [selectedTermsCondition, setSelectedTermsCondition] = useState('');
   const [termsAndConditionsText, setTermsAndConditionsText] = useState('');
   const [enquiryDiscountPercent, setEnquiryDiscountPercent] = useState<number | string>(0);
@@ -1207,6 +1224,78 @@ function SalesPipelineInner() {
       setOppFormData((prev) => ({ ...prev, amount: newSum > 0 ? String(newSum) : prev.amount }));
       return updatedItems;
     });
+  };
+
+  // Live E-Commerce & CRM Products Catalog Sync
+  useEffect(() => {
+    // 1. Initial live fetch from backend
+    getLiveProducts({ limit: 1000 })
+      .then((res) => {
+        if (res.success && Array.isArray(res.products)) {
+          setCatalogProducts(res.products);
+          try {
+            localStorage.setItem('cezcon_products_master_live', JSON.stringify(res.products));
+          } catch (e) {}
+        }
+      })
+      .catch((err) => {
+        console.warn('[Sales] Could not fetch live products:', err);
+      });
+
+    // 2. Listen to crm_products_updated event (e.g. when Products tab refreshes)
+    const handleProductsUpdated = () => {
+      try {
+        const saved = localStorage.getItem('cezcon_products_master_live');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) setCatalogProducts(parsed);
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener('crm_products_updated', handleProductsUpdated);
+    return () => {
+      window.removeEventListener('crm_products_updated', handleProductsUpdated);
+    };
+  }, []);
+
+  const handleSelectProductForEnquiryItem = (itemId: string, product: ProductSettingItem) => {
+    const sellingPrice =
+      typeof product.sellingPrice === 'number'
+        ? product.sellingPrice
+        : typeof (product as any).price === 'number'
+        ? (product as any).price
+        : 0;
+
+    const code = product.code || product.sku || String(product.id);
+    const unit = product.unit || 'Pcs';
+    const brand = product.brand || '';
+    const name = product.name || '';
+    const additionalDesc = (product as any).description || (product as any).specs || '';
+
+    setEnquiryItems((prevItems) => {
+      const updatedItems = prevItems.map((item) => {
+        if (item.id !== itemId) return item;
+        const qtyNum = Number(item.qty) || 1;
+        const priceTotal = qtyNum * sellingPrice;
+        return {
+          ...item,
+          description: name,
+          code,
+          unit,
+          brand,
+          price: sellingPrice > 0 ? sellingPrice : item.price,
+          priceTotal,
+          additionalDescription: item.additionalDescription || (typeof additionalDesc === 'string' ? additionalDesc : ''),
+        };
+      });
+
+      const newSum = updatedItems.reduce((sum, it) => sum + (Number(it.priceTotal) || 0), 0);
+      setOppFormData((prev) => ({ ...prev, amount: newSum > 0 ? String(newSum) : prev.amount }));
+      return updatedItems;
+    });
+
+    setActiveProductDropdownRowId(null);
   };
 
   // Derived Totals for Enquiry Form (Full Live Reactivity)
@@ -3515,13 +3604,19 @@ function SalesPipelineInner() {
                         />
                       </button>
                       <span className="text-[13px] font-bold text-[#2563EB]">Enquiry Form</span>
+                      {catalogProducts.length > 0 && (
+                        <span className="inline-flex items-center gap-1.5 ml-2 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-medium text-emerald-700">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          <span>{catalogProducts.length} CRM Products Connected</span>
+                        </span>
+                      )}
                     </div>
 
                     {/* Expandable Enquiry Form UI */}
                     {oppFormData.enquiryForm && (
                       <div className="mt-3 space-y-4 border-t border-slate-200 pt-3">
                         {/* 1. Items Table (Exact Cezcon UI 2) */}
-                        <div className="overflow-x-auto border border-slate-200 rounded bg-white">
+                        <div className="overflow-x-auto border border-slate-200 rounded bg-white min-h-[220px]">
                           <table className="w-full text-left border-collapse text-[11px]">
                             <thead>
                               <tr className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-semibold">
@@ -3556,14 +3651,96 @@ function SalesPipelineInner() {
                               {enquiryItems.map((item) => (
                                 <React.Fragment key={item.id}>
                                   <tr className="border-b border-slate-100 hover:bg-slate-50/50">
-                                    <td className="p-2">
-                                      <div className="space-y-1.5">
-                                        <input
-                                          type="text"
-                                          value={item.description}
-                                          onChange={(e) => handleUpdateEnquiryItem(item.id, 'description', e.target.value)}
-                                          className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                                        />
+                                    <td className="p-2 relative">
+                                      <div className="space-y-1.5 relative">
+                                        <div className="relative">
+                                          <input
+                                            type="text"
+                                            placeholder="Type to search or select product..."
+                                            value={item.description}
+                                            onFocus={() => setActiveProductDropdownRowId(item.id)}
+                                            onChange={(e) => {
+                                              handleUpdateEnquiryItem(item.id, 'description', e.target.value);
+                                              setActiveProductDropdownRowId(item.id);
+                                            }}
+                                            className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500 pr-7"
+                                          />
+                                          {catalogProducts.length > 0 && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setActiveProductDropdownRowId((cur) => (cur === item.id ? null : item.id))
+                                              }
+                                              className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
+                                              title="Select from CRM product catalog"
+                                            >
+                                              <ChevronDown className="w-3.5 h-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        {/* Searchable Product Dropdown */}
+                                        {activeProductDropdownRowId === item.id && catalogProducts.length > 0 && (
+                                          <div className="absolute left-0 top-full mt-1 w-full min-w-[340px] max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-md shadow-xl z-50 py-1 text-xs">
+                                            <div className="px-2.5 py-1 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[10px] font-bold text-slate-600">
+                                              <span className="flex items-center gap-1">
+                                                <Package className="w-3 h-3 text-blue-500" />
+                                                <span>SELECT PRODUCT ({catalogProducts.length} IN CATALOG)</span>
+                                              </span>
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setActiveProductDropdownRowId(null);
+                                                }}
+                                                className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                                              >
+                                                <X className="w-3 h-3" />
+                                              </button>
+                                            </div>
+                                            {catalogProducts
+                                              .filter((p) => {
+                                                const q = (item.description || '').toLowerCase().trim();
+                                                if (!q) return true;
+                                                const nameMatch = (p.name || '').toLowerCase().includes(q);
+                                                const codeMatch = (p.code || p.sku || String(p.id)).toLowerCase().includes(q);
+                                                const brandMatch = (p.brand || '').toLowerCase().includes(q);
+                                                return nameMatch || codeMatch || brandMatch;
+                                              })
+                                              .map((p) => {
+                                                const price = typeof p.sellingPrice === 'number' ? p.sellingPrice : (p as any).price || 0;
+                                                const code = p.code || p.sku || String(p.id);
+                                                return (
+                                                  <div
+                                                    key={p.id}
+                                                    onMouseDown={(e) => {
+                                                      e.preventDefault();
+                                                      handleSelectProductForEnquiryItem(item.id, p);
+                                                    }}
+                                                    className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-slate-50 last:border-b-0 transition-colors flex items-center justify-between gap-2"
+                                                  >
+                                                    <div className="flex-1 min-w-0">
+                                                      <div className="font-semibold text-slate-800 text-[11px] truncate flex items-center gap-1.5">
+                                                        <Package className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                                        <span>{p.name}</span>
+                                                      </div>
+                                                      <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
+                                                        <span className="font-mono bg-slate-100 px-1 py-0.2 rounded text-slate-600">{code}</span>
+                                                        {p.brand && <span>• {p.brand}</span>}
+                                                        {p.unit && <span>• {p.unit}</span>}
+                                                      </div>
+                                                    </div>
+                                                    <div className="text-right shrink-0">
+                                                      <div className="font-bold text-emerald-700 text-[11px]">
+                                                        AED {Number(price).toFixed(2)}
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                          </div>
+                                        )}
+
                                         {item.showAdditionalDesc && (
                                           <textarea
                                             rows={2}
@@ -3578,9 +3755,22 @@ function SalesPipelineInner() {
                                     <td className="p-2">
                                       <input
                                         type="text"
+                                        placeholder="Code"
                                         value={item.code}
-                                        onChange={(e) => handleUpdateEnquiryItem(item.id, 'code', e.target.value)}
-                                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          handleUpdateEnquiryItem(item.id, 'code', val);
+                                          const match = catalogProducts.find(
+                                            (p) =>
+                                              (p.code && p.code.toLowerCase() === val.trim().toLowerCase()) ||
+                                              (p.sku && p.sku.toLowerCase() === val.trim().toLowerCase()) ||
+                                              String(p.id).toLowerCase() === val.trim().toLowerCase()
+                                          );
+                                          if (match) {
+                                            handleSelectProductForEnquiryItem(item.id, match);
+                                          }
+                                        }}
+                                        className="w-full bg-white border border-slate-300 rounded px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-mono"
                                       />
                                     </td>
                                     <td className="p-2">

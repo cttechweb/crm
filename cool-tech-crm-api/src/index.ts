@@ -25,7 +25,10 @@ app.use('*', async (c, next) => {
       }
 
       // Allow only this project's Vercel preview/production deployments (scoped, not wildcard)
-      if (requestOrigin.startsWith('https://cool-tech-crm') && requestOrigin.endsWith('.vercel.app')) {
+      if (
+        (requestOrigin.startsWith('https://cool-tech-crm') || requestOrigin.startsWith('https://crm-')) &&
+        requestOrigin.endsWith('.vercel.app')
+      ) {
         return requestOrigin;
       }
 
