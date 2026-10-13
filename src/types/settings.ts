@@ -278,6 +278,7 @@ export interface ProductSettingItem {
   id: number | string;
   sku: string;
   code?: string;
+  slug?: string;
   serialNo?: string;
   name: string;
   image?: string;
@@ -294,7 +295,16 @@ export interface ProductSettingItem {
   store?: string;
   currentStock?: number;
   minStock?: number;
+  inStock?: boolean;
   additionalDescription?: string;
+  modelId?: string;
+  badge?: string;
+  isFeatured?: boolean;
+  specifications?: Record<string, unknown>;
+  features?: string[];
+  tags?: string[];
+  documents?: unknown[];
+  minOrderQty?: number;
   createdBy?: string;
   createdByRole?: string;
   createdById?: string;

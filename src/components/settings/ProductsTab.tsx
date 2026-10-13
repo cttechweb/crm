@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { getLiveProducts } from '@/services/productApiService';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -23,6 +24,8 @@ import {
   Image as ImageIcon,
   CheckCircle2,
   XCircle,
+  Loader2,
+  AlertCircle,
   QrCode,
   FileSpreadsheet,
   Printer,
@@ -97,18 +100,36 @@ export function ProductsTab() {
   const [products, setProducts] = useState<ProductSettingItem[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const isPurged = localStorage.getItem('cezcon_products_clean_purged_v5');
+        const isPurged = localStorage.getItem('cezcon_products_clean_purged_v6');
         if (!isPurged) {
+          localStorage.removeItem('cezcon_products_clean_purged_v5');
           localStorage.removeItem('cezcon_products_master_v4');
           localStorage.removeItem('cezcon_products_master_v3');
           localStorage.removeItem('cezcon_products_master_live');
-          localStorage.setItem('cezcon_products_clean_purged_v5', 'true');
+          localStorage.setItem('cezcon_products_clean_purged_v6', 'true');
           return [];
         }
         const saved = localStorage.getItem('cezcon_products_master_live');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed)) {
+            return parsed.map((item: any) => {
+              const sellingPrice =
+                typeof item.sellingPrice === 'number'
+                  ? item.sellingPrice
+                  : typeof item.price === 'number'
+                  ? item.price
+                  : 0;
+              const purchaseRate =
+                typeof item.purchaseRate === 'number' &&
+                item.purchaseRate > 0 &&
+                item.purchaseRate !== sellingPrice &&
+                item.purchaseRate !== item.price
+                  ? item.purchaseRate
+                  : undefined;
+              return { ...item, sellingPrice, purchaseRate } as ProductSettingItem;
+            });
+          }
         }
       } catch (e) {
         console.error('Failed to load products master', e);
@@ -132,6 +153,78 @@ export function ProductsTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Live E-Commerce Catalog State
+  const [isLiveLoading, setIsLiveLoading] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const isFetchingRef = useRef(false);
+
+  // Live e-commerce product retrieval
+  const fetchLiveProducts = useCallback(async (query = searchTerm, cat = filterCategory, br = filterBrand) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    setIsLiveLoading(true);
+    setLiveError(null);
+    try {
+      const res = await getLiveProducts({
+        q: query.trim() || undefined,
+        category: cat !== 'All' && cat !== 'Select' ? cat : undefined,
+        brand: br !== 'All' && br !== 'Select' ? br : undefined,
+        limit: 1000,
+      });
+      if (res.success && Array.isArray(res.products)) {
+        setProducts(res.products);
+        try {
+          localStorage.setItem('cezcon_products_master_live', JSON.stringify(res.products));
+          window.dispatchEvent(new Event('crm_products_updated'));
+        } catch (e) {}
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unable to connect to live e-commerce product service';
+      setLiveError(msg);
+    } finally {
+      setIsLiveLoading(false);
+      isFetchingRef.current = false;
+    }
+  }, [searchTerm, filterCategory, filterBrand]);
+
+  // Debounced effect for live e-commerce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchLiveProducts(searchTerm, filterCategory, filterBrand);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchTerm, filterCategory, filterBrand, fetchLiveProducts]);
+
+  // Periodic automatic refresh (45s) & visibility/focus sync
+  useEffect(() => {
+    const handleVisibilitySync = () => {
+      if (document.visibilityState === 'visible' && !isFormViewOpen && activeSubTab === 'products') {
+        fetchLiveProducts(searchTerm, filterCategory, filterBrand);
+      }
+    };
+
+    const handleWindowFocus = () => {
+      if (document.visibilityState === 'visible' && !isFormViewOpen && activeSubTab === 'products') {
+        fetchLiveProducts(searchTerm, filterCategory, filterBrand);
+      }
+    };
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !isFormViewOpen && activeSubTab === 'products') {
+        fetchLiveProducts(searchTerm, filterCategory, filterBrand);
+      }
+    }, 45000);
+
+    document.addEventListener('visibilitychange', handleVisibilitySync);
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilitySync);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [fetchLiveProducts, searchTerm, filterCategory, filterBrand, isFormViewOpen, activeSubTab]);
 
   // Action / Dropdown state
   const [openDropdownId, setOpenDropdownId] = useState<number | string | null>(null);
@@ -214,6 +307,27 @@ export function ProductsTab() {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [categoryForm, setCategoryForm] = useState({ name: '', code: '', active: true });
 
+  // Dynamically include any live categories/brands returned from e-commerce catalog
+  const displayCategories = React.useMemo(() => {
+    const names = new Set(categories.map((c) => c.name));
+    products.forEach((p) => {
+      if (p.category && !names.has(p.category)) {
+        names.add(p.category);
+      }
+    });
+    return Array.from(names);
+  }, [categories, products]);
+
+  const displayBrands = React.useMemo(() => {
+    const names = new Set(brands.map((b) => b.name));
+    products.forEach((p) => {
+      if (p.brand && !names.has(p.brand)) {
+        names.add(p.brand);
+      }
+    });
+    return Array.from(names);
+  }, [brands, products]);
+
   // Notifications
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -238,18 +352,38 @@ export function ProductsTab() {
   // Live Cross-Tab & Context Sync Listener
   useEffect(() => {
     const handleLiveSync = () => {
+      if (isFormViewOpen) return;
       try {
         const saved = localStorage.getItem('cezcon_products_master_live');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) setProducts(parsed);
+          if (Array.isArray(parsed)) {
+            setProducts(
+              parsed.map((item: any) => {
+                const sellingPrice =
+                  typeof item.sellingPrice === 'number'
+                    ? item.sellingPrice
+                    : typeof item.price === 'number'
+                    ? item.price
+                    : 0;
+                const purchaseRate =
+                  typeof item.purchaseRate === 'number' &&
+                  item.purchaseRate > 0 &&
+                  item.purchaseRate !== sellingPrice &&
+                  item.purchaseRate !== item.price
+                    ? item.purchaseRate
+                    : undefined;
+                return { ...item, sellingPrice, purchaseRate } as ProductSettingItem;
+              })
+            );
+          }
         }
       } catch (e) {}
     };
 
     window.addEventListener('crm_products_updated', handleLiveSync);
     return () => window.removeEventListener('crm_products_updated', handleLiveSync);
-  }, []);
+  }, [isFormViewOpen]);
 
   // LocalStorage Persist & Live Broadcast
   const saveProducts = (updated: ProductSettingItem[]) => {
@@ -325,7 +459,13 @@ export function ProductsTab() {
       unit: item.unit || 'Pcs',
       brand: item.brand || 'MIDEA',
       category: item.category || 'CASSETTE AC',
-      purchaseRate: String(item.purchaseRate || item.basePrice || ''),
+      purchaseRate:
+        typeof item.purchaseRate === 'number' &&
+        item.purchaseRate > 0 &&
+        item.purchaseRate !== item.sellingPrice &&
+        item.purchaseRate !== (item as any).price
+          ? String(item.purchaseRate)
+          : '',
       sellingPrice: String(item.sellingPrice || ''),
       store: item.store || 'Main Store',
       currentStock: String(item.currentStock || ''),
@@ -360,9 +500,9 @@ export function ProductsTab() {
               unit: formData.unit !== 'Select Unit' ? formData.unit : 'Pcs',
               brand: formData.brand !== 'Select Brand' ? formData.brand : 'MIDEA',
               category: formData.category !== 'Select Category' ? formData.category : 'CASSETTE AC',
-              purchaseRate: Number(formData.purchaseRate) || 0,
+              purchaseRate: Number(formData.purchaseRate) > 0 ? Number(formData.purchaseRate) : undefined,
               sellingPrice: Number(formData.sellingPrice) || 0,
-              basePrice: Number(formData.purchaseRate) || 0,
+              basePrice: Number(formData.sellingPrice) || 0,
               store: formData.store !== 'Select Store' ? formData.store : 'Main Store',
               currentStock: Number(formData.currentStock) || 0,
               minStock: Number(formData.minStock) || 0,
@@ -384,9 +524,9 @@ export function ProductsTab() {
         unit: formData.unit !== 'Select Unit' ? formData.unit : 'Pcs',
         brand: formData.brand !== 'Select Brand' ? formData.brand : 'MIDEA',
         category: formData.category !== 'Select Category' ? formData.category : 'CASSETTE AC',
-        purchaseRate: Number(formData.purchaseRate) || 0,
+        purchaseRate: Number(formData.purchaseRate) > 0 ? Number(formData.purchaseRate) : undefined,
         sellingPrice: Number(formData.sellingPrice) || 0,
-        basePrice: Number(formData.purchaseRate) || 0,
+        basePrice: Number(formData.sellingPrice) || 0,
         store: formData.store !== 'Select Store' ? formData.store : 'Main Store',
         currentStock: Number(formData.currentStock) || 0,
         minStock: Number(formData.minStock) || 0,
@@ -434,11 +574,15 @@ export function ProductsTab() {
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       return (
+        String(p.id).toLowerCase().includes(q) ||
         p.name.toLowerCase().includes(q) ||
-        (p.code && p.code.toLowerCase().includes(q)) ||
-        (p.sku && p.sku.toLowerCase().includes(q)) ||
-        (p.brand && p.brand.toLowerCase().includes(q)) ||
-        (p.category && p.category.toLowerCase().includes(q))
+        Boolean(p.modelId && p.modelId.toLowerCase().includes(q)) ||
+        Boolean(p.serialNo && p.serialNo.toLowerCase().includes(q)) ||
+        Boolean(p.code && p.code.toLowerCase().includes(q)) ||
+        Boolean(p.sku && p.sku.toLowerCase().includes(q)) ||
+        Boolean(p.brand && p.brand.toLowerCase().includes(q)) ||
+        Boolean(p.category && p.category.toLowerCase().includes(q)) ||
+        Boolean(p.badge && p.badge.toLowerCase().includes(q))
       );
     }
     return true;
@@ -972,10 +1116,10 @@ export function ProductsTab() {
                 }}
                 className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
               >
-                <option value="All">Select</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.name}>
-                    {c.name}
+                <option value="All">All Categories</option>
+                {displayCategories.map((catName) => (
+                  <option key={catName} value={catName}>
+                    {catName}
                   </option>
                 ))}
               </select>
@@ -991,10 +1135,10 @@ export function ProductsTab() {
                 }}
                 className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
               >
-                <option value="All">Select</option>
-                {brands.map((b) => (
-                  <option key={b.id} value={b.name}>
-                    {b.name}
+                <option value="All">All Brands</option>
+                {displayBrands.map((brandName) => (
+                  <option key={brandName} value={brandName}>
+                    {brandName}
                   </option>
                 ))}
               </select>
@@ -1071,7 +1215,7 @@ export function ProductsTab() {
             </div>
           </div>
 
-          {/* Table Controls (Shows Rows + Search) */}
+          {/* Table Controls (Shows Rows + Search + Live E-Commerce Badge) */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-2.5 border-b border-slate-200 text-xs bg-white">
             <div className="flex items-center gap-2">
               <span className="text-slate-600">Shows</span>
@@ -1089,22 +1233,61 @@ export function ProductsTab() {
                 <option value={100}>100</option>
               </select>
               <span className="text-slate-600">Rows</span>
+
+              {/* Live E-Commerce Integration Badge */}
+              <div className="hidden sm:inline-flex items-center gap-1.5 ml-3 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-medium text-emerald-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Live E-Commerce Catalog</span>
+              </div>
             </div>
 
-            <div className="relative w-full sm:w-64">
-              <input
-                type="text"
-                placeholder="Search"
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full pl-3 pr-8 py-1 text-xs rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-              />
-              <Search className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative w-full sm:w-72">
+                <input
+                  type="text"
+                  placeholder="Search by product ID or name..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full pl-3 pr-8 py-1 text-xs rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                />
+                {isLiveLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-blue-500 animate-spin" />
+                ) : (
+                  <Search className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fetchLiveProducts(searchTerm, filterCategory, filterBrand)}
+                disabled={isLiveLoading}
+                title="Refresh live catalog data"
+                className="p-1 border border-slate-300 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${isLiveLoading ? 'animate-spin' : ''}`} />
+              </button>
             </div>
           </div>
+
+          {/* Live Catalog Error Banner */}
+          {liveError && (
+            <div className="px-4 py-2.5 bg-rose-50 border-b border-rose-200 text-xs text-rose-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                <span>{liveError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchLiveProducts(searchTerm, filterCategory, filterBrand)}
+                className="text-xs font-semibold underline hover:no-underline text-rose-800 cursor-pointer"
+              >
+                Retry
+              </button>
+            </div>
+          )}
 
           {/* Table */}
           <div className="overflow-x-auto min-h-[350px]">
@@ -1112,7 +1295,7 @@ export function ProductsTab() {
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-xs">
                 <tr>
                   <th className="py-2.5 px-3 w-14 text-center border-r border-slate-200">SL.No</th>
-                  <th className="py-2.5 px-3 w-20 text-center border-r border-slate-200">Serial No.</th>
+                  <th className="py-2.5 px-3 w-32 text-center border-r border-slate-200">Product ID / Model</th>
                   <th className="py-2.5 px-4 w-44 text-center border-r border-slate-200">Code</th>
                   <th className="py-2.5 px-4 min-w-[200px] border-r border-slate-200">Name</th>
                   <th className="py-2.5 px-3 w-16 text-center border-r border-slate-200">Image</th>
@@ -1122,17 +1305,28 @@ export function ProductsTab() {
                   <th className="py-2.5 px-3 w-20 border-r border-slate-200">Type ⓘ</th>
                   <th className="py-2.5 px-4 w-28 text-right border-r border-slate-200">Purchase Rate</th>
                   <th className="py-2.5 px-4 w-24 text-right border-r border-slate-200">Selling Price</th>
+                  <th className="py-2.5 px-3 w-24 text-center border-r border-slate-200">Stock</th>
                   <th className="py-2.5 px-3 w-20 text-center border-r border-slate-200">Status</th>
                   <th className="py-2.5 px-3 w-20 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {paginatedProducts.length === 0 ? (
+                {isLiveLoading ? (
                   <tr>
-                    <td colSpan={13} className="py-12 text-center text-slate-400">
+                    <td colSpan={14} className="py-14 text-center text-slate-500">
+                      <Loader2 className="w-7 h-7 mx-auto text-blue-600 animate-spin mb-2.5" />
+                      <p className="font-bold text-slate-700 text-xs">Retrieving live e-commerce products...</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Fetching latest catalog data directly via Service Binding</p>
+                    </td>
+                  </tr>
+                ) : paginatedProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={14} className="py-12 text-center text-slate-400">
                       <Package className="w-8 h-8 mx-auto text-slate-300 mb-2" />
                       <p className="font-bold text-slate-700">No products or services found</p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Try adjusting your filters or search criteria</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {searchTerm ? `No products matched "${searchTerm}"` : 'Try adjusting your filters or search criteria'}
+                      </p>
                     </td>
                   </tr>
                 ) : (
@@ -1140,28 +1334,54 @@ export function ProductsTab() {
                     const slNo = (currentPage - 1) * rowsPerPage + index + 1;
                     const isDropdownOpen = openDropdownId === item.id;
                     const isActive = item.status !== false;
+                    const itemImage = item.thumbnailImage || item.image || (item.images && item.images[0]) || '';
 
                     return (
                       <tr key={item.id} className="hover:bg-slate-50/90 transition-colors">
                         <td className="py-3 px-3 text-center font-medium text-slate-700 border-r border-slate-200">
                           {slNo}
                         </td>
-                        <td className="py-3 px-3 text-center text-slate-500 font-mono text-[11px] border-r border-slate-200">
-                          {item.serialNo || '—'}
-                        </td>
-                        <td className="py-2 px-3 border-r border-slate-200">
-                          <BarcodeGraphic value={item.code || item.sku} />
-                        </td>
-                        <td className="py-3 px-4 font-bold text-slate-900 border-r border-slate-200">
-                          <div className="leading-snug">{item.name}</div>
-                          {item.store && (
-                            <div className="text-[10px] text-slate-400 font-normal mt-0.5">
-                              Store: {item.store}
+                        <td className="py-3 px-3 text-center text-slate-700 font-mono text-[11px] font-semibold border-r border-slate-200">
+                          <div>{item.id || '—'}</div>
+                          {(item.modelId || item.serialNo) && (
+                            <div className="text-[10px] text-blue-600 font-normal font-mono mt-0.5" title="Model / Serial Number">
+                              {item.modelId || item.serialNo}
                             </div>
                           )}
                         </td>
+                        <td className="py-2 px-3 border-r border-slate-200">
+                          <BarcodeGraphic value={String(item.code || item.sku || item.modelId || item.id)} />
+                        </td>
+                        <td className="py-3 px-4 font-bold text-slate-900 border-r border-slate-200">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="leading-snug">{item.name}</span>
+                            {item.badge && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+                                {item.badge}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400 font-normal mt-0.5 flex-wrap">
+                            {item.slug && <span className="font-mono">/{item.slug}</span>}
+                            {item.minOrderQty && item.minOrderQty > 1 ? (
+                              <span className="text-slate-500 font-medium">Min Qty: {item.minOrderQty}</span>
+                            ) : null}
+                            {item.store && <span>Store: {item.store}</span>}
+                          </div>
+                        </td>
                         <td className="py-3 px-3 text-center border-r border-slate-200">
-                          <div className="w-10 h-10 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 mx-auto">
+                          {itemImage ? (
+                            <img
+                              src={itemImage}
+                              alt={item.name}
+                              className="w-10 h-10 object-cover rounded border border-slate-200 mx-auto"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLElement).style.display = 'none';
+                                (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-10 h-10 rounded border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 mx-auto ${itemImage ? 'hidden' : ''}`}>
                             <ImageIcon className="w-4 h-4 opacity-60" />
                           </div>
                         </td>
@@ -1177,17 +1397,41 @@ export function ProductsTab() {
                         <td className="py-3 px-3 text-slate-700 text-[11px] font-medium border-r border-slate-200">
                           {item.type || 'Product'}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono font-medium text-slate-900 border-r border-slate-200">
-                          {Number(item.purchaseRate || item.basePrice || 0).toLocaleString(undefined, {
+                        <td className="py-3 px-4 text-right font-mono font-medium text-slate-700 border-r border-slate-200">
+                          {typeof item.purchaseRate === 'number' &&
+                          item.purchaseRate > 0 &&
+                          item.purchaseRate !== item.sellingPrice &&
+                          item.purchaseRate !== (item as any).price ? (
+                            Number(item.purchaseRate).toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })
+                          ) : (
+                            <span className="text-slate-400 font-sans text-xs" title="Not provided in public e-commerce catalog">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 border-r border-slate-200">
+                          {Number(item.sellingPrice || item.basePrice || 0).toLocaleString(undefined, {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono font-medium text-slate-900 border-r border-slate-200">
-                          {Number(item.sellingPrice || 0).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                        <td className="py-3 px-3 text-center border-r border-slate-200">
+                          {item.inStock !== undefined ? (
+                            item.inStock ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                                <span>In Stock</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                                <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                                <span>Out of Stock</span>
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-slate-400 text-[11px]">—</span>
+                          )}
                         </td>
                         <td className="py-3 px-3 text-center border-r border-slate-200">
                           <button
@@ -1237,7 +1481,7 @@ export function ProductsTab() {
                                   type="button"
                                   onClick={() => {
                                     setOpenDropdownId(null);
-                                    showToast(`Printed barcode label for ${item.code || item.sku}`);
+                                    showToast(`Printed barcode label for ${item.code || item.sku || item.id}`);
                                   }}
                                   className="w-full text-left px-3 py-1.5 text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
                                 >

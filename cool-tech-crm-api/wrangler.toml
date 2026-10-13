@@ -1,0 +1,17 @@
+name = "cool-tech-crm-api"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+FIREBASE_PROJECT_ID = "cool-tech-crm"
+ALLOWED_ORIGIN = "https://crm-kappa-vert.vercel.app"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cool-tech-crm-db"
+database_id = "a3791fcd-94fd-4a4b-8d36-27312842226c"
+
+[[services]]
+binding = "ECOMMERCE_SERVICE"
+service = "cooltech-api-worker"

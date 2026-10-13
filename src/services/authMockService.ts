@@ -6,6 +6,7 @@ import {
   User as FirebaseUser,
   Unsubscribe,
 } from 'firebase/auth';
+import { apiClient, ApiError } from '@/lib/apiClient';
 
 /**
  * Enterprise Authentication Service for Cool Tech CRM
@@ -72,6 +73,7 @@ export interface MockAuthUser {
   modulePermissions?: UserModulePermissions;
   actionPermissions?: UserActionPermissions;
   firebaseUid?: string;
+  isServerVerified?: boolean;
 }
 
 export const POSITION_HIERARCHY_CONFIG: Record<
@@ -1582,6 +1584,110 @@ export function resolveCrmUserByEmail(
   };
 }
 
+/**
+ * Response payload structure from CRM Cloudflare Worker GET /api/auth/me
+ */
+interface BackendUserProfileResponse {
+  success: boolean;
+  user?: {
+    id: string;
+    email: string;
+    full_name: string | null;
+    role: string;
+    position: string | null;
+    department: string | null;
+    reports_to: string | null;
+    is_active: number | boolean;
+  };
+  code?: string;
+  message?: string;
+}
+
+/**
+ * Attempts a non-blocking identity verification with the CRM Cloudflare Worker.
+ * When real Firebase authentication succeeds, this retrieves the verified staff profile from D1.
+ * If the worker is unreachable, returns 404 (not yet deployed), or 403 (empty D1 table),
+ * it logs a clean diagnostic message without exposing credentials, and returns null.
+ */
+async function fetchBackendUserProfile(
+  fbUser: FirebaseUser
+): Promise<{ user: MockAuthUser; redirectUrl: string } | null> {
+  try {
+    const idToken = await fbUser.getIdToken();
+    if (!idToken) {
+      console.warn('[CRM Auth Handshake] Unable to retrieve Firebase ID token. Proceeding with local profile fallback.');
+      return null;
+    }
+
+    const response = await apiClient.get<BackendUserProfileResponse>('/api/auth/me', {
+      token: idToken,
+      requireAuth: true,
+      timeoutMs: 8000,
+    });
+
+    if (response && response.success && response.user) {
+      const u = response.user;
+      const rawRole = String(u.role || '').toUpperCase();
+      const normalizedRole: UserRole =
+        rawRole === 'SUPER_ADMIN' ? 'super_admin' :
+        rawRole === 'ADMIN' ? 'admin' :
+        rawRole === 'MANAGER' ? 'manager' : 'employee';
+
+      const profileType =
+        normalizedRole === 'super_admin' ? 'Super Admin' :
+        normalizedRole === 'admin' ? 'Admin' :
+        normalizedRole === 'manager' ? 'Manager' : 'Employee';
+
+      const perms = resolveDefaultPermissions(profileType, normalizedRole);
+
+      const verifiedUser: MockAuthUser = {
+        id: u.id,
+        name: u.full_name || fbUser.displayName || u.email.split('@')[0],
+        email: u.email,
+        role: normalizedRole,
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        designation: u.position || (normalizedRole === 'super_admin' ? 'CEO' : normalizedRole === 'admin' ? 'COO' : profileType),
+        position: u.position || undefined,
+        department: u.department || undefined,
+        reportsTo: u.reports_to || undefined,
+        profileType,
+        dataScope: perms.dataScope,
+        modulePermissions: perms.modulePermissions,
+        actionPermissions: perms.actionPermissions,
+        firebaseUid: fbUser.uid,
+        isServerVerified: true,
+      };
+
+      const redirectUrl =
+        normalizedRole === 'super_admin' ? '/dashboard' :
+        normalizedRole === 'admin' ? '/admin/dashboard' :
+        normalizedRole === 'manager' ? '/manager/dashboard' : '/worker/dashboard';
+
+      console.info('[CRM Auth Handshake] Server-verified profile received from CRM backend.');
+      return { user: verifiedUser, redirectUrl };
+    }
+
+    return null;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) {
+      if (err.status === 404) {
+        console.warn('[CRM Auth Handshake] Backend /api/auth/me returned 404 (Worker route not yet deployed). Using local profile fallback.');
+      } else if (err.status === 403) {
+        const data = err.data as Record<string, unknown> | null;
+        const code = (typeof data?.code === 'string' && data.code) ? data.code : 'PROFILE_NOT_FOUND';
+        console.warn(`[CRM Auth Handshake] Backend returned 403 (${code}). User profile not registered or inactive in D1. Using local profile fallback.`);
+      } else {
+        console.warn(`[CRM Auth Handshake] Backend returned HTTP ${err.status}. Using local profile fallback.`);
+      }
+    } else {
+      const msg = err instanceof Error ? err.message : 'Network error';
+      console.warn(`[CRM Auth Handshake] Connection to CRM backend failed (${msg}). Using local profile fallback.`);
+    }
+    return null;
+  }
+}
+
 export const authMockService = {
   /**
    * Authenticates user via Firebase Authentication signInWithEmailAndPassword
@@ -1617,19 +1723,32 @@ export const authMockService = {
       }
 
       // Try background Firebase Auth sign-in if credentials match Firebase account
+      let serverUserResult: { user: MockAuthUser; redirectUrl: string } | null = null;
+      let realFbUid: string | null = null;
       try {
-        await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
+        const cred = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
+        if (cred.user) {
+          realFbUid = cred.user.uid;
+          serverUserResult = await fetchBackendUserProfile(cred.user);
+        }
       } catch (fbErr) {
         // Non-blocking for verified system credentials
       }
+
+      const isServerVerified = Boolean(serverUserResult);
+      const finalUser: MockAuthUser = serverUserResult
+        ? serverUserResult.user
+        : { ...resolved.user, isServerVerified: false };
+      const finalRedirectUrl = serverUserResult?.redirectUrl || resolved.redirectUrl || staticMatch.redirectUrl;
 
       if (typeof window !== 'undefined') {
         try {
           const sessionData = {
             authenticated: true,
-            user: resolved.user,
-            role: resolved.user.role,
-            firebaseUid: `mock_${resolved.user.id}`,
+            user: finalUser,
+            role: finalUser.role,
+            firebaseUid: realFbUid || `mock_${resolved.user.id}`,
+            isServerVerified,
             rememberMe,
             timestamp: Date.now(),
           };
@@ -1641,8 +1760,8 @@ export const authMockService = {
 
       return {
         success: true,
-        user: resolved.user,
-        redirectUrl: resolved.redirectUrl || staticMatch.redirectUrl,
+        user: finalUser,
+        redirectUrl: finalRedirectUrl,
       };
     }
 
@@ -1676,16 +1795,17 @@ export const authMockService = {
                 const resolved = resolveCrmUserByEmail(matchedUser.email || trimmedEmail);
                 const sessionData = {
                   authenticated: true,
-                  user: resolved.user,
+                  user: { ...resolved.user, isServerVerified: false },
                   role: resolved.user.role,
                   firebaseUid: `crm_${resolved.user.id}`,
+                  isServerVerified: false,
                   rememberMe,
                   timestamp: Date.now(),
                 };
                 localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
                 return {
                   success: true,
-                  user: resolved.user,
+                  user: { ...resolved.user, isServerVerified: false },
                   redirectUrl: resolved.redirectUrl,
                 };
               }
@@ -1716,16 +1836,17 @@ export const authMockService = {
                 const resolved = resolveCrmUserByEmail(matchedAdmin.email || trimmedEmail);
                 const sessionData = {
                   authenticated: true,
-                  user: resolved.user,
+                  user: { ...resolved.user, isServerVerified: false },
                   role: resolved.user.role,
                   firebaseUid: `crm_${resolved.user.id}`,
+                  isServerVerified: false,
                   rememberMe,
                   timestamp: Date.now(),
                 };
                 localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
                 return {
                   success: true,
-                  user: resolved.user,
+                  user: { ...resolved.user, isServerVerified: false },
                   redirectUrl: resolved.redirectUrl,
                 };
               }
@@ -1742,23 +1863,45 @@ export const authMockService = {
       const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
       const fbUser = userCredential.user;
 
-      const resolved = resolveCrmUserByEmail(fbUser.email || trimmedEmail, fbUser.uid);
+      // Attempt non-blocking server verification with Cloudflare Worker
+      let serverUserResult: { user: MockAuthUser; redirectUrl: string } | null = null;
+      try {
+        serverUserResult = await fetchBackendUserProfile(fbUser);
+      } catch {
+        // Safe fallback handled inside fetchBackendUserProfile
+      }
 
-      if (resolved.isInactive) {
-        await signOut(auth);
-        return {
-          success: false,
-          error: 'This account has been deactivated. Please contact your Super Admin.',
+      let finalUser: MockAuthUser;
+      let finalRedirectUrl: string;
+      const isServerVerified = Boolean(serverUserResult);
+
+      if (serverUserResult) {
+        finalUser = serverUserResult.user;
+        finalRedirectUrl = serverUserResult.redirectUrl;
+      } else {
+        const resolved = resolveCrmUserByEmail(fbUser.email || trimmedEmail, fbUser.uid);
+        if (resolved.isInactive) {
+          await signOut(auth);
+          return {
+            success: false,
+            error: 'This account has been deactivated. Please contact your Super Admin.',
+          };
+        }
+        finalUser = {
+          ...resolved.user,
+          isServerVerified: false,
         };
+        finalRedirectUrl = resolved.redirectUrl;
       }
 
       if (typeof window !== 'undefined') {
         try {
           const sessionData = {
             authenticated: true,
-            user: resolved.user,
-            role: resolved.user.role,
+            user: finalUser,
+            role: finalUser.role,
             firebaseUid: fbUser.uid,
+            isServerVerified,
             rememberMe,
             timestamp: Date.now(),
           };
@@ -1770,8 +1913,8 @@ export const authMockService = {
 
       return {
         success: true,
-        user: resolved.user,
-        redirectUrl: resolved.redirectUrl,
+        user: finalUser,
+        redirectUrl: finalRedirectUrl,
       };
     } catch (err: any) {
       const errorCode = err?.code || '';
@@ -1825,6 +1968,7 @@ export const authMockService = {
       const parsed = JSON.parse(data);
       if (parsed && parsed.user) {
         const u = parsed.user;
+        u.isServerVerified = Boolean(parsed.isServerVerified ?? u.isServerVerified);
         if (u.name === 'System Super Admin' || (u.role === 'super_admin' && (!u.name || u.name === 'System Super Admin'))) {
           u.name = 'Nafal';
         }
@@ -1852,7 +1996,7 @@ export const authMockService = {
    * Listens to real-time Firebase Auth state changes
    */
   onAuthStateChanged(callback: (user: MockAuthUser | null, fbUser: FirebaseUser | null) => void): Unsubscribe {
-    return onAuthStateChanged(auth, (fbUser) => {
+    return onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         const existingSession = this.getCurrentUser();
         if (
@@ -1861,21 +2005,56 @@ export const authMockService = {
             existingSession.firebaseUid === fbUser.uid)
         ) {
           callback(existingSession, fbUser);
+
+          // If session is not yet server-verified, verify in background
+          if (!existingSession.isServerVerified) {
+            fetchBackendUserProfile(fbUser)
+              .then((serverRes) => {
+                if (serverRes && typeof window !== 'undefined') {
+                  const updatedSession = {
+                    authenticated: true,
+                    user: serverRes.user,
+                    role: serverRes.user.role,
+                    firebaseUid: fbUser.uid,
+                    isServerVerified: true,
+                    timestamp: Date.now(),
+                  };
+                  try {
+                    localStorage.setItem('cool_crm_auth', JSON.stringify(updatedSession));
+                    callback(serverRes.user, fbUser);
+                  } catch (err) {}
+                }
+              })
+              .catch(() => {});
+          }
         } else {
-          const resolved = resolveCrmUserByEmail(fbUser.email || '', fbUser.uid);
+          let serverUserResult: { user: MockAuthUser; redirectUrl: string } | null = null;
+          try {
+            serverUserResult = await fetchBackendUserProfile(fbUser);
+          } catch {}
+
+          const isServerVerified = Boolean(serverUserResult);
+          const finalUser: MockAuthUser = serverUserResult
+            ? serverUserResult.user
+            : {
+                ...resolveCrmUserByEmail(fbUser.email || '', fbUser.uid).user,
+                isServerVerified: false,
+              };
+
           if (typeof window !== 'undefined') {
             const sessionData = {
               authenticated: true,
-              user: resolved.user,
-              role: resolved.user.role,
+              user: finalUser,
+              role: finalUser.role,
               firebaseUid: fbUser.uid,
+              isServerVerified,
               timestamp: Date.now(),
             };
             try {
               localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
             } catch (err) {}
           }
-          callback(resolved.user, fbUser);
+          callback(finalUser, fbUser);
         }
       } else {
         // When Firebase emits null on initial load, preserve active local CRM session

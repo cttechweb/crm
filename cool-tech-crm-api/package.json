@@ -1,0 +1,21 @@
+{
+  "name": "cool-tech-crm-api",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Dedicated Cloudflare Worker API for Cool Technologies CRM",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "npx wrangler dev",
+    "deploy": "npx wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test test/auth.test.mjs test/customers.test.mjs test/products.test.mjs"
+  },
+  "dependencies": {
+    "hono": "^4.7.2",
+    "jose": "^6.0.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250224.0",
+    "typescript": "^5.7.3"
+  }
+}

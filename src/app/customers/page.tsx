@@ -208,6 +208,9 @@ function CustomersContent() {
     addCustomer,
     updateCustomer,
     deleteCustomer,
+    isCustomersLoading,
+    customersError,
+    refreshCustomers,
     users,
     campaigns,
     salesOpportunities,
@@ -863,11 +866,39 @@ function CustomersContent() {
     query,
   ]);
 
-  const displayCustomers = filteredCustomers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const totalPages = Math.ceil(filteredCustomers.length / pageSize) || 1;
+  // Auto-reset currentPage to 1 whenever search, tab, or filter criteria change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    search,
+    globalSearch,
+    activeTab,
+    ownerFilter,
+    campaignFilter,
+    industryFilter,
+    keyCustomerFilter,
+    sourceFilter,
+    tagsFilter,
+    assignedDateFilter,
+    noOrdersAfterDate,
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / pageSize) || 1);
+  const safeCurrentPage = filteredCustomers.length === 0 ? 1 : Math.min(Math.max(1, currentPage), totalPages);
+
+  // Keep currentPage synced within [1, totalPages] if list size shrinks
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages >= 1) {
+      setCurrentPage(totalPages);
+    } else if (currentPage < 1) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
+
+  const displayCustomers = filteredCustomers.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
 
   // Handle Add Customer
-  const handleCreateCustomer = (e: React.FormEvent) => {
+  const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.customerName.trim()) {
       alert('Please enter a Customer Name.');
@@ -948,52 +979,57 @@ function CustomersContent() {
       lastOrder: 'No order till the date.',
     };
 
-    addCustomer(newCust as any);
-    setIsAddModalOpen(false);
+    try {
+      await addCustomer(newCust as any);
+      setIsAddModalOpen(false);
 
-    // Reset Form
-    setFormData({
-      customerName: '',
-      parentCustomer: '',
-      existingContact: '',
-      contactDesignation: '',
-      contactSalutation: 'Mr.',
-      contactPerson: '',
-      phoneCode: '+971',
-      phone: '',
-      personalMobile: '',
-      businessMobile: '',
-      spokenLanguage: '',
-      nationality: '',
-      isPrimaryContact: true,
-      contactEmail: '',
-      contactAddress: '',
-      contactComments: '',
-      email: '',
-      owner: currentUser?.name || '',
-      type: 'Customer',
-      status: 'Active',
-      companyGroup: 'Commercial Engineering',
-      industryType: '',
-      keyCustomer: 'No',
-      source: '',
-      sourceName: '',
-      campaign: '',
-      noOfEmployees: '',
-      tags: '',
-      address: '',
-      country: 'United Arab Emirates',
-      stateRegion: '',
-      city: 'Dubai',
-      location: '',
-      comments: '',
-      website: '',
-      trn: '',
-      isSupplier: false,
-      addContactDetails: true,
-      totalSpend: 0,
-      outstanding: 0,
-    });
+      // Reset Form
+      setFormData({
+        customerName: '',
+        parentCustomer: '',
+        existingContact: '',
+        contactDesignation: '',
+        contactSalutation: 'Mr.',
+        contactPerson: '',
+        phoneCode: '+971',
+        phone: '',
+        personalMobile: '',
+        businessMobile: '',
+        spokenLanguage: '',
+        nationality: '',
+        isPrimaryContact: true,
+        contactEmail: '',
+        contactAddress: '',
+        contactComments: '',
+        email: '',
+        owner: currentUser?.name || '',
+        type: 'Customer',
+        status: 'Active',
+        companyGroup: 'Commercial Engineering',
+        industryType: '',
+        keyCustomer: 'No',
+        source: '',
+        sourceName: '',
+        campaign: '',
+        noOfEmployees: '',
+        tags: '',
+        address: '',
+        country: 'United Arab Emirates',
+        stateRegion: '',
+        city: 'Dubai',
+        location: '',
+        comments: '',
+        website: '',
+        trn: '',
+        isSupplier: false,
+        addContactDetails: true,
+        totalSpend: 0,
+        outstanding: 0,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Server error occurred while creating customer.';
+      alert(`Failed to save customer: ${msg}`);
+    }
   };
 
   const handleDownloadSampleFormat = () => {
@@ -2264,11 +2300,16 @@ function CustomersContent() {
 
           {/* Form Content */}
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
               if (editingCustomer) {
-                updateCustomer(editingCustomer.id, editingCustomer);
-                setEditingCustomer(null);
+                try {
+                  await updateCustomer(editingCustomer.id, editingCustomer);
+                  setEditingCustomer(null);
+                } catch (err: unknown) {
+                  const msg = err instanceof Error ? err.message : 'Server error occurred while updating customer.';
+                  alert(`Failed to update customer: ${msg}`);
+                }
               }
             }}
             className="p-6 text-xs text-slate-700"
@@ -2915,10 +2956,15 @@ function CustomersContent() {
 
                         <button
                           type="button"
-                          onClick={() => {
-                            if (confirm(`Are you sure you want to delete customer "${activeCustomer.customerName}"?`)) {
-                              deleteCustomer(activeCustomer.id);
-                              closeCustomerView();
+                          onClick={async () => {
+                            if (confirm(`Are you sure you want to deactivate customer "${activeCustomer.customerName}"?`)) {
+                              try {
+                                await deleteCustomer(activeCustomer.id);
+                                closeCustomerView();
+                              } catch (err: unknown) {
+                                const msg = err instanceof Error ? err.message : 'Failed to delete customer';
+                                alert(`Failed to deactivate customer: ${msg}`);
+                              }
                             }
                           }}
                           className="bg-[#EF4444] hover:bg-[#DC2626] text-white text-[11px] font-semibold px-3 py-1 rounded flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
@@ -3563,15 +3609,40 @@ function CustomersContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {displayCustomers.length === 0 ? (
+                  {isCustomersLoading ? (
+                    <tr>
+                      <td colSpan={10} className="py-12 text-center text-xs text-slate-500">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <div className="w-5 h-5 border-2 border-[#1677FF] border-t-transparent rounded-full animate-spin" />
+                          <span className="font-medium text-slate-600">Loading customers from CRM database...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : displayCustomers.length === 0 ? (
                     <tr>
                       <td colSpan={10} className="py-12 text-center text-xs text-slate-400">
-                        No customers found matching the selected filters.
+                        {customersError ? (
+                          <div className="flex flex-col items-center justify-center gap-2 text-rose-600">
+                            <span className="font-semibold">Unable to load customer records</span>
+                            <span className="text-slate-500 text-[11px]">{customersError}</span>
+                            {refreshCustomers && (
+                              <button
+                                type="button"
+                                onClick={() => refreshCustomers()}
+                                className="mt-1 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs rounded border border-slate-300 font-medium cursor-pointer"
+                              >
+                                Retry
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          'No customers found matching the selected filters.'
+                        )}
                       </td>
                     </tr>
                   ) : (
                     displayCustomers.map((cust, idx) => {
-                      const sl = (currentPage - 1) * pageSize + idx + 1;
+                      const sl = (safeCurrentPage - 1) * pageSize + idx + 1;
                       const dateStr = cust.date || '30-09-2026';
                       const isMenuOpen = actionMenuId === cust.id;
 
@@ -3766,10 +3837,15 @@ function CustomersContent() {
 
                                   <button
                                     type="button"
-                                    onClick={() => {
+                                    onClick={async () => {
                                       setActionMenuId(null);
-                                      if (confirm(`Are you sure you want to delete customer "${cust.customerName}"?`)) {
-                                        deleteCustomer(cust.id || String(cust.slNo));
+                                      if (confirm(`Are you sure you want to deactivate customer "${cust.customerName}"?`)) {
+                                        try {
+                                          await deleteCustomer(cust.id || String(cust.slNo));
+                                        } catch (err: unknown) {
+                                          const msg = err instanceof Error ? err.message : 'Failed to delete customer';
+                                          alert(`Failed to deactivate customer: ${msg}`);
+                                        }
                                       }
                                     }}
                                     className="w-full flex items-center gap-2.5 px-3.5 py-2 hover:bg-slate-100 text-slate-800 text-[13px] font-normal transition-colors cursor-pointer"
@@ -3792,23 +3868,23 @@ function CustomersContent() {
             {/* Table Footer with Pagination */}
             <div className="p-3 bg-[#F8FAFC] border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
               <span className="text-slate-500 font-medium">
-                Showing {(currentPage - 1) * pageSize + 1} to{' '}
-                {Math.min(currentPage * pageSize, filteredCustomers.length)} of {filteredCustomers.length} entries
+                Showing {filteredCustomers.length === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1} to{' '}
+                {Math.min(safeCurrentPage * pageSize, filteredCustomers.length)} of {filteredCustomers.length} entries
               </span>
 
               <div className="flex items-center gap-1.5 self-end sm:self-auto">
                 <button
-                  disabled={currentPage <= 1}
+                  disabled={safeCurrentPage <= 1}
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   className="px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-xs font-semibold"
                 >
                   Previous
                 </button>
                 <span className="px-2.5 py-1 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded">
-                  {currentPage} / {totalPages}
+                  {safeCurrentPage} / {totalPages}
                 </span>
                 <button
-                  disabled={currentPage >= totalPages}
+                  disabled={safeCurrentPage >= totalPages}
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   className="px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-xs font-semibold"
                 >

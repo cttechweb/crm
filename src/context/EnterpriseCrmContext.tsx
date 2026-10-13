@@ -38,6 +38,7 @@ import {
   getEmployeePhoto,
 } from '@/data/mockEnterpriseData';
 import { authMockService } from '@/services/authMockService';
+import { customerApiService } from '@/services/customerApiService';
 
 interface EnterpriseCrmContextType {
   currentRole: UserRole;
@@ -82,10 +83,13 @@ interface EnterpriseCrmContextType {
   deleteLead: (id: string) => void;
 
   // Customer Actions
-  addCustomer: (cust: Omit<CrmCustomer, 'id' | 'slNo'>) => void;
-  assignCustomer: (customerId: string, employeeName: string, managerName?: string) => void;
-  updateCustomer: (id: string, updated: Partial<CrmCustomer>) => void;
-  deleteCustomer: (id: string) => void;
+  addCustomer: (cust: Omit<CrmCustomer, 'id' | 'slNo'>) => Promise<CrmCustomer | void> | void;
+  assignCustomer: (customerId: string, employeeName: string, managerName?: string) => Promise<void> | void;
+  updateCustomer: (id: string, updated: Partial<CrmCustomer>) => Promise<CrmCustomer | void> | void;
+  deleteCustomer: (id: string) => Promise<void> | void;
+  isCustomersLoading?: boolean;
+  customersError?: string | null;
+  refreshCustomers?: () => Promise<void>;
 
   // Opportunity Actions
   addOpportunity: (opp: Omit<CrmSalesOpportunity, 'id' | 'createdAt'>) => void;
@@ -145,6 +149,8 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   const [tasks, setTasks] = useState<CrmTask[]>([]);
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
+  const [isCustomersLoading, setIsCustomersLoading] = useState(false);
+  const [customersError, setCustomersError] = useState<string | null>(null);
   const [salesOpportunities, setSalesOpportunities] = useState<CrmSalesOpportunity[]>([]);
   const [quotations, setQuotations] = useState<CrmQuotation[]>([]);
   const [salesOrders, setSalesOrders] = useState<CrmSalesOrder[]>([]);
@@ -246,12 +252,31 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           setLeads([]);
         }
 
-        const storedCustomers = localStorage.getItem('crm_customers_data');
-        if (storedCustomers) {
-          const parsed = JSON.parse(storedCustomers);
-          setCustomers(Array.isArray(parsed) ? parsed : []);
+        const liveUser = authMockService.getCurrentUser();
+        if (liveUser?.isServerVerified) {
+          setIsCustomersLoading(true);
+          customerApiService
+            .getCustomers({ limit: 100 })
+            .then((res) => {
+              setCustomers(res.customers);
+              setCustomersError(null);
+            })
+            .catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : 'Failed to fetch customers from CRM database';
+              console.warn('[EnterpriseCrmContext] Backend customer load failed:', msg);
+              setCustomersError(msg);
+            })
+            .finally(() => {
+              setIsCustomersLoading(false);
+            });
         } else {
-          setCustomers([]);
+          const storedCustomers = localStorage.getItem('crm_customers_data');
+          if (storedCustomers) {
+            const parsed = JSON.parse(storedCustomers);
+            setCustomers(Array.isArray(parsed) ? parsed : []);
+          } else {
+            setCustomers([]);
+          }
         }
 
         const storedOpps = localStorage.getItem('crm_opportunities_data');
@@ -428,6 +453,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       'crm_team_updated',
       'crm_profiles_updated',
       'crm_data_updated',
+      'crm_auth_updated',
     ];
 
     eventNames.forEach((evt) => window.addEventListener(evt, loadAllData));
@@ -814,40 +840,125 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   };
 
   // Customer Handlers
-  const addCustomer = (custData: Omit<CrmCustomer, 'id' | 'slNo'>) => {
-    const newCust: CrmCustomer = {
-      ...custData,
-      id: `cust-${Date.now()}`,
-      slNo: customers.length + 1,
-    };
-    const updated = [newCust, ...customers];
-    setCustomers(updated);
-    persist('crm_customers_data', updated);
+  const refreshCustomers = async (): Promise<void> => {
+    const user = authMockService.getCurrentUser();
+    if (user?.isServerVerified) {
+      setIsCustomersLoading(true);
+      try {
+        const res = await customerApiService.getCustomers({ limit: 100 });
+        setCustomers(res.customers);
+        setCustomersError(null);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Failed to fetch customers from CRM database';
+        setCustomersError(msg);
+      } finally {
+        setIsCustomersLoading(false);
+      }
+    } else {
+      const stored = localStorage.getItem('crm_customers_data');
+      if (stored) {
+        try {
+          setCustomers(JSON.parse(stored));
+        } catch {}
+      }
+    }
   };
 
-  const assignCustomer = (customerId: string, employeeName: string, managerName = 'Muhammed Shibil (Sales Manager)') => {
-    const list = customers.map((c) => {
-      if (c.id !== customerId) return c;
-      return {
-        ...c,
-        owner: employeeName,
-        lastActivity: `Assigned to ${employeeName}`,
+  const addCustomer = async (custData: Omit<CrmCustomer, 'id' | 'slNo'>): Promise<CrmCustomer | void> => {
+    const user = authMockService.getCurrentUser();
+    if (user?.isServerVerified) {
+      try {
+        const created = await customerApiService.createCustomer(custData);
+        setCustomers((prev) => [created, ...prev]);
+        return created;
+      } catch (err: unknown) {
+        console.error('[EnterpriseCrmContext] createCustomer failed on backend:', err);
+        throw err;
+      }
+    } else {
+      const newCust: CrmCustomer = {
+        ...custData,
+        id: `cust-${Date.now()}`,
+        slNo: customers.length + 1,
       };
-    });
-    setCustomers(list);
-    persist('crm_customers_data', list);
+      const updated = [newCust, ...customers];
+      setCustomers(updated);
+      persist('crm_customers_data', updated);
+      return newCust;
+    }
   };
 
-  const updateCustomer = (id: string, updated: Partial<CrmCustomer>) => {
-    const list = customers.map((c) => (c.id === id ? { ...c, ...updated } : c));
-    setCustomers(list);
-    persist('crm_customers_data', list);
+  const assignCustomer = async (
+    customerId: string,
+    employeeName: string,
+    managerName = 'Muhammed Shibil (Sales Manager)'
+  ): Promise<void> => {
+    const user = authMockService.getCurrentUser();
+    if (user?.isServerVerified) {
+      try {
+        const updated = await customerApiService.updateCustomer(customerId, {
+          owner: employeeName,
+          lastActivity: `Assigned to ${employeeName}`,
+        });
+        setCustomers((prev) =>
+          prev.map((c) => (c.id === customerId || String(c.slNo) === customerId ? updated : c))
+        );
+      } catch (err: unknown) {
+        console.error('[EnterpriseCrmContext] assignCustomer failed on backend:', err);
+        throw err;
+      }
+    } else {
+      const list = customers.map((c) => {
+        if (c.id !== customerId && String(c.slNo) !== customerId) return c;
+        return {
+          ...c,
+          owner: employeeName,
+          lastActivity: `Assigned to ${employeeName}`,
+        };
+      });
+      setCustomers(list);
+      persist('crm_customers_data', list);
+    }
   };
 
-  const deleteCustomer = (id: string) => {
-    const list = customers.filter((c) => c.id !== id && String(c.slNo) !== id);
-    setCustomers(list);
-    persist('crm_customers_data', list);
+  const updateCustomer = async (
+    id: string,
+    updatedData: Partial<CrmCustomer>
+  ): Promise<CrmCustomer | void> => {
+    const user = authMockService.getCurrentUser();
+    if (user?.isServerVerified) {
+      try {
+        const saved = await customerApiService.updateCustomer(id, updatedData);
+        setCustomers((prev) =>
+          prev.map((c) => (c.id === id || String(c.slNo) === id ? saved : c))
+        );
+        return saved;
+      } catch (err: unknown) {
+        console.error('[EnterpriseCrmContext] updateCustomer failed on backend:', err);
+        throw err;
+      }
+    } else {
+      const list = customers.map((c) => (c.id === id ? { ...c, ...updatedData } : c));
+      setCustomers(list);
+      persist('crm_customers_data', list);
+    }
+  };
+
+  const deleteCustomer = async (id: string): Promise<void> => {
+    const user = authMockService.getCurrentUser();
+    if (user?.isServerVerified) {
+      try {
+        await customerApiService.deleteCustomer(id);
+        setCustomers((prev) => prev.filter((c) => c.id !== id && String(c.slNo) !== id));
+      } catch (err: unknown) {
+        console.error('[EnterpriseCrmContext] deleteCustomer failed on backend:', err);
+        throw err;
+      }
+    } else {
+      const list = customers.filter((c) => c.id !== id && String(c.slNo) !== id);
+      setCustomers(list);
+      persist('crm_customers_data', list);
+    }
   };
 
   // Opportunity Handlers
@@ -1167,6 +1278,9 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         assignCustomer,
         updateCustomer,
         deleteCustomer,
+        isCustomersLoading,
+        customersError,
+        refreshCustomers,
         addOpportunity,
         updateOpportunity,
         updateOpportunityStage,

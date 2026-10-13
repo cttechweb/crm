@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, use } from 'react';
+import React, { useState, useMemo, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -52,6 +52,8 @@ import { Input, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { CrmCustomer } from '@/types/enterprise-crm';
 import { cn } from '@/lib/utils';
+import { customerApiService } from '@/services/customerApiService';
+import { authMockService } from '@/services/authMockService';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -160,8 +162,73 @@ export default function CustomerDetailPage({ params }: PageProps) {
     isPrimary: true,
   });
 
-  // Find customer by ID or slNo or name
+  const [serverCustomer, setServerCustomer] = useState<CrmCustomer | null>(null);
+  const [isContactsLoading, setIsContactsLoading] = useState(false);
+  const [contactsError, setContactsError] = useState<string | null>(null);
+
+  const fetchCustomerDetails = React.useCallback(async () => {
+    const rawId = decodeURIComponent(resolvedParams.id).trim();
+    if (!rawId) return;
+
+    const currentUser = authMockService.getCurrentUser();
+    if (currentUser?.isServerVerified) {
+      setIsContactsLoading(true);
+      setContactsError(null);
+      try {
+        const fetched = await customerApiService.getCustomerById(rawId);
+        setServerCustomer(fetched);
+
+        const rawContacts = (fetched as any).contacts;
+        if (Array.isArray(rawContacts) && rawContacts.length > 0) {
+          const mappedContacts = rawContacts.map((c: any) => ({
+            id: String(c.id || `cnt-${Date.now()}`),
+            salutation: c.salutation || 'Mr.',
+            name: c.name || '',
+            designation: c.designation || '',
+            personalMobile: c.personal_mobile || c.personalMobile || '',
+            businessMobile: c.business_mobile || c.businessMobile || '',
+            email: c.email || '',
+            spokenLanguage: c.spoken_language || c.spokenLanguage || '',
+            nationality: c.nationality || 'United Arab Emirates',
+            address: c.address || '',
+            comments: c.comments || '',
+            isPrimary: Boolean(c.is_primary ?? c.isPrimary),
+          }));
+          setExistingContactsList(mappedContacts);
+        } else if (fetched.contactPerson) {
+          const primaryContact = {
+            id: `cnt-${fetched.id}-primary`,
+            salutation: fetched.salutation || 'Mr.',
+            name: fetched.contactPerson,
+            designation: 'Primary Contact',
+            personalMobile: fetched.mobile || '',
+            businessMobile: fetched.phone || '',
+            email: fetched.email || '',
+            spokenLanguage: 'English, Arabic',
+            nationality: fetched.country || 'United Arab Emirates',
+            address: fetched.address || '',
+            comments: fetched.comments || '',
+            isPrimary: true,
+          };
+          setExistingContactsList([primaryContact]);
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Failed to load customer contacts from CRM backend';
+        console.warn('[CustomerDetailPage] getCustomerById failed:', msg);
+        setContactsError(msg);
+      } finally {
+        setIsContactsLoading(false);
+      }
+    }
+  }, [resolvedParams.id]);
+
+  useEffect(() => {
+    fetchCustomerDetails();
+  }, [fetchCustomerDetails]);
+
+  // Find customer by ID or slNo or name (server fetched customer takes precedence)
   const customer = useMemo(() => {
+    if (serverCustomer) return serverCustomer;
     const rawId = decodeURIComponent(resolvedParams.id);
     return (
       customers.find(
@@ -194,7 +261,7 @@ export default function CustomerDetailPage({ params }: PageProps) {
         totalDeals: 1,
       }
     );
-  }, [customers, resolvedParams.id]);
+  }, [serverCustomer, customers, resolvedParams.id]);
 
   // Live linked data for this customer
   const customerOpportunities = useMemo(() => {
@@ -410,7 +477,7 @@ export default function CustomerDetailPage({ params }: PageProps) {
     }
   }, [customer]);
 
-  const handleUpdate = (e: React.FormEvent) => {
+  const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customer) return;
 
@@ -422,47 +489,64 @@ export default function CustomerDetailPage({ params }: PageProps) {
       ? `+971 ${editFormData.businessMobile.trim()}`
       : editFormData.phone;
 
-    updateCustomer(customer.id, {
-      customerName: editFormData.customerName.toUpperCase(),
-      contactPerson: fullContactName,
-      salutation: editFormData.contactSalutation,
-      phone: fullPhone,
-      email: editFormData.contactEmail.trim() || editFormData.email.trim() || customer.email,
-      owner: editFormData.owner,
-      type: editFormData.type as any,
-      address: editFormData.contactAddress || editFormData.address,
-      industryType: editFormData.industryType,
-      parentCustomer: editFormData.parentCustomer,
-      tags: editFormData.tags ? editFormData.tags.split(',').map((t) => t.trim()) : [],
-      keyCustomer: editFormData.keyCustomer,
-      source: editFormData.source,
-      sourceName: editFormData.sourceName,
-      campaign: editFormData.campaign,
-      employees: editFormData.employees,
-      website: editFormData.website,
-      country: editFormData.country,
-      city: editFormData.city,
-      location: editFormData.location,
-      trn: editFormData.trn,
-      comments: editFormData.comments,
-      isSupplier: editFormData.isSupplier,
-    });
-    setIsEditModalOpen(false);
+    try {
+      await updateCustomer(customer.id, {
+        customerName: editFormData.customerName.toUpperCase(),
+        contactPerson: fullContactName,
+        salutation: editFormData.contactSalutation,
+        phone: fullPhone,
+        email: editFormData.contactEmail.trim() || editFormData.email.trim() || customer.email,
+        owner: editFormData.owner,
+        type: editFormData.type as any,
+        address: editFormData.contactAddress || editFormData.address,
+        industryType: editFormData.industryType,
+        parentCustomer: editFormData.parentCustomer,
+        tags: editFormData.tags ? editFormData.tags.split(',').map((t) => t.trim()) : [],
+        keyCustomer: editFormData.keyCustomer,
+        source: editFormData.source,
+        sourceName: editFormData.sourceName,
+        campaign: editFormData.campaign,
+        employees: editFormData.employees,
+        website: editFormData.website,
+        country: editFormData.country,
+        city: editFormData.city,
+        location: editFormData.location,
+        trn: editFormData.trn,
+        comments: editFormData.comments,
+        isSupplier: editFormData.isSupplier,
+      });
+      setIsEditModalOpen(false);
+      await fetchCustomerDetails();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update customer';
+      alert(`Update failed: ${msg}`);
+    }
   };
 
-  const handleAssign = () => {
+  const handleAssign = async () => {
     if (!customer) return;
-    updateCustomer(customer.id, {
-      owner: assignUser,
-    });
-    setIsAssignModalOpen(false);
+    try {
+      await updateCustomer(customer.id, {
+        owner: assignUser,
+      });
+      setIsAssignModalOpen(false);
+      await fetchCustomerDetails();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to assign customer';
+      alert(`Assign failed: ${msg}`);
+    }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!customer) return;
-    if (confirm(`Are you sure you want to delete customer "${customer.customerName}"?`)) {
-      deleteCustomer(customer.id);
-      router.push('/customers');
+    if (confirm(`Are you sure you want to deactivate customer "${customer.customerName}"?`)) {
+      try {
+        await deleteCustomer(customer.id);
+        router.push('/customers');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Failed to deactivate customer';
+        alert(`Deactivation failed: ${msg}`);
+      }
     }
   };
 
@@ -1706,18 +1790,94 @@ export default function CustomerDetailPage({ params }: PageProps) {
             {/* ── TAB CONTENT: CONTACT DETAILS ── */}
             {activeSubTab === 'contacts' && (
               <div className="bg-white border border-slate-200 rounded-sm p-4 shadow-xs space-y-3">
-                <h3 className="font-bold text-sm text-slate-800">Contact Persons</h3>
-                <div className="divide-y divide-slate-100 text-xs">
-                  <div className="py-2.5 flex items-center justify-between">
-                    <div>
-                      <p className="font-bold text-slate-800">{customer.contactPerson || 'Primary Contact'}</p>
-                      <p className="text-slate-500">{customer.phone} | {customer.email}</p>
-                    </div>
-                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded">
-                      Primary
-                    </span>
-                  </div>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-sm text-slate-800">Contact Persons</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewContactFormData({
+                        salutation: 'Mr.',
+                        name: '',
+                        designation: '',
+                        personalMobile: '',
+                        businessMobile: '',
+                        email: '',
+                        spokenLanguage: '',
+                        nationality: 'United Arab Emirates',
+                        address: '',
+                        comments: '',
+                        isPrimary: false,
+                      });
+                      setIsNewContactModalOpen(true);
+                    }}
+                    className="bg-[#16A34A] hover:bg-[#15803D] text-white px-2.5 py-1 text-xs font-bold rounded flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> New Contact
+                  </button>
                 </div>
+
+                {/* Loading State */}
+                {isContactsLoading && (
+                  <div className="py-6 flex flex-col items-center justify-center gap-2 text-slate-500 text-xs">
+                    <div className="w-5 h-5 border-2 border-slate-300 border-t-[#0B2A4A] rounded-full animate-spin" />
+                    <span>Loading customer contacts...</span>
+                  </div>
+                )}
+
+                {/* Error State with Retry */}
+                {!isContactsLoading && contactsError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded text-xs flex items-center justify-between text-red-700">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                      <span>{contactsError}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fetchCustomerDetails()}
+                      className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-semibold text-xs transition-colors cursor-pointer"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
+                {/* Contacts List */}
+                {!isContactsLoading && (
+                  <div className="divide-y divide-slate-100 text-xs">
+                    {existingContactsList.length === 0 ? (
+                      <div className="py-6 text-center text-slate-500">
+                        <User className="w-6 h-6 text-slate-300 mx-auto mb-1" />
+                        <p>No contacts recorded for this customer.</p>
+                      </div>
+                    ) : (
+                      existingContactsList.map((contact) => (
+                        <div key={contact.id} className="py-2.5 flex items-center justify-between hover:bg-slate-50/60 px-1 rounded transition-colors">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold text-slate-800">
+                                {contact.salutation ? `${contact.salutation} ` : ''}{contact.name}
+                              </p>
+                              {contact.designation && (
+                                <span className="text-slate-500 font-medium">({contact.designation})</span>
+                              )}
+                            </div>
+                            <div className="text-slate-500 flex flex-wrap items-center gap-x-2 text-[11px]">
+                              {contact.businessMobile && <span>Business: {contact.businessMobile}</span>}
+                              {contact.personalMobile && <span>Mobile: {contact.personalMobile}</span>}
+                              {contact.email && <span>Email: {contact.email}</span>}
+                              {contact.nationality && <span>• {contact.nationality}</span>}
+                            </div>
+                          </div>
+                          {contact.isPrimary && (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded shrink-0">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
