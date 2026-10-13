@@ -56,6 +56,8 @@ export interface CrmProductItem {
   features?: string[];
   tags?: string[];
   documents?: unknown[];
+  unit?: string;
+  type?: string;
 }
 
 export interface AppVariables {

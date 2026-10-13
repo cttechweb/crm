@@ -114,6 +114,8 @@ function mapEcomProductToCrmProduct(item: any): CrmProductItem {
     features: Array.isArray(item.features) ? item.features : undefined,
     tags: Array.isArray(item.tags) ? item.tags : undefined,
     documents: Array.isArray(item.documents) ? item.documents : undefined,
+    unit: item.unit || 'Pcs',
+    type: item.type || 'Product',
   };
 }
 

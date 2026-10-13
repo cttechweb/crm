@@ -89,6 +89,8 @@ export async function getLiveProducts(params: ProductQueryParams = {}): Promise<
         ...p,
         sellingPrice,
         purchaseRate,
+        type: p.type || 'Product',
+        unit: p.unit || 'Pcs',
       };
     });
 

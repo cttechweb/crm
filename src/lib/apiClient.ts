@@ -106,6 +106,9 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
 async function getFirebaseIdToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   try {
+    if (auth && typeof auth.authStateReady === 'function') {
+      await auth.authStateReady();
+    }
     const currentUser = auth?.currentUser;
     if (currentUser) {
       return await currentUser.getIdToken();
@@ -185,6 +188,10 @@ export async function apiFetch<T = unknown>(
           endpoint,
           false
         );
+      }
+
+      if (auth && typeof auth.authStateReady === 'function') {
+        await auth.authStateReady();
       }
 
       const currentUser = auth?.currentUser;
