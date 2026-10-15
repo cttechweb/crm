@@ -374,6 +374,7 @@ export function UsersTab({
   const isSuperAdminSession = loggedInUser?.role === 'super_admin';
   const isAdminSession = loggedInUser?.role === 'admin';
   const isManagerSession = loggedInUser?.role === 'manager';
+  const isEmployeeSession = loggedInUser?.role === 'employee' || loggedInUser?.role === 'worker';
 
   // Available positions based on the session's authority
   const availablePositionsForSession = useMemo(() => {
@@ -837,6 +838,7 @@ export function UsersTab({
       phone: existingLocal?.phone || '+971 50 123 4567',
       avatarBg: existingLocal?.avatarBg || (isSuperAdmin ? 'bg-purple-600' : isAdmin ? 'bg-indigo-600' : isManager ? 'bg-blue-600' : 'bg-emerald-600'),
       loginPermission: existingLocal?.loginPermission || 'Web & Mobile',
+      isServerRecord: true,
     };
   };
 
@@ -848,7 +850,10 @@ export function UsersTab({
     setIsSyncingWithServer(true);
     setUserFetchError(null);
     try {
-      const response = await userApiService.getUsers({ limit: 100 });
+      const response = await userApiService.getUsers({
+        limit: 100,
+        scope: isEmployeeSession ? 'assignable' : undefined,
+      });
       if (response && response.success && Array.isArray(response.users)) {
         const serverUsers = response.users;
 
@@ -931,6 +936,7 @@ export function UsersTab({
 
     const handleLocalUpdate = () => {
       loadUnifiedUsers();
+      fetchAndMergeServerUsers();
     };
 
     window.addEventListener('crm_users_updated', handleLocalUpdate);
@@ -941,7 +947,7 @@ export function UsersTab({
       window.removeEventListener('crm_admins_updated', handleLocalUpdate);
       window.removeEventListener('storage', handleLocalUpdate);
     };
-  }, []);
+  }, [isEmployeeSession]);
 
   useEffect(() => {
     const loadProfiles = () => {
@@ -1365,6 +1371,23 @@ export function UsersTab({
       effectiveManagerId = userFormData.assignedManagerId || null;
     }
 
+    let finalReportsTo: string | null = null;
+    if (userFormData.position === 'CEO') {
+      finalReportsTo = null;
+    } else if (isManagerSession && isEmployee) {
+      finalReportsTo = String(loggedInUser?.id || '').startsWith('usr_') ? String(loggedInUser?.id) : null;
+    } else if (userFormData.assignedManagerId && userFormData.assignedManagerId.trim()) {
+      const candidateId = userFormData.assignedManagerId.trim();
+      const matched = cezconUsersList.find(
+        (u) => String(u.id) === candidateId || (u.email && u.email.toLowerCase() === candidateId.toLowerCase())
+      );
+      if (matched && (String(matched.id).startsWith('usr_') || String(matched.id).startsWith('emp_'))) {
+        finalReportsTo = String(matched.id);
+      } else if (candidateId.startsWith('usr_') || candidateId.startsWith('emp_')) {
+        finalReportsTo = candidateId;
+      }
+    }
+
     // Automatically create user in Firebase Auth if it's a new user registration
     let firebaseUid: string | undefined = pendingFirebaseUid || undefined;
     if (!editingUserId && !firebaseUid) {
@@ -1406,16 +1429,37 @@ export function UsersTab({
     if (editingUserId) {
       setIsSavingUserToDb(true);
       setUserCreationError(null);
+      const existingUser = cezconUsersList.find((u) => String(u.id) === String(editingUserId));
+      const currentIsActive = existingUser?.isActive !== undefined ? (existingUser.isActive ? 1 : 0) : (existingUser?.status === 'Inactive' ? 0 : 1);
       try {
         const backendRole: CrmRole = isSuperAdminAttempt ? 'SUPER_ADMIN' : isAdminUser ? 'ADMIN' : isManager ? 'MANAGER' : 'EMPLOYEE';
-        await userApiService.updateUser(String(editingUserId), {
-          full_name: userFormData.name.trim(),
-          role: backendRole,
-          position: userFormData.position || undefined,
-          department: userFormData.department || (userFormData.position ? POSITION_HIERARCHY_CONFIG[userFormData.position]?.department : undefined),
-          reports_to: effectiveManagerId && String(effectiveManagerId).startsWith('usr_') ? String(effectiveManagerId) : null,
-          is_active: 1,
-        });
+        try {
+          await userApiService.updateUser(String(editingUserId), {
+            full_name: userFormData.name.trim(),
+            role: backendRole,
+            position: userFormData.position || undefined,
+            department: userFormData.department || (userFormData.position ? POSITION_HIERARCHY_CONFIG[userFormData.position]?.department : undefined),
+            reports_to: finalReportsTo,
+            is_active: currentIsActive,
+          });
+        } catch (updateErr: unknown) {
+          // If profile does not exist in D1 yet, seamlessly create it if we have a Firebase UID
+          if (updateErr instanceof ApiError && updateErr.status === 404 && firebaseUid) {
+            await userApiService.createUser({
+              id: String(editingUserId),
+              firebase_uid: firebaseUid,
+              email: userEmail,
+              full_name: userFormData.name.trim(),
+              role: backendRole,
+              position: userFormData.position || undefined,
+              department: userFormData.department || (userFormData.position ? POSITION_HIERARCHY_CONFIG[userFormData.position]?.department : undefined),
+              reports_to: finalReportsTo,
+              is_active: currentIsActive,
+            });
+          } else {
+            throw updateErr;
+          }
+        }
       } catch (err: unknown) {
         console.error('[UsersTab] Failed to update user in CRM database:', err);
         const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Database update failed';
@@ -1498,7 +1542,7 @@ export function UsersTab({
           position: userFormData.position || undefined,
           department: userFormData.department || (userFormData.position ? POSITION_HIERARCHY_CONFIG[userFormData.position]?.department : undefined),
           team_id: isManager || isEmployee ? (managerDeptType ? `team_${managerDeptType.toLowerCase().replace(/\s+/g, '_')}` : undefined) : undefined,
-          reports_to: effectiveManagerId && String(effectiveManagerId).startsWith('usr_') ? String(effectiveManagerId) : null,
+          reports_to: finalReportsTo,
           is_active: 1,
         });
 
@@ -3379,10 +3423,10 @@ export function UsersTab({
                 onClick={() => fetchAndMergeServerUsers()}
                 disabled={isSyncingWithServer}
                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-                title="Synchronize staff with CRM database"
+                title="Automatic sync active. Click to refresh manually."
               >
                 <RefreshCw className={`w-3 h-3 text-slate-600 ${isSyncingWithServer ? 'animate-spin' : ''}`} />
-                <span>{isSyncingWithServer ? 'Syncing...' : 'Sync DB'}</span>
+                <span>{isSyncingWithServer ? 'Syncing...' : 'Refresh'}</span>
               </button>
               <button
                 type="button"
@@ -3616,17 +3660,31 @@ export function UsersTab({
                                     setOpenActionUserId(null);
                                     const nextStatus = u.status === 'Active' ? 0 : 1;
                                     try {
-                                      if (String(u.id).startsWith('usr_') || String(u.id).startsWith('emp_') || String(u.id).startsWith('mgr_')) {
-                                        await userApiService.updateUserStatus(String(u.id), nextStatus);
+                                      let targetD1Id = String(u.id);
+                                      if (!targetD1Id.startsWith('usr_') && !targetD1Id.startsWith('emp_') && !targetD1Id.startsWith('mgr_')) {
+                                        const matched = cezconUsersList.find(
+                                          (cu) => cu.email && u.email && cu.email.toLowerCase() === u.email.toLowerCase() && (String(cu.id).startsWith('usr_') || String(cu.id).startsWith('emp_'))
+                                        );
+                                        if (matched) {
+                                          targetD1Id = String(matched.id);
+                                        }
                                       }
+
+                                      if (targetD1Id.startsWith('usr_') || targetD1Id.startsWith('emp_') || targetD1Id.startsWith('mgr_')) {
+                                        await userApiService.updateUserStatus(targetD1Id, nextStatus);
+                                      }
+
                                       const updated = cezconUsersList.map((item) =>
-                                        item.id === u.id ? { ...item, status: nextStatus === 1 ? 'Active' : 'Inactive' } : item
+                                        item.id === u.id || (targetD1Id && item.id === targetD1Id)
+                                          ? { ...item, status: nextStatus === 1 ? 'Active' : 'Inactive', isActive: nextStatus === 1 }
+                                          : item
                                       );
                                       setCezconUsersList(updated);
                                       localStorage.setItem('cezcon_crm_users_list', JSON.stringify(updated));
                                       window.dispatchEvent(new Event('crm_users_updated'));
                                       setSaveSuccess(true);
                                       setTimeout(() => setSaveSuccess(false), 3000);
+                                      await fetchAndMergeServerUsers();
                                     } catch (err: unknown) {
                                       console.error('Failed to update user status in CRM database:', err);
                                       const msg = err instanceof ApiError ? err.message : 'Failed to update user status';

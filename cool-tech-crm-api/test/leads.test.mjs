@@ -396,4 +396,195 @@ describe('Lead API Test Suite', () => {
     );
     assert.strictEqual(empDel.status, 403);
   });
+
+  it('7. Manager can assign leads to direct reports, persisting owner_id in D1, and assigned Employee can see lead', async () => {
+    const mgrToken = await makeToken('fb_uid_mgr');
+    const emp1Token = await makeToken('fb_uid_emp1');
+    const emp2Token = await makeToken('fb_uid_emp2');
+
+    // 1. Manager creates a lead explicitly assigning owner_id to direct report (usr_emp_1)
+    const createRes = await app.request(
+      '/api/leads',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${mgrToken}`,
+        },
+        body: JSON.stringify({
+          contact_name: 'Burj Khalifa Facility Management',
+          contact_phone: '+971 50 999 8888',
+          contact_company: 'Emaar Properties',
+          lead_specification: 'Chiller Overhaul 500TR',
+          owner_id: 'usr_emp_1',
+        }),
+      },
+      { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID }
+    );
+
+    assert.strictEqual(createRes.status, 201);
+    const createBody = await createRes.json();
+    assert.strictEqual(createBody.lead.owner_id, 'usr_emp_1');
+    assert.strictEqual(createBody.lead.owner_name, 'Sales Executive Arun');
+    const leadId = createBody.lead.id;
+
+    // Verify D1 directly persists canonical owner_id
+    const d1Row = mockDb.sqlite.prepare('SELECT owner_id, owner_name FROM leads WHERE id = ?').get(leadId);
+    assert.strictEqual(d1Row.owner_id, 'usr_emp_1');
+    assert.strictEqual(d1Row.owner_name, 'Sales Executive Arun');
+
+    // 2. Assigned employee (emp1) CAN retrieve the lead via GET /api/leads and GET /api/leads/:id
+    const emp1ListRes = await app.request('/api/leads', {
+      headers: { Authorization: `Bearer ${emp1Token}` },
+    }, { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.strictEqual(emp1ListRes.status, 200);
+    const emp1List = await emp1ListRes.json();
+    assert.ok(emp1List.leads.some((l) => l.id === leadId), 'Assigned employee must see lead in their list');
+
+    const emp1GetRes = await app.request(`/api/leads/${leadId}`, {
+      headers: { Authorization: `Bearer ${emp1Token}` },
+    }, { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.strictEqual(emp1GetRes.status, 200);
+
+    // 3. Unassigned outside employee (emp2) CANNOT see lead in their list or detail
+    const emp2ListRes = await app.request('/api/leads', {
+      headers: { Authorization: `Bearer ${emp2Token}` },
+    }, { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.strictEqual(emp2ListRes.status, 200);
+    const emp2List = await emp2ListRes.json();
+    assert.ok(!emp2List.leads.some((l) => l.id === leadId), 'Unassigned employee must NOT see lead in their list');
+
+    const emp2GetRes = await app.request(`/api/leads/${leadId}`, {
+      headers: { Authorization: `Bearer ${emp2Token}` },
+    }, { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.strictEqual(emp2GetRes.status, 403);
+
+    // 4. Manager can reassign (PUT) a lead to direct report, recording activity log
+    const reassignRes = await app.request(`/api/leads/${leadId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${mgrToken}`,
+      },
+      body: JSON.stringify({
+        owner_id: 'usr_emp_1',
+      }),
+    }, { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.strictEqual(reassignRes.status, 200);
+
+    // 5. Manager attempting to assign a lead to out-of-scope employee (usr_emp_2) returns 403
+    const outOfScopeCreateRes = await app.request(
+      '/api/leads',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${mgrToken}`,
+        },
+        body: JSON.stringify({
+          contact_name: 'Illegal Assignment Corp',
+          contact_phone: '+971 50 123 0000',
+          contact_company: 'Out of Scope LLC',
+          lead_specification: 'Unauthorized Assignment',
+          owner_id: 'usr_emp_2',
+        }),
+      },
+      { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID }
+    );
+    assert.strictEqual(outOfScopeCreateRes.status, 403);
+    const outBody = await outOfScopeCreateRes.json();
+    assert.strictEqual(outBody.code, 'FORBIDDEN');
+
+    // 6. Manager attempting to reassign (PUT) to out-of-scope employee returns 403
+    const outOfScopePutRes = await app.request(`/api/leads/${leadId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${mgrToken}`,
+      },
+      body: JSON.stringify({
+        owner_id: 'usr_emp_2',
+      }),
+    }, { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.strictEqual(outOfScopePutRes.status, 403);
+  });
+
+  it('8. Employee cannot assign leads to others or reassign existing lead ownership (403)', async () => {
+    const emp1Token = await makeToken('fb_uid_emp1');
+
+    // 1. Employee creates lead attempting to assign to another user -> 403
+    const resCreate = await app.request(
+      '/api/leads',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${emp1Token}`,
+        },
+        body: JSON.stringify({
+          contact_name: 'Employee Test Lead',
+          contact_phone: '+971 50 222 3333',
+          contact_company: 'Test Company',
+          lead_specification: 'AC Duct Work',
+          owner_id: 'usr_emp_2',
+        }),
+      },
+      { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID }
+    );
+    assert.strictEqual(resCreate.status, 403);
+
+    // 2. Employee creates own lead (succeeds)
+    const resCreateOwn = await app.request(
+      '/api/leads',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${emp1Token}`,
+        },
+        body: JSON.stringify({
+          contact_name: 'Valid Employee Lead',
+          contact_phone: '+971 50 333 4444',
+          contact_company: 'My Client LLC',
+          lead_specification: 'AC Installation',
+        }),
+      },
+      { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID }
+    );
+    assert.strictEqual(resCreateOwn.status, 201);
+    const { lead } = await resCreateOwn.json();
+
+    // 3. Employee attempts to reassign owner_id -> 403
+    const resReassignId = await app.request(`/api/leads/${lead.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${emp1Token}`,
+      },
+      body: JSON.stringify({ owner_id: 'usr_emp_2' }),
+    }, { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.strictEqual(resReassignId.status, 403);
+
+    // 4. Employee attempts to reassign owner_name -> 403
+    const resReassignName = await app.request(`/api/leads/${lead.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${emp1Token}`,
+      },
+      body: JSON.stringify({ owner_name: 'Sales Executive Bilal' }),
+    }, { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.strictEqual(resReassignName.status, 403);
+
+    // 5. Employee attempts to reassign assigned_employee -> 403
+    const resReassignAssignee = await app.request(`/api/leads/${lead.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${emp1Token}`,
+      },
+      body: JSON.stringify({ assigned_employee: 'Sales Executive Bilal' }),
+    }, { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.strictEqual(resReassignAssignee.status, 403);
+  });
 });

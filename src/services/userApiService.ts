@@ -34,6 +34,7 @@ export interface UserQueryParams {
   role?: string;
   department?: string;
   status?: 'active' | 'inactive' | string;
+  scope?: string;
   page?: number;
   limit?: number;
 }
@@ -83,6 +84,7 @@ export const userApiService = {
         role: params.role,
         department: params.department,
         status: params.status,
+        scope: params.scope,
         page: params.page,
         limit: params.limit,
       },

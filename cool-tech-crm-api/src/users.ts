@@ -32,41 +32,41 @@ const usersApp = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 // All staff management routes require authenticated staff context
 usersApp.use('*', authMiddleware);
 
-/**
- * Enforces that only SUPER_ADMIN and ADMIN users can manage staff.
- */
-function requireAdminAuthority(user: CrmUserProfile): { allowed: boolean; code?: string; message?: string } {
-  if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN') {
-    return { allowed: true };
-  }
-  return {
-    allowed: false,
-    code: 'FORBIDDEN',
-    message: 'Only administrators and super administrators are permitted to manage staff profiles.',
-  };
-}
-
 // ============================================================================
 // 1. GET /api/users - List staff members with search, filters & pagination
 // ============================================================================
 usersApp.get('/', async (c) => {
   const caller = c.get('user');
-  const authCheck = requireAdminAuthority(caller);
-  if (!authCheck.allowed) {
-    return c.json({ success: false, code: authCheck.code, message: authCheck.message }, 403);
-  }
 
   const url = new URL(c.req.url);
   const q = (url.searchParams.get('q') || url.searchParams.get('search') || '').trim();
   const roleParam = (url.searchParams.get('role') || '').trim().toUpperCase();
   const departmentParam = (url.searchParams.get('department') || '').trim();
   const statusParam = (url.searchParams.get('status') || '').trim().toLowerCase();
+  const scopeParam = (url.searchParams.get('scope') || '').trim().toLowerCase();
   const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '25', 10) || 25));
   const offset = (page - 1) * limit;
 
   const whereClauses: string[] = [];
   const bindParams: unknown[] = [];
+
+  // Hierarchy Scope Restrictions:
+  if (caller.role === 'EMPLOYEE') {
+    if (scopeParam !== 'assignable') {
+      return c.json(
+        { success: false, code: 'FORBIDDEN', message: 'Employees are not authorized to view the staff directory.' },
+        403
+      );
+    }
+    whereClauses.push('u.id = ?');
+    bindParams.push(caller.id);
+  } else if (caller.role === 'MANAGER') {
+    // Managers can only list themselves and their direct reportees (or same team)
+    whereClauses.push('(u.reports_to = ? OR u.id = ? OR (u.team_id IS NOT NULL AND u.team_id = ?))');
+    bindParams.push(caller.id, caller.id, caller.team_id || '');
+  }
+  // SUPER_ADMIN and ADMIN have organisation-wide directory access
 
   if (roleParam && roleParam !== 'ALL') {
     whereClauses.push('u.role = ?');
@@ -136,12 +136,8 @@ usersApp.get('/', async (c) => {
 // ============================================================================
 usersApp.get('/:id', async (c) => {
   const caller = c.get('user');
-  const authCheck = requireAdminAuthority(caller);
-  if (!authCheck.allowed) {
-    return c.json({ success: false, code: authCheck.code, message: authCheck.message }, 403);
-  }
-
   const idParam = c.req.param('id');
+
   try {
     const user = await c.env.DB.prepare(
       'SELECT id, firebase_uid, email, full_name, role, position, department, team_id, reports_to, is_active, created_at, updated_at FROM users WHERE id = ? LIMIT 1'
@@ -151,6 +147,14 @@ usersApp.get('/:id', async (c) => {
 
     if (!user) {
       return c.json({ success: false, code: 'NOT_FOUND', message: 'Staff member not found.' }, 404);
+    }
+
+    // Role-based visibility check
+    if (caller.role === 'EMPLOYEE' && user.id !== caller.id) {
+      return c.json({ success: false, code: 'FORBIDDEN', message: 'Employees can only view their own profile.' }, 403);
+    }
+    if (caller.role === 'MANAGER' && user.id !== caller.id && user.reports_to !== caller.id && (!caller.team_id || user.team_id !== caller.team_id)) {
+      return c.json({ success: false, code: 'FORBIDDEN', message: 'Managers can only view staff within their reporting scope.' }, 403);
     }
 
     return c.json({ success: true, user });
@@ -165,9 +169,13 @@ usersApp.get('/:id', async (c) => {
 // ============================================================================
 usersApp.post('/', async (c) => {
   const caller = c.get('user');
-  const authCheck = requireAdminAuthority(caller);
-  if (!authCheck.allowed) {
-    return c.json({ success: false, code: authCheck.code, message: authCheck.message }, 403);
+
+  // Employees cannot create staff accounts
+  if (caller.role === 'EMPLOYEE') {
+    return c.json(
+      { success: false, code: 'FORBIDDEN', message: 'Employees are not permitted to create staff accounts.' },
+      403
+    );
   }
 
   let body: Record<string, unknown>;
@@ -183,8 +191,8 @@ usersApp.post('/', async (c) => {
   const rawRole = typeof body.role === 'string' ? body.role.trim().toUpperCase() : '';
   const position = typeof body.position === 'string' ? body.position.trim() : null;
   const department = typeof body.department === 'string' ? body.department.trim() : null;
-  const teamId = typeof body.team_id === 'string' ? body.team_id.trim() : null;
-  const reportsTo = typeof body.reports_to === 'string' && body.reports_to.trim() ? body.reports_to.trim() : null;
+  let teamId = typeof body.team_id === 'string' ? body.team_id.trim() : null;
+  let reportsTo = typeof body.reports_to === 'string' && body.reports_to.trim() ? body.reports_to.trim() : null;
   const isActive = body.is_active === 0 || body.is_active === false ? 0 : 1;
 
   // Validation
@@ -208,16 +216,63 @@ usersApp.post('/', async (c) => {
     );
   }
 
-  // Privilege escalation check
-  if (rawRole === 'SUPER_ADMIN' && caller.role !== 'SUPER_ADMIN') {
-    return c.json(
-      {
-        success: false,
-        code: 'FORBIDDEN',
-        message: 'Administrators cannot create or grant Super Admin privileges.',
-      },
-      403
-    );
+  // 1. Manager Role Rules:
+  // Managers can only create Employees, and reports_to MUST default to the Manager's D1 user ID
+  if (caller.role === 'MANAGER') {
+    if (rawRole !== 'EMPLOYEE') {
+      return c.json(
+        {
+          success: false,
+          code: 'FORBIDDEN',
+          message: 'Managers can only create Employee accounts.',
+        },
+        403
+      );
+    }
+    reportsTo = caller.id;
+    if (!teamId && caller.team_id) {
+      teamId = caller.team_id;
+    }
+  }
+
+  // 2. Admin Role Rules:
+  // Admins can create Managers and Employees, but CANNOT create Super Admin or Admin accounts
+  if (caller.role === 'ADMIN') {
+    if (rawRole === 'SUPER_ADMIN') {
+      return c.json(
+        {
+          success: false,
+          code: 'FORBIDDEN',
+          message: 'Administrators cannot create or grant Super Admin privileges.',
+        },
+        403
+      );
+    }
+    if (rawRole === 'ADMIN') {
+      return c.json(
+        {
+          success: false,
+          code: 'FORBIDDEN',
+          message: 'Administrators cannot create other Administrator accounts.',
+        },
+        403
+      );
+    }
+  }
+
+  // 3. Super Admin Role Rules:
+  // Super Admins can create Admins, Managers, and Employees. Super Admin cannot be created via standard registration.
+  if (caller.role === 'SUPER_ADMIN') {
+    if (rawRole === 'SUPER_ADMIN') {
+      return c.json(
+        {
+          success: false,
+          code: 'FORBIDDEN',
+          message: 'Super Admin accounts cannot be created via standard registration.',
+        },
+        403
+      );
+    }
   }
 
   // Check for unique email and firebase_uid
@@ -323,9 +378,12 @@ usersApp.post('/', async (c) => {
 // ============================================================================
 usersApp.put('/:id', async (c) => {
   const caller = c.get('user');
-  const authCheck = requireAdminAuthority(caller);
-  if (!authCheck.allowed) {
-    return c.json({ success: false, code: authCheck.code, message: authCheck.message }, 403);
+
+  if (caller.role === 'EMPLOYEE') {
+    return c.json(
+      { success: false, code: 'FORBIDDEN', message: 'Employees are not permitted to modify staff profiles.' },
+      403
+    );
   }
 
   const idParam = c.req.param('id');
@@ -346,8 +404,18 @@ usersApp.put('/:id', async (c) => {
       return c.json({ success: false, code: 'NOT_FOUND', message: 'Staff member not found.' }, 404);
     }
 
-    // Privilege check: ADMIN cannot edit a SUPER_ADMIN
-    if (existing.role === 'SUPER_ADMIN' && caller.role !== 'SUPER_ADMIN') {
+    // Manager Scope Check: Can only manage direct reportees
+    if (caller.role === 'MANAGER') {
+      if (existing.reports_to !== caller.id) {
+        return c.json(
+          { success: false, code: 'FORBIDDEN', message: 'Managers can only manage employees who report to them.' },
+          403
+        );
+      }
+    }
+
+    // Admin Scope Check: ADMIN cannot edit a SUPER_ADMIN
+    if (caller.role === 'ADMIN' && existing.role === 'SUPER_ADMIN') {
       return c.json(
         {
           success: false,
@@ -368,12 +436,22 @@ usersApp.put('/:id', async (c) => {
           400
         );
       }
-      if (normalizedRole === 'SUPER_ADMIN' && caller.role !== 'SUPER_ADMIN') {
+      if (caller.role === 'MANAGER' && normalizedRole !== 'EMPLOYEE') {
         return c.json(
           {
             success: false,
             code: 'FORBIDDEN',
-            message: 'Administrators cannot grant Super Admin privileges.',
+            message: 'Managers cannot promote employees to managerial or administrative roles.',
+          },
+          403
+        );
+      }
+      if (caller.role === 'ADMIN' && (normalizedRole === 'SUPER_ADMIN' || normalizedRole === 'ADMIN')) {
+        return c.json(
+          {
+            success: false,
+            code: 'FORBIDDEN',
+            message: 'Administrators cannot grant Admin or Super Admin privileges.',
           },
           403
         );
@@ -398,7 +476,10 @@ usersApp.put('/:id', async (c) => {
       : existing.team_id;
 
     let reportsTo: string | null | undefined = existing.reports_to;
-    if (body.reports_to !== undefined) {
+    if (caller.role === 'MANAGER') {
+      // Managers cannot reassign reports_to away from themselves
+      reportsTo = caller.id;
+    } else if (body.reports_to !== undefined) {
       const candidateReportsTo = typeof body.reports_to === 'string' && body.reports_to.trim()
         ? body.reports_to.trim()
         : null;
@@ -485,9 +566,12 @@ usersApp.put('/:id', async (c) => {
 // ============================================================================
 usersApp.patch('/:id/status', async (c) => {
   const caller = c.get('user');
-  const authCheck = requireAdminAuthority(caller);
-  if (!authCheck.allowed) {
-    return c.json({ success: false, code: authCheck.code, message: authCheck.message }, 403);
+
+  if (caller.role === 'EMPLOYEE') {
+    return c.json(
+      { success: false, code: 'FORBIDDEN', message: 'Employees are not permitted to change staff account status.' },
+      403
+    );
   }
 
   const idParam = c.req.param('id');
@@ -506,16 +590,26 @@ usersApp.patch('/:id/status', async (c) => {
   const nextStatus = body.is_active === 1 || body.is_active === true ? 1 : 0;
 
   try {
-    const target = await c.env.DB.prepare('SELECT id, role, is_active FROM users WHERE id = ? LIMIT 1')
+    const target = await c.env.DB.prepare('SELECT id, role, reports_to, is_active FROM users WHERE id = ? LIMIT 1')
       .bind(idParam)
-      .first<{ id: string; role: CrmRole; is_active: number }>();
+      .first<{ id: string; role: CrmRole; reports_to: string; is_active: number }>();
 
     if (!target) {
       return c.json({ success: false, code: 'NOT_FOUND', message: 'Staff member not found.' }, 404);
     }
 
-    // Privilege check: ADMIN cannot deactivate a SUPER_ADMIN
-    if (target.role === 'SUPER_ADMIN' && caller.role !== 'SUPER_ADMIN') {
+    // Manager Scope Check: Can only deactivate direct reportees
+    if (caller.role === 'MANAGER') {
+      if (target.reports_to !== caller.id) {
+        return c.json(
+          { success: false, code: 'FORBIDDEN', message: 'Managers can only change status for employees who report to them.' },
+          403
+        );
+      }
+    }
+
+    // Admin Scope Check: ADMIN cannot deactivate a SUPER_ADMIN
+    if (caller.role === 'ADMIN' && target.role === 'SUPER_ADMIN') {
       return c.json(
         {
           success: false,

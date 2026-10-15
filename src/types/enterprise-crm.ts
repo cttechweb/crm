@@ -117,6 +117,7 @@ export interface CrmLead {
   createdBy: string;
   createdByAvatar?: string;
   owner: string;
+  ownerId?: string;
   ownerAvatar?: string;
   assignedEmployee?: string;
   assignedManager?: string;
@@ -452,6 +453,7 @@ export interface CrmSalesOrder {
   notes?: string;
   paymentTerms?: string;
   deliveryTerms?: string;
+  items?: CrmQuotationItem[];
 }
 
 export interface CrmProformaInvoice {

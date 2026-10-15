@@ -53,14 +53,23 @@ async function isOwnerInManagerScope(
   if (manager.id === ownerId) return true;
 
   try {
-    const query = await db
-      .prepare(
-        'SELECT id FROM users WHERE id = ? AND (reports_to = ? OR (team_id IS NOT NULL AND team_id = ?)) LIMIT 1'
-      )
-      .bind(ownerId, manager.id, manager.team_id || '')
-      .all<{ id: string }>();
-
-    return Boolean(query.results && query.results.length > 0);
+    if (manager.team_id && manager.team_id.trim()) {
+      const query = await db
+        .prepare(
+          'SELECT id FROM users WHERE id = ? AND (reports_to = ? OR team_id = ?) LIMIT 1'
+        )
+        .bind(ownerId, manager.id, manager.team_id.trim())
+        .first<{ id: string }>();
+      return Boolean(query);
+    } else {
+      const query = await db
+        .prepare(
+          'SELECT id FROM users WHERE id = ? AND reports_to = ? LIMIT 1'
+        )
+        .bind(ownerId, manager.id)
+        .first<{ id: string }>();
+      return Boolean(query);
+    }
   } catch {
     return false;
   }
@@ -273,10 +282,30 @@ leadsApp.post('/', async (c) => {
   let ownerId: string = user.id;
   let ownerName: string = user.full_name;
 
-  if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN') {
+  if (user.role === 'EMPLOYEE') {
+    if (typeof body.owner_id === 'string' && body.owner_id.trim() && body.owner_id.trim() !== user.id) {
+      return c.json(
+        { success: false, code: 'FORBIDDEN', message: 'Employees cannot assign leads to other users.' },
+        403
+      );
+    }
+  } else if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN') {
     if (typeof body.owner_id === 'string' && body.owner_id.trim()) {
       ownerId = body.owner_id.trim();
-      ownerName = typeof body.owner_name === 'string' && body.owner_name.trim() ? body.owner_name.trim() : ownerId;
+      const targetUser = await c.env.DB.prepare('SELECT id, full_name FROM users WHERE id = ? LIMIT 1')
+        .bind(ownerId)
+        .first<{ id: string; full_name: string }>();
+      ownerName = targetUser?.full_name || (typeof body.owner_name === 'string' && body.owner_name.trim() ? body.owner_name.trim() : ownerId);
+    } else if (typeof body.owner_name === 'string' && body.owner_name.trim() && body.owner_name.trim() !== user.full_name) {
+      const matched = await c.env.DB.prepare('SELECT id, full_name FROM users WHERE full_name = ? OR email = ? LIMIT 1')
+        .bind(body.owner_name.trim(), body.owner_name.trim())
+        .first<{ id: string; full_name: string }>();
+      if (matched) {
+        ownerId = matched.id;
+        ownerName = matched.full_name;
+      } else {
+        ownerName = body.owner_name.trim();
+      }
     }
   } else if (user.role === 'MANAGER') {
     if (typeof body.owner_id === 'string' && body.owner_id.trim() && body.owner_id.trim() !== user.id) {
@@ -289,7 +318,30 @@ leadsApp.post('/', async (c) => {
         );
       }
       ownerId = targetOwnerId;
-      ownerName = typeof body.owner_name === 'string' && body.owner_name.trim() ? body.owner_name.trim() : ownerId;
+      const targetUser = await c.env.DB.prepare('SELECT id, full_name FROM users WHERE id = ? LIMIT 1')
+        .bind(ownerId)
+        .first<{ id: string; full_name: string }>();
+      ownerName = targetUser?.full_name || (typeof body.owner_name === 'string' && body.owner_name.trim() ? body.owner_name.trim() : ownerId);
+    } else if (typeof body.owner_name === 'string' && body.owner_name.trim() && body.owner_name.trim() !== user.full_name) {
+      const matched = await c.env.DB.prepare('SELECT id, full_name FROM users WHERE full_name = ? OR email = ? LIMIT 1')
+        .bind(body.owner_name.trim(), body.owner_name.trim())
+        .first<{ id: string; full_name: string }>();
+      if (matched) {
+        const inScope = await isOwnerInManagerScope(user, matched.id, c.env.DB);
+        if (!inScope) {
+          return c.json(
+            { success: false, code: 'FORBIDDEN', message: 'Managers cannot assign leads to users outside their reporting scope.' },
+            403
+          );
+        }
+        ownerId = matched.id;
+        ownerName = matched.full_name;
+      } else {
+        return c.json(
+          { success: false, code: 'FORBIDDEN', message: 'Managers cannot assign leads to users outside their reporting scope.' },
+          403
+        );
+      }
     }
   }
 
@@ -522,12 +574,61 @@ leadsApp.put('/:id', async (c) => {
       );
     }
 
-    // Disallow Employees from modifying owner_id
-    if (user.role === 'EMPLOYEE' && body.owner_id !== undefined && body.owner_id !== existing.owner_id) {
-      return c.json(
-        { success: false, code: 'FORBIDDEN', message: 'Employees cannot reassign lead ownership.' },
-        403
-      );
+    // Reassignment and ownership enforcement
+    let targetOwnerId: string | undefined = undefined;
+    let targetOwnerName: string | undefined = undefined;
+
+    if (body.owner_id !== undefined && typeof body.owner_id === 'string' && body.owner_id.trim()) {
+      targetOwnerId = body.owner_id.trim();
+      const resolved = await c.env.DB.prepare('SELECT id, full_name FROM users WHERE id = ? LIMIT 1')
+        .bind(targetOwnerId)
+        .first<{ id: string; full_name: string }>();
+      if (resolved) {
+        targetOwnerName = resolved.full_name;
+      }
+    } else if (body.owner_name !== undefined && typeof body.owner_name === 'string' && body.owner_name.trim()) {
+      const resolved = await c.env.DB.prepare('SELECT id, full_name FROM users WHERE full_name = ? OR email = ? LIMIT 1')
+        .bind(body.owner_name.trim(), body.owner_name.trim())
+        .first<{ id: string; full_name: string }>();
+      if (resolved) {
+        targetOwnerId = resolved.id;
+        targetOwnerName = resolved.full_name;
+      }
+    }
+
+    // Role-specific reassignment restrictions
+    if (user.role === 'EMPLOYEE') {
+      const isReassigning =
+        (targetOwnerId !== undefined && targetOwnerId !== existing.owner_id) ||
+        (body.owner_name !== undefined && body.owner_name !== existing.owner_name) ||
+        (body.assigned_employee !== undefined && body.assigned_employee !== existing.assigned_employee);
+
+      if (isReassigning) {
+        return c.json(
+          { success: false, code: 'FORBIDDEN', message: 'Employees cannot reassign lead ownership.' },
+          403
+        );
+      }
+    } else if (user.role === 'MANAGER') {
+      if (targetOwnerId !== undefined && targetOwnerId !== existing.owner_id) {
+        const inScope = await isOwnerInManagerScope(user, targetOwnerId, c.env.DB);
+        if (!inScope) {
+          return c.json(
+            { success: false, code: 'FORBIDDEN', message: 'Managers cannot assign leads to users outside their reporting scope.' },
+            403
+          );
+        }
+      }
+    }
+
+    if (targetOwnerId) {
+      body.owner_id = targetOwnerId;
+    }
+    if (targetOwnerName) {
+      body.owner_name = targetOwnerName;
+      if (!body.assigned_employee) {
+        body.assigned_employee = targetOwnerName;
+      }
     }
 
     // Dynamic parameterized update
@@ -559,6 +660,23 @@ leadsApp.put('/:id', async (c) => {
     updateParams.push(idParam);
 
     await c.env.DB.prepare(updateSql).bind(...updateParams).run();
+
+    // Audit log if owner changed
+    if (targetOwnerId && targetOwnerId !== existing.owner_id) {
+      const logId = `log_${crypto.randomUUID().replace(/-/g, '')}`;
+      await c.env.DB.prepare(
+        `INSERT INTO lead_activity_logs (id, lead_id, user_id, user_name, action, note)
+         VALUES (?, ?, ?, ?, 'Reassigned', ?)`
+      )
+        .bind(
+          logId,
+          idParam,
+          user.id,
+          user.full_name,
+          `Lead reassigned to ${targetOwnerName || targetOwnerId}`
+        )
+        .run();
+    }
 
     const updated = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ?').bind(idParam).first<LeadRow>();
 

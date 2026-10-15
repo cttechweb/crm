@@ -131,6 +131,19 @@ describe('Staff Management API Test Suite', () => {
     is_active: 1,
   };
 
+  const OUTSIDE_EMPLOYEE = {
+    id: 'emp_outside_001',
+    firebase_uid: 'uid_outside_001',
+    email: 'outside@cooltechuae.com',
+    full_name: 'Outside Employee',
+    role: 'EMPLOYEE',
+    position: 'Operations Staff',
+    department: 'Operations',
+    team_id: 'team_operations',
+    reports_to: 'usr_admin_001',
+    is_active: 1,
+  };
+
   before(async () => {
     validKeyPair = await generateKeyPair('RS256', { extractable: true });
     const publicJwk = await exportJWK(validKeyPair.publicKey);
@@ -208,6 +221,19 @@ describe('Staff Management API Test Suite', () => {
       STAFF_EMPLOYEE.reports_to,
       STAFF_EMPLOYEE.is_active
     );
+
+    insert.run(
+      OUTSIDE_EMPLOYEE.id,
+      OUTSIDE_EMPLOYEE.firebase_uid,
+      OUTSIDE_EMPLOYEE.email,
+      OUTSIDE_EMPLOYEE.full_name,
+      OUTSIDE_EMPLOYEE.role,
+      OUTSIDE_EMPLOYEE.position,
+      OUTSIDE_EMPLOYEE.department,
+      OUTSIDE_EMPLOYEE.team_id,
+      OUTSIDE_EMPLOYEE.reports_to,
+      OUTSIDE_EMPLOYEE.is_active
+    );
   });
 
   async function createToken(sub, email) {
@@ -238,22 +264,31 @@ describe('Staff Management API Test Suite', () => {
     }
   });
 
-  // 2. RBAC enforcement: EMPLOYEE and MANAGER cannot manage staff
-  it('2. GET /api/users and POST /api/users reject EMPLOYEE and MANAGER access (403)', async () => {
-    const managerToken = await createToken(STAFF_MANAGER.firebase_uid, STAFF_MANAGER.email);
+  // 2. RBAC enforcement: EMPLOYEE cannot access staff directory or create staff (403)
+  it('2. GET /api/users and POST /api/users reject EMPLOYEE access without assignable scope (403)', async () => {
     const employeeToken = await createToken(STAFF_EMPLOYEE.firebase_uid, STAFF_EMPLOYEE.email);
 
-    // Manager attempt
-    const resMgr = await app.request('/api/users', {
+    // Employee cannot list full directory (403)
+    const resEmpGet = await app.request('/api/users', {
       method: 'GET',
-      headers: { Authorization: `Bearer ${managerToken}` },
+      headers: { Authorization: `Bearer ${employeeToken}` },
     }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
-    assert.equal(resMgr.status, 403);
-    const bodyMgr = await resMgr.json();
-    assert.equal(bodyMgr.code, 'FORBIDDEN');
+    assert.equal(resEmpGet.status, 403);
+    const bodyEmpGet = await resEmpGet.json();
+    assert.equal(bodyEmpGet.code, 'FORBIDDEN');
 
-    // Employee attempt
-    const resEmp = await app.request('/api/users', {
+    // Employee CAN query with scope=assignable to retrieve self
+    const resEmpAssignable = await app.request('/api/users?scope=assignable', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${employeeToken}` },
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resEmpAssignable.status, 200);
+    const bodyEmpAssignable = await resEmpAssignable.json();
+    assert.equal(bodyEmpAssignable.users.length, 1);
+    assert.equal(bodyEmpAssignable.users[0].id, STAFF_EMPLOYEE.id);
+
+    // Employee cannot create staff (403)
+    const resEmpPost = await app.request('/api/users', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${employeeToken}`,
@@ -266,9 +301,102 @@ describe('Staff Management API Test Suite', () => {
         role: 'EMPLOYEE',
       }),
     }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
-    assert.equal(resEmp.status, 403);
-    const bodyEmp = await resEmp.json();
-    assert.equal(bodyEmp.code, 'FORBIDDEN');
+    assert.equal(resEmpPost.status, 403);
+    const bodyEmpPost = await resEmpPost.json();
+    assert.equal(bodyEmpPost.code, 'FORBIDDEN');
+  });
+
+  // 2b. MANAGER Hierarchy & Scope enforcement
+  it('2b. MANAGER can list reportees, create Employees only (auto-reports_to), and is blocked from managing out-of-scope staff', async () => {
+    const managerToken = await createToken(STAFF_MANAGER.firebase_uid, STAFF_MANAGER.email);
+
+    // 1. Manager lists users -> scoped to self and direct reportees only
+    const resList = await app.request('/api/users', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${managerToken}` },
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resList.status, 200);
+    const listBody = await resList.json();
+    const ids = listBody.users.map((u) => u.id);
+    assert.ok(ids.includes(STAFF_MANAGER.id));
+    assert.ok(ids.includes(STAFF_EMPLOYEE.id));
+    assert.ok(!ids.includes(OUTSIDE_EMPLOYEE.id), 'Outside employee must not be visible to manager');
+    assert.ok(!ids.includes(STAFF_ADMIN.id), 'Admin must not be visible to manager');
+
+    // 2. Manager creates Employee -> successfully created with reports_to automatically set to Manager\'s D1 user ID
+    const resCreateEmp = await app.request('/api/users', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${managerToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        full_name: 'Sales Rep Tariq',
+        email: 'tariq@cooltechuae.com',
+        firebase_uid: 'uid_tariq_001',
+        role: 'EMPLOYEE',
+        position: 'Sales Representative',
+        reports_to: 'usr_admin_001', // Attemping to set another manager/admin
+      }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resCreateEmp.status, 201);
+    const createBody = await resCreateEmp.json();
+    assert.equal(createBody.user.role, 'EMPLOYEE');
+    assert.equal(createBody.user.reports_to, STAFF_MANAGER.id, "Manager's actual D1 user ID must be enforced as reports_to");
+
+    // 3. Manager attempts to create a MANAGER -> 403 Forbidden
+    const resCreateMgr = await app.request('/api/users', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${managerToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        full_name: 'Junior Manager',
+        email: 'jrmgr@cooltechuae.com',
+        firebase_uid: 'uid_jrmgr',
+        role: 'MANAGER',
+      }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resCreateMgr.status, 403);
+
+    // 4. Manager attempts to create an ADMIN -> 403 Forbidden
+    const resCreateAdmin = await app.request('/api/users', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${managerToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        full_name: 'Admin Attempt',
+        email: 'adminattempt@cooltechuae.com',
+        firebase_uid: 'uid_adminattempt',
+        role: 'ADMIN',
+      }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resCreateAdmin.status, 403);
+
+    // 5. Manager attempts to edit out-of-scope employee -> 403 Forbidden
+    const resEditOut = await app.request(`/api/users/${OUTSIDE_EMPLOYEE.id}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${managerToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ position: 'Hacked Position' }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resEditOut.status, 403);
+
+    // 6. Manager attempts to deactivate out-of-scope employee -> 403 Forbidden
+    const resDeactOut = await app.request(`/api/users/${OUTSIDE_EMPLOYEE.id}/status`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${managerToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ is_active: 0 }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resDeactOut.status, 403);
   });
 
   // 3. Authorized staff creation by Super Admin and Admin
@@ -414,10 +542,26 @@ describe('Staff Management API Test Suite', () => {
   });
 
   // 7. Privilege escalation prevention
-  it('7. POST /api/users prevents ADMIN from creating a SUPER_ADMIN (403)', async () => {
+  it('7. ADMIN can create Managers and Employees, but cannot create SUPER_ADMIN, create ADMIN, or edit SUPER_ADMIN (403)', async () => {
     const adminToken = await createToken(STAFF_ADMIN.firebase_uid, STAFF_ADMIN.email);
 
-    const res = await app.request('/api/users', {
+    // Admin creates Manager -> Allowed (201)
+    const resCreateMgr = await app.request('/api/users', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name: 'Operations Manager Kareem',
+        email: 'kareem@cooltechuae.com',
+        firebase_uid: 'uid_kareem_001',
+        role: 'MANAGER',
+        position: 'Operations Manager',
+        department: 'Operations',
+      }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resCreateMgr.status, 201);
+
+    // Admin attempts to create SUPER_ADMIN -> 403 Forbidden
+    const resSuper = await app.request('/api/users', {
       method: 'POST',
       headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -427,10 +571,40 @@ describe('Staff Management API Test Suite', () => {
         role: 'SUPER_ADMIN',
       }),
     }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resSuper.status, 403);
+    const bodySuper = await resSuper.json();
+    assert.equal(bodySuper.code, 'FORBIDDEN');
 
-    assert.equal(res.status, 403);
-    const body = await res.json();
-    assert.equal(body.code, 'FORBIDDEN');
+    // Admin attempts to create another ADMIN -> 403 Forbidden
+    const resAdmin = await app.request('/api/users', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name: 'Unauthorized Admin',
+        email: 'fake_admin@cooltechuae.com',
+        firebase_uid: 'uid_fake_admin',
+        role: 'ADMIN',
+      }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resAdmin.status, 403);
+    const bodyAdmin = await resAdmin.json();
+    assert.equal(bodyAdmin.code, 'FORBIDDEN');
+
+    // Admin attempts to edit SUPER_ADMIN profile -> 403 Forbidden
+    const resEditSuper = await app.request(`/api/users/${ROOT_SUPERADMIN.id}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ position: 'Demoted' }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resEditSuper.status, 403);
+
+    // Admin attempts to deactivate SUPER_ADMIN -> 403 Forbidden
+    const resDeactSuper = await app.request(`/api/users/${ROOT_SUPERADMIN.id}/status`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: 0 }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resDeactSuper.status, 403);
   });
 
   // 8. Profile updates (PUT /api/users/:id)
@@ -507,5 +681,158 @@ describe('Staff Management API Test Suite', () => {
     assert.equal(res.status, 403);
     const body = await res.json();
     assert.equal(body.code, 'ACCOUNT_INACTIVE');
+  });
+
+  // 11. Super Admin creation protection
+  it('11. SUPER_ADMIN accounts cannot be created via standard POST /api/users (403)', async () => {
+    const superAdminToken = await createToken(ROOT_SUPERADMIN.firebase_uid, ROOT_SUPERADMIN.email);
+
+    const res = await app.request('/api/users', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${superAdminToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        full_name: 'Second Super Admin',
+        email: 'second_super@cooltechuae.com',
+        firebase_uid: 'uid_second_super',
+        role: 'SUPER_ADMIN',
+      }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.equal(body.code, 'FORBIDDEN');
+  });
+
+  // 12. Full Profile Editing in D1 (Role, Department, Reporting Manager)
+  it('12. PUT /api/users/:id automatically updates role, department, and reports_to in D1', async () => {
+    const superAdminToken = await createToken(ROOT_SUPERADMIN.firebase_uid, ROOT_SUPERADMIN.email);
+
+    // Update Shaheer's department, position, role, and reports_to
+    const resUpdate = await app.request(`/api/users/${STAFF_EMPLOYEE.id}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${superAdminToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        department: 'HVAC Projects',
+        position: 'Assistant Project Manager',
+        role: 'EMPLOYEE',
+        reports_to: STAFF_ADMIN.id,
+      }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+
+    assert.equal(resUpdate.status, 200);
+    const bodyUpdate = await resUpdate.json();
+    assert.equal(bodyUpdate.user.department, 'HVAC Projects');
+    assert.equal(bodyUpdate.user.reports_to, STAFF_ADMIN.id);
+
+    // Verify directly in D1 SQLite
+    const row = db.sqlite.prepare('SELECT department, position, reports_to FROM users WHERE id = ?').get(STAFF_EMPLOYEE.id);
+    assert.equal(row.department, 'HVAC Projects');
+    assert.equal(row.position, 'Assistant Project Manager');
+    assert.equal(row.reports_to, STAFF_ADMIN.id);
+
+    // Updating a nonexistent user returns 404 NOT_FOUND
+    const resNotFound = await app.request('/api/users/usr_nonexistent_999', {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${superAdminToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ department: 'Sales' }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resNotFound.status, 404);
+  });
+
+  // 13. Reactivation and status update edge cases
+  it('13. PATCH /api/users/:id/status reactivates inactive staff and validates input', async () => {
+    const superAdminToken = await createToken(ROOT_SUPERADMIN.firebase_uid, ROOT_SUPERADMIN.email);
+
+    // 1. Deactivate
+    await app.request(`/api/users/${STAFF_EMPLOYEE.id}/status`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${superAdminToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: 0 }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    let row = db.sqlite.prepare('SELECT is_active FROM users WHERE id = ?').get(STAFF_EMPLOYEE.id);
+    assert.equal(row.is_active, 0);
+
+    // 2. Reactivate
+    const resReactivate = await app.request(`/api/users/${STAFF_EMPLOYEE.id}/status`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${superAdminToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: 1 }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resReactivate.status, 200);
+    const bodyReactivate = await resReactivate.json();
+    assert.equal(bodyReactivate.is_active, 1);
+    row = db.sqlite.prepare('SELECT is_active FROM users WHERE id = ?').get(STAFF_EMPLOYEE.id);
+    assert.equal(row.is_active, 1);
+
+    // 3. Missing is_active returns 400 INVALID_INPUT
+    const resBadInput = await app.request(`/api/users/${STAFF_EMPLOYEE.id}/status`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${superAdminToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resBadInput.status, 400);
+
+    // 4. Nonexistent user returns 404 NOT_FOUND
+    const resNotFound = await app.request('/api/users/usr_nonexistent_999/status', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${superAdminToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: 1 }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resNotFound.status, 404);
+  });
+
+  // 14. Employee authorization restrictions on PUT and PATCH
+  it('14. Employees cannot edit or deactivate staff profiles (403)', async () => {
+    const employeeToken = await createToken(STAFF_EMPLOYEE.firebase_uid, STAFF_EMPLOYEE.email);
+
+    // Employee cannot update profiles
+    const resPut = await app.request(`/api/users/${STAFF_EMPLOYEE.id}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${employeeToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ position: 'CEO' }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resPut.status, 403);
+
+    // Employee cannot change account status
+    const resPatch = await app.request(`/api/users/${STAFF_EMPLOYEE.id}/status`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${employeeToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: 0 }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resPatch.status, 403);
+  });
+
+  // 15. Manager privilege escalation prevention
+  it('15. Manager cannot promote employee to MANAGER role (403)', async () => {
+    const managerToken = await createToken(STAFF_MANAGER.firebase_uid, STAFF_MANAGER.email);
+
+    const resPromote = await app.request(`/api/users/${STAFF_EMPLOYEE.id}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${managerToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'MANAGER' }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resPromote.status, 403);
+  });
+
+  // 16. Database and input validation error handling
+  it('16. Malformed JSON returns 400 without crashing', async () => {
+    const superAdminToken = await createToken(ROOT_SUPERADMIN.firebase_uid, ROOT_SUPERADMIN.email);
+
+    const endpoints = [
+      { method: 'POST', path: '/api/users' },
+      { method: 'PUT', path: `/api/users/${STAFF_EMPLOYEE.id}` },
+      { method: 'PATCH', path: `/api/users/${STAFF_EMPLOYEE.id}/status` },
+    ];
+
+    for (const ep of endpoints) {
+      const res = await app.request(ep.path, {
+        method: ep.method,
+        headers: { Authorization: `Bearer ${superAdminToken}`, 'Content-Type': 'application/json' },
+        body: '{ malformed json: ...',
+      }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+      assert.equal(res.status, 400);
+      const body = await res.json();
+      assert.equal(body.code, 'INVALID_JSON');
+    }
   });
 });

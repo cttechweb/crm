@@ -173,6 +173,7 @@ export function mapBackendToCrmLead(
     leadSpecification: row.lead_specification,
     createdBy: row.created_by_name || 'System',
     owner: row.owner_name || row.assigned_employee || 'Unassigned',
+    ownerId: row.owner_id || undefined,
     ownerAvatar: row.owner_avatar || undefined,
     assignedEmployee: row.assigned_employee || row.owner_name || undefined,
     assignedManager: row.assigned_manager || undefined,
@@ -233,6 +234,11 @@ export function mapCrmLeadToBackendPayload(lead: Partial<CrmLead>): Record<strin
   if (lead.comments !== undefined) payload.comments = lead.comments;
   if (lead.lastActivity !== undefined) payload.last_activity = lead.lastActivity;
   if (lead.lastActivityDate !== undefined) payload.last_activity_date = lead.lastActivityDate;
+
+  const rawOwnerId = (lead as any).ownerId !== undefined ? (lead as any).ownerId : (lead as any).owner_id;
+  if (rawOwnerId !== undefined && rawOwnerId !== null) {
+    payload.owner_id = rawOwnerId;
+  }
   if (lead.owner !== undefined) payload.owner_name = lead.owner;
   if (lead.ownerAvatar !== undefined) payload.owner_avatar = lead.ownerAvatar;
   if (lead.assignedEmployee !== undefined) payload.assigned_employee = lead.assignedEmployee;

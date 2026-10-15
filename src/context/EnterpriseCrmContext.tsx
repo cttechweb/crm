@@ -81,7 +81,7 @@ interface EnterpriseCrmContextType {
 
   // Lead Actions
   addLead: (lead: Omit<CrmLead, 'id' | 'slNo'>) => Promise<CrmLead>;
-  assignLead: (leadId: string, employeeName: string, managerName?: string) => Promise<void> | void;
+  assignLead: (leadId: string, employeeName: string, managerName?: string, ownerId?: string) => Promise<void> | void;
   updateLead: (id: string, updated: Partial<CrmLead>) => Promise<CrmLead | void> | void;
   updateLeadStatus?: (
     id: string,
@@ -903,7 +903,8 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   const assignLead = async (
     leadId: string,
     employeeName: string,
-    managerName = 'Muhammed Shibil (Sales Manager)'
+    managerName = 'Muhammed Shibil (Sales Manager)',
+    ownerId?: string
   ): Promise<void> => {
     const list = leads.map((l) => {
       if (l.id !== leadId) return l;
@@ -912,6 +913,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         assignedEmployee: employeeName,
         assignedManager: managerName,
         owner: employeeName,
+        ownerId: ownerId || l.ownerId,
         leadAssigned: { name: employeeName, avatar: l.leadAssigned?.avatar },
         status: l.status === 'New' ? 'Qualified' : l.status,
         lastActivity: `Assigned to ${employeeName}`,
@@ -926,6 +928,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         assignedEmployee: employeeName,
         assignedManager: managerName,
         owner: employeeName,
+        ownerId: ownerId,
         lastActivity: `Assigned to ${employeeName}`,
       });
     } catch (err: unknown) {

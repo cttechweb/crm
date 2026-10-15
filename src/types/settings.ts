@@ -23,6 +23,7 @@ export interface CezconUserItem {
   projectPermission?: string;
   status: string;
   isActive?: boolean;
+  isServerRecord?: boolean;
   canAccessWeb?: boolean;
   canAccessMobile?: boolean;
   loginPermission?: string;

@@ -51,6 +51,7 @@ import {
 import { LeadMigrationStatusModal } from '@/components/leads/LeadMigrationStatusModal';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { canAccessLead } from '@/services/crmDataScopeService';
+import { userApiService, CrmBackendUser } from '@/services/userApiService';
 import { ApiError } from '@/lib/apiClient';
 import { CrmLead, LeadRating, LeadStatus } from '@/types/enterprise-crm';
 import { cn } from '@/lib/utils';
@@ -182,6 +183,8 @@ export function LeadsContent() {
   const [viewingLead, setViewingLead] = useState<CrmLead | null>(null);
   const [assigningLead, setAssigningLead] = useState<CrmLead | null>(null);
   const [assignToOwner, setAssignToOwner] = useState('');
+  const [assignToOwnerId, setAssignToOwnerId] = useState('');
+  const [serverUsers, setServerUsers] = useState<CrmBackendUser[]>([]);
   const [convertingLead, setConvertingLead] = useState<CrmLead | null>(null);
   const [statusModifyingLead, setStatusModifyingLead] = useState<CrmLead | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
@@ -233,6 +236,7 @@ export function LeadsContent() {
       if (u) {
         setCurrentUser(u);
         setAssignToOwner((prev) => prev || u.name || 'shaheer');
+        setAssignToOwnerId((prev) => prev || u.id || 'usr_shaheer');
       }
     };
     syncUser();
@@ -240,6 +244,7 @@ export function LeadsContent() {
       if (u) {
         setCurrentUser(u);
         setAssignToOwner((prev) => prev || u.name || 'shaheer');
+        setAssignToOwnerId((prev) => prev || u.id || 'usr_shaheer');
       }
     });
     window.addEventListener('storage', syncUser);
@@ -253,6 +258,30 @@ export function LeadsContent() {
 
   const isEmployee = currentUser?.role === 'employee' || currentUser?.role === 'worker';
   const isManager = currentUser?.role === 'manager';
+
+  useEffect(() => {
+    let isCancelled = false;
+    const fetchServerUsers = async () => {
+      try {
+        const res = await userApiService.getUsers({
+          status: 'active',
+          limit: 100,
+          scope: isEmployee ? 'assignable' : undefined,
+        });
+        if (!isCancelled && res && Array.isArray(res.users)) {
+          setServerUsers(res.users);
+        }
+      } catch (err) {
+        console.warn('[Leads] Could not fetch server-backed users:', err);
+      }
+    };
+    fetchServerUsers();
+    window.addEventListener('crm_users_updated', fetchServerUsers);
+    return () => {
+      isCancelled = true;
+      window.removeEventListener('crm_users_updated', fetchServerUsers);
+    };
+  }, [isEmployee]);
 
   // Compute team members reporting to this manager
   const managerTeamMembers = useMemo(() => {
@@ -341,7 +370,20 @@ export function LeadsContent() {
 
     const userMap = new Map<string, { id: string; name: string; role: string; department?: string; avatar?: string; email?: string }>();
 
-    // 1. Dynamic users from localStorage (Settings > Users)
+    // 1. Primary: Server-backed users from D1 database
+    serverUsers.forEach((u) => {
+      if (u.id && u.full_name) {
+        userMap.set(u.id, {
+          id: u.id,
+          name: u.full_name,
+          role: u.role,
+          department: u.department,
+          email: u.email,
+        });
+      }
+    });
+
+    // 2. Dynamic users from localStorage (Settings > Users)
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('cezcon_crm_users_list');
@@ -354,10 +396,10 @@ export function LeadsContent() {
                 return;
               }
               const name = u.name?.trim() || u.username?.trim();
-              if (name && !userMap.has(name.toLowerCase())) {
-                userMap.set(name.toLowerCase(), {
-                  id: uId || `usr_${name.toLowerCase()}`,
-                  name,
+              if (uId && !userMap.has(uId)) {
+                userMap.set(uId, {
+                  id: uId,
+                  name: name || uId,
                   role: u.profileType || u.employeeType || u.designation || 'Staff',
                   department: u.department || u.managerType || '',
                   avatar: u.avatarImage || u.avatarUrl || u.avatar,
@@ -370,10 +412,10 @@ export function LeadsContent() {
       } catch (e) {}
     }
 
-    // 2. Users from EnterpriseCrmContext
+    // 3. Users from EnterpriseCrmContext
     users.forEach((u) => {
-      if (u.name && !userMap.has(u.name.toLowerCase())) {
-        userMap.set(u.name.toLowerCase(), {
+      if (u.id && !userMap.has(u.id)) {
+        userMap.set(u.id, {
           id: u.id,
           name: u.name,
           role: u.role || 'Sales Representative',
@@ -384,7 +426,7 @@ export function LeadsContent() {
       }
     });
 
-    // 3. Fallback standard enterprise representatives
+    // 4. Fallback standard enterprise representatives
     const fallbacks = [
       { id: 'usr_shaheer', name: 'Shaheer', role: 'Sales Executive', department: 'Sales' },
       { id: 'usr_shibil', name: 'Muhammed Shibil', role: 'Sales Manager', department: 'Sales' },
@@ -398,13 +440,13 @@ export function LeadsContent() {
     ];
 
     fallbacks.forEach((f) => {
-      if (!userMap.has(f.name.toLowerCase())) {
-        userMap.set(f.name.toLowerCase(), f);
+      if (!userMap.has(f.id)) {
+        userMap.set(f.id, f);
       }
     });
 
     return Array.from(userMap.values());
-  }, [users]);
+  }, [serverUsers, users]);
 
   // Country Phone Rules & Validation Schemas
   const COUNTRY_DIAL_RULES: Record<string, { minDigits: number; maxDigits: number; label: string; placeholder: string }> = {
@@ -425,7 +467,9 @@ export function LeadsContent() {
   // New Lead Form State (Full Cezcon CRM Compatibility)
   const [newLead, setNewLead] = useState({
     owner: currentUser?.name || 'shaheer',
+    ownerId: currentUser?.id || 'usr_shaheer',
     assignedTo: currentUser?.name || 'shaheer',
+    assignedToId: currentUser?.id || 'usr_shaheer',
     leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
     contactPrefix: 'Mr.',
     name: '',
@@ -685,6 +729,7 @@ export function LeadsContent() {
 
     const enteredOwner = newLead.owner.trim() || currentUser?.name || 'shaheer';
     const enteredAssignee = newLead.assignedTo.trim() || enteredOwner;
+    const effectiveOwnerId = newLead.assignedToId || newLead.ownerId || currentUser?.id;
     const effectiveCreatedBy = currentUser?.name || 'Super Admin';
     const effectiveAssignedEmployee = enteredAssignee;
 
@@ -715,6 +760,7 @@ export function LeadsContent() {
         createdBy: effectiveCreatedBy,
         createdByAvatar: createdByAvatarImg,
         owner: enteredOwner,
+        ownerId: effectiveOwnerId,
         ownerAvatar: ownerAvatarImg,
         assignedEmployee: effectiveAssignedEmployee,
         department: currentUser?.department || currentUser?.managerType || currentUser?.employeeType || (currentUser?.name?.toLowerCase().includes('arun') ? 'Marketing' : 'Sales'),
@@ -735,7 +781,9 @@ export function LeadsContent() {
       setIsAddModalOpen(false);
       setNewLead({
         owner: currentUser?.name || 'shaheer',
+        ownerId: currentUser?.id || 'usr_shaheer',
         assignedTo: currentUser?.name || 'shaheer',
+        assignedToId: currentUser?.id || 'usr_shaheer',
         leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
         contactPrefix: 'Mr.',
         name: '',
@@ -847,17 +895,25 @@ export function LeadsContent() {
                   <div className="sm:col-span-9 relative flex items-center border border-slate-300 rounded bg-white px-2.5 py-1 focus-within:border-blue-500 shadow-2xs">
                     {renderUserAvatar(newLead.owner, undefined, 'w-5 h-5 mr-2 shrink-0')}
                     <select
-                      value={newLead.owner}
-                      onChange={(e) => setNewLead({ ...newLead, owner: e.target.value })}
+                      value={newLead.ownerId}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        const matched = assignableUsers.find((u) => u.id === selectedId);
+                        setNewLead({
+                          ...newLead,
+                          ownerId: selectedId,
+                          owner: matched ? matched.name : selectedId,
+                        });
+                      }}
                       className="w-full bg-transparent text-slate-800 text-xs font-medium focus:outline-none cursor-pointer pr-4 appearance-none"
                     >
                       {assignableUsers.map((u) => (
-                        <option key={u.id} value={u.name}>
+                        <option key={u.id} value={u.id}>
                           {u.name} {u.role ? `(${u.role})` : ''}
                         </option>
                       ))}
-                      {newLead.owner && !assignableUsers.some((u) => u.name === newLead.owner) && (
-                        <option value={newLead.owner}>{newLead.owner}</option>
+                      {newLead.ownerId && !assignableUsers.some((u) => u.id === newLead.ownerId) && (
+                        <option value={newLead.ownerId}>{newLead.owner || newLead.ownerId}</option>
                       )}
                     </select>
                     <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 pointer-events-none" />
@@ -873,17 +929,25 @@ export function LeadsContent() {
                   <div className="sm:col-span-9 relative flex items-center border border-blue-300 rounded bg-white px-2.5 py-1 focus-within:border-blue-600 shadow-2xs">
                     {renderUserAvatar(newLead.assignedTo, undefined, 'w-5 h-5 mr-2 shrink-0')}
                     <select
-                      value={newLead.assignedTo}
-                      onChange={(e) => setNewLead({ ...newLead, assignedTo: e.target.value })}
+                      value={newLead.assignedToId}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        const matched = assignableUsers.find((u) => u.id === selectedId);
+                        setNewLead({
+                          ...newLead,
+                          assignedToId: selectedId,
+                          assignedTo: matched ? matched.name : selectedId,
+                        });
+                      }}
                       className="w-full bg-transparent text-slate-800 text-xs font-semibold focus:outline-none cursor-pointer pr-4 appearance-none"
                     >
                       {assignableUsers.map((u) => (
-                        <option key={u.id} value={u.name}>
+                        <option key={u.id} value={u.id}>
                           {u.name} {u.role ? `(${u.role})` : ''}
                         </option>
                       ))}
-                      {newLead.assignedTo && !assignableUsers.some((u) => u.name === newLead.assignedTo) && (
-                        <option value={newLead.assignedTo}>{newLead.assignedTo}</option>
+                      {newLead.assignedToId && !assignableUsers.some((u) => u.id === newLead.assignedToId) && (
+                        <option value={newLead.assignedToId}>{newLead.assignedTo || newLead.assignedToId}</option>
                       )}
                     </select>
                     <ChevronDown className="w-3.5 h-3.5 text-blue-600 absolute right-2.5 pointer-events-none" />
@@ -2947,7 +3011,12 @@ export function LeadsContent() {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setAssignToOwner(lead.assignedEmployee || lead.owner || currentUser?.name || 'shaheer');
+                                    const defaultOwnerName = lead.assignedEmployee || lead.owner || currentUser?.name || 'shaheer';
+                                    const matchedUser = assignableUsers.find(
+                                      (u) => u.id === lead.ownerId || u.name.toLowerCase() === defaultOwnerName.toLowerCase()
+                                    );
+                                    setAssignToOwner(matchedUser ? matchedUser.name : defaultOwnerName);
+                                    setAssignToOwnerId(matchedUser ? matchedUser.id : (lead.ownerId || 'usr_shaheer'));
                                     setAssigningLead(lead);
                                     setActionMenuId(null);
                                   }}
@@ -3412,17 +3481,22 @@ export function LeadsContent() {
                 <div className="sm:col-span-9 relative flex items-center border border-slate-300 rounded bg-white px-2.5 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
                   {renderUserAvatar(assignToOwner, undefined, 'w-5 h-5 mr-2 shrink-0')}
                   <select
-                    value={assignToOwner}
-                    onChange={(e) => setAssignToOwner(e.target.value)}
+                    value={assignToOwnerId}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      setAssignToOwnerId(selectedId);
+                      const matched = assignableUsers.find((u) => u.id === selectedId);
+                      if (matched) setAssignToOwner(matched.name);
+                    }}
                     className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-semibold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
                   >
                     {assignableUsers.map((u) => (
-                      <option key={u.id} value={u.name}>
+                      <option key={u.id} value={u.id}>
                         {u.name} {u.role ? `(${u.role})` : ''}
                       </option>
                     ))}
-                    {assignToOwner && !assignableUsers.some((u) => u.name === assignToOwner) && (
-                      <option value={assignToOwner}>{assignToOwner}</option>
+                    {assignToOwnerId && !assignableUsers.some((u) => u.id === assignToOwnerId) && (
+                      <option value={assignToOwnerId}>{assignToOwner || assignToOwnerId}</option>
                     )}
                   </select>
                   <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 pointer-events-none" />
@@ -3448,6 +3522,7 @@ export function LeadsContent() {
 
                   targetIds.forEach((id) => {
                     updateLead(id, {
+                      ownerId: assignToOwnerId,
                       assignedEmployee: assignToOwner,
                       leadAssigned: { name: assignToOwner, avatar: assigneePhoto },
                       assignedDate: todayDate,
@@ -3538,17 +3613,22 @@ export function LeadsContent() {
                 <div className="sm:col-span-9 relative flex items-center border border-slate-300 rounded bg-white px-2.5 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
                   {renderUserAvatar(assignToOwner, undefined, 'w-5 h-5 mr-2 shrink-0')}
                   <select
-                    value={assignToOwner}
-                    onChange={(e) => setAssignToOwner(e.target.value)}
+                    value={assignToOwnerId}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      setAssignToOwnerId(selectedId);
+                      const matched = assignableUsers.find((u) => u.id === selectedId);
+                      if (matched) setAssignToOwner(matched.name);
+                    }}
                     className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-semibold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
                   >
                     {assignableUsers.map((u) => (
-                      <option key={u.id} value={u.name}>
+                      <option key={u.id} value={u.id}>
                         {u.name} {u.role ? `(${u.role})` : ''}
                       </option>
                     ))}
-                    {assignToOwner && !assignableUsers.some((u) => u.name === assignToOwner) && (
-                      <option value={assignToOwner}>{assignToOwner}</option>
+                    {assignToOwnerId && !assignableUsers.some((u) => u.id === assignToOwnerId) && (
+                      <option value={assignToOwnerId}>{assignToOwner || assignToOwnerId}</option>
                     )}
                   </select>
                   <ChevronDown className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 pointer-events-none" />
@@ -3571,6 +3651,7 @@ export function LeadsContent() {
                   const todayDate = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
                   const assigneePhoto = getEmployeePhoto(assignToOwner) || '';
                   updateLead(assigningLead.id, {
+                    ownerId: assignToOwnerId,
                     assignedEmployee: assignToOwner,
                     leadAssigned: { name: assignToOwner, avatar: assigneePhoto },
                     assignedDate: todayDate,

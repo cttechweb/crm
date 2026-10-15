@@ -216,6 +216,7 @@ export default function LeadDetailPage({ params }: PageProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assignOwner, setAssignOwner] = useState(lead.owner || 'JISMON JOSE');
+  const [assignOwnerId, setAssignOwnerId] = useState(lead.ownerId || '');
   const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
@@ -1020,26 +1021,31 @@ export default function LeadDetailPage({ params }: PageProps) {
                 <div className="sm:col-span-9 relative flex items-center border border-slate-300 rounded-[3px] bg-white px-2.5 py-1.5 focus-within:border-[#006f8e] shadow-2xs">
                   {renderUserAvatar(assignOwner)}
                   <select
-                    value={assignOwner}
-                    onChange={(e) => setAssignOwner(e.target.value)}
+                    value={assignOwnerId}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      setAssignOwnerId(selectedId);
+                      const matched = users.find((u) => u.id === selectedId);
+                      if (matched) setAssignOwner(matched.name);
+                    }}
                     className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-semibold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
                   >
                     {users.length > 0 ? (
                       users.map((u) => (
-                        <option key={u.id} value={u.name}>
+                        <option key={u.id} value={u.id}>
                           {u.name}
                         </option>
                       ))
                     ) : (
                       <>
-                        <option value="Shaheer">Shaheer</option>
-                        <option value="Muhammed Shibil">Muhammed Shibil</option>
-                        <option value="JISMON JOSE">JISMON JOSE</option>
-                        <option value="Mohammed Rashid">Mohammed Rashid</option>
+                        <option value="usr_shaheer">Shaheer</option>
+                        <option value="usr_shibil">Muhammed Shibil</option>
+                        <option value="usr_jismon">JISMON JOSE</option>
+                        <option value="usr_rashid">Mohammed Rashid</option>
                       </>
                     )}
-                    {assignOwner && !users.some((u) => u.name === assignOwner) && (
-                      <option value={assignOwner}>{assignOwner}</option>
+                    {assignOwnerId && !users.some((u) => u.id === assignOwnerId) && (
+                      <option value={assignOwnerId}>{assignOwner || assignOwnerId}</option>
                     )}
                   </select>
                   <span className="absolute right-2.5 pointer-events-none text-slate-500 text-[10px]">▼</span>
@@ -1061,6 +1067,7 @@ export default function LeadDetailPage({ params }: PageProps) {
                 onClick={() => {
                   updateLead(lead.id, {
                     owner: assignOwner,
+                    ownerId: assignOwnerId,
                     leadAssigned: { name: assignOwner },
                     assignedDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
                   });
