@@ -51,6 +51,7 @@ import {
 import { LeadMigrationStatusModal } from '@/components/leads/LeadMigrationStatusModal';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { canAccessLead } from '@/services/crmDataScopeService';
+import { ApiError } from '@/lib/apiClient';
 import { CrmLead, LeadRating, LeadStatus } from '@/types/enterprise-crm';
 import { cn } from '@/lib/utils';
 
@@ -131,6 +132,9 @@ export function LeadsContent() {
 
   // Modals & Action States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSubmittingLead, setIsSubmittingLead] = useState(false);
+  const [createLeadError, setCreateLeadError] = useState<string | null>(null);
+  const [createLeadSuccessToast, setCreateLeadSuccessToast] = useState<string | null>(null);
   const [isQuickAddBizOppOpen, setIsQuickAddBizOppOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [newBizOppTitle, setNewBizOppTitle] = useState('');
@@ -657,15 +661,24 @@ export function LeadsContent() {
       }
     }
 
+    if (!newLead.businessMobile.trim() && !newLead.personalMobile.trim() && !newLead.tel.trim()) {
+      errors.businessMobile = 'At least one contact phone number is required';
+    }
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleCreateLead = (e: React.FormEvent) => {
+  const handleCreateLead = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingLead) return; // Prevent duplicate submissions
+
     if (!validateLeadForm()) {
       return;
     }
+
+    setCreateLeadError(null);
+    setIsSubmittingLead(true);
 
     const contactDisplayName = newLead.name.trim() ? `${newLead.contactPrefix} ${newLead.name.trim()}` : (newLead.customerName || 'Point of contact');
     const companyDisplayName = newLead.customerName.trim() || newLead.name.trim() || 'New Enterprise Client';
@@ -683,68 +696,93 @@ export function LeadsContent() {
     const cleanPersonal = newLead.personalMobile.replace(/\D/g, '');
     const mainPhone = cleanBiz ? `${newLead.businessMobileCode} ${cleanBiz}` : (cleanPersonal ? `${newLead.personalMobileCode} ${cleanPersonal}` : '+971 50 123 4567');
 
-    addLead({
-      leadDate: newLead.leadDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
-      assignedDate: newLead.leadDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
-      leadAssigned: {
-        name: effectiveAssignedEmployee,
-        avatar: assigneeAvatarImg,
-      },
-      contactDetails: {
-        name: contactDisplayName,
-        company: companyDisplayName,
-        phone: mainPhone,
-        email: newLead.email.trim(),
-        whatsapp: cleanPersonal ? `${newLead.personalMobileCode} ${cleanPersonal}` : mainPhone,
-      },
-      leadSpecification: newLead.comments || newLead.businessOpportunity || 'Commercial client HVAC specification',
-      createdBy: effectiveCreatedBy,
-      createdByAvatar: createdByAvatarImg,
-      owner: enteredOwner,
-      ownerAvatar: ownerAvatarImg,
-      assignedEmployee: effectiveAssignedEmployee,
-      department: currentUser?.department || currentUser?.managerType || currentUser?.employeeType || (currentUser?.name?.toLowerCase().includes('arun') ? 'Marketing' : 'Sales'),
-      rating: newLead.rating,
-      status: newLead.status,
-      lastActivity: 'Just created',
-      lastActivityDate: `${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-      lastActivityTimeAgo: 'Just now',
-      value: 0,
-      source: newLead.source || 'Website Inbound',
-      campaign: newLead.campaign || 'SIMPLE LIFE - 2025',
-      businessOpportunity: newLead.businessOpportunity || 'HVAC Installation',
-      tags: newLead.leadTags ? newLead.leadTags.split(',').map((t) => t.trim()) : ['New Lead'],
-    });
+    try {
+      await addLead({
+        leadDate: newLead.leadDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+        assignedDate: newLead.leadDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+        leadAssigned: {
+          name: effectiveAssignedEmployee,
+          avatar: assigneeAvatarImg,
+        },
+        contactDetails: {
+          name: contactDisplayName,
+          company: companyDisplayName,
+          phone: mainPhone,
+          email: newLead.email.trim(),
+          whatsapp: cleanPersonal ? `${newLead.personalMobileCode} ${cleanPersonal}` : mainPhone,
+        },
+        leadSpecification: newLead.comments || newLead.businessOpportunity || 'Commercial client HVAC specification',
+        createdBy: effectiveCreatedBy,
+        createdByAvatar: createdByAvatarImg,
+        owner: enteredOwner,
+        ownerAvatar: ownerAvatarImg,
+        assignedEmployee: effectiveAssignedEmployee,
+        department: currentUser?.department || currentUser?.managerType || currentUser?.employeeType || (currentUser?.name?.toLowerCase().includes('arun') ? 'Marketing' : 'Sales'),
+        rating: newLead.rating,
+        status: newLead.status,
+        lastActivity: 'Just created',
+        lastActivityDate: `${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        lastActivityTimeAgo: 'Just now',
+        value: 0,
+        source: newLead.source || 'Website Inbound',
+        campaign: newLead.campaign || 'SIMPLE LIFE - 2025',
+        businessOpportunity: newLead.businessOpportunity || 'HVAC Installation',
+        tags: newLead.leadTags ? newLead.leadTags.split(',').map((t) => t.trim()) : ['New Lead'],
+      });
 
-    setFormErrors({});
-    setIsAddModalOpen(false);
-    setNewLead({
-      owner: currentUser?.name || 'shaheer',
-      assignedTo: currentUser?.name || 'shaheer',
-      leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
-      contactPrefix: 'Mr.',
-      name: '',
-      designation: '',
-      businessMobileCode: '+971',
-      businessMobile: '',
-      personalMobileCode: '+971',
-      personalMobile: '',
-      email: '',
-      nationality: '',
-      customerName: '',
-      telCode: '+971',
-      tel: '',
-      website: '',
-      leadTags: '',
-      campaign: '',
-      source: '',
-      sourceName: '',
-      rating: 'Cold',
-      status: 'Pending',
-      businessOpportunity: '',
-      location: '',
-      comments: '',
-    });
+      setFormErrors({});
+      setCreateLeadError(null);
+      setIsAddModalOpen(false);
+      setNewLead({
+        owner: currentUser?.name || 'shaheer',
+        assignedTo: currentUser?.name || 'shaheer',
+        leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
+        contactPrefix: 'Mr.',
+        name: '',
+        designation: '',
+        businessMobileCode: '+971',
+        businessMobile: '',
+        personalMobileCode: '+971',
+        personalMobile: '',
+        email: '',
+        nationality: '',
+        customerName: '',
+        telCode: '+971',
+        tel: '',
+        website: '',
+        leadTags: '',
+        campaign: '',
+        source: '',
+        sourceName: '',
+        rating: 'Cold',
+        status: 'Pending',
+        businessOpportunity: '',
+        location: '',
+        comments: '',
+      });
+
+      setCreateLeadSuccessToast(`Lead "${contactDisplayName}" saved automatically to database!`);
+      setTimeout(() => setCreateLeadSuccessToast(null), 4000);
+    } catch (err: unknown) {
+      console.error('[Leads] Automatic lead creation error:', err);
+      let message = 'Failed to persist lead to database. Please check your connection and try again.';
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          message = 'Authentication required or session expired. Please re-login to persist leads.';
+        } else if (err.status === 403) {
+          message = 'You do not have permission to create leads on this server.';
+        } else if (err.isNetworkError || err.isTimeout) {
+          message = 'Network connection to CRM database failed or timed out. Lead was not saved.';
+        } else if (err.message) {
+          message = err.message;
+        }
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
+      setCreateLeadError(message);
+    } finally {
+      setIsSubmittingLead(false);
+    }
   };
 
   const handleUpdateLead = (e: React.FormEvent) => {
@@ -782,6 +820,22 @@ export function LeadsContent() {
 
           {/* 2-Column Cezcon Form */}
           <form onSubmit={handleCreateLead} noValidate className="p-5 sm:p-7 space-y-4 text-xs">
+            {createLeadError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded text-xs flex items-center justify-between gap-2 animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm">⚠️</span>
+                  <span className="font-medium">{createLeadError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCreateLeadError(null)}
+                  className="text-red-500 hover:text-red-800 font-bold p-1 cursor-pointer"
+                  title="Dismiss error"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-3.5">
               {/* ── LEFT COLUMN ── */}
               <div className="space-y-3.5">
@@ -1492,14 +1546,23 @@ export function LeadsContent() {
             <div className="border-t border-slate-200 pt-4 flex items-center justify-end gap-2">
               <button
                 type="submit"
-                className="px-5 py-1.5 rounded bg-[#0F2844] hover:bg-[#0A1D33] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                disabled={isSubmittingLead}
+                className={cn(
+                  'px-5 py-1.5 rounded bg-[#0F2844] hover:bg-[#0A1D33] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5',
+                  isSubmittingLead ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                )}
               >
-                Submit
+                {isSubmittingLead && (
+                  <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                )}
+                <span>{isSubmittingLead ? 'Saving to Database...' : 'Submit'}</span>
               </button>
               <button
                 type="button"
+                disabled={isSubmittingLead}
                 onClick={() => {
                   setFormErrors({});
+                  setCreateLeadError(null);
                   setIsAddModalOpen(false);
                 }}
                 className="px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
@@ -2301,17 +2364,6 @@ export function LeadsContent() {
             >
               <Upload className="w-3.5 h-3.5" />
               <span>Upload Lead</span>
-            </button>
-
-            {/* Cloud Database Sync */}
-            <button
-              type="button"
-              onClick={() => setIsSyncModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded bg-[#0284C7] hover:bg-[#0369A1] text-white text-xs font-semibold cursor-pointer transition-colors shadow-2xs"
-              title="Synchronize browser leads with Cloudflare D1"
-            >
-              <CloudUpload className="w-3.5 h-3.5" />
-              <span>Cloud Sync</span>
             </button>
 
             {/* + LEAD */}
@@ -3633,6 +3685,14 @@ export function LeadsContent() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Lead Creation Automatic Persistence Toast */}
+      {createLeadSuccessToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#0F2844] text-white border border-emerald-500/40 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 text-xs font-bold animate-in slide-in-from-bottom-5 duration-200">
+          <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />
+          <span>{createLeadSuccessToast}</span>
+        </div>
       )}
 
       {/* Change Lead Status and Rating Modal */}

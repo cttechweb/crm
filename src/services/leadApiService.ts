@@ -202,13 +202,14 @@ export function mapCrmLeadToBackendPayload(lead: Partial<CrmLead>): Record<strin
   if (lead.id !== undefined) payload.id = lead.id;
   if (lead.leadDate !== undefined) payload.lead_date = lead.leadDate;
   if (lead.assignedDate !== undefined) payload.assigned_date = lead.assignedDate;
-  if (lead.leadSpecification !== undefined) payload.lead_specification = lead.leadSpecification;
+  const spec = (lead.leadSpecification || lead.comments || lead.businessOpportunity || 'Commercial client HVAC specification').trim();
+  payload.lead_specification = spec;
 
   if (lead.contactDetails) {
     if (lead.contactDetails.name !== undefined) payload.contact_name = lead.contactDetails.name;
     if (lead.contactDetails.phone !== undefined) payload.contact_phone = lead.contactDetails.phone;
     if (lead.contactDetails.email !== undefined) payload.contact_email = lead.contactDetails.email;
-    if (lead.contactDetails.company !== undefined) payload.contact_company = lead.contactDetails.company;
+    payload.contact_company = (lead.contactDetails.company || lead.contactDetails.name || 'New Enterprise Client').trim();
     if (lead.contactDetails.whatsapp !== undefined) payload.contact_whatsapp = lead.contactDetails.whatsapp;
     if (lead.contactDetails.salutation !== undefined) payload.contact_salutation = lead.contactDetails.salutation;
     if (lead.contactDetails.designation !== undefined) payload.contact_designation = lead.contactDetails.designation;

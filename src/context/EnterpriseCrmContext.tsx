@@ -80,7 +80,7 @@ interface EnterpriseCrmContextType {
   deleteTask: (id: string) => void;
 
   // Lead Actions
-  addLead: (lead: Omit<CrmLead, 'id' | 'slNo'>) => Promise<CrmLead | void> | void;
+  addLead: (lead: Omit<CrmLead, 'id' | 'slNo'>) => Promise<CrmLead>;
   assignLead: (leadId: string, employeeName: string, managerName?: string) => Promise<void> | void;
   updateLead: (id: string, updated: Partial<CrmLead>) => Promise<CrmLead | void> | void;
   updateLeadStatus?: (
@@ -265,37 +265,33 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const loadAllData = () => {
       try {
         const liveUser = authMockService.getCurrentUser();
-        if (liveUser?.isServerVerified) {
-          setIsLeadsLoading(true);
-          leadApiService
-            .getLeads({ limit: 100 })
-            .then((res) => {
+        setIsLeadsLoading(true);
+        leadApiService
+          .getLeads({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.leads)) {
               setLeads(res.leads);
               setLeadsError(null);
-            })
-            .catch((err: unknown) => {
-              const msg = err instanceof Error ? err.message : 'Failed to fetch leads from CRM database';
-              console.warn('[EnterpriseCrmContext] Backend lead load failed:', msg);
-              setLeadsError(msg);
-              const storedLeads = localStorage.getItem('cooltech_crm_leads') || localStorage.getItem('crm_leads_data');
-              if (storedLeads) {
-                try {
-                  setLeads(JSON.parse(storedLeads));
-                } catch {}
-              }
-            })
-            .finally(() => {
-              setIsLeadsLoading(false);
-            });
-        } else {
-          const storedLeads = localStorage.getItem('cooltech_crm_leads') || localStorage.getItem('crm_leads_data');
-          if (storedLeads) {
-            const parsed = JSON.parse(storedLeads);
-            setLeads(Array.isArray(parsed) ? parsed : []);
-          } else {
-            setLeads([]);
-          }
-        }
+              persist('crm_leads_data', res.leads);
+            }
+          })
+          .catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : 'Failed to fetch leads from CRM database';
+            console.warn('[EnterpriseCrmContext] Backend lead load failed, using local cache:', msg);
+            setLeadsError(msg);
+            const storedLeads = localStorage.getItem('cooltech_crm_leads') || localStorage.getItem('crm_leads_data');
+            if (storedLeads) {
+              try {
+                const parsed = JSON.parse(storedLeads);
+                if (Array.isArray(parsed)) {
+                  setLeads(parsed);
+                }
+              } catch {}
+            }
+          })
+          .finally(() => {
+            setIsLeadsLoading(false);
+          });
 
         if (liveUser?.isServerVerified) {
           setIsCustomersLoading(true);
@@ -843,51 +839,64 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
 
   // Lead Handlers
   const refreshLeads = async (): Promise<void> => {
-    const user = authMockService.getCurrentUser();
-    if (user?.isServerVerified) {
-      setIsLeadsLoading(true);
-      try {
-        const res = await leadApiService.getLeads({ limit: 100 });
+    setIsLeadsLoading(true);
+    try {
+      const res = await leadApiService.getLeads({ limit: 100 });
+      if (res && Array.isArray(res.leads)) {
         setLeads(res.leads);
         setLeadsError(null);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Failed to fetch leads from CRM database';
-        setLeadsError(msg);
-      } finally {
-        setIsLeadsLoading(false);
+        persist('crm_leads_data', res.leads);
       }
-    } else {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to fetch leads from CRM database';
+      console.warn('[EnterpriseCrmContext] refreshLeads failed on backend, using local cache:', msg);
+      setLeadsError(msg);
       const stored = localStorage.getItem('cooltech_crm_leads') || localStorage.getItem('crm_leads_data');
       if (stored) {
         try {
-          setLeads(JSON.parse(stored));
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setLeads(parsed);
+          }
         } catch {}
       }
+    } finally {
+      setIsLeadsLoading(false);
     }
   };
 
-  const addLead = async (leadData: Omit<CrmLead, 'id' | 'slNo'>): Promise<CrmLead | void> => {
-    const user = authMockService.getCurrentUser();
-    if (user?.isServerVerified) {
+  const addLead = async (leadData: Omit<CrmLead, 'id' | 'slNo'>): Promise<CrmLead> => {
+    try {
+      // 1. Authenticated database-first persistence directly into Cloudflare D1
+      const created = await leadApiService.createLead(leadData);
+
+      // 2. Update React state with the confirmed remote record
+      setLeads((prev) => {
+        const withoutNew = prev.filter((l) => l.id !== created.id);
+        const updated = [created, ...withoutNew];
+        persist('crm_leads_data', updated);
+        return updated;
+      });
+
+      // 3. Update legacy localStorage cache non-destructively
       try {
-        const created = await leadApiService.createLead(leadData);
-        setLeads((prev) => [created, ...prev]);
-        persist('crm_leads_data', [created, ...leads]);
-        return created;
-      } catch (err: unknown) {
-        console.error('[EnterpriseCrmContext] createLead failed on backend:', err);
-        throw err;
-      }
-    } else {
-      const newLead: CrmLead = {
-        ...leadData,
-        id: `lead-${Date.now()}`,
-        slNo: leads.length + 1,
-      };
-      const updated = [newLead, ...leads];
-      setLeads(updated);
-      persist('crm_leads_data', updated);
-      return newLead;
+        const storedCool = localStorage.getItem('cooltech_crm_leads');
+        if (storedCool) {
+          const parsed = JSON.parse(storedCool);
+          if (Array.isArray(parsed) && !parsed.some((l: any) => l.id === created.id)) {
+            localStorage.setItem('cooltech_crm_leads', JSON.stringify([created, ...parsed]));
+          }
+        }
+      } catch {}
+
+      // 4. Remote refresh to ensure canonical ordering & database state
+      await refreshLeads();
+
+      return created;
+    } catch (err: unknown) {
+      console.error('[EnterpriseCrmContext] Automatic lead persistence to database failed:', err);
+      // Fail-fast: Never silently pretend the lead was saved if remote D1 save failed!
+      throw err;
     }
   };
 
@@ -912,19 +921,16 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     setLeads(list);
     persist('crm_leads_data', list);
 
-    const user = authMockService.getCurrentUser();
-    if (user?.isServerVerified) {
-      try {
-        await leadApiService.updateLead(leadId, {
-          assignedEmployee: employeeName,
-          assignedManager: managerName,
-          owner: employeeName,
-          lastActivity: `Assigned to ${employeeName}`,
-        });
-      } catch (err: unknown) {
-        console.error('[EnterpriseCrmContext] assignLead failed on backend:', err);
-        throw err;
-      }
+    try {
+      await leadApiService.updateLead(leadId, {
+        assignedEmployee: employeeName,
+        assignedManager: managerName,
+        owner: employeeName,
+        lastActivity: `Assigned to ${employeeName}`,
+      });
+    } catch (err: unknown) {
+      console.error('[EnterpriseCrmContext] assignLead failed on backend:', err);
+      throw err;
     }
   };
 
@@ -933,16 +939,13 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     setLeads(list);
     persist('crm_leads_data', list);
 
-    const user = authMockService.getCurrentUser();
-    if (user?.isServerVerified) {
-      try {
-        const saved = await leadApiService.updateLead(id, updated);
-        setLeads((prev) => prev.map((l) => (l.id === id ? saved : l)));
-        return saved;
-      } catch (err: unknown) {
-        console.error('[EnterpriseCrmContext] updateLead failed on backend:', err);
-        throw err;
-      }
+    try {
+      const saved = await leadApiService.updateLead(id, updated);
+      setLeads((prev) => prev.map((l) => (l.id === id ? saved : l)));
+      return saved;
+    } catch (err: unknown) {
+      console.error('[EnterpriseCrmContext] updateLead failed on backend:', err);
+      throw err;
     }
   };
 
@@ -969,16 +972,13 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     setLeads(list);
     persist('crm_leads_data', list);
 
-    const user = authMockService.getCurrentUser();
-    if (user?.isServerVerified) {
-      try {
-        const saved = await leadApiService.updateLeadStatus(id, data);
-        setLeads((prev) => prev.map((l) => (l.id === id ? saved : l)));
-        return saved;
-      } catch (err: unknown) {
-        console.error('[EnterpriseCrmContext] updateLeadStatus failed on backend:', err);
-        throw err;
-      }
+    try {
+      const saved = await leadApiService.updateLeadStatus(id, data);
+      setLeads((prev) => prev.map((l) => (l.id === id ? saved : l)));
+      return saved;
+    } catch (err: unknown) {
+      console.error('[EnterpriseCrmContext] updateLeadStatus failed on backend:', err);
+      throw err;
     }
   };
 
@@ -987,14 +987,11 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     setLeads(list);
     persist('crm_leads_data', list);
 
-    const user = authMockService.getCurrentUser();
-    if (user?.isServerVerified) {
-      try {
-        await leadApiService.deleteLead(id);
-      } catch (err: unknown) {
-        console.error('[EnterpriseCrmContext] deleteLead failed on backend:', err);
-        throw err;
-      }
+    try {
+      await leadApiService.deleteLead(id);
+    } catch (err: unknown) {
+      console.error('[EnterpriseCrmContext] deleteLead failed on backend:', err);
+      throw err;
     }
   };
 

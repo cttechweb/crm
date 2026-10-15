@@ -23,10 +23,12 @@ import {
   ArrowRight,
   RefreshCw,
   Layers,
+  CloudUpload,
 } from 'lucide-react';
 import { BackButton } from '@/components/ui/BackButton';
 import { cn } from '@/lib/utils';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
+import { LeadMigrationStatusModal } from '@/components/leads/LeadMigrationStatusModal';
 
 interface ImportBatchItem {
   id: string;
@@ -43,8 +45,9 @@ interface ImportBatchItem {
 const INITIAL_BATCHES: ImportBatchItem[] = [];
 
 function ImportLeadsContent() {
-  const { users } = useEnterpriseCrm();
+  const { users, refreshLeads } = useEnterpriseCrm();
   const [batches, setBatches] = useState<ImportBatchItem[]>(INITIAL_BATCHES);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedSource, setSelectedSource] = useState('Website Inbound');
   const [selectedRep, setSelectedRep] = useState(users[0]?.name || 'shaheer');
@@ -146,6 +149,32 @@ function ImportLeadsContent() {
           <p className="text-2xl font-black text-blue-600 mt-1">99.2%</p>
           <span className="text-[11px] font-semibold text-blue-600">Zero data loss</span>
         </div>
+      </div>
+
+      {/* Legacy Browser Storage Migration Tool */}
+      <div className="bg-gradient-to-r from-slate-50 via-blue-50/30 to-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-[#0284C7]" />
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900">
+              Legacy Browser Storage Migration
+            </h3>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">
+              One-Time Utility
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 max-w-xl">
+            Have offline leads stored in this browser&apos;s localStorage from prior versions? Synchronize them securely to the Cloudflare D1 database. Existing local records remain untouched.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsSyncModalOpen(true)}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-[#0284C7] hover:bg-[#0369A1] text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
+        >
+          <CloudUpload className="w-4 h-4" />
+          <span>Migrate Offline Leads</span>
+        </button>
       </div>
 
       {/* Main Upload Dropzone Area */}
@@ -324,6 +353,16 @@ function ImportLeadsContent() {
           </table>
         </div>
       </div>
+
+      {/* Legacy Migration Modal */}
+      <LeadMigrationStatusModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        onMigrationComplete={() => {
+          if (refreshLeads) refreshLeads();
+          showToast('Offline browser leads synchronized successfully to database!');
+        }}
+      />
     </div>
   );
 }
