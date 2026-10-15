@@ -8,6 +8,7 @@ import { cors } from 'hono/cors';
 import type { Env, AppVariables, CrmProductItem } from './types.ts';
 import { authMiddleware } from './auth.ts';
 import { customersApp } from './customers.ts';
+import { leadsApp } from './leads.ts';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -79,8 +80,8 @@ function mapEcomProductToCrmProduct(item: any): CrmProductItem {
   // Never use retail selling price as purchase rate.
   const purchaseRate =
     typeof item.purchaseRate === 'number' &&
-    item.purchaseRate > 0 &&
-    item.purchaseRate !== sellingPrice
+      item.purchaseRate > 0 &&
+      item.purchaseRate !== sellingPrice
       ? item.purchaseRate
       : undefined;
   const rawId = String(item.id || item.code || '');
@@ -333,6 +334,9 @@ app.get('/api/products', authMiddleware, async (c) => {
 
 // 5. Customer Endpoints (Protected by authMiddleware & RBAC)
 app.route('/api/customers', customersApp);
+
+// 6. Lead Endpoints (Protected by authMiddleware & RBAC)
+app.route('/api/leads', leadsApp);
 
 // Global 404 handler
 app.notFound((c) => {

@@ -8,7 +8,7 @@
     "dev": "npx wrangler dev",
     "deploy": "npx wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test test/auth.test.mjs test/customers.test.mjs test/products.test.mjs"
+    "test": "node --experimental-strip-types --test test/auth.test.mjs test/customers.test.mjs test/leads.test.mjs test/products.test.mjs test/leadStorageMigration.test.mjs"
   },
   "dependencies": {
     "hono": "^4.7.2",

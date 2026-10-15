@@ -143,3 +143,86 @@ export interface CustomerContactRow {
   created_at: string;
   updated_at: string;
 }
+
+export type LeadRatingType = 'Hot' | 'Warm' | 'Cold' | string;
+export type LeadStatusType =
+  | 'New'
+  | 'Pending'
+  | 'Contacted'
+  | 'Qualified'
+  | 'Proposal Sent'
+  | 'Negotiation'
+  | 'Converted'
+  | 'Won'
+  | 'Lost'
+  | 'Disqualified'
+  | string;
+
+export interface LeadRow {
+  id: string;
+  sl_no: number;
+  lead_date: string;
+  assigned_date: string | null;
+  lead_specification: string;
+  contact_name: string;
+  contact_phone: string;
+  contact_email: string | null;
+  contact_company: string;
+  contact_whatsapp: string | null;
+  contact_salutation: string | null;
+  contact_designation: string | null;
+  contact_personal_mobile: string | null;
+  contact_nationality: string | null;
+  contact_telephone: string | null;
+  contact_website: string | null;
+  rating: LeadRatingType;
+  status: LeadStatusType;
+  value: number;
+  source: string | null;
+  source_name: string | null;
+  campaign: string | null;
+  business_opportunity: string | null;
+  location: string | null;
+  tags: string | null;
+  comments: string | null;
+  last_activity: string | null;
+  last_activity_date: string | null;
+  owner_id: string | null;
+  owner_name: string | null;
+  owner_avatar: string | null;
+  created_by_id: string | null;
+  created_by_name: string | null;
+  assigned_employee: string | null;
+  assigned_manager: string | null;
+  department: string | null;
+  is_deleted: number;
+  deleted_at: string | null;
+  deleted_by_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeadNoteRow {
+  id: string;
+  lead_id: string;
+  author_id: string | null;
+  author_name: string;
+  author_avatar: string | null;
+  content: string;
+  created_at: string;
+}
+
+export interface LeadActivityLogRow {
+  id: string;
+  lead_id: string;
+  user_id: string | null;
+  user_name: string;
+  action: string;
+  note: string | null;
+  old_status: string | null;
+  new_status: string | null;
+  old_rating: string | null;
+  new_rating: string | null;
+  created_at: string;
+}
+

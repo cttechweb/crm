@@ -20,6 +20,8 @@ import {
   TaskStatus,
   TaskPriority,
   TaskType,
+  LeadStatus,
+  LeadRating,
 } from '@/types/enterprise-crm';
 import {
   mockTasks,
@@ -39,6 +41,7 @@ import {
 } from '@/data/mockEnterpriseData';
 import { authMockService } from '@/services/authMockService';
 import { customerApiService } from '@/services/customerApiService';
+import { leadApiService } from '@/services/leadApiService';
 
 interface EnterpriseCrmContextType {
   currentRole: UserRole;
@@ -77,10 +80,22 @@ interface EnterpriseCrmContextType {
   deleteTask: (id: string) => void;
 
   // Lead Actions
-  addLead: (lead: Omit<CrmLead, 'id' | 'slNo'>) => void;
-  assignLead: (leadId: string, employeeName: string, managerName?: string) => void;
-  updateLead: (id: string, updated: Partial<CrmLead>) => void;
-  deleteLead: (id: string) => void;
+  addLead: (lead: Omit<CrmLead, 'id' | 'slNo'>) => Promise<CrmLead | void> | void;
+  assignLead: (leadId: string, employeeName: string, managerName?: string) => Promise<void> | void;
+  updateLead: (id: string, updated: Partial<CrmLead>) => Promise<CrmLead | void> | void;
+  updateLeadStatus?: (
+    id: string,
+    data: {
+      status?: LeadStatus;
+      rating?: LeadRating;
+      comments?: string;
+      addNote?: boolean;
+    }
+  ) => Promise<CrmLead | void> | void;
+  deleteLead: (id: string) => Promise<void> | void;
+  isLeadsLoading?: boolean;
+  leadsError?: string | null;
+  refreshLeads?: () => Promise<void>;
 
   // Customer Actions
   addCustomer: (cust: Omit<CrmCustomer, 'id' | 'slNo'>) => Promise<CrmCustomer | void> | void;
@@ -148,6 +163,8 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
 
   const [tasks, setTasks] = useState<CrmTask[]>([]);
   const [leads, setLeads] = useState<CrmLead[]>([]);
+  const [isLeadsLoading, setIsLeadsLoading] = useState(false);
+  const [leadsError, setLeadsError] = useState<string | null>(null);
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [isCustomersLoading, setIsCustomersLoading] = useState(false);
   const [customersError, setCustomersError] = useState<string | null>(null);
@@ -203,6 +220,9 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     if (typeof window === 'undefined') return;
     try {
       localStorage.setItem(key, JSON.stringify(data));
+      if (key === 'crm_leads_data') {
+        localStorage.setItem('cooltech_crm_leads', JSON.stringify(data));
+      }
       const derivedEvent =
         eventName ||
         (key === 'crm_tasks_data'
@@ -244,15 +264,39 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     const loadAllData = () => {
       try {
-        const storedLeads = localStorage.getItem('crm_leads_data');
-        if (storedLeads) {
-          const parsed = JSON.parse(storedLeads);
-          setLeads(Array.isArray(parsed) ? parsed : []);
+        const liveUser = authMockService.getCurrentUser();
+        if (liveUser?.isServerVerified) {
+          setIsLeadsLoading(true);
+          leadApiService
+            .getLeads({ limit: 100 })
+            .then((res) => {
+              setLeads(res.leads);
+              setLeadsError(null);
+            })
+            .catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : 'Failed to fetch leads from CRM database';
+              console.warn('[EnterpriseCrmContext] Backend lead load failed:', msg);
+              setLeadsError(msg);
+              const storedLeads = localStorage.getItem('cooltech_crm_leads') || localStorage.getItem('crm_leads_data');
+              if (storedLeads) {
+                try {
+                  setLeads(JSON.parse(storedLeads));
+                } catch {}
+              }
+            })
+            .finally(() => {
+              setIsLeadsLoading(false);
+            });
         } else {
-          setLeads([]);
+          const storedLeads = localStorage.getItem('cooltech_crm_leads') || localStorage.getItem('crm_leads_data');
+          if (storedLeads) {
+            const parsed = JSON.parse(storedLeads);
+            setLeads(Array.isArray(parsed) ? parsed : []);
+          } else {
+            setLeads([]);
+          }
         }
 
-        const liveUser = authMockService.getCurrentUser();
         if (liveUser?.isServerVerified) {
           setIsCustomersLoading(true);
           customerApiService
@@ -798,18 +842,60 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   };
 
   // Lead Handlers
-  const addLead = (leadData: Omit<CrmLead, 'id' | 'slNo'>) => {
-    const newLead: CrmLead = {
-      ...leadData,
-      id: `lead-${Date.now()}`,
-      slNo: leads.length + 1,
-    };
-    const updated = [newLead, ...leads];
-    setLeads(updated);
-    persist('crm_leads_data', updated);
+  const refreshLeads = async (): Promise<void> => {
+    const user = authMockService.getCurrentUser();
+    if (user?.isServerVerified) {
+      setIsLeadsLoading(true);
+      try {
+        const res = await leadApiService.getLeads({ limit: 100 });
+        setLeads(res.leads);
+        setLeadsError(null);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Failed to fetch leads from CRM database';
+        setLeadsError(msg);
+      } finally {
+        setIsLeadsLoading(false);
+      }
+    } else {
+      const stored = localStorage.getItem('cooltech_crm_leads') || localStorage.getItem('crm_leads_data');
+      if (stored) {
+        try {
+          setLeads(JSON.parse(stored));
+        } catch {}
+      }
+    }
   };
 
-  const assignLead = (leadId: string, employeeName: string, managerName = 'Muhammed Shibil (Sales Manager)') => {
+  const addLead = async (leadData: Omit<CrmLead, 'id' | 'slNo'>): Promise<CrmLead | void> => {
+    const user = authMockService.getCurrentUser();
+    if (user?.isServerVerified) {
+      try {
+        const created = await leadApiService.createLead(leadData);
+        setLeads((prev) => [created, ...prev]);
+        persist('crm_leads_data', [created, ...leads]);
+        return created;
+      } catch (err: unknown) {
+        console.error('[EnterpriseCrmContext] createLead failed on backend:', err);
+        throw err;
+      }
+    } else {
+      const newLead: CrmLead = {
+        ...leadData,
+        id: `lead-${Date.now()}`,
+        slNo: leads.length + 1,
+      };
+      const updated = [newLead, ...leads];
+      setLeads(updated);
+      persist('crm_leads_data', updated);
+      return newLead;
+    }
+  };
+
+  const assignLead = async (
+    leadId: string,
+    employeeName: string,
+    managerName = 'Muhammed Shibil (Sales Manager)'
+  ): Promise<void> => {
     const list = leads.map((l) => {
       if (l.id !== leadId) return l;
       return {
@@ -825,18 +911,91 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     });
     setLeads(list);
     persist('crm_leads_data', list);
+
+    const user = authMockService.getCurrentUser();
+    if (user?.isServerVerified) {
+      try {
+        await leadApiService.updateLead(leadId, {
+          assignedEmployee: employeeName,
+          assignedManager: managerName,
+          owner: employeeName,
+          lastActivity: `Assigned to ${employeeName}`,
+        });
+      } catch (err: unknown) {
+        console.error('[EnterpriseCrmContext] assignLead failed on backend:', err);
+        throw err;
+      }
+    }
   };
 
-  const updateLead = (id: string, updated: Partial<CrmLead>) => {
+  const updateLead = async (id: string, updated: Partial<CrmLead>): Promise<CrmLead | void> => {
     const list = leads.map((l) => (l.id === id ? { ...l, ...updated } : l));
     setLeads(list);
     persist('crm_leads_data', list);
+
+    const user = authMockService.getCurrentUser();
+    if (user?.isServerVerified) {
+      try {
+        const saved = await leadApiService.updateLead(id, updated);
+        setLeads((prev) => prev.map((l) => (l.id === id ? saved : l)));
+        return saved;
+      } catch (err: unknown) {
+        console.error('[EnterpriseCrmContext] updateLead failed on backend:', err);
+        throw err;
+      }
+    }
   };
 
-  const deleteLead = (id: string) => {
+  const updateLeadStatus = async (
+    id: string,
+    data: {
+      status?: LeadStatus;
+      rating?: LeadRating;
+      comments?: string;
+      addNote?: boolean;
+    }
+  ): Promise<CrmLead | void> => {
+    const list = leads.map((l) => {
+      if (l.id !== id) return l;
+      return {
+        ...l,
+        status: data.status || l.status,
+        rating: data.rating || l.rating,
+        comments: data.comments !== undefined ? data.comments : l.comments,
+        lastActivity: `Status updated to ${data.status || l.status}`,
+        lastActivityDate: new Date().toISOString().split('T')[0],
+      };
+    });
+    setLeads(list);
+    persist('crm_leads_data', list);
+
+    const user = authMockService.getCurrentUser();
+    if (user?.isServerVerified) {
+      try {
+        const saved = await leadApiService.updateLeadStatus(id, data);
+        setLeads((prev) => prev.map((l) => (l.id === id ? saved : l)));
+        return saved;
+      } catch (err: unknown) {
+        console.error('[EnterpriseCrmContext] updateLeadStatus failed on backend:', err);
+        throw err;
+      }
+    }
+  };
+
+  const deleteLead = async (id: string): Promise<void> => {
     const list = leads.filter((l) => l.id !== id);
     setLeads(list);
     persist('crm_leads_data', list);
+
+    const user = authMockService.getCurrentUser();
+    if (user?.isServerVerified) {
+      try {
+        await leadApiService.deleteLead(id);
+      } catch (err: unknown) {
+        console.error('[EnterpriseCrmContext] deleteLead failed on backend:', err);
+        throw err;
+      }
+    }
   };
 
   // Customer Handlers
@@ -859,7 +1018,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       if (stored) {
         try {
           setCustomers(JSON.parse(stored));
-        } catch {}
+        } catch { }
       }
     }
   };
@@ -1273,7 +1432,11 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         addLead,
         assignLead,
         updateLead,
+        updateLeadStatus,
         deleteLead,
+        isLeadsLoading,
+        leadsError,
+        refreshLeads,
         addCustomer,
         assignCustomer,
         updateCustomer,

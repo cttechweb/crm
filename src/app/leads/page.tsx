@@ -35,6 +35,7 @@ import {
   HelpCircle,
   Globe,
   Lightbulb,
+  CloudUpload,
 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { BackButton } from '@/components/ui/BackButton';
@@ -47,6 +48,7 @@ import {
   getRatingBadgeClass,
   getStatusBadgeClass,
 } from '@/components/leads/ChangeLeadStatusModal';
+import { LeadMigrationStatusModal } from '@/components/leads/LeadMigrationStatusModal';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { canAccessLead } from '@/services/crmDataScopeService';
 import { CrmLead, LeadRating, LeadStatus } from '@/types/enterprise-crm';
@@ -75,7 +77,7 @@ export function LeadsContent() {
     }
   }, [searchParams, router]);
 
-  const { leads, addLead, updateLead, deleteLead, addCustomer, addOpportunity, users, campaigns } =
+  const { leads, addLead, updateLead, deleteLead, refreshLeads, addCustomer, addOpportunity, users, campaigns } =
     useEnterpriseCrm();
 
   // Top Filter Grid State
@@ -130,6 +132,7 @@ export function LeadsContent() {
   // Modals & Action States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isQuickAddBizOppOpen, setIsQuickAddBizOppOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [newBizOppTitle, setNewBizOppTitle] = useState('');
   const [businessOpportunities, setBusinessOpportunities] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
@@ -2300,6 +2303,17 @@ export function LeadsContent() {
               <span>Upload Lead</span>
             </button>
 
+            {/* Cloud Database Sync */}
+            <button
+              type="button"
+              onClick={() => setIsSyncModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded bg-[#0284C7] hover:bg-[#0369A1] text-white text-xs font-semibold cursor-pointer transition-colors shadow-2xs"
+              title="Synchronize browser leads with Cloudflare D1"
+            >
+              <CloudUpload className="w-3.5 h-3.5" />
+              <span>Cloud Sync</span>
+            </button>
+
             {/* + LEAD */}
             <button
               type="button"
@@ -3627,6 +3641,15 @@ export function LeadsContent() {
         lead={statusModifyingLead}
         onClose={() => setStatusModifyingLead(null)}
         onUpdate={handleUpdateStatusAndRating}
+      />
+
+      {/* Cloud Migration & Synchronization Status Modal */}
+      <LeadMigrationStatusModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        onMigrationComplete={() => {
+          if (refreshLeads) refreshLeads();
+        }}
       />
     </div>
   );
