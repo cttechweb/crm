@@ -9,6 +9,7 @@ import type { Env, AppVariables, CrmProductItem } from './types.ts';
 import { authMiddleware } from './auth.ts';
 import { customersApp } from './customers.ts';
 import { leadsApp } from './leads.ts';
+import { usersApp } from './users.ts';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -337,6 +338,9 @@ app.route('/api/customers', customersApp);
 
 // 6. Lead Endpoints (Protected by authMiddleware & RBAC)
 app.route('/api/leads', leadsApp);
+
+// 7. Staff Management Endpoints (Protected by authMiddleware & Admin RBAC)
+app.route('/api/users', usersApp);
 
 // Global 404 handler
 app.notFound((c) => {

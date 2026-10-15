@@ -24,6 +24,9 @@ import {
   Calendar,
   Phone,
   AlertCircle,
+  Power,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import {
@@ -38,6 +41,8 @@ import { DatePicker } from '@/components/ui/DatePicker';
 import { CezconUserItem, CezconProfileItem } from '@/types/settings';
 import { CEZCON_PROFILES_DATA } from '@/data/settingsMockData';
 import { createFirebaseAuthUser } from '@/services/firebaseAuthService';
+import { userApiService, CrmRole, CrmBackendUser } from '@/services/userApiService';
+import { ApiError } from '@/lib/apiClient';
 
 const ALL_ORGANIZATIONAL_POSITIONS = [
   'CEO',
@@ -77,6 +82,9 @@ export function UsersTab({
   const { addUser } = useEnterpriseCrm();
 
   const [cezconUsersList, setCezconUsersList] = useState<CezconUserItem[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [isSyncingWithServer, setIsSyncingWithServer] = useState(false);
+  const [userFetchError, setUserFetchError] = useState<string | null>(null);
   const [userStatusFilter, setUserStatusFilter] = useState('Active');
   const [userProfileFilter, setUserProfileFilter] = useState('All');
   const [userRowsPerPage, setUserRowsPerPage] = useState(10);
@@ -90,6 +98,9 @@ export function UsersTab({
   const [assignWorkerTab, setAssignWorkerTab] = useState<'NEW' | 'EXISTING'>('NEW');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isCreatingFirebaseUser, setIsCreatingFirebaseUser] = useState(false);
+  const [isSavingUserToDb, setIsSavingUserToDb] = useState(false);
+  const [userCreationError, setUserCreationError] = useState<string | null>(null);
+  const [pendingFirebaseUid, setPendingFirebaseUid] = useState<string | null>(null);
 
   const [workerFormData, setWorkerFormData] = useState({
     workerCode: '',
@@ -770,15 +781,165 @@ export function UsersTab({
     }
   };
 
+  /**
+   * Transforms a Cloudflare D1 server user profile into the CezconUserItem UI model.
+   * Authoritative server fields override stale local fields while preserving local metadata.
+   */
+  const mapBackendUserToCezconItem = (
+    backendUser: CrmBackendUser,
+    existingLocal?: CezconUserItem
+  ): CezconUserItem => {
+    const isSuperAdmin = backendUser.role === 'SUPER_ADMIN';
+    const isAdmin = backendUser.role === 'ADMIN' || isSuperAdmin;
+    const isManager = backendUser.role === 'MANAGER';
+    const isEmployee = backendUser.role === 'EMPLOYEE';
+
+    const displayRole = isSuperAdmin
+      ? 'Super Admin'
+      : isAdmin
+      ? 'Admin'
+      : isManager
+      ? 'Manager'
+      : 'Employee';
+
+    const isActive = backendUser.is_active === 1 || backendUser.is_active === true;
+    const statusStr = isActive ? 'Active' : 'Inactive';
+
+    const profileType = existingLocal?.profileType || (
+      isSuperAdmin ? 'Admin' :
+      isAdmin ? 'Admin' :
+      backendUser.position || displayRole
+    );
+
+    return {
+      // Preserve rich non-server local fields if existing
+      ...(existingLocal || {}),
+
+      // Authoritative server data OVERWRITES stale local data (Rule 5)
+      id: backendUser.id,
+      name: backendUser.full_name || existingLocal?.name || backendUser.email,
+      email: backendUser.email,
+      username: existingLocal?.username || backendUser.email,
+      firebaseUid: backendUser.firebase_uid || existingLocal?.firebaseUid,
+      role: displayRole,
+      position: backendUser.position || existingLocal?.position,
+      department: backendUser.department || existingLocal?.department,
+      teamId: backendUser.team_id || existingLocal?.teamId,
+      reportsTo: backendUser.reports_to !== undefined ? backendUser.reports_to : existingLocal?.reportsTo,
+      managerId: backendUser.reports_to !== undefined ? backendUser.reports_to : existingLocal?.managerId,
+      reportingManagerId: backendUser.reports_to !== undefined ? backendUser.reports_to : existingLocal?.reportingManagerId,
+      status: statusStr,
+      isActive: isActive,
+      isAdmin: isAdmin,
+      isWorker: existingLocal?.isWorker ?? isEmployee,
+      profileType: profileType,
+      designation: backendUser.position || existingLocal?.designation || profileType,
+      phone: existingLocal?.phone || '+971 50 123 4567',
+      avatarBg: existingLocal?.avatarBg || (isSuperAdmin ? 'bg-purple-600' : isAdmin ? 'bg-indigo-600' : isManager ? 'bg-blue-600' : 'bg-emerald-600'),
+      loginPermission: existingLocal?.loginPermission || 'Web & Mobile',
+    };
+  };
+
+  /**
+   * Fetches the authoritative staff directory from Cloudflare D1 via authenticated GET /api/users
+   * and merges server profiles with localStorage records without creating duplicates.
+   */
+  const fetchAndMergeServerUsers = async () => {
+    setIsSyncingWithServer(true);
+    setUserFetchError(null);
+    try {
+      const response = await userApiService.getUsers({ limit: 100 });
+      if (response && response.success && Array.isArray(response.users)) {
+        const serverUsers = response.users;
+
+        // Current local items from localStorage or in-memory state
+        let localUsers: CezconUserItem[] = [];
+        try {
+          const raw = localStorage.getItem('cezcon_crm_users_list');
+          if (raw) localUsers = JSON.parse(raw);
+        } catch {}
+        if (!Array.isArray(localUsers) || localUsers.length === 0) {
+          localUsers = cezconUsersList;
+        }
+
+        const deletedIdsRaw = localStorage.getItem('cezcon_crm_deleted_user_ids');
+        const deletedIdsSet = new Set<string>(deletedIdsRaw ? JSON.parse(deletedIdsRaw) : []);
+
+        // Map keyed by unique identifier
+        const userMap = new Map<string, CezconUserItem>();
+        localUsers.forEach((u) => {
+          if (u && u.id) {
+            userMap.set(String(u.id), u);
+          }
+        });
+
+        // Map email to local ID for correlation
+        const emailToIdMap = new Map<string, string>();
+        userMap.forEach((u, id) => {
+          if (u.email) {
+            emailToIdMap.set(u.email.toLowerCase().trim(), id);
+          }
+        });
+
+        // Merge server users with precedence (server data overwrites stale local data)
+        serverUsers.forEach((su) => {
+          const suEmail = (su.email || '').toLowerCase().trim();
+          const existingId = userMap.has(su.id) ? su.id : (suEmail ? emailToIdMap.get(suEmail) : undefined);
+          const existingLocal = existingId ? userMap.get(existingId) : undefined;
+
+          // If matched by email but had a different local temporary ID, replace temporary key
+          if (existingId && existingId !== su.id) {
+            userMap.delete(existingId);
+          }
+
+          const mergedItem = mapBackendUserToCezconItem(su, existingLocal);
+          userMap.set(su.id, mergedItem);
+          if (suEmail) {
+            emailToIdMap.set(suEmail, su.id);
+          }
+        });
+
+        // Filter out any explicitly deleted IDs
+        const finalMergedList = Array.from(userMap.values()).filter((u) => {
+          const uid = String(u.id).toLowerCase();
+          const uemail = (u.email || '').toLowerCase();
+          return !deletedIdsSet.has(uid) && !deletedIdsSet.has(uemail);
+        });
+
+        setCezconUsersList(finalMergedList);
+        try {
+          localStorage.setItem('cezcon_crm_users_list', JSON.stringify(finalMergedList));
+        } catch (err) {
+          console.error('[UsersTab] Error updating localStorage with server users:', err);
+        }
+      } else {
+        throw new Error('API returned an invalid or unsuccessful response');
+      }
+    } catch (err: unknown) {
+      console.error('[UsersTab] Failed to sync users from CRM API:', err);
+      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to retrieve staff from database';
+      setUserFetchError(msg);
+    } finally {
+      setIsLoadingUsers(false);
+      setIsSyncingWithServer(false);
+    }
+  };
+
   useEffect(() => {
     loadUnifiedUsers();
-    window.addEventListener('crm_users_updated', loadUnifiedUsers);
-    window.addEventListener('crm_admins_updated', loadUnifiedUsers);
-    window.addEventListener('storage', loadUnifiedUsers);
+    fetchAndMergeServerUsers();
+
+    const handleLocalUpdate = () => {
+      loadUnifiedUsers();
+    };
+
+    window.addEventListener('crm_users_updated', handleLocalUpdate);
+    window.addEventListener('crm_admins_updated', handleLocalUpdate);
+    window.addEventListener('storage', handleLocalUpdate);
     return () => {
-      window.removeEventListener('crm_users_updated', loadUnifiedUsers);
-      window.removeEventListener('crm_admins_updated', loadUnifiedUsers);
-      window.removeEventListener('storage', loadUnifiedUsers);
+      window.removeEventListener('crm_users_updated', handleLocalUpdate);
+      window.removeEventListener('crm_admins_updated', handleLocalUpdate);
+      window.removeEventListener('storage', handleLocalUpdate);
     };
   }, []);
 
@@ -1205,30 +1366,66 @@ export function UsersTab({
     }
 
     // Automatically create user in Firebase Auth if it's a new user registration
-    let firebaseUid: string | undefined = undefined;
-    if (!editingUserId) {
+    let firebaseUid: string | undefined = pendingFirebaseUid || undefined;
+    if (!editingUserId && !firebaseUid) {
       setIsCreatingFirebaseUser(true);
+      setUserCreationError(null);
       try {
         const fbResult = await createFirebaseAuthUser(
           userEmail,
           userFormData.password.trim(),
           userFormData.name.trim()
         );
-        if (fbResult.success) {
+        if (fbResult.success && fbResult.uid) {
           firebaseUid = fbResult.uid;
+          setPendingFirebaseUid(firebaseUid);
         } else if (fbResult.alreadyExists) {
-          console.info('User already registered in Firebase Auth, linking CRM profile.');
+          setUserCreationError('This email is already registered in Firebase Authentication. Please verify the email address or manage the existing account.');
+          setIsCreatingFirebaseUser(false);
+          return;
         } else if (fbResult.error) {
-          console.warn('Firebase Auth Registration Warning:', fbResult.error);
+          setUserCreationError(fbResult.error);
+          setIsCreatingFirebaseUser(false);
+          return;
         }
       } catch (fbErr: any) {
         console.error('Firebase user creation failed:', fbErr);
+        setUserCreationError(fbErr?.message || 'Failed to create Firebase user account.');
+        setIsCreatingFirebaseUser(false);
+        return;
       } finally {
         setIsCreatingFirebaseUser(false);
       }
     }
 
+    if (!editingUserId && !firebaseUid) {
+      setUserCreationError('Authentication ID could not be established. Staff profile was not saved.');
+      return;
+    }
+
     if (editingUserId) {
+      setIsSavingUserToDb(true);
+      setUserCreationError(null);
+      try {
+        const backendRole: CrmRole = isSuperAdminAttempt ? 'SUPER_ADMIN' : isAdminUser ? 'ADMIN' : isManager ? 'MANAGER' : 'EMPLOYEE';
+        await userApiService.updateUser(String(editingUserId), {
+          full_name: userFormData.name.trim(),
+          role: backendRole,
+          position: userFormData.position || undefined,
+          department: userFormData.department || (userFormData.position ? POSITION_HIERARCHY_CONFIG[userFormData.position]?.department : undefined),
+          reports_to: effectiveManagerId && String(effectiveManagerId).startsWith('usr_') ? String(effectiveManagerId) : null,
+          is_active: 1,
+        });
+      } catch (err: unknown) {
+        console.error('[UsersTab] Failed to update user in CRM database:', err);
+        const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Database update failed';
+        setUserCreationError(`Database error: ${msg}`);
+        setIsSavingUserToDb(false);
+        return;
+      } finally {
+        setIsSavingUserToDb(false);
+      }
+
       let currentList: CezconUserItem[] = [];
       try {
         const raw = localStorage.getItem('cezcon_crm_users_list');
@@ -1285,8 +1482,45 @@ export function UsersTab({
       }
     } else {
       const resolvedRole = isSuperAdminAttempt ? 'Super Admin' : isAdminUser ? 'Admin' : isManager ? 'Manager' : 'Employee';
+      const backendRole: CrmRole = isSuperAdminAttempt ? 'SUPER_ADMIN' : isAdminUser ? 'ADMIN' : isManager ? 'MANAGER' : 'EMPLOYEE';
+      const newUserId = `usr_${Date.now()}`;
+
+      // Persist to Cloudflare D1 via authenticated Worker API
+      setIsSavingUserToDb(true);
+      setUserCreationError(null);
+      try {
+        await userApiService.createUser({
+          id: newUserId,
+          firebase_uid: firebaseUid!,
+          email: userEmail,
+          full_name: userFormData.name.trim(),
+          role: backendRole,
+          position: userFormData.position || undefined,
+          department: userFormData.department || (userFormData.position ? POSITION_HIERARCHY_CONFIG[userFormData.position]?.department : undefined),
+          team_id: isManager || isEmployee ? (managerDeptType ? `team_${managerDeptType.toLowerCase().replace(/\s+/g, '_')}` : undefined) : undefined,
+          reports_to: effectiveManagerId && String(effectiveManagerId).startsWith('usr_') ? String(effectiveManagerId) : null,
+          is_active: 1,
+        });
+
+        // Clear pending UID once confirmed saved in D1
+        setPendingFirebaseUid(null);
+      } catch (err: unknown) {
+        console.error('[UsersTab] Failed to save staff profile to CRM database:', err);
+        let msg = 'Failed to persist staff profile to CRM database.';
+        if (err instanceof ApiError) {
+          msg = err.message;
+        } else if (err instanceof Error) {
+          msg = err.message;
+        }
+        setUserCreationError(`Authentication account registered in Firebase, but database save failed: ${msg}. Click "Retry Database Save" to complete registration.`);
+        setIsSavingUserToDb(false);
+        return;
+      } finally {
+        setIsSavingUserToDb(false);
+      }
+
       const newUser: CezconUserItem = {
-        id: `usr_${Date.now()}`,
+        id: newUserId,
         name: userFormData.name.trim(),
         email: userEmail,
         username: fullUsername,
@@ -1423,6 +1657,7 @@ export function UsersTab({
 
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
+    fetchAndMergeServerUsers();
   };
 
   const handleAssignWorkerSubmit = (e: React.FormEvent) => {
@@ -1540,6 +1775,23 @@ export function UsersTab({
             {/* Decoy fields to block Chrome autofill from hijacking new user email/password */}
             <input type="text" name="crm_decoy_usr" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" autoComplete="off" />
             <input type="password" name="crm_decoy_pwd" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" autoComplete="off" />
+
+            {userCreationError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded text-xs flex items-center justify-between gap-2 animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span className="font-medium">{userCreationError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUserCreationError(null)}
+                  className="text-red-500 hover:text-red-800 font-bold p-1 cursor-pointer"
+                  title="Dismiss error"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4 text-xs">
               {/* Left Column */}
@@ -2875,23 +3127,34 @@ export function UsersTab({
               <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 col-span-1 lg:col-span-2">
                 <button
                   type="submit"
-                  disabled={isCreatingFirebaseUser}
+                  disabled={isCreatingFirebaseUser || isSavingUserToDb}
                   className={`px-5 py-1.5 rounded bg-[#002B49] hover:bg-[#001D33] text-white text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 ${
-                    isCreatingFirebaseUser ? 'opacity-70 cursor-not-allowed' : ''
+                    isCreatingFirebaseUser || isSavingUserToDb ? 'opacity-70 cursor-not-allowed' : ''
                   }`}
                 >
                   {isCreatingFirebaseUser ? (
                     <>
                       <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Saving & Registering in Firebase...</span>
+                      <span>Registering in Firebase...</span>
                     </>
+                  ) : isSavingUserToDb ? (
+                    <>
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Saving to CRM Database...</span>
+                    </>
+                  ) : pendingFirebaseUid ? (
+                    <span>Retry Database Save</span>
                   ) : (
-                    <span>Submit</span>
+                    <span>{editingUserId ? 'Save Changes' : 'Submit'}</span>
                   )}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsAddUserModalOpen(false)}
+                  onClick={() => {
+                    setIsAddUserModalOpen(false);
+                    setUserCreationError(null);
+                    setPendingFirebaseUid(null);
+                  }}
                   className="px-4 py-1.5 rounded bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                 >
                   <span>←</span> Back
@@ -3100,22 +3363,60 @@ export function UsersTab({
       ) : (
         <div className="bg-white border border-slate-200 rounded-md shadow-xs overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2.5 bg-[#F1F5F9] border-b border-slate-200">
-            <div className="flex items-center gap-2 font-bold text-xs text-slate-800">
+            <div className="flex items-center gap-2.5 font-bold text-xs text-slate-800">
               <Users className="w-4 h-4 text-slate-600" />
               <span>Users Directory</span>
+              {isSyncingWithServer && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                  <Loader2 className="w-2.5 h-2.5 animate-spin text-blue-600" />
+                  Syncing DB...
+                </span>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                resetUserForm();
-                setIsAddUserModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1 px-3 py-1 rounded bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              + USER
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fetchAndMergeServerUsers()}
+                disabled={isSyncingWithServer}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                title="Synchronize staff with CRM database"
+              >
+                <RefreshCw className={`w-3 h-3 text-slate-600 ${isSyncingWithServer ? 'animate-spin' : ''}`} />
+                <span>{isSyncingWithServer ? 'Syncing...' : 'Sync DB'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  resetUserForm();
+                  setIsAddUserModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1 px-3 py-1 rounded bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                + USER
+              </button>
+            </div>
           </div>
+
+          {userFetchError && (
+            <div className="mx-4 mt-2.5 p-2.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-xs">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  <strong>Database sync error:</strong> {userFetchError}. Displaying cached offline records.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchAndMergeServerUsers()}
+                disabled={isSyncingWithServer}
+                className="self-start sm:self-auto inline-flex items-center gap-1 px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-semibold transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3 h-3 ${isSyncingWithServer ? 'animate-spin' : ''}`} />
+                Retry Sync
+              </button>
+            </div>
+          )}
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-2 border-b border-slate-200 text-xs bg-white">
             <div className="flex flex-wrap items-center gap-3">
@@ -3189,7 +3490,15 @@ export function UsersTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredCezconUsers.length === 0 ? (
+                {isLoadingUsers && filteredCezconUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-xs text-slate-500 bg-white">
+                      <Loader2 className="w-7 h-7 text-[#005B60] animate-spin mx-auto mb-2" />
+                      <p className="font-semibold text-slate-700">Loading staff records from database...</p>
+                      <p className="text-[11px] text-slate-400 mt-1">Querying authenticated CRM API...</p>
+                    </td>
+                  </tr>
+                ) : filteredCezconUsers.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-xs text-slate-500 bg-white">
                       <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
@@ -3218,7 +3527,9 @@ export function UsersTab({
                         )}
                       </td>
                       <td className="py-3 px-3 text-center">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          u.status === 'Active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                        }`}>
                           {u.status}
                         </span>
                       </td>
@@ -3298,6 +3609,34 @@ export function UsersTab({
                                     <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                                   </svg>
                                   <span>Make Worker</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setOpenActionUserId(null);
+                                    const nextStatus = u.status === 'Active' ? 0 : 1;
+                                    try {
+                                      if (String(u.id).startsWith('usr_') || String(u.id).startsWith('emp_') || String(u.id).startsWith('mgr_')) {
+                                        await userApiService.updateUserStatus(String(u.id), nextStatus);
+                                      }
+                                      const updated = cezconUsersList.map((item) =>
+                                        item.id === u.id ? { ...item, status: nextStatus === 1 ? 'Active' : 'Inactive' } : item
+                                      );
+                                      setCezconUsersList(updated);
+                                      localStorage.setItem('cezcon_crm_users_list', JSON.stringify(updated));
+                                      window.dispatchEvent(new Event('crm_users_updated'));
+                                      setSaveSuccess(true);
+                                      setTimeout(() => setSaveSuccess(false), 3000);
+                                    } catch (err: unknown) {
+                                      console.error('Failed to update user status in CRM database:', err);
+                                      const msg = err instanceof ApiError ? err.message : 'Failed to update user status';
+                                      alert(`Status update error: ${msg}`);
+                                    }
+                                  }}
+                                  className="w-full text-left px-3 py-1.5 flex items-center gap-2.5 hover:bg-[#F3F4F6] text-[13px] text-slate-800 cursor-pointer font-normal"
+                                >
+                                  <Power className="w-3.5 h-3.5 text-slate-800 shrink-0" />
+                                  <span>{u.status === 'Active' ? 'Deactivate' : 'Activate'}</span>
                                 </button>
                                 <button
                                   type="button"
