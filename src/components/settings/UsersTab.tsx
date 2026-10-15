@@ -886,30 +886,19 @@ export function UsersTab({
           }
         });
 
-        // Merge server users with precedence (server data overwrites stale local data)
-        serverUsers.forEach((su) => {
-          const suEmail = (su.email || '').toLowerCase().trim();
-          const existingId = userMap.has(su.id) ? su.id : (suEmail ? emailToIdMap.get(suEmail) : undefined);
-          const existingLocal = existingId ? userMap.get(existingId) : undefined;
-
-          // If matched by email but had a different local temporary ID, replace temporary key
-          if (existingId && existingId !== su.id) {
-            userMap.delete(existingId);
-          }
-
-          const mergedItem = mapBackendUserToCezconItem(su, existingLocal);
-          userMap.set(su.id, mergedItem);
-          if (suEmail) {
-            emailToIdMap.set(suEmail, su.id);
-          }
-        });
-
-        // Filter out any explicitly deleted IDs
-        const finalMergedList = Array.from(userMap.values()).filter((u) => {
-          const uid = String(u.id).toLowerCase();
-          const uemail = (u.email || '').toLowerCase();
-          return !deletedIdsSet.has(uid) && !deletedIdsSet.has(uemail);
-        });
+        // Authoritative D1 Staff Directory: serverUsers is the single source of truth (never mixing unconfirmed mock accounts)
+        const finalMergedList = serverUsers
+          .filter((su) => {
+            const suId = String(su.id).toLowerCase();
+            const suEmail = (su.email || '').toLowerCase();
+            return !deletedIdsSet.has(suId) && !deletedIdsSet.has(suEmail);
+          })
+          .map((su) => {
+            const suEmail = (su.email || '').toLowerCase().trim();
+            const existingId = userMap.has(su.id) ? su.id : (suEmail ? emailToIdMap.get(suEmail) : undefined);
+            const existingLocal = existingId ? userMap.get(existingId) : undefined;
+            return mapBackendUserToCezconItem(su, existingLocal);
+          });
 
         setCezconUsersList(finalMergedList);
         try {
@@ -1375,22 +1364,29 @@ export function UsersTab({
     if (userFormData.position === 'CEO') {
       finalReportsTo = null;
     } else if (isManagerSession && isEmployee) {
-      finalReportsTo = String(loggedInUser?.id || '').startsWith('usr_') ? String(loggedInUser?.id) : null;
+      finalReportsTo = loggedInUser?.id ? String(loggedInUser.id) : null;
     } else if (userFormData.assignedManagerId && userFormData.assignedManagerId.trim()) {
       const candidateId = userFormData.assignedManagerId.trim();
       const matched = cezconUsersList.find(
         (u) => String(u.id) === candidateId || (u.email && u.email.toLowerCase() === candidateId.toLowerCase())
       );
-      if (matched && (String(matched.id).startsWith('usr_') || String(matched.id).startsWith('emp_'))) {
+      if (matched) {
         finalReportsTo = String(matched.id);
-      } else if (candidateId.startsWith('usr_') || candidateId.startsWith('emp_')) {
+      } else {
         finalReportsTo = candidateId;
       }
     }
 
-    // Automatically create user in Firebase Auth if it's a new user registration
+    // Automatically create or link user in Firebase Auth
     let firebaseUid: string | undefined = pendingFirebaseUid || undefined;
-    if (!editingUserId && !firebaseUid) {
+    if (editingUserId && !firebaseUid) {
+      const existingUser = cezconUsersList.find((u) => String(u.id) === String(editingUserId));
+      if (existingUser?.firebaseUid) {
+        firebaseUid = existingUser.firebaseUid;
+      }
+    }
+
+    if (!firebaseUid) {
       setIsCreatingFirebaseUser(true);
       setUserCreationError(null);
       try {
@@ -1399,7 +1395,7 @@ export function UsersTab({
           userFormData.password.trim(),
           userFormData.name.trim()
         );
-        if (fbResult.success && fbResult.uid) {
+        if (fbResult.uid) {
           firebaseUid = fbResult.uid;
           setPendingFirebaseUid(firebaseUid);
         } else if (fbResult.alreadyExists) {
@@ -1735,11 +1731,18 @@ export function UsersTab({
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 
-  const handleDeleteUser = () => {
+  const handleDeleteUser = async () => {
     if (!userToDelete) return;
     const targetId = String(userToDelete.id).toLowerCase();
     const targetEmail = (userToDelete.email || '').toLowerCase();
     const targetUsername = (userToDelete.username || '').toLowerCase();
+
+    // 0. Automatically update CRM D1 database (deactivate account)
+    try {
+      await userApiService.updateUserStatus(String(userToDelete.id), 0);
+    } catch (err) {
+      console.warn('[UsersTab] Could not deactivate user in D1:', err);
+    }
 
     // 1. Update deleted registry in localStorage
     try {

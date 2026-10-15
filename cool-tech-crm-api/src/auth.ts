@@ -127,6 +127,9 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
   }
 
   const verifiedUid = verification.uid;
+  const verifiedEmail = typeof verification.payload?.email === 'string'
+    ? verification.payload.email.trim().toLowerCase()
+    : null;
 
   // Query D1 users table using verified firebase_uid and exact schema columns
   try {
@@ -136,7 +139,30 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
       .bind(verifiedUid)
       .all<CrmUserProfile>();
 
-    const userProfile = query.results?.[0];
+    let userProfile = query.results?.[0];
+
+    // JIT Account Linking: If not found by firebase_uid, resolve by verified Firebase email
+    if (!userProfile && verifiedEmail) {
+      const emailQuery = await c.env.DB.prepare(
+        'SELECT id, firebase_uid, email, full_name, role, is_active, department, position, reports_to FROM users WHERE LOWER(email) = ? LIMIT 1'
+      )
+        .bind(verifiedEmail)
+        .all<CrmUserProfile>();
+
+      const emailProfile = emailQuery.results?.[0];
+      if (emailProfile) {
+        await c.env.DB.prepare(
+          'UPDATE users SET firebase_uid = ?, updated_at = datetime(\'now\') WHERE id = ?'
+        )
+          .bind(verifiedUid, emailProfile.id)
+          .run();
+
+        userProfile = {
+          ...emailProfile,
+          firebase_uid: verifiedUid,
+        };
+      }
+    }
 
     // 1. Check if CRM profile exists
     if (!userProfile) {

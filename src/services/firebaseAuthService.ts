@@ -1,5 +1,5 @@
 import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
 import { firebaseConfig } from '@/firebase/config';
 
 export interface CreateFirebaseUserResult {
@@ -31,10 +31,11 @@ export async function createFirebaseAuthUser(
   // Use a unique app name so it does not conflict with the main active Firebase app
   const tempAppName = `crm-user-creator-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   let tempApp;
+  let tempAuth: ReturnType<typeof getAuth> | undefined;
 
   try {
     tempApp = initializeApp(firebaseConfig, tempAppName);
-    const tempAuth = getAuth(tempApp);
+    tempAuth = getAuth(tempApp);
 
     // 1. Create the user in Firebase Auth
     const userCredential = await createUserWithEmailAndPassword(tempAuth, trimmedEmail, trimmedPassword);
@@ -69,6 +70,41 @@ export async function createFirebaseAuthUser(
     let alreadyExists = false;
 
     if (err?.code === 'auth/email-already-in-use') {
+      // 1. If currently active user in main app matches this email, recover their UID
+      try {
+        const defaultAuth = getAuth();
+        if (defaultAuth.currentUser && defaultAuth.currentUser.email?.toLowerCase() === trimmedEmail.toLowerCase()) {
+          return {
+            success: true,
+            uid: defaultAuth.currentUser.uid,
+            alreadyExists: true,
+          };
+        }
+      } catch {}
+
+      // 2. Attempt to sign in to temporary auth instance with provided credentials
+      if (tempAuth) {
+        try {
+          const signinCred = await signInWithEmailAndPassword(tempAuth, trimmedEmail, trimmedPassword);
+          if (signinCred.user?.uid) {
+            const uid = signinCred.user.uid;
+            if (displayName) {
+              try {
+                await updateProfile(signinCred.user, { displayName: displayName.trim() });
+              } catch {}
+            }
+            try {
+              await signOut(tempAuth);
+            } catch {}
+            return {
+              success: true,
+              uid,
+              alreadyExists: true,
+            };
+          }
+        } catch {}
+      }
+
       errorMessage = 'This email is already registered in Firebase Authentication.';
       alreadyExists = true;
     } else if (err?.code === 'auth/weak-password') {

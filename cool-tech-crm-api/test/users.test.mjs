@@ -835,4 +835,71 @@ describe('Staff Management API Test Suite', () => {
       assert.equal(body.code, 'INVALID_JSON');
     }
   });
+
+  // 17. JIT Profile Linking: Pre-seeded staff member with unlinked or updated Firebase UID resolves by verified email
+  it('17. Pre-seeded staff profile with unlinked Firebase UID auto-links on verified email authentication', async () => {
+    const SEEDED_USER = {
+      id: 'usr_jit_test_001',
+      firebase_uid: 'seed_placeholder_uid_001',
+      email: 'staff.jit@cooltechuae.com',
+      full_name: 'Test JIT Staff',
+      role: 'MANAGER',
+      position: 'Sales Manager',
+      department: 'Sales',
+      is_active: 1,
+    };
+    db.sqlite.prepare(`
+      INSERT INTO users (id, firebase_uid, email, full_name, role, position, department, team_id, reports_to, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      SEEDED_USER.id,
+      SEEDED_USER.firebase_uid,
+      SEEDED_USER.email,
+      SEEDED_USER.full_name,
+      SEEDED_USER.role,
+      SEEDED_USER.position,
+      SEEDED_USER.department,
+      'team_sales',
+      null,
+      SEEDED_USER.is_active
+    );
+
+    const realFirebaseUid = 'actual_firebase_uid_test_999';
+    const token = await createToken(realFirebaseUid, 'staff.jit@cooltechuae.com');
+
+    const resMe = await app.request('/api/auth/me', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+
+    assert.equal(resMe.status, 200);
+    const bodyMe = await resMe.json();
+    assert.equal(bodyMe.success, true);
+    assert.equal(bodyMe.user.id, SEEDED_USER.id);
+    assert.equal(bodyMe.user.role, 'MANAGER');
+    assert.equal(bodyMe.user.position, 'Sales Manager');
+
+    const updated = db.sqlite.prepare('SELECT firebase_uid FROM users WHERE id = ?').get(SEEDED_USER.id);
+    assert.equal(updated.firebase_uid, realFirebaseUid);
+
+    const resUsers = await app.request('/api/users', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resUsers.status, 200);
+  });
+
+  // 18. Unregistered Firebase email is rejected with 403 PROFILE_NOT_FOUND
+  it('18. Authenticated user without matching Firebase UID or pre-registered email returns 403 PROFILE_NOT_FOUND', async () => {
+    const unregisteredToken = await createToken('uid_unregistered_999', 'unknown@gmail.com');
+
+    const res = await app.request('/api/users', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${unregisteredToken}` },
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.equal(body.code, 'PROFILE_NOT_FOUND');
+  });
 });
