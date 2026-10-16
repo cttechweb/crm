@@ -76,7 +76,7 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
     iconName: 'Hourglass',
     children: [
       { label: 'Opportunity', href: '/sales?tab=opportunities', iconName: 'Key' },
-      { label: 'Quotation', href: '/sales?tab=quotations', iconName: 'FileText' },
+      { label: 'Commercial Offers', href: '/sales?tab=quotations', iconName: 'FileText' },
       { label: 'Order', href: '/sales?tab=orders', iconName: 'ThumbsUp' },
       { label: 'Proforma Invoice', href: '/sales?tab=proforma', iconName: 'CreditCard' },
       { label: 'Invoice', href: '/sales?tab=invoice', iconName: 'FileSpreadsheet' },
@@ -276,7 +276,7 @@ export const MANAGER_NAV_ITEMS: EnterpriseNavItem[] = [
     children: [
       { label: 'Opportunities', href: '/manager/sales?tab=opportunities', iconName: 'Key' },
       { label: 'Sales Pipeline', href: '/manager/sales?tab=pipeline', iconName: 'TrendingUp' },
-      { label: 'Quotations', href: '/manager/sales?tab=quotations', iconName: 'FileText' },
+      { label: 'Commercial Offers', href: '/manager/sales?tab=quotations', iconName: 'FileText' },
       { label: 'Orders', href: '/manager/sales?tab=orders', iconName: 'ThumbsUp' },
       { label: 'Proforma Invoices', href: '/manager/sales?tab=proforma', iconName: 'CreditCard' },
       { label: 'Invoices', href: '/manager/sales?tab=invoices', iconName: 'FileSpreadsheet' },
