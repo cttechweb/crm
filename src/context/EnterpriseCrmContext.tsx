@@ -65,6 +65,7 @@ import {
   purchaseOrderApiService,
   stockTransferApiService,
 } from '@/services/procurementApiService';
+import { userApiService, CrmBackendUser } from '@/services/userApiService';
 
 interface EnterpriseCrmContextType {
   currentRole: UserRole;
@@ -192,6 +193,7 @@ interface EnterpriseCrmContextType {
   // User Actions
   addUser: (user: Omit<CrmUser, 'id' | 'lastLogin'>) => void;
   deleteUser: (id: string) => void;
+  refreshUsers?: () => Promise<void>;
 
   // Campaign Actions
   addCampaign: (campaign: Omit<CrmCampaign, 'id' | 'slNo'>) => void;
@@ -229,7 +231,8 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   const [purchaseOrders, setPurchaseOrders] = useState<CrmPurchaseOrder[]>([]);
   const [stockTransfers, setStockTransfers] = useState<CrmStockTransfer[]>([]);
   const [campaigns, setCampaigns] = useState<CrmCampaign[]>([]);
-  const [users, setUsers] = useState<CrmUser[]>(mockUsers);
+  const [users, setUsers] = useState<CrmUser[]>([]);
+  const isFetchingUsersRef = useRef(false);
   const [rbacRules, setRbacRules] = useState<PermissionRule[]>(mockRbacRules);
 
   // Clear / Purge all mock data
@@ -328,6 +331,89 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       window.dispatchEvent(new Event('crm_data_updated'));
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  // Authoritative background fetch of users from Cloudflare D1 (/api/users)
+  const fetchAuthoritativeUsers = async () => {
+    if (isFetchingUsersRef.current) return;
+    isFetchingUsersRef.current = true;
+    try {
+      const res = await userApiService.getUsers({ limit: 100 });
+      if (res && res.success && Array.isArray(res.users)) {
+        const deletedIdsRaw = typeof window !== 'undefined' ? localStorage.getItem('cezcon_crm_deleted_user_ids') : null;
+        const deletedSet = new Set<string>(deletedIdsRaw ? JSON.parse(deletedIdsRaw) : []);
+
+        // Filter: ONLY current, active employees who are NOT deleted
+        const activeServerUsers = res.users.filter((u) => {
+          const isActive = u.is_active === 1 || u.is_active === true;
+          if (!isActive) return false;
+          const uid = String(u.id).toLowerCase();
+          const uemail = (u.email || '').toLowerCase();
+          if (deletedSet.has(uid) || deletedSet.has(uemail)) return false;
+          return true;
+        });
+
+        const mappedUsers: CrmUser[] = activeServerUsers.map((u) => {
+          const isSuperAdmin = u.role === 'SUPER_ADMIN';
+          const isAdmin = u.role === 'ADMIN' || isSuperAdmin;
+          const isManager = u.role === 'MANAGER';
+          const roleStr: UserRole = isSuperAdmin
+            ? 'Super Admin'
+            : isAdmin
+            ? 'Admin'
+            : isManager
+            ? 'Manager'
+            : 'Employee';
+
+          return {
+            id: u.id,
+            name: u.full_name,
+            email: u.email,
+            role: roleStr,
+            phone: u.phone || '+971 50 123 4567',
+            department: u.department || 'General',
+            position: u.position || u.designation || undefined,
+            status: 'Active',
+            lastLogin: 'Active now',
+            avatar: u.avatar_image || '',
+          };
+        });
+
+        setUsers(mappedUsers);
+
+        // Keep cezcon_crm_users_list strictly synchronized with authoritative active accounts
+        if (typeof window !== 'undefined') {
+          const cezconItems = activeServerUsers.map((su) => {
+            const isSuperAdmin = su.role === 'SUPER_ADMIN';
+            const isAdmin = su.role === 'ADMIN' || isSuperAdmin;
+            const isManager = su.role === 'MANAGER';
+            return {
+              id: su.id,
+              name: su.full_name,
+              email: su.email,
+              username: su.username || (su.email.includes('@') ? su.email : `${su.email}@cooltechuae.com`),
+              profileType: isSuperAdmin ? 'Super Admin' : isAdmin ? 'Admin' : isManager ? 'Manager' : 'Employee',
+              designation: su.designation || su.position || (isManager ? 'Manager' : 'Executive'),
+              position: su.position || su.designation,
+              department: su.department || 'General',
+              phone: su.phone || '',
+              status: 'Active' as const,
+              isAdmin,
+              role: isSuperAdmin ? 'Super Admin' : isAdmin ? 'Admin' : isManager ? 'Manager' : 'Employee',
+              loginPermission: 'Web & Mobile',
+              avatarImage: su.avatar_image,
+              managerId: su.reports_to || undefined,
+            };
+          });
+          localStorage.setItem('cezcon_crm_users_list', JSON.stringify(cezconItems));
+        }
+      }
+    } catch (err) {
+      // Retain valid data and report errors without repeatedly displaying alerts. Do not fall back to old mock users.
+      console.warn('[EnterpriseCrmContext] Authoritative users fetch failed, retaining existing state:', err);
+    } finally {
+      isFetchingUsersRef.current = false;
     }
   };
 
@@ -704,52 +790,41 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           .catch(() => {});
         stockTransferApiService.migrateLocalStockTransfersToDatabase().catch(() => {});
 
-        // Load dynamic shared users
+        // Load dynamic shared users - prime active cached users immediately
+        const deletedIdsRaw = typeof window !== 'undefined' ? localStorage.getItem('cezcon_crm_deleted_user_ids') : null;
+        const deletedSet = new Set<string>(deletedIdsRaw ? JSON.parse(deletedIdsRaw) : []);
+
         const cezconRaw = localStorage.getItem('cezcon_crm_users_list');
-        const adminRaw = localStorage.getItem('crm_admin_accounts_list');
-        const loadedUsers: CrmUser[] = [];
         if (cezconRaw) {
-          const parsed = JSON.parse(cezconRaw);
-          if (Array.isArray(parsed)) {
-            parsed.forEach((u: any) => {
-              loadedUsers.push({
-                id: String(u.id).startsWith('usr_') || String(u.id).startsWith('mgr_') || String(u.id).startsWith('emp_') ? String(u.id) : `usr_${u.id}`,
-                name: u.name,
-                email: u.email || `${u.username}@cooltechuae.com`,
-                role: (u.isAdmin ? 'Admin' : u.profileType?.toLowerCase().includes('manager') ? 'Manager' : 'Employee') as UserRole,
-                phone: u.phone || '+971 50 123 4567',
-                department: u.department || u.profileType || 'Sales',
-                status: u.status === 'Inactive' ? 'Inactive' : 'Active',
-                lastLogin: u.lastLogin || 'Recent',
-                avatar: u.avatarImage || u.avatarUrl || u.avatar || '',
+          try {
+            const parsed = JSON.parse(cezconRaw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const activeOnly = parsed.filter((u: any) => {
+                const isActive = u.status === 'Active' || u.status === 'active' || u.is_active === 1 || u.is_active === true;
+                if (!isActive) return false;
+                const uid = String(u.id || '').toLowerCase();
+                const uemail = String(u.email || '').toLowerCase();
+                if (deletedSet.has(uid) || deletedSet.has(uemail)) return false;
+                return true;
               });
-            });
-          }
-        }
-        if (adminRaw) {
-          const parsedAdmins = JSON.parse(adminRaw);
-          if (Array.isArray(parsedAdmins)) {
-            parsedAdmins.forEach((a: any) => {
-              if (!loadedUsers.some((u) => u.email.toLowerCase() === (a.email || '').toLowerCase())) {
-                loadedUsers.push({
-                  id: a.id || `adm_${Date.now()}`,
-                  name: a.name,
-                  email: a.email,
-                  role: 'Admin',
-                  phone: a.phone || '+971 55 485 3829',
-                  department: a.department || 'Management',
-                  status: a.status || 'Active',
-                  lastLogin: a.lastLogin || 'Recent',
-                  avatar: a.avatar || a.avatarUrl || a.avatarImage || '',
-                });
+              if (activeOnly.length > 0) {
+                setUsers(
+                  activeOnly.map((u: any) => ({
+                    id: String(u.id),
+                    name: u.name,
+                    email: u.email || `${u.username}@cooltechuae.com`,
+                    role: (u.isAdmin ? 'Admin' : u.profileType?.toLowerCase().includes('manager') ? 'Manager' : 'Employee') as UserRole,
+                    phone: u.phone || '+971 50 123 4567',
+                    department: u.department || u.profileType || 'General',
+                    status: 'Active',
+                    lastLogin: 'Active now',
+                    avatar: u.avatarImage || u.avatarUrl || u.avatar || '',
+                    position: u.position || u.designation,
+                  }))
+                );
               }
-            });
-          }
-        }
-        if (loadedUsers.length > 0) {
-          setUsers(loadedUsers);
-        } else {
-          setUsers(mockUsers);
+            }
+          } catch {}
         }
       } catch (e) {
         console.error('EnterpriseCrmContext loadAllData error:', e);
@@ -757,6 +832,22 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     };
 
     loadAllData();
+    fetchAuthoritativeUsers();
+
+    // Background polling timer (every 25s)
+    const pollTimer = setInterval(() => {
+      fetchAuthoritativeUsers();
+    }, 25000);
+
+    // Refresh when browser tab becomes visible
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchAuthoritativeUsers();
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
 
     const eventNames = [
       'storage',
@@ -783,9 +874,20 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       'crm_auth_updated',
     ];
 
-    eventNames.forEach((evt) => window.addEventListener(evt, loadAllData));
+    const handleDataEvent = (e: Event) => {
+      loadAllData();
+      if (e.type === 'crm_users_updated' || e.type === 'crm_auth_updated' || e.type === 'storage') {
+        fetchAuthoritativeUsers();
+      }
+    };
+
+    eventNames.forEach((evt) => window.addEventListener(evt, handleDataEvent));
     return () => {
-      eventNames.forEach((evt) => window.removeEventListener(evt, loadAllData));
+      clearInterval(pollTimer);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+      eventNames.forEach((evt) => window.removeEventListener(evt, handleDataEvent));
     };
   }, []);
 
@@ -2103,6 +2205,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         deleteStockTransfer,
         addUser,
         deleteUser,
+        refreshUsers: fetchAuthoritativeUsers,
         addCampaign,
         updateCampaign,
         toggleCampaignListing,
