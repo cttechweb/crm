@@ -89,6 +89,7 @@ import {
 import { authMockService } from '@/services/authMockService';
 import { Modal } from '@/components/ui/Modal';
 import { CezconQuotationModule } from '@/components/sales/CezconQuotationModule';
+import { CezconOrderModule } from '@/components/sales/CezconOrderModule';
 import { CezconUploadOpportunityModule } from '@/components/sales/CezconUploadOpportunityModule';
 import { CezconDateInput } from '@/components/ui/CezconDateInput';
 import { cn } from '@/lib/utils';
@@ -134,6 +135,15 @@ function SalesPipelineInner() {
     addInvoice,
     updateInvoice,
     deleteInvoice,
+    proformas: contextProformas,
+    addProforma: contextAddProforma,
+    deleteProforma: contextDeleteProforma,
+    receipts: contextReceipts,
+    addReceipt: contextAddReceipt,
+    deleteReceipt: contextDeleteReceipt,
+    deliveryNotes: contextDeliveryNotes,
+    addDeliveryNote: contextAddDeliveryNote,
+    deleteDeliveryNote: contextDeleteDeliveryNote,
   } = useEnterpriseCrm();
 
   // Mobile Filter Accordion States
@@ -245,8 +255,9 @@ function SalesPipelineInner() {
     setIsPrintInvoiceModalOpen(true);
   };
 
-  // Read id from search params for full page invoice view
+  // Read id from search params for full page invoice view or order conversion
   const invoiceIdParam = searchParams.get('id');
+  const orderIdParam = searchParams.get('orderId');
   useEffect(() => {
     if (activeTab === 'invoice' && invoiceIdParam && invoices && invoices.length > 0) {
       const found = invoices.find((i) => i.id === invoiceIdParam || i.invoiceNumber === invoiceIdParam);
@@ -254,7 +265,41 @@ function SalesPipelineInner() {
         setSelectedInvoice(found);
       }
     }
-  }, [activeTab, invoiceIdParam, invoices]);
+
+    if (activeTab === 'invoice' && orderIdParam && liveOrders && liveOrders.length > 0) {
+      const foundOrd = liveOrders.find((o) => o.id === orderIdParam || o.orderNumber === orderIdParam);
+      if (foundOrd) {
+        const orderRefLabel = `${foundOrd.orderNumber} / ${foundOrd.opportunityRef || foundOrd.subject || 'Sales Order'}`;
+        const amtVal = foundOrd.totalAmount || foundOrd.amount || 0;
+        setAddInvoiceData((prev) => ({
+          ...prev,
+          invoiceNumber: prev.invoiceNumber || `CTINV#${Math.floor(15000 + Math.random() * 1000)}`,
+          opportunityOrder: orderRefLabel,
+          customer: foundOrd.customer || prev.customer,
+          amount: String(amtVal),
+          paidAmount: '0.00',
+          attention: foundOrd.contactPerson || prev.attention,
+          location: foundOrd.billingAddress || prev.location,
+          lpoNumber: foundOrd.poReference || prev.lpoNumber,
+        }));
+
+        if (foundOrd.items && foundOrd.items.length > 0) {
+          setInvoiceLineItems(
+            foundOrd.items.map((it: any, idx: number) => ({
+              id: it.id || `item-${Date.now()}-${idx}`,
+              description: it.productName || it.description || 'Sales Item',
+              code: it.code || '',
+              unit: it.unit || 'Each',
+              brand: it.brand || '',
+              qty: Number(it.quantity || it.qty || 1),
+              price: Number(it.unitPrice || it.price || 0),
+            }))
+          );
+        }
+        setIsCreateInvoiceModalOpen(true);
+      }
+    }
+  }, [activeTab, invoiceIdParam, invoices, orderIdParam, liveOrders]);
 
   // Proforma localStorage sync
   const [isProformaLoaded, setIsProformaLoaded] = useState(false);
@@ -288,6 +333,25 @@ function SalesPipelineInner() {
       }
     }
   }, [proformas, isProformaLoaded]);
+
+  // Synchronize auxiliary documents with live context / D1
+  useEffect(() => {
+    if (contextProformas && contextProformas.length > 0) {
+      setProformas(contextProformas);
+    }
+  }, [contextProformas]);
+
+  useEffect(() => {
+    if (contextReceipts && contextReceipts.length > 0) {
+      setReceipts(contextReceipts);
+    }
+  }, [contextReceipts]);
+
+  useEffect(() => {
+    if (contextDeliveryNotes && contextDeliveryNotes.length > 0) {
+      setDeliveryNotes(contextDeliveryNotes);
+    }
+  }, [contextDeliveryNotes]);
 
   // Open Edit Invoice with 100% Live Data
   const handleOpenEditInvoice = (inv: CrmInvoice) => {
@@ -408,6 +472,7 @@ function SalesPipelineInner() {
       discount: discountVal,
       vatRate: vatRateVal,
       adjustment: adjustmentVal,
+      paidAmount: inv.paidAmount !== undefined ? String(inv.paidAmount) : '0.00',
       attention: attentionVal,
       location: locationVal,
       description: descVal,
@@ -426,7 +491,7 @@ function SalesPipelineInner() {
   const [filterInvoiceOppOrder, setFilterInvoiceOppOrder] = useState<string>('');
   const [filterInvoiceBizOpp, setFilterInvoiceBizOpp] = useState<string>('');
   const [filterInvoiceProductService, setFilterInvoiceProductService] = useState<string>('');
-  const [filterInvoicePaymentStatus, setFilterInvoicePaymentStatus] = useState<string>('Due');
+  const [filterInvoicePaymentStatus, setFilterInvoicePaymentStatus] = useState<string>('All');
   const [filterInvoiceType, setFilterInvoiceType] = useState<string>('');
   const [filterInvoiceOrderType, setFilterInvoiceOrderType] = useState<string>('All');
   const [invoiceFormData, setInvoiceFormData] = useState({
@@ -459,6 +524,7 @@ function SalesPipelineInner() {
     discount: '',
     vatRate: '5',
     adjustment: '',
+    paidAmount: '0.00',
     attention: '',
     location: '',
     description: '',
@@ -817,6 +883,58 @@ function SalesPipelineInner() {
     showSalesToast(`Opportunity Type "${title}" added!`);
   };
 
+  // Quick Add Opportunity Owner state for Opportunity form
+  const [opportunityOwners, setOpportunityOwners] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved =
+          localStorage.getItem('cezcon_opportunity_owners') ||
+          localStorage.getItem('crm_opportunity_owners');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return [
+      'Nafal',
+      'Muhammed Shemin',
+      'Muhammed Shibil',
+      'Afsal',
+      'Shaheer',
+      'Muhammed Adhil',
+      'shameem',
+      'Arun',
+      'System Super Admin',
+    ];
+  });
+
+  const [isQuickAddOwnerOpen, setIsQuickAddOwnerOpen] = useState(false);
+  const [newOwnerName, setNewOwnerName] = useState('');
+
+  const handleQuickAddOwnerSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newOwnerName.trim()) return;
+    const name = newOwnerName.trim();
+    if (!opportunityOwners.includes(name)) {
+      const updated = [...opportunityOwners, name];
+      setOpportunityOwners(updated);
+      try {
+        localStorage.setItem('cezcon_opportunity_owners', JSON.stringify(updated));
+        localStorage.setItem('crm_opportunity_owners', JSON.stringify(updated));
+        window.dispatchEvent(new Event('crm_opportunity_owners_updated'));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setOppFormData((prev) => ({ ...prev, owner: name }));
+    setNewOwnerName('');
+    setIsQuickAddOwnerOpen(false);
+    showSalesToast(`Opportunity owner "${name}" added and selected!`);
+  };
+
   const openOppNumModal = () => {
     const currentVal = oppFormData.opportunityCode || 'CTEQ#7133';
     const match = currentVal.match(/^(.*?)(\d+)$/);
@@ -1021,7 +1139,7 @@ function SalesPipelineInner() {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) return parsed;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     return [];
   });
@@ -1235,7 +1353,7 @@ function SalesPipelineInner() {
           setCatalogProducts(res.products);
           try {
             localStorage.setItem('cezcon_products_master_live', JSON.stringify(res.products));
-          } catch (e) {}
+          } catch (e) { }
         }
       })
       .catch((err) => {
@@ -1250,7 +1368,7 @@ function SalesPipelineInner() {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) setCatalogProducts(parsed);
         }
-      } catch (e) {}
+      } catch (e) { }
     };
 
     window.addEventListener('crm_products_updated', handleProductsUpdated);
@@ -1264,8 +1382,8 @@ function SalesPipelineInner() {
       typeof product.sellingPrice === 'number'
         ? product.sellingPrice
         : typeof (product as any).price === 'number'
-        ? (product as any).price
-        : 0;
+          ? (product as any).price
+          : 0;
 
     const code = product.code || product.sku || String(product.id);
     const unit = product.unit || 'Pcs';
@@ -2867,6 +2985,63 @@ function SalesPipelineInner() {
                   </div>
                 )}
 
+                {/* Quick Add Opportunity Owner Modal */}
+                {isQuickAddOwnerOpen && (
+                  <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-5 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#2563EB] flex items-center justify-center font-bold">
+                            <Plus className="w-4 h-4" />
+                          </div>
+                          <h3 className="text-sm font-bold text-slate-900">Add Opportunity Owner</h3>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsQuickAddOwnerOpen(false)}
+                          className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleQuickAddOwnerSubmit} className="space-y-3 pt-3 text-xs">
+                        <div>
+                          <label className="block text-slate-700 font-semibold mb-1">
+                            Owner / Sales Executive Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Tariq Mansoor"
+                            value={newOwnerName}
+                            onChange={(e) => setNewOwnerName(e.target.value)}
+                            className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            autoFocus
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setIsQuickAddOwnerOpen(false)}
+                            className="px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-semibold text-xs transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-3.5 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Save &amp; Select</span>
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
                 {/* 2. Main Form Body (2-Column Grid) */}
                 <form onSubmit={handleCreateOpportunity} className="p-4 sm:p-6 flex-1 space-y-4">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-3.5 text-[11px]">
@@ -2924,24 +3099,36 @@ function SalesPipelineInner() {
                         <label className="sm:w-36 font-semibold text-slate-700 shrink-0">
                           Opportunity Owner <span className="text-red-500">*</span>
                         </label>
-                        <div className="flex-1 relative">
-                          <select
-                            required
-                            value={oppFormData.owner}
-                            onChange={(e) => setOppFormData({ ...oppFormData, owner: e.target.value })}
-                            className="w-full bg-white border border-slate-300 rounded pl-7 pr-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        <div className="flex-1 flex items-center gap-1.5">
+                          <div className="flex-1 relative">
+                            <select
+                              required
+                              value={oppFormData.owner}
+                              onChange={(e) => setOppFormData({ ...oppFormData, owner: e.target.value })}
+                              className="w-full bg-white border border-slate-300 rounded pl-7 pr-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            >
+                              {opportunityOwners.map((owner) => (
+                                <option key={owner} value={owner}>
+                                  {owner}
+                                </option>
+                              ))}
+                              {oppFormData.owner && !opportunityOwners.includes(oppFormData.owner) && (
+                                <option value={oppFormData.owner}>{oppFormData.owner}</option>
+                              )}
+                            </select>
+                            <User className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2 pointer-events-none" />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewOwnerName('');
+                              setIsQuickAddOwnerOpen(true);
+                            }}
+                            className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer flex items-center gap-0.5 transition-colors px-1"
+                            title="Add New Opportunity Owner"
                           >
-                            <option value="Nafal">Nafal</option>
-                            <option value="Muhammed Shemin">Muhammed Shemin</option>
-                            <option value="Muhammed Shibil">Muhammed Shibil</option>
-                            <option value="Afsal">Afsal</option>
-                            <option value="Shaheer">Shaheer</option>
-                            <option value="Muhammed Adhil">Muhammed Adhil</option>
-                            <option value="shameem">shameem</option>
-                            <option value="Arun">Arun</option>
-                            <option value="System Super Admin">System Super Admin</option>
-                          </select>
-                          <User className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2 pointer-events-none" />
+                            <span>+ New</span>
+                          </button>
                         </div>
                       </div>
 
@@ -4223,7 +4410,7 @@ function SalesPipelineInner() {
                     { id: 'customer', label: 'Customer', icon: Shield },
                     { id: 'contact_details', label: 'Contact Details', icon: User },
                     { id: 'cost_details', label: 'Cost Details / Jobs', icon: DollarSign },
-                    { id: 'quotation', label: 'Quotation', icon: FileText },
+                    { id: 'quotation', label: 'Commercial Offer', icon: FileText },
                     { id: 'proforma_invoice', label: 'Proforma Invoice', icon: FileText },
                     { id: 'invoice', label: 'Invoice', icon: FileCheck },
                     { id: 'purchase', label: 'Purchase', icon: ShoppingCart },
@@ -6673,6 +6860,18 @@ function SalesPipelineInner() {
                                           type="button"
                                           onClick={(e) => {
                                             e.stopPropagation();
+                                            setActionDropdownOpenId(null);
+                                            router.push(`/sales?tab=quotations&oppId=${encodeURIComponent(opp.id)}`);
+                                          }}
+                                          className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2.5 text-blue-600 cursor-pointer font-medium"
+                                        >
+                                          <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                          <span>Create Quotation</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
                                             setSelectedOpportunity(opp);
                                             setIsAssignModalOpen(true);
                                             setActionDropdownOpenId(null);
@@ -6745,9 +6944,15 @@ function SalesPipelineInner() {
       )}
 
       {/* ========================================================================= */}
-      {/* VIEW 3: ORDERS TAB (Exact Cezcon CRM Orders Layout) */}
+      {/* VIEW 3: ORDERS TAB (Exact Cezcon CRM Orders Layout & Add Order Form)     */}
       {/* ========================================================================= */}
       {activeTab === 'orders' && (
+        <div className="flex-1 flex flex-col font-sans w-full">
+          <CezconOrderModule />
+        </div>
+      )}
+
+      {false && activeTab === 'orders' && (
         <div className="flex-1 flex flex-col font-sans w-full">
           {/* 1. TOP SUB-TABS BOX BAR FOR ORDERS */}
           <div className="bg-white border-b border-[#E2E8F0] px-4 py-0 flex items-center justify-between shadow-xs sticky top-0 z-30 overflow-x-auto">
@@ -8065,8 +8270,10 @@ function SalesPipelineInner() {
                       type="button"
                       onClick={() => {
                         if (confirm(`Are you sure you want to delete proforma invoice ${viewingProforma.piNumber}?`)) {
+                          const idToDelete = viewingProforma.id;
+                          contextDeleteProforma(idToDelete);
                           setProformas((prev) => {
-                            const updated = prev.filter((item) => item.id !== viewingProforma.id);
+                            const updated = prev.filter((item) => item.id !== idToDelete);
                             if (typeof window !== 'undefined') {
                               localStorage.setItem('crm_proforma_invoices', JSON.stringify(updated));
                             }
@@ -8127,24 +8334,23 @@ function SalesPipelineInner() {
                   const vatRateNum = proformaFormData.vatType === 'With VAT' ? (parseFloat(proformaFormData.vatRate) || 0) : 0;
                   const vatAmt = (net * vatRateNum) / 100;
                   const total = net + vatAmt + parsedAdjustment;
-                  setProformas((prev) => [
-                    ...prev,
-                    {
-                      id: `pi_${Date.now()}`,
-                      slNo: prev.length + 1,
-                      piNumber: proformaFormData.proformaNumber,
-                      issueDate: proformaFormData.invoiceDate,
-                      owner: currentUser?.name || 'Super Admin',
-                      ownerAvatar: currentUser?.avatar,
-                      customer: proformaFormData.customer || 'N/A',
-                      opportunityTitle: proformaFormData.opportunityOrder,
-                      quotationRef: proformaFormData.quotation,
-                      amount: parsedAmount,
-                      vatAmount: vatAmt,
-                      totalAmount: total || parsedAmount,
-                      status: 'Pending',
-                    } as CrmProformaInvoice,
-                  ]);
+                  const newPiItem: CrmProformaInvoice = {
+                    id: `pi_${Date.now()}`,
+                    slNo: proformas.length + 1,
+                    piNumber: proformaFormData.proformaNumber,
+                    issueDate: proformaFormData.invoiceDate,
+                    owner: currentUser?.name || 'Super Admin',
+                    ownerAvatar: currentUser?.avatar,
+                    customer: proformaFormData.customer || 'N/A',
+                    opportunityTitle: proformaFormData.opportunityOrder,
+                    quotationRef: proformaFormData.quotation,
+                    amount: parsedAmount,
+                    vatAmount: vatAmt,
+                    totalAmount: total || parsedAmount,
+                    status: 'Pending',
+                  };
+                  setProformas((prev) => [...prev, newPiItem]);
+                  contextAddProforma(newPiItem);
                   setIsCreateProformaModalOpen(false);
                   setProformaFormData({
                     customer: '', quotation: '', opportunityOrder: '',
@@ -8966,6 +9172,7 @@ function SalesPipelineInner() {
                                       e.stopPropagation();
                                       setOpenProformaActionId(null);
                                       if (confirm(`Are you sure you want to delete proforma invoice ${p.piNumber}?`)) {
+                                        contextDeleteProforma(p.id);
                                         setProformas((prev) => {
                                           const updated = prev.filter((item) => item.id !== p.id);
                                           if (typeof window !== 'undefined') {
@@ -9202,6 +9409,7 @@ function SalesPipelineInner() {
                                         e.stopPropagation();
                                         setOpenProformaActionId(null);
                                         if (confirm(`Are you sure you want to delete proforma invoice ${p.piNumber}?`)) {
+                                          contextDeleteProforma(p.id);
                                           setProformas((prev) => {
                                             const updated = prev.filter((item) => item.id !== p.id);
                                             if (typeof window !== 'undefined') {
@@ -9283,6 +9491,7 @@ function SalesPipelineInner() {
                     onClick={() => {
                       setIsCreateInvoiceModalOpen(false);
                       setEditingInvoiceId(null);
+                      setSelectedInvoice(null);
                     }}
                     className="w-5 h-5 bg-[#D9534F] hover:bg-[#C9302C] text-white flex items-center justify-center rounded-xs transition cursor-pointer"
                     title="Close"
@@ -9295,62 +9504,96 @@ function SalesPipelineInner() {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    const itemsSubtotal = invoiceLineItems.reduce(
-                      (acc, item) => acc + (Number(item.qty) || 0) * (Number(item.price) || 0),
-                      0
-                    );
-                    const discPercentNum = parseFloat(invoiceDiscountPercent) || 0;
-                    const calculatedDiscountAmount = (itemsSubtotal * discPercentNum) / 100;
-                    const amountAfterDiscount = Math.max(0, itemsSubtotal - calculatedDiscountAmount);
-                    const isWithVat = addInvoiceData.vatType === 'With VAT';
-                    const vatPercentNum = isWithVat ? parseFloat(addInvoiceData.vatRate) || 0 : 0;
-                    const calculatedVatAmount = (amountAfterDiscount * vatPercentNum) / 100;
-                    const subTotal = amountAfterDiscount + calculatedVatAmount;
-                    const adjustmentNum = parseFloat(addInvoiceData.adjustment) || 0;
-                    const grandTotal = subTotal + adjustmentNum;
-                    const finalAmount = grandTotal || itemsSubtotal || parseFloat(addInvoiceData.amount) || 0;
-
-                    const updatedInvoicePayload: Partial<CrmInvoice> = {
-                      invoiceNumber: addInvoiceData.invoiceNumber,
-                      opportunityOrderRef: addInvoiceData.opportunityOrder,
-                      customer: addInvoiceData.customer,
-                      contactPerson: addInvoiceData.attention,
-                      attention: addInvoiceData.attention,
-                      issueDate: addInvoiceData.invoiceDate,
-                      dueDate: addInvoiceData.invoiceDueDate,
-                      amount: finalAmount,
-                      subtotal: itemsSubtotal,
-                      vatAmount: calculatedVatAmount,
-                      vatRate: addInvoiceData.vatRate,
-                      vatType: addInvoiceData.vatType,
-                      totalAmount: finalAmount,
-                      balanceAmount: Math.max(0, finalAmount - (selectedInvoice?.paidAmount || 0)),
-                      lpoNumber: addInvoiceData.lpoNumber,
-                      lpoDate: addInvoiceData.lpoDate,
-                      referenceNumber: addInvoiceData.referenceNumber,
-                      location: addInvoiceData.location,
-                      description: addInvoiceData.description,
-                      discount: calculatedDiscountAmount,
-                      discountPercent: invoiceDiscountPercent,
-                      adjustment: addInvoiceData.adjustment,
-                      termsConditions: invoiceTermsConditions,
-                      items: invoiceLineItems.map((item) => ({
-                        ...item,
-                        total: (Number(item.qty) || 0) * (Number(item.price) || 0),
-                      })),
-                    };
-
-                    updateInvoice(editingInvoiceId, updatedInvoicePayload);
-
-                    if (selectedInvoice && selectedInvoice.id === editingInvoiceId) {
-                      setSelectedInvoice({
-                        ...selectedInvoice,
-                        ...updatedInvoicePayload,
-                      });
+                    if (!editingInvoiceId) {
+                      setSalesToast('Error: Invoice ID is missing for editing');
+                      return;
                     }
+                    try {
+                      const itemsSubtotal = invoiceLineItems.reduce(
+                        (acc, item) => acc + (Number(item.qty) || 0) * (Number(item.price) || 0),
+                        0
+                      );
+                      const discPercentNum = parseFloat(invoiceDiscountPercent) || 0;
+                      const calculatedDiscountAmount = (itemsSubtotal * discPercentNum) / 100;
+                      const amountAfterDiscount = Math.max(0, itemsSubtotal - calculatedDiscountAmount);
+                      const isWithVat = addInvoiceData.vatType === 'With VAT';
+                      const vatPercentNum = isWithVat ? parseFloat(addInvoiceData.vatRate) || 0 : 0;
+                      const calculatedVatAmount = (amountAfterDiscount * vatPercentNum) / 100;
+                      const subTotal = amountAfterDiscount + calculatedVatAmount;
+                      const adjustmentNum = parseFloat(addInvoiceData.adjustment) || 0;
+                      const grandTotal = subTotal + adjustmentNum;
+                      const finalAmount = grandTotal || itemsSubtotal || parseFloat(addInvoiceData.amount) || 0;
 
-                    setIsCreateInvoiceModalOpen(false);
-                    setEditingInvoiceId(null);
+                      // Authoritative lookup of existing invoice to preserve all fields and ID
+                      const existingInv = invoices.find((inv) => inv.id === editingInvoiceId) || (selectedInvoice?.id === editingInvoiceId ? selectedInvoice : null);
+                      const existingPaid = addInvoiceData.paidAmount !== '' && addInvoiceData.paidAmount !== undefined
+                        ? (parseFloat(addInvoiceData.paidAmount) || 0)
+                        : (Number(existingInv?.paidAmount) || 0);
+                      const calculatedBalance = Math.max(0, finalAmount - existingPaid);
+                      const computedStatus = calculatedBalance <= 0
+                        ? 'Paid'
+                        : existingPaid > 0
+                          ? 'Partially Paid'
+                          : (existingInv?.status || 'Due');
+
+                      const matchedOrder = liveOrders?.find(
+                        (o) =>
+                          o.id === addInvoiceData.opportunityOrder ||
+                          o.orderNumber === addInvoiceData.opportunityOrder ||
+                          (o.orderNumber && addInvoiceData.opportunityOrder?.includes(o.orderNumber))
+                      );
+
+                      const updatedInvoicePayload: CrmInvoice = {
+                        id: editingInvoiceId,
+                        slNo: existingInv?.slNo || 1,
+                        invoiceNumber: addInvoiceData.invoiceNumber || existingInv?.invoiceNumber || `INV-${Date.now().toString().slice(-4)}`,
+                        opportunityOrderRef: addInvoiceData.opportunityOrder || existingInv?.opportunityOrderRef || '',
+                        orderRef: matchedOrder?.orderNumber || existingInv?.orderRef || (addInvoiceData.opportunityOrder?.startsWith('SO-') || addInvoiceData.opportunityOrder?.startsWith('CTSO#') ? addInvoiceData.opportunityOrder.split('/')[0].trim() : undefined),
+                        orderId: matchedOrder?.id || existingInv?.orderId,
+                        customer: addInvoiceData.customer || existingInv?.customer || '',
+                        contactPerson: addInvoiceData.attention?.trim() || existingInv?.contactPerson || '',
+                        attention: addInvoiceData.attention?.trim() || existingInv?.attention || '',
+                        phone: existingInv?.phone || '+971 0506693043',
+                        owner: existingInv?.owner || currentUser?.name || 'shaheer',
+                        ownerAvatar: existingInv?.ownerAvatar || currentUser?.avatar || undefined,
+                        issueDate: addInvoiceData.invoiceDate || existingInv?.issueDate || new Date().toISOString().split('T')[0],
+                        dueDate: addInvoiceData.invoiceDueDate || existingInv?.dueDate || '',
+                        amount: finalAmount,
+                        subtotal: itemsSubtotal,
+                        vatAmount: calculatedVatAmount,
+                        vatRate: addInvoiceData.vatRate,
+                        vatType: addInvoiceData.vatType,
+                        totalAmount: finalAmount,
+                        paidAmount: existingPaid,
+                        balanceAmount: calculatedBalance,
+                        status: computedStatus,
+                        lpoNumber: addInvoiceData.lpoNumber || existingInv?.lpoNumber || '',
+                        lpoDate: addInvoiceData.lpoDate || existingInv?.lpoDate || '',
+                        referenceNumber: addInvoiceData.referenceNumber || existingInv?.referenceNumber || '',
+                        location: addInvoiceData.location || existingInv?.location || '',
+                        description: addInvoiceData.description || existingInv?.description || '',
+                        discount: calculatedDiscountAmount,
+                        discountPercent: invoiceDiscountPercent,
+                        adjustment: addInvoiceData.adjustment,
+                        termsConditions: invoiceTermsConditions,
+                        items: invoiceLineItems.map((item) => ({
+                          ...item,
+                          total: (Number(item.qty) || 0) * (Number(item.price) || 0),
+                        })),
+                        nextFollowup: existingInv?.nextFollowup,
+                        trnNumber: existingInv?.trnNumber,
+                      };
+
+                      updateInvoice(editingInvoiceId, updatedInvoicePayload);
+
+                      setSalesToast(`Invoice ${updatedInvoicePayload.invoiceNumber} updated successfully`);
+                      setSelectedInvoice(null);
+                      setIsCreateInvoiceModalOpen(false);
+                      setEditingInvoiceId(null);
+                    } catch (err: any) {
+                      console.error('Failed to update invoice:', err);
+                      setSalesToast(`Error updating invoice: ${err?.message || 'Unknown error'}`);
+                    }
                   }}
                   className="p-4 sm:p-5 space-y-5"
                 >
@@ -9440,7 +9683,7 @@ function SalesPipelineInner() {
                               );
 
                               const cust = matchedQuote?.customer || matchedOpp?.customer || matchedOrd?.customer || addInvoiceData.customer;
-                              const amt = matchedQuote?.subtotal ?? matchedQuote?.totalAmount ?? matchedOpp?.amount ?? matchedOrd?.amount;
+                              const amt = matchedQuote?.subtotal ?? matchedQuote?.totalAmount ?? matchedOpp?.amount ?? matchedOrd?.totalAmount ?? matchedOrd?.amount;
                               const disc = matchedQuote?.discountTotal ?? matchedQuote?.discountAmount ?? matchedOpp?.discount ?? '0';
                               const vat = matchedQuote?.vatRate ?? matchedOpp?.vatRate ?? '5';
                               const vatTyp = matchedOpp?.vatType || 'With VAT';
@@ -9451,13 +9694,19 @@ function SalesPipelineInner() {
                               const lpoDt = matchedOpp?.lpoDate || addInvoiceData.lpoDate;
                               const refNo = matchedQuote?.quotationNumber || matchedOpp?.reference || matchedOpp?.opportunityCode || matchedOrd?.orderNumber || addInvoiceData.referenceNumber;
                               const desc = matchedQuote?.subject || matchedOpp?.title || matchedOrd?.subject || addInvoiceData.description;
-                              const terms = matchedQuote?.customerNotes || matchedQuote?.paymentTerms || '';
+                              const terms = matchedQuote?.customerNotes || matchedQuote?.paymentTerms || matchedOrd?.paymentTerms || '';
 
-                              if (matchedQuote?.items && Array.isArray(matchedQuote.items) && matchedQuote.items.length > 0) {
+                              const sourceItems = (matchedQuote?.items && matchedQuote.items.length > 0)
+                                ? matchedQuote.items
+                                : (matchedOrd?.items && matchedOrd.items.length > 0)
+                                  ? matchedOrd.items
+                                  : null;
+
+                              if (sourceItems && Array.isArray(sourceItems) && sourceItems.length > 0) {
                                 setInvoiceLineItems(
-                                  matchedQuote.items.map((item: any, idx: number) => ({
+                                  sourceItems.map((item: any, idx: number) => ({
                                     id: item.id || `item-${Date.now()}-${idx}`,
-                                    description: item.description || item.name || item.itemDescription || 'Product / Service Item',
+                                    description: item.productName || item.description || item.name || item.itemDescription || 'Product / Service Item',
                                     code: item.code || item.itemCode || item.sku || '',
                                     unit: item.unit || 'Each',
                                     brand: item.brand || '',
@@ -9644,7 +9893,7 @@ function SalesPipelineInner() {
                         <label className="text-slate-700 font-medium">
                           Customer Name <span className="text-red-500">*</span>
                         </label>
-                        <div className="sm:col-span-2">
+                        <div className="sm:col-span-2 flex items-center gap-2">
                           <select
                             required
                             value={addInvoiceData.customer}
@@ -9667,7 +9916,7 @@ function SalesPipelineInner() {
                                 (opp) => opp.customer && opp.customer.toLowerCase() === selectedCust.toLowerCase()
                               );
                               const matchedOrd = liveOrders?.find(
-                                (ord) => ord.customer && ord.customer.toLowerCase() === selectedCust.toLowerCase()
+                                (o) => o.customer && o.customer.toLowerCase() === selectedCust.toLowerCase()
                               );
 
                               const oppOrderLabel = matchedQuote
@@ -9726,7 +9975,7 @@ function SalesPipelineInner() {
                                 description: desc || prev.description,
                               }));
                             }}
-                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 bg-white"
+                            className="flex-1 min-w-0 px-2.5 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 bg-white"
                           >
                             <option value="">Select Customer</option>
                             {(() => {
@@ -9769,6 +10018,14 @@ function SalesPipelineInner() {
                                 ));
                             })()}
                           </select>
+                          <button
+                            type="button"
+                            onClick={() => setIsQuickAddInvoiceCustomerOpen(true)}
+                            className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer transition-colors px-1 whitespace-nowrap"
+                            title="Add New Customer"
+                          >
+                            + New
+                          </button>
                         </div>
                       </div>
 
@@ -9785,6 +10042,21 @@ function SalesPipelineInner() {
                             <option value="Without VAT">Without VAT</option>
                             <option value="Zero VAT">Zero VAT</option>
                           </select>
+                        </div>
+                      </div>
+
+                      {/* Paid Amount */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                        <label className="text-slate-700 font-medium">Paid Amount</label>
+                        <div className="sm:col-span-2">
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="0.00"
+                            value={addInvoiceData.paidAmount}
+                            onChange={(e) => setAddInvoiceData({ ...addInvoiceData, paidAmount: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
                         </div>
                       </div>
 
@@ -10237,6 +10509,7 @@ function SalesPipelineInner() {
                       onClick={() => {
                         setIsCreateInvoiceModalOpen(false);
                         setEditingInvoiceId(null);
+                        setSelectedInvoice(null);
                       }}
                       className="px-3.5 py-1.5 bg-white border border-[#D2D6DE] hover:bg-slate-50 text-slate-700 rounded-xs text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
                     >
@@ -10432,36 +10705,74 @@ function SalesPipelineInner() {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    const parsedAmount = parseFloat(addInvoiceData.amount) || 0;
-                    const parsedDiscount = parseFloat(addInvoiceData.discount) || 0;
-                    const parsedAdjustment = parseFloat(addInvoiceData.adjustment) || 0;
-                    const netAmount = Math.max(0, parsedAmount - parsedDiscount);
-                    const vatRateNum = addInvoiceData.vatType === 'With VAT' ? (parseFloat(addInvoiceData.vatRate) || 0) : 0;
-                    const vatAmount = (netAmount * vatRateNum) / 100;
-                    const finalTotal = netAmount + vatAmount + parsedAdjustment;
+                    try {
+                      const parsedAmount = parseFloat(addInvoiceData.amount) || 0;
+                      const parsedDiscount = parseFloat(addInvoiceData.discount) || 0;
+                      const parsedAdjustment = parseFloat(addInvoiceData.adjustment) || 0;
+                      const netAmount = Math.max(0, parsedAmount - parsedDiscount);
+                      const vatRateNum = addInvoiceData.vatType === 'With VAT' ? (parseFloat(addInvoiceData.vatRate) || 0) : 0;
+                      const vatAmount = (netAmount * vatRateNum) / 100;
+                      const finalTotal = netAmount + vatAmount + parsedAdjustment;
+                      const invoiceAmount = finalTotal || parsedAmount || 12432.0;
+                      const parsedPaid = parseFloat(addInvoiceData.paidAmount) || 0;
+                      const computedBalance = Math.max(0, invoiceAmount - parsedPaid);
+                      const invoiceStatus = computedBalance <= 0
+                        ? 'Paid'
+                        : parsedPaid > 0
+                          ? 'Partially Paid'
+                          : 'Due';
 
-                    const newInv: Omit<CrmInvoice, 'id'> = {
-                      slNo: (invoices?.length || 0) + 1,
-                      invoiceNumber: addInvoiceData.invoiceNumber || ('CTINV#' + Math.floor(15000 + Math.random() * 1000)),
-                      opportunityOrderRef: addInvoiceData.opportunityOrder || 'CTSO#3854 / SUPER GENERAL AC UNITS WITH INST',
-                      customer: addInvoiceData.customer || 'OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN',
-                      contactPerson: addInvoiceData.attention?.trim() || '',
-                      phone: '+971 0506693043',
-                      owner: currentUser?.name || 'shaheer',
-                      ownerAvatar: currentUser?.avatar || undefined,
-                      issueDate: addInvoiceData.invoiceDate || '06-10-2026',
-                      dueDate: addInvoiceData.invoiceDueDate,
-                      amount: finalTotal || parsedAmount || 12432.0,
-                      paidAmount: 0.0,
-                      balanceAmount: finalTotal || parsedAmount || 12432.0,
-                      status: 'Due',
-                      lpoNumber: addInvoiceData.lpoNumber,
-                      lpoDate: addInvoiceData.lpoDate,
-                      referenceNumber: addInvoiceData.referenceNumber,
-                    };
-                    addInvoice(newInv);
-                    setIsCreateInvoiceModalOpen(false);
-                    setEditingInvoiceId(null);
+                      const matchedOrder = liveOrders?.find(
+                        (o) =>
+                          o.id === addInvoiceData.opportunityOrder ||
+                          o.orderNumber === addInvoiceData.opportunityOrder ||
+                          (o.orderNumber && addInvoiceData.opportunityOrder?.includes(o.orderNumber))
+                      );
+
+                      const newInv: Omit<CrmInvoice, 'id'> = {
+                        slNo: (invoices?.length || 0) + 1,
+                        invoiceNumber: addInvoiceData.invoiceNumber || ('CTINV#' + Math.floor(15000 + Math.random() * 1000)),
+                        opportunityOrderRef: addInvoiceData.opportunityOrder || 'CTSO#3854 / SUPER GENERAL AC UNITS WITH INST',
+                        orderRef: matchedOrder?.orderNumber || (addInvoiceData.opportunityOrder?.startsWith('SO-') || addInvoiceData.opportunityOrder?.startsWith('CTSO#') ? addInvoiceData.opportunityOrder.split('/')[0].trim() : undefined),
+                        orderId: matchedOrder?.id,
+                        customer: addInvoiceData.customer || 'OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN',
+                        contactPerson: addInvoiceData.attention?.trim() || '',
+                        phone: '+971 0506693043',
+                        owner: currentUser?.name || 'shaheer',
+                        ownerAvatar: currentUser?.avatar || undefined,
+                        issueDate: addInvoiceData.invoiceDate || '06-10-2026',
+                        dueDate: addInvoiceData.invoiceDueDate,
+                        amount: invoiceAmount,
+                        paidAmount: parsedPaid,
+                        balanceAmount: computedBalance,
+                        status: invoiceStatus,
+                        lpoNumber: addInvoiceData.lpoNumber,
+                        lpoDate: addInvoiceData.lpoDate,
+                        referenceNumber: addInvoiceData.referenceNumber,
+                        location: addInvoiceData.location,
+                        description: addInvoiceData.description,
+                        discount: parsedDiscount,
+                        discountPercent: invoiceDiscountPercent,
+                        adjustment: addInvoiceData.adjustment,
+                        termsConditions: invoiceTermsConditions,
+                        vatAmount: vatAmount,
+                        vatRate: addInvoiceData.vatRate,
+                        vatType: addInvoiceData.vatType,
+                        totalAmount: finalTotal || parsedAmount || 12432.0,
+                        items: invoiceLineItems.map((item) => ({
+                          ...item,
+                          total: (Number(item.qty) || 0) * (Number(item.price) || 0),
+                        })),
+                      };
+                      addInvoice(newInv);
+                      setSalesToast(`Invoice ${newInv.invoiceNumber} created successfully`);
+                      setIsCreateInvoiceModalOpen(false);
+                      setEditingInvoiceId(null);
+                      setSelectedInvoice(null);
+                    } catch (err: any) {
+                      console.error('Failed to create invoice:', err);
+                      setSalesToast(`Error creating invoice: ${err?.message || 'Unknown error'}`);
+                    }
                   }}
                   className="p-4 sm:p-6 space-y-6"
                 >
@@ -10497,7 +10808,7 @@ function SalesPipelineInner() {
                         <label className="text-slate-700 font-medium">
                           Customer <span className="text-red-500">*</span>
                         </label>
-                        <div className="sm:col-span-2 flex items-center gap-1.5">
+                        <div className="sm:col-span-2 flex items-center gap-2">
                           <select
                             required
                             value={addInvoiceData.customer}
@@ -10606,11 +10917,10 @@ function SalesPipelineInner() {
                           <button
                             type="button"
                             onClick={() => setIsQuickAddInvoiceCustomerOpen(true)}
-                            className="bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-bold px-2.5 py-1.5 rounded flex items-center gap-1 shrink-0 shadow-2xs transition-colors cursor-pointer"
+                            className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer transition-colors px-1 whitespace-nowrap"
                             title="Add New Customer"
                           >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>New</span>
+                            + New
                           </button>
                         </div>
                       </div>
@@ -10990,6 +11300,21 @@ function SalesPipelineInner() {
                         </div>
                       </div>
 
+                      {/* Paid Amount */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+                        <label className="text-slate-700 font-medium">Paid Amount</label>
+                        <div className="sm:col-span-2">
+                          <input
+                            type="number"
+                            step="any"
+                            placeholder="0.00"
+                            value={addInvoiceData.paidAmount}
+                            onChange={(e) => setAddInvoiceData({ ...addInvoiceData, paidAmount: e.target.value })}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
                       {/* Attention */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
                         <label className="text-slate-700 font-medium">Attention</label>
@@ -11290,7 +11615,7 @@ function SalesPipelineInner() {
                         <div>
                           <div className="text-[11px] text-slate-500 font-medium">Payment Received</div>
                           <div className="text-sm font-bold text-slate-800 mt-0.5">
-                            {(selectedInvoice.paidAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(Number(selectedInvoice.paidAmount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
                         </div>
                         <div className="w-8 h-8 rounded bg-[#FEF9C3] flex items-center justify-center text-[#CA8A04]">
@@ -11303,7 +11628,7 @@ function SalesPipelineInner() {
                         <div>
                           <div className="text-[11px] text-slate-500 font-medium">Receivable</div>
                           <div className="text-sm font-bold text-[#E11D48] mt-0.5">
-                            {(selectedInvoice.balanceAmount || selectedInvoice.amount || 3150).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(selectedInvoice.balanceAmount !== undefined ? selectedInvoice.balanceAmount : Math.max(0, (Number(selectedInvoice.amount) || 0) - (Number(selectedInvoice.paidAmount) || 0))).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
                         </div>
                         <div className="w-8 h-8 rounded bg-[#FCE7F3] flex items-center justify-center text-[#DB2777]">
@@ -11856,6 +12181,7 @@ function SalesPipelineInner() {
                         discount: '',
                         vatRate: '5',
                         adjustment: '',
+                        paidAmount: '0.00',
                         attention: '',
                         location: '',
                         description: '',
@@ -11918,7 +12244,7 @@ function SalesPipelineInner() {
                 <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
                   {invoices
                     .filter((inv) => {
-                      if (filterInvoicePaymentStatus !== 'All' && inv.status !== filterInvoicePaymentStatus) {
+                      if (filterInvoicePaymentStatus && filterInvoicePaymentStatus !== 'All' && inv.status !== filterInvoicePaymentStatus) {
                         return false;
                       }
                       if (filterInvoiceCustomer && !inv.customer.toLowerCase().includes(filterInvoiceCustomer.toLowerCase())) {
@@ -11953,8 +12279,17 @@ function SalesPipelineInner() {
                             </div>
                             <div className="text-[10px] text-slate-500">Date: {inv.issueDate}</div>
                           </div>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F59E0B] text-white">
-                            {inv.status}
+                          <span className={cn(
+                            "inline-block px-2.5 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap shadow-2xs tracking-wide",
+                            inv.status === 'Paid'
+                              ? 'bg-[#16A34A]'
+                              : inv.status === 'Partially Paid'
+                                ? 'bg-[#2563EB]'
+                                : inv.status === 'Overdue'
+                                  ? 'bg-[#DC2626]'
+                                  : 'bg-[#F59E0B]'
+                          )}>
+                            {inv.status || 'Due'}
                           </span>
                         </div>
 
@@ -11987,19 +12322,19 @@ function SalesPipelineInner() {
                           <div>
                             <div className="text-[10px] text-slate-500">Amount</div>
                             <div className="font-semibold text-slate-700">
-                              {inv.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              {(Number(inv.amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                             </div>
                           </div>
                           <div>
                             <div className="text-[10px] text-slate-500">Paid</div>
                             <div className="font-semibold text-slate-600">
-                              {inv.paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              {(Number(inv.paidAmount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                             </div>
                           </div>
                           <div>
                             <div className="text-[10px] text-slate-500">Balance</div>
                             <div className="font-bold text-[#E11D48]">
-                              {inv.balanceAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              {(Number(inv.balanceAmount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                             </div>
                           </div>
                         </div>
@@ -12150,14 +12485,14 @@ function SalesPipelineInner() {
                         <th className="p-2.5 w-24 text-right text-slate-600">Amount</th>
                         <th className="p-2.5 w-20 text-right text-slate-600">Paid</th>
                         <th className="p-2.5 w-24 text-right text-slate-600">Balance</th>
-                        <th className="p-2.5 w-20 text-center text-slate-600">Status</th>
+                        <th className="p-2.5 min-w-[110px] text-center text-slate-600">Status</th>
                         <th className="p-2.5 w-20 text-center text-slate-600">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 bg-white">
                       {invoices
                         .filter((inv) => {
-                          if (filterInvoicePaymentStatus !== 'All' && inv.status !== filterInvoicePaymentStatus) {
+                          if (filterInvoicePaymentStatus && filterInvoicePaymentStatus !== 'All' && inv.status !== filterInvoicePaymentStatus) {
                             return false;
                           }
                           if (filterInvoiceCustomer && !inv.customer.toLowerCase().includes(filterInvoiceCustomer.toLowerCase())) {
@@ -12272,7 +12607,7 @@ function SalesPipelineInner() {
 
                             {/* Amount */}
                             <td className="p-2.5 text-right font-medium text-slate-800 whitespace-nowrap">
-                              {inv.amount.toLocaleString('en-US', {
+                              {(Number(inv.amount) || 0).toLocaleString('en-US', {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}
@@ -12280,7 +12615,7 @@ function SalesPipelineInner() {
 
                             {/* Paid */}
                             <td className="p-2.5 text-right font-medium text-slate-600 whitespace-nowrap">
-                              {inv.paidAmount.toLocaleString('en-US', {
+                              {(Number(inv.paidAmount) || 0).toLocaleString('en-US', {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}
@@ -12288,16 +12623,25 @@ function SalesPipelineInner() {
 
                             {/* Balance */}
                             <td className="p-2.5 text-right font-bold text-[#E11D48] whitespace-nowrap">
-                              {inv.balanceAmount.toLocaleString('en-US', {
+                              {(Number(inv.balanceAmount) || 0).toLocaleString('en-US', {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}
                             </td>
 
                             {/* Status */}
-                            <td className="p-2.5 text-center">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F59E0B] text-white">
-                                {inv.status}
+                            <td className="p-2.5 text-center whitespace-nowrap">
+                              <span className={cn(
+                                "inline-block px-2.5 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap shadow-2xs tracking-wide",
+                                inv.status === 'Paid'
+                                  ? 'bg-[#16A34A]'
+                                  : inv.status === 'Partially Paid'
+                                    ? 'bg-[#2563EB]'
+                                    : inv.status === 'Overdue'
+                                      ? 'bg-[#DC2626]'
+                                      : 'bg-[#F59E0B]'
+                              )}>
+                                {inv.status || 'Due'}
                               </span>
                             </td>
 
@@ -13671,6 +14015,7 @@ function SalesPipelineInner() {
               status: receiptFormData.status,
             };
             setReceipts([newRec, ...receipts]);
+            contextAddReceipt(newRec);
             setIsCreateReceiptModalOpen(false);
           }}
           className="space-y-4 text-xs"
@@ -13862,6 +14207,7 @@ function SalesPipelineInner() {
               status: 'Delivered',
             };
             setDeliveryNotes([newDn, ...deliveryNotes]);
+            contextAddDeliveryNote(newDn);
             setIsCreateDeliveryModalOpen(false);
           }}
           className="space-y-4 text-xs"
@@ -15640,14 +15986,14 @@ function SalesPipelineInner() {
                       ) : null}
                     </div>
 
-                    {/* Right: Quotation Details */}
+                    {/* Right: Document Details */}
                     <div className="col-span-5 space-y-1 text-[11px] text-slate-800">
                       <div className="border-l-2 border-[#0088CC] pl-1.5 font-bold text-[#0088CC] text-xs">
-                        Quotation Details
+                        Document Details
                       </div>
                       <div className="space-y-0.5 pt-0.5">
-                        <p><span className="font-medium text-slate-600">Quotation Number :</span> <span className="font-bold">{liveQuoteNumber}</span></p>
-                        <p><span className="font-medium text-slate-600">Quotation Date :</span> <span className="font-bold">{toDisplayDateFormat(pOpp?.opportunityDate) || pOpp?.opportunityDate || ''}</span></p>
+                        <p><span className="font-medium text-slate-600">Number :</span> <span className="font-bold">{liveQuoteNumber}</span></p>
+                        <p><span className="font-medium text-slate-600">Date :</span> <span className="font-bold">{toDisplayDateFormat(pOpp?.opportunityDate) || pOpp?.opportunityDate || ''}</span></p>
                         {liveOwner ? (
                           <p><span className="font-medium text-slate-600">Prepared By :</span> <span className="font-bold">{liveOwner}</span></p>
                         ) : null}

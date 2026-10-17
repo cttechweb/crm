@@ -5,6 +5,8 @@ import { Layers, Plus, CheckCircle } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { CezconOpportunityStage } from '@/types/settings';
 import { CEZCON_OPPORTUNITY_STAGES_DATA } from '@/data/settingsMockData';
+import { opportunityStageApiService } from '@/services/settingsApiService';
+import { useEffect } from 'react';
 
 export function OpportunityStagesTab() {
   const [stagesList, setStagesList] = useState<CezconOpportunityStage[]>(CEZCON_OPPORTUNITY_STAGES_DATA);
@@ -20,6 +22,28 @@ export function OpportunityStagesTab() {
     color: '#2563EB',
   });
 
+  useEffect(() => {
+    let isMounted = true;
+    async function loadStages() {
+      try {
+        const apiStages = await opportunityStageApiService.getOpportunityStages();
+        if (isMounted) {
+          if (apiStages.length > 0) {
+            setStagesList(apiStages);
+          } else {
+            opportunityStageApiService.syncBatchOpportunityStages(CEZCON_OPPORTUNITY_STAGES_DATA).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load opportunity stages from API:', e);
+      }
+    }
+    loadStages();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const filteredStages = stagesList.filter((s) =>
     s.name.toLowerCase().includes(stageSearch.toLowerCase()) ||
     s.abbreviation.toLowerCase().includes(stageSearch.toLowerCase())
@@ -30,22 +54,40 @@ export function OpportunityStagesTab() {
     stageCurrentPage * stageRowsPerPage
   );
 
-  const handleAddStage = (e: React.FormEvent) => {
+  const handleAddStage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStageForm.name.trim()) return;
 
-    const newStage: CezconOpportunityStage = {
+    const trimmedName = newStageForm.name.trim();
+    const abbreviation = newStageForm.abbreviation.trim() || trimmedName.substring(0, 4).toUpperCase();
+    const color = newStageForm.color;
+
+    const tempStage: CezconOpportunityStage = {
       id: Date.now(),
-      name: newStageForm.name.trim(),
-      abbreviation: newStageForm.abbreviation.trim(),
-      color: newStageForm.color,
-      textColor: newStageForm.color,
+      name: trimmedName,
+      abbreviation,
+      color,
+      textColor: color,
     };
 
-    setStagesList([...stagesList, newStage]);
+    setStagesList((prev) => [...prev, tempStage]);
     setNewStageForm({ name: '', abbreviation: '', color: '#2563EB' });
     setIsAddStageModalOpen(false);
-    setSaveSuccess(true);
+
+    try {
+      const created = await opportunityStageApiService.createOpportunityStage({
+        name: trimmedName,
+        abbreviation,
+        color,
+        textColor: color,
+        probability: 50,
+        order: stagesList.length + 1,
+      });
+      setStagesList((prev) => prev.map((s) => (s.id === tempStage.id ? created : s)));
+      setSaveSuccess(true);
+    } catch {
+      setSaveSuccess(true);
+    }
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 

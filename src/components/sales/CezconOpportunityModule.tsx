@@ -99,6 +99,54 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
   const [formOppDate, setFormOppDate] = useState('');
   const [formCloseDate, setFormCloseDate] = useState('');
   const [formOwner, setFormOwner] = useState('');
+  const [isQuickAddOwnerOpen, setIsQuickAddOwnerOpen] = useState(false);
+  const [newOwnerName, setNewOwnerName] = useState('');
+  const [customOwners, setCustomOwners] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved =
+          localStorage.getItem('cezcon_opportunity_owners') ||
+          localStorage.getItem('crm_opportunity_owners');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return [
+      'Nafal',
+      'Muhammed Shemin',
+      'Muhammed Shibil',
+      'Afsal',
+      'Shaheer',
+      'Muhammed Adhil',
+      'shameem',
+      'Arun',
+      'System Super Admin',
+    ];
+  });
+
+  const handleQuickAddOwner = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newOwnerName.trim()) return;
+    const name = newOwnerName.trim();
+    if (!customOwners.includes(name)) {
+      const updated = [...customOwners, name];
+      setCustomOwners(updated);
+      try {
+        localStorage.setItem('cezcon_opportunity_owners', JSON.stringify(updated));
+        localStorage.setItem('crm_opportunity_owners', JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    setFormOwner(name);
+    setNewOwnerName('');
+    setIsQuickAddOwnerOpen(false);
+    showToast(`Opportunity Owner "${name}" added and selected!`);
+  };
   const [formRating, setFormRating] = useState<'Hot' | 'Warm' | 'Cold' | string>('Warm');
   const [formBizType, setFormBizType] = useState('HVAC Equipment & Supply');
   const [formCampaign, setFormCampaign] = useState('Direct Sales / Walk-in');
@@ -629,26 +677,37 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
 
                 {/* Opportunity Owner */}
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Opportunity Owner</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-semibold text-slate-700">Opportunity Owner</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewOwnerName('');
+                        setIsQuickAddOwnerOpen(true);
+                      }}
+                      className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold cursor-pointer"
+                    >
+                      + New
+                    </button>
+                  </div>
                   <select
                     value={formOwner}
                     onChange={(e) => setFormOwner(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                   >
-                    {users && users.length > 0 ? (
-                      users.map((u) => (
-                        <option key={u.id} value={u.name}>
-                          {u.name} ({u.role || u.department || 'Sales'})
-                        </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="Shaheer">Shaheer (Sales Executive)</option>
-                        <option value="Muhammed Shibil">Muhammed Shibil (Sales Manager)</option>
-                        <option value="MUHAMMED AHSAN P V">MUHAMMED AHSAN P V (Sales Engineer)</option>
-                        <option value="Nafal">Nafal (Sales Executive)</option>
-                      </>
-                    )}
+                    {customOwners.map((owner) => (
+                      <option key={owner} value={owner}>
+                        {owner}
+                      </option>
+                    ))}
+                    {users &&
+                      users
+                        .filter((u) => !customOwners.includes(u.name))
+                        .map((u) => (
+                          <option key={u.id} value={u.name}>
+                            {u.name} ({u.role || u.department || 'Sales'})
+                          </option>
+                        ))}
                   </select>
                 </div>
 
@@ -1242,7 +1301,10 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
                                     type="button"
                                     onClick={() => {
                                       setOpenActionDropdownId(null);
-                                      window.location.href = `/manager/sales?tab=quotations&oppId=${opp.id}`;
+                                      const isManager = typeof window !== 'undefined' && window.location.pathname.startsWith('/manager');
+                                      window.location.href = isManager
+                                        ? `/manager/sales?tab=quotations&oppId=${encodeURIComponent(opp.id)}`
+                                        : `/sales?tab=quotations&oppId=${encodeURIComponent(opp.id)}`;
                                     }}
                                     className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-slate-100 font-medium text-blue-600"
                                   >
@@ -1399,6 +1461,63 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add Opportunity Owner Modal */}
+      {isQuickAddOwnerOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-5 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#2563EB] flex items-center justify-center font-bold">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900">Add Opportunity Owner</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQuickAddOwnerOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickAddOwner} className="space-y-3 pt-3 text-xs">
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Owner / Sales Executive Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Tariq Mansoor"
+                  value={newOwnerName}
+                  onChange={(e) => setNewOwnerName(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickAddOwnerOpen(false)}
+                  className="px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-3.5 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Save &amp; Select</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

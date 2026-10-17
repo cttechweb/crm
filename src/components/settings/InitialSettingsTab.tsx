@@ -28,6 +28,11 @@ import {
   CEZCON_PO_APPROVERS_DATA,
   CEZCON_DESIGNATIONS_DATA,
 } from '@/data/settingsMockData';
+import {
+  leadSourceApiService,
+  industryApiService,
+} from '@/services/settingsApiService';
+import { useEffect } from 'react';
 
 export function InitialSettingsTab({
   initialSubTab = 'source',
@@ -57,6 +62,36 @@ export function InitialSettingsTab({
   const [regionsList] = useState(CEZCON_REGIONS_DATA);
   const [creditList] = useState(CEZCON_CUSTOMER_CREDIT_DATA);
   const [designationsList] = useState(CEZCON_DESIGNATIONS_DATA);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      try {
+        const [apiSources, apiIndustries] = await Promise.all([
+          leadSourceApiService.getLeadSources(),
+          industryApiService.getIndustries(),
+        ]);
+        if (isMounted) {
+          if (apiSources.length > 0) {
+            setSourcesList(apiSources);
+          } else {
+            leadSourceApiService.syncBatchLeadSources(CEZCON_SOURCES_DATA).catch(() => {});
+          }
+          if (apiIndustries.length > 0) {
+            setIndustriesList(apiIndustries);
+          } else {
+            industryApiService.syncBatchIndustries(CEZCON_INDUSTRIES_DATA).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load sources/industries from API:', e);
+      }
+    }
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const subTabs = [
     { id: 'source', label: 'Source', icon: Share2 },
@@ -485,10 +520,16 @@ export function InitialSettingsTab({
       {isAddSourceModalOpen && (
         <Modal isOpen={isAddSourceModalOpen} onClose={() => setIsAddSourceModalOpen(false)} title="Add Lead Source">
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              if (newSourceName.trim()) {
-                setSourcesList([...sourcesList, { id: Date.now(), name: newSourceName.trim() }]);
+              const trimmed = newSourceName.trim();
+              if (trimmed) {
+                try {
+                  const created = await leadSourceApiService.createLeadSource(trimmed);
+                  setSourcesList((prev) => [...prev, created]);
+                } catch {
+                  setSourcesList((prev) => [...prev, { id: Date.now(), name: trimmed, active: true }]);
+                }
                 setNewSourceName('');
                 setIsAddSourceModalOpen(false);
               }
@@ -518,10 +559,16 @@ export function InitialSettingsTab({
       {isAddIndustryModalOpen && (
         <Modal isOpen={isAddIndustryModalOpen} onClose={() => setIsAddIndustryModalOpen(false)} title="Add Target Industry">
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              if (newIndustryName.trim()) {
-                setIndustriesList([...industriesList, { id: Date.now(), name: newIndustryName.trim() }]);
+              const trimmed = newIndustryName.trim();
+              if (trimmed) {
+                try {
+                  const created = await industryApiService.createIndustry(trimmed);
+                  setIndustriesList((prev) => [...prev, created]);
+                } catch {
+                  setIndustriesList((prev) => [...prev, { id: Date.now(), name: trimmed, active: true }]);
+                }
                 setNewIndustryName('');
                 setIsAddIndustryModalOpen(false);
               }

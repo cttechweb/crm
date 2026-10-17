@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { getAuth, Auth, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 
 const firebaseConfig = {
@@ -17,6 +17,13 @@ const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebas
 
 // Initialize Firebase Authentication
 const auth: Auth = getAuth(app);
+
+// Explicitly set browser local persistence to maintain session across reloads and tabs
+if (typeof window !== 'undefined') {
+  setPersistence(auth, browserLocalPersistence).catch((err) => {
+    console.warn('Firebase persistence warning:', err);
+  });
+}
 
 // Initialize Analytics conditionally (only in browser environment if supported)
 let analytics: Analytics | null = null;

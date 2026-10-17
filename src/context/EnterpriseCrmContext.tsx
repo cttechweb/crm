@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   CrmTask,
   CrmLead,
@@ -15,8 +15,12 @@ import {
   CrmQuotation,
   CrmSalesOrder,
   CrmInvoice,
+  CrmProformaInvoice,
   CrmReceipt,
   CrmDeliveryNote,
+  CrmSupplier,
+  CrmPurchaseOrder,
+  CrmStockTransfer,
   TaskStatus,
   TaskPriority,
   TaskType,
@@ -35,6 +39,7 @@ import {
   mockQuotations,
   mockSalesOrders,
   mockInvoices,
+  mockProformaInvoices,
   mockReceipts,
   mockDeliveryNotes,
   getEmployeePhoto,
@@ -42,6 +47,24 @@ import {
 import { authMockService } from '@/services/authMockService';
 import { customerApiService } from '@/services/customerApiService';
 import { leadApiService } from '@/services/leadApiService';
+import {
+  opportunityApiService,
+  quotationApiService,
+  salesOrderApiService,
+  invoiceApiService,
+} from '@/services/salesApiService';
+import { taskApiService } from '@/services/taskApiService';
+import {
+  proformaApiService,
+  receiptApiService,
+  deliveryNoteApiService,
+} from '@/services/salesAuxiliaryApiService';
+import {
+  supplierApiService,
+  crmInventoryApiService,
+  purchaseOrderApiService,
+  stockTransferApiService,
+} from '@/services/procurementApiService';
 
 interface EnterpriseCrmContextType {
   currentRole: UserRole;
@@ -53,9 +76,13 @@ interface EnterpriseCrmContextType {
   quotations: CrmQuotation[];
   salesOrders: CrmSalesOrder[];
   invoices: CrmInvoice[];
+  proformas: CrmProformaInvoice[];
   receipts: CrmReceipt[];
   deliveryNotes: CrmDeliveryNote[];
   purchaseStocks: CrmPurchaseStock[];
+  suppliers: CrmSupplier[];
+  purchaseOrders: CrmPurchaseOrder[];
+  stockTransfers: CrmStockTransfer[];
   campaigns: CrmCampaign[];
   users: CrmUser[];
   rbacRules: PermissionRule[];
@@ -128,18 +155,39 @@ interface EnterpriseCrmContextType {
   updateInvoice: (id: string, updated: Partial<CrmInvoice>) => void;
   deleteInvoice: (id: string) => void;
 
+  // Proforma Invoice Actions
+  addProforma: (pi: Omit<CrmProformaInvoice, 'id' | 'slNo'>) => void;
+  updateProforma: (id: string, updated: Partial<CrmProformaInvoice>) => void;
+  deleteProforma: (id: string) => void;
+
   // Receipt Actions
   addReceipt: (rec: Omit<CrmReceipt, 'id'>) => void;
+  updateReceipt: (id: string, updated: Partial<CrmReceipt>) => void;
   deleteReceipt: (id: string) => void;
 
   // Delivery Note Actions
   addDeliveryNote: (dn: Omit<CrmDeliveryNote, 'id'>) => void;
+  updateDeliveryNote: (id: string, updated: Partial<CrmDeliveryNote>) => void;
   deleteDeliveryNote: (id: string) => void;
 
   // Stock / Purchase
   addStockItem: (item: Omit<CrmPurchaseStock, 'id' | 'slNo'>) => void;
   updateStockItem: (id: string, updated: Partial<CrmPurchaseStock>) => void;
   deleteStockItem: (id: string) => void;
+
+  // Supplier Actions
+  addSupplier: (sup: Omit<CrmSupplier, 'id' | 'slNo'>) => void;
+  updateSupplier: (id: string, updated: Partial<CrmSupplier>) => void;
+  deleteSupplier: (id: string) => void;
+
+  // Purchase Order Actions
+  addPurchaseOrder: (po: Omit<CrmPurchaseOrder, 'id' | 'slNo'>) => void;
+  updatePurchaseOrder: (id: string, updated: Partial<CrmPurchaseOrder>) => void;
+  deletePurchaseOrder: (id: string) => void;
+
+  // Stock Transfer Actions
+  addStockTransfer: (st: Omit<CrmStockTransfer, 'id' | 'slNo'>) => void;
+  deleteStockTransfer: (id: string) => void;
 
   // User Actions
   addUser: (user: Omit<CrmUser, 'id' | 'lastLogin'>) => void;
@@ -168,13 +216,18 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [isCustomersLoading, setIsCustomersLoading] = useState(false);
   const [customersError, setCustomersError] = useState<string | null>(null);
+  const isFetchingDataRef = useRef(false);
   const [salesOpportunities, setSalesOpportunities] = useState<CrmSalesOpportunity[]>([]);
   const [quotations, setQuotations] = useState<CrmQuotation[]>([]);
   const [salesOrders, setSalesOrders] = useState<CrmSalesOrder[]>([]);
   const [invoices, setInvoices] = useState<CrmInvoice[]>(mockInvoices);
+  const [proformas, setProformas] = useState<CrmProformaInvoice[]>([]);
   const [receipts, setReceipts] = useState<CrmReceipt[]>([]);
   const [deliveryNotes, setDeliveryNotes] = useState<CrmDeliveryNote[]>([]);
   const [purchaseStocks, setPurchaseStocks] = useState<CrmPurchaseStock[]>([]);
+  const [suppliers, setSuppliers] = useState<CrmSupplier[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<CrmPurchaseOrder[]>([]);
+  const [stockTransfers, setStockTransfers] = useState<CrmStockTransfer[]>([]);
   const [campaigns, setCampaigns] = useState<CrmCampaign[]>([]);
   const [users, setUsers] = useState<CrmUser[]>(mockUsers);
   const [rbacRules, setRbacRules] = useState<PermissionRule[]>(mockRbacRules);
@@ -189,10 +242,14 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       localStorage.removeItem('crm_quotations_data');
       localStorage.removeItem('crm_orders_data');
       localStorage.removeItem('crm_invoices_data');
+      localStorage.removeItem('crm_proforma_invoices');
       localStorage.removeItem('crm_receipts_data');
       localStorage.removeItem('crm_delivery_notes_data');
       localStorage.removeItem('crm_campaigns_data');
       localStorage.removeItem('crm_stocks_data');
+      localStorage.removeItem('crm_suppliers_list');
+      localStorage.removeItem('crm_purchase_orders');
+      localStorage.removeItem('crm_stock_transfers');
       localStorage.removeItem('cool_worker_tasks');
       localStorage.removeItem('cool_material_requests');
       localStorage.removeItem('cool_timesheet');
@@ -206,23 +263,29 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       setQuotations([]);
       setSalesOrders([]);
       setInvoices([]);
+      setProformas([]);
       setReceipts([]);
       setDeliveryNotes([]);
       setCampaigns([]);
       setPurchaseStocks([]);
+      setSuppliers([]);
+      setPurchaseOrders([]);
+      setStockTransfers([]);
     } catch (e) {
       console.error(e);
     }
   };
 
   // Helper to persist state and dispatch live sync events
-  const persist = (key: string, data: any, eventName?: string) => {
+  const persist = (key: string, data: any, eventName?: string, dispatchEvents: boolean = true) => {
     if (typeof window === 'undefined') return;
     try {
       localStorage.setItem(key, JSON.stringify(data));
       if (key === 'crm_leads_data') {
         localStorage.setItem('cooltech_crm_leads', JSON.stringify(data));
       }
+      if (!dispatchEvents) return;
+
       const derivedEvent =
         eventName ||
         (key === 'crm_tasks_data'
@@ -239,15 +302,23 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
                     ? 'crm_orders_updated'
                     : key === 'crm_invoices_data'
                       ? 'crm_invoices_updated'
-                      : key === 'crm_receipts_data'
-                        ? 'crm_receipts_updated'
-                        : key === 'crm_delivery_notes_data'
-                          ? 'crm_delivery_notes_updated'
+                      : key === 'crm_proforma_invoices'
+                        ? 'crm_proforma_invoices_updated'
+                        : key === 'crm_receipts_data'
+                          ? 'crm_receipts_updated'
+                          : key === 'crm_delivery_notes_data'
+                            ? 'crm_delivery_notes_updated'
                           : key === 'crm_campaigns_data'
                             ? 'crm_campaigns_updated'
                             : key === 'crm_stocks_data'
                               ? 'crm_stocks_updated'
-                              : key === 'cezcon_crm_users_list'
+                              : key === 'crm_suppliers_list'
+                                ? 'crm_suppliers_updated'
+                                : key === 'crm_purchase_orders'
+                                  ? 'crm_purchase_orders_updated'
+                                  : key === 'crm_stock_transfers'
+                                    ? 'crm_stock_transfers_updated'
+                                    : key === 'cezcon_crm_users_list'
                                 ? 'crm_users_updated'
                                 : undefined);
 
@@ -263,8 +334,34 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   // Load persisted data on mount & subscribe to live mutations across modules
   useEffect(() => {
     const loadAllData = () => {
+      if (isFetchingDataRef.current) return;
+      isFetchingDataRef.current = true;
       try {
         const liveUser = authMockService.getCurrentUser();
+
+        // 1. Immediately prime local cached customers so UI never flashes empty
+        const storedCustomers = localStorage.getItem('crm_customers_data');
+        if (storedCustomers) {
+          try {
+            const parsed = JSON.parse(storedCustomers);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setCustomers(parsed);
+            }
+          } catch {}
+        }
+
+        // 2. Immediately prime local cached leads
+        const storedLeads = localStorage.getItem('cooltech_crm_leads') || localStorage.getItem('crm_leads_data');
+        if (storedLeads) {
+          try {
+            const parsed = JSON.parse(storedLeads);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setLeads(parsed);
+            }
+          } catch {}
+        }
+
+        // 3. Background fetch leads without dispatching recursive reload event
         setIsLeadsLoading(true);
         leadApiService
           .getLeads({ limit: 100 })
@@ -272,27 +369,19 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
             if (res && Array.isArray(res.leads)) {
               setLeads(res.leads);
               setLeadsError(null);
-              persist('crm_leads_data', res.leads);
+              persist('crm_leads_data', res.leads, undefined, false);
             }
           })
           .catch((err: unknown) => {
             const msg = err instanceof Error ? err.message : 'Failed to fetch leads from CRM database';
             console.warn('[EnterpriseCrmContext] Backend lead load failed, using local cache:', msg);
             setLeadsError(msg);
-            const storedLeads = localStorage.getItem('cooltech_crm_leads') || localStorage.getItem('crm_leads_data');
-            if (storedLeads) {
-              try {
-                const parsed = JSON.parse(storedLeads);
-                if (Array.isArray(parsed)) {
-                  setLeads(parsed);
-                }
-              } catch {}
-            }
           })
           .finally(() => {
             setIsLeadsLoading(false);
           });
 
+        // 4. Background fetch customers without dispatching recursive reload event
         if (liveUser?.isServerVerified) {
           setIsCustomersLoading(true);
           customerApiService
@@ -300,6 +389,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
             .then((res) => {
               setCustomers(res.customers);
               setCustomersError(null);
+              persist('crm_customers_data', res.customers, undefined, false);
             })
             .catch((err: unknown) => {
               const msg = err instanceof Error ? err.message : 'Failed to fetch customers from CRM database';
@@ -308,15 +398,11 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
             })
             .finally(() => {
               setIsCustomersLoading(false);
+              isFetchingDataRef.current = false;
             });
         } else {
-          const storedCustomers = localStorage.getItem('crm_customers_data');
-          if (storedCustomers) {
-            const parsed = JSON.parse(storedCustomers);
-            setCustomers(Array.isArray(parsed) ? parsed : []);
-          } else {
-            setCustomers([]);
-          }
+          setIsCustomersLoading(false);
+          isFetchingDataRef.current = false;
         }
 
         const storedOpps = localStorage.getItem('crm_opportunities_data');
@@ -326,6 +412,17 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         } else {
           setSalesOpportunities([]);
         }
+
+        // Background fetch opportunities from D1 database
+        opportunityApiService
+          .getOpportunities({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.opportunities) && res.opportunities.length > 0) {
+              setSalesOpportunities(res.opportunities);
+              persist('crm_opportunities_data', res.opportunities, undefined, false);
+            }
+          })
+          .catch(() => {});
 
         const storedTasks = localStorage.getItem('crm_tasks_data');
         if (storedTasks) {
@@ -344,6 +441,20 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           setTasks([]);
         }
 
+        // Background fetch tasks from D1 database
+        taskApiService
+          .getTasks({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.tasks) && res.tasks.length > 0) {
+              setTasks(res.tasks);
+              persist('crm_tasks_data', res.tasks, undefined, false);
+            }
+          })
+          .catch(() => {});
+
+        // Safely migrate existing offline tasks to D1
+        taskApiService.migrateLocalTasksToDatabase().catch(() => {});
+
         const storedQuotes = localStorage.getItem('crm_quotations_data');
         if (storedQuotes) {
           const parsed = JSON.parse(storedQuotes);
@@ -352,6 +463,17 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           setQuotations([]);
         }
 
+        // Background fetch quotations from D1 database
+        quotationApiService
+          .getQuotations({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.quotations) && res.quotations.length > 0) {
+              setQuotations(res.quotations);
+              persist('crm_quotations_data', res.quotations, undefined, false);
+            }
+          })
+          .catch(() => {});
+
         const storedOrders = localStorage.getItem('crm_orders_data');
         if (storedOrders) {
           const parsed = JSON.parse(storedOrders);
@@ -359,6 +481,28 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         } else {
           setSalesOrders([]);
         }
+
+        // Background fetch sales orders from D1 database
+        salesOrderApiService
+          .getSalesOrders({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.orders) && res.orders.length > 0) {
+              setSalesOrders(res.orders);
+              persist('crm_orders_data', res.orders, undefined, false);
+            }
+          })
+          .catch(() => {});
+
+        // Background fetch invoices from D1 database
+        invoiceApiService
+          .getInvoices({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.invoices) && res.invoices.length > 0) {
+              setInvoices(res.invoices);
+              persist('crm_invoices_data', res.invoices, undefined, false);
+            }
+          })
+          .catch(() => {});
 
         const storedInvoices = localStorage.getItem('crm_invoices_data');
         if (storedInvoices) {
@@ -397,6 +541,20 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           setReceipts([]);
         }
 
+        // Background fetch receipts from D1 database
+        receiptApiService
+          .getReceipts({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.receipts) && res.receipts.length > 0) {
+              setReceipts(res.receipts);
+              persist('crm_receipts_data', res.receipts, undefined, false);
+            }
+          })
+          .catch(() => {});
+
+        // Safely migrate existing offline receipts to D1
+        receiptApiService.migrateLocalReceiptsToDatabase().catch(() => {});
+
         const storedDeliveryNotes = localStorage.getItem('crm_delivery_notes_data');
         if (storedDeliveryNotes) {
           const parsed = JSON.parse(storedDeliveryNotes);
@@ -404,6 +562,47 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         } else {
           setDeliveryNotes([]);
         }
+
+        // Background fetch delivery notes from D1 database
+        deliveryNoteApiService
+          .getDeliveryNotes({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.deliveryNotes) && res.deliveryNotes.length > 0) {
+              setDeliveryNotes(res.deliveryNotes);
+              persist('crm_delivery_notes_data', res.deliveryNotes, undefined, false);
+            }
+          })
+          .catch(() => {});
+
+        // Safely migrate existing offline delivery notes to D1
+        deliveryNoteApiService.migrateLocalDeliveryNotesToDatabase().catch(() => {});
+
+        // Proforma Invoices
+        const storedProformas = localStorage.getItem('crm_proforma_invoices');
+        if (storedProformas) {
+          try {
+            const parsed = JSON.parse(storedProformas);
+            setProformas(Array.isArray(parsed) ? parsed : mockProformaInvoices);
+          } catch {
+            setProformas(mockProformaInvoices);
+          }
+        } else {
+          setProformas(mockProformaInvoices);
+        }
+
+        // Background fetch proformas from D1 database
+        proformaApiService
+          .getProformas({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.proformas) && res.proformas.length > 0) {
+              setProformas(res.proformas);
+              persist('crm_proforma_invoices', res.proformas, undefined, false);
+            }
+          })
+          .catch(() => {});
+
+        // Safely migrate existing offline proforma invoices to D1
+        proformaApiService.migrateLocalProformasToDatabase().catch(() => {});
 
         const storedCampaigns = localStorage.getItem('crm_campaigns_data');
         if (storedCampaigns) {
@@ -420,6 +619,90 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         } else {
           setPurchaseStocks([]);
         }
+
+        // Background fetch CRM inventory from D1
+        crmInventoryApiService
+          .getInventory({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.purchaseStocks) && res.purchaseStocks.length > 0) {
+              setPurchaseStocks(res.purchaseStocks);
+              persist('crm_stocks_data', res.purchaseStocks, undefined, false);
+            }
+          })
+          .catch(() => {});
+        crmInventoryApiService.migrateLocalInventoryToDatabase().catch(() => {});
+
+        // Suppliers
+        const storedSuppliers = localStorage.getItem('crm_suppliers_list');
+        if (storedSuppliers) {
+          try {
+            const parsed = JSON.parse(storedSuppliers);
+            setSuppliers(Array.isArray(parsed) ? parsed : []);
+          } catch {
+            setSuppliers([]);
+          }
+        } else {
+          setSuppliers([]);
+        }
+
+        supplierApiService
+          .getSuppliers({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.suppliers) && res.suppliers.length > 0) {
+              setSuppliers(res.suppliers);
+              persist('crm_suppliers_list', res.suppliers, undefined, false);
+            }
+          })
+          .catch(() => {});
+        supplierApiService.migrateLocalSuppliersToDatabase().catch(() => {});
+
+        // Purchase Orders
+        const storedPOs = localStorage.getItem('crm_purchase_orders');
+        if (storedPOs) {
+          try {
+            const parsed = JSON.parse(storedPOs);
+            setPurchaseOrders(Array.isArray(parsed) ? parsed : []);
+          } catch {
+            setPurchaseOrders([]);
+          }
+        } else {
+          setPurchaseOrders([]);
+        }
+
+        purchaseOrderApiService
+          .getPurchaseOrders({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.orders) && res.orders.length > 0) {
+              setPurchaseOrders(res.orders);
+              persist('crm_purchase_orders', res.orders, undefined, false);
+            }
+          })
+          .catch(() => {});
+        purchaseOrderApiService.migrateLocalPurchaseOrdersToDatabase().catch(() => {});
+
+        // Stock Transfers
+        const storedTransfers = localStorage.getItem('crm_stock_transfers');
+        if (storedTransfers) {
+          try {
+            const parsed = JSON.parse(storedTransfers);
+            setStockTransfers(Array.isArray(parsed) ? parsed : []);
+          } catch {
+            setStockTransfers([]);
+          }
+        } else {
+          setStockTransfers([]);
+        }
+
+        stockTransferApiService
+          .getStockTransfers({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.transfers) && res.transfers.length > 0) {
+              setStockTransfers(res.transfers);
+              persist('crm_stock_transfers', res.transfers, undefined, false);
+            }
+          })
+          .catch(() => {});
+        stockTransferApiService.migrateLocalStockTransfersToDatabase().catch(() => {});
 
         // Load dynamic shared users
         const cezconRaw = localStorage.getItem('cezcon_crm_users_list');
@@ -484,9 +767,13 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       'crm_quotations_updated',
       'crm_orders_updated',
       'crm_invoices_updated',
+      'crm_proforma_invoices_updated',
       'crm_receipts_updated',
       'crm_delivery_notes_updated',
       'crm_stocks_updated',
+      'crm_suppliers_updated',
+      'crm_purchase_orders_updated',
+      'crm_stock_transfers_updated',
       'crm_campaigns_updated',
       'crm_users_updated',
       'crm_admins_updated',
@@ -520,6 +807,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newTask, ...currentTasks.filter((t) => t.id !== uniqueId)];
     setTasks(updated);
     persist('crm_tasks_data', updated);
+    taskApiService.createTask(newTask).catch(() => {});
   };
 
   const createTask = (taskData: Partial<CrmTask> & { taskDetails: string }) => {
@@ -574,6 +862,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newTask, ...currentTasks.filter((t) => t.id !== uniqueId)];
     setTasks(updated);
     persist('crm_tasks_data', updated);
+    taskApiService.createTask(newTask).catch(() => {});
     return newTask;
   };
 
@@ -769,6 +1058,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     });
     setTasks(list);
     persist('crm_tasks_data', list);
+    taskApiService.addComment(taskId, text).catch(() => {});
   };
 
   const updateTaskStatusWorkflow = (taskId: string, status: TaskStatus, actor = 'User', role = 'Manager', note?: string) => {
@@ -794,6 +1084,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     });
     setTasks(list);
     persist('crm_tasks_data', list);
+    taskApiService.updateTaskStatus(taskId, { status, notes: note }).catch(() => {});
   };
 
   const updateTask = (id: string, updated: Partial<CrmTask>) => {
@@ -807,6 +1098,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const list = currentTasks.map((t) => (t.id === id ? { ...t, ...updated } : t));
     setTasks(list);
     persist('crm_tasks_data', list);
+    taskApiService.updateTask(id, updated).catch(() => {});
   };
 
   const toggleTaskStatus = (id: string) => {
@@ -835,6 +1127,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const list = currentTasks.filter((t) => t.id !== id);
     setTasks(list);
     persist('crm_tasks_data', list);
+    taskApiService.deleteTask(id).catch(() => {});
   };
 
   // Lead Handlers
@@ -1122,74 +1415,134 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
 
   // Opportunity Handlers
   const addOpportunity = (oppData: Omit<CrmSalesOpportunity, 'id' | 'createdAt'>) => {
+    // Prevent duplicate opportunity if created from the same lead
+    if (oppData.createdFromLeadId) {
+      const existing = salesOpportunities.find((o) => o.createdFromLeadId === oppData.createdFromLeadId);
+      if (existing) {
+        return;
+      }
+    }
+
+    const uniqueId = `opp-${Date.now()}`;
     const newOpp: CrmSalesOpportunity = {
       ...oppData,
-      id: `opp-${Date.now()}`,
+      id: uniqueId,
       createdAt: new Date().toISOString().split('T')[0],
-      opportunityCode: `OPP-${Date.now().toString().slice(-4)}`,
+      opportunityCode: oppData.opportunityCode || `OPP-${Date.now().toString().slice(-4)}`,
     };
     const updated = [newOpp, ...salesOpportunities];
     setSalesOpportunities(updated);
     persist('crm_opportunities_data', updated);
+
+    // Persist to D1 database
+    opportunityApiService.createOpportunity(newOpp).then((res) => {
+      if (res?.opportunity) {
+        setSalesOpportunities((prev) =>
+          prev.map((o) => (o.id === uniqueId ? res.opportunity : o))
+        );
+      }
+    }).catch((err) => {
+      console.warn('[EnterpriseCrmContext] Failed to persist opportunity to D1, keeping local state:', err);
+    });
   };
 
   const updateOpportunity = (id: string, updated: Partial<CrmSalesOpportunity>) => {
     const list = salesOpportunities.map((o) => (o.id === id ? { ...o, ...updated } : o));
     setSalesOpportunities(list);
     persist('crm_opportunities_data', list);
+
+    opportunityApiService.updateOpportunity(id, updated).catch((err) => {
+      console.warn('[EnterpriseCrmContext] Failed to update opportunity on D1:', err);
+    });
   };
 
   const updateOpportunityStage = (id: string, newStage: DealStage) => {
     const list = salesOpportunities.map((opp) => (opp.id === id ? { ...opp, stage: newStage } : opp));
     setSalesOpportunities(list);
     persist('crm_opportunities_data', list);
+
+    opportunityApiService.updateOpportunity(id, { stage: newStage }).catch(() => {});
   };
 
   const deleteOpportunity = (id: string) => {
     const list = salesOpportunities.filter((opp) => opp.id !== id);
     setSalesOpportunities(list);
     persist('crm_opportunities_data', list);
+
+    opportunityApiService.deleteOpportunity(id).catch(() => {});
   };
 
   // Quotation Handlers
   const addQuotation = (quoteData: Omit<CrmQuotation, 'id'>) => {
+    const uniqueId = `quote-${Date.now()}`;
     const newQuote: CrmQuotation = {
       ...quoteData,
-      id: `quote-${Date.now()}`,
+      id: uniqueId,
       quotationNumber: quoteData.quotationNumber || `QT-${Date.now().toString().slice(-4)}`,
     };
     const updated = [newQuote, ...quotations];
     setQuotations(updated);
     persist('crm_quotations_data', updated);
+
+    quotationApiService.createQuotation(newQuote).then((created) => {
+      if (created) {
+        setQuotations((prev) => prev.map((q) => (q.id === uniqueId ? created : q)));
+      }
+    }).catch((err) => {
+      console.warn('[EnterpriseCrmContext] Failed to persist quotation to D1:', err);
+    });
   };
 
   const updateQuotation = (idOrObj: string | CrmQuotation, updated?: Partial<CrmQuotation>) => {
+    const targetId = typeof idOrObj === 'object' && idOrObj !== null ? idOrObj.id : idOrObj;
+    const targetPayload = typeof idOrObj === 'object' && idOrObj !== null ? idOrObj : updated || {};
+
     const list = quotations.map((q) => {
-      if (typeof idOrObj === 'object' && idOrObj !== null) {
-        return q.id === idOrObj.id ? { ...q, ...idOrObj } : q;
+      if (q.id === targetId) {
+        return { ...q, ...targetPayload, id: targetId };
       }
-      return q.id === idOrObj ? { ...q, ...updated } : q;
+      return q;
     });
     setQuotations(list);
     persist('crm_quotations_data', list);
+
+    quotationApiService.updateQuotation(targetId, targetPayload).catch((err) => {
+      console.warn('[EnterpriseCrmContext] Failed to update quotation on D1:', err);
+    });
   };
 
   const deleteQuotation = (id: string) => {
     const list = quotations.filter((q) => q.id !== id);
     setQuotations(list);
     persist('crm_quotations_data', list);
+
+    quotationApiService.deleteQuotation(id).catch(() => {});
   };
 
   const convertQuotationToSalesOrder = (quotationId: string): CrmSalesOrder | null => {
     const quote = quotations.find((q) => q.id === quotationId);
     if (!quote) return null;
 
+    // Duplicate Prevention: Check if already converted to Sales Order
+    const existingOrder = salesOrders.find(
+      (o) =>
+        o.id === quote.convertedOrderId ||
+        o.quotationRef === quote.quotationNumber ||
+        (o as any).quotationId === quotationId
+    );
+    if (existingOrder || quote.convertedOrderId) {
+      const match = existingOrder || salesOrders.find((o) => o.id === quote.convertedOrderId);
+      if (match) return match;
+    }
+
     const orderNumber = `SO-${Date.now().toString().slice(-4)}`;
+    const uniqueOrderId = `ord-${Date.now()}`;
     const newOrder: CrmSalesOrder = {
-      id: `ord-${Date.now()}`,
+      id: uniqueOrderId,
       slNo: (salesOrders?.length || 0) + 1,
       orderNumber: orderNumber,
       quotationRef: quote.quotationNumber,
+      quotationId: quote.id,
       opportunityRef: quote.opportunityCode || '',
       customer: quote.customer,
       contactPerson: quote.contactPerson || '',
@@ -1204,11 +1557,12 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       notes: quote.customerNotes || '',
       paymentTerms: quote.paymentTerms || '',
       deliveryTerms: quote.deliveryTerms || '',
+      items: quote.items || [],
     };
 
     const updatedOrders = [newOrder, ...(salesOrders || [])];
     setSalesOrders(updatedOrders);
-    persist('crm_sales_orders_data', updatedOrders);
+    persist('crm_orders_data', updatedOrders);
 
     // Update Quotation Status to Converted
     const now = new Date().toISOString();
@@ -1239,56 +1593,212 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     setQuotations(updatedQuotes);
     persist('crm_quotations_data', updatedQuotes);
 
+    // Persist to D1 database
+    salesOrderApiService.createSalesOrder({
+      ...newOrder,
+      quotationId: quote.id,
+    }).catch((err) => {
+      console.warn('[EnterpriseCrmContext] Failed to persist sales order to D1:', err);
+    });
+
+    quotationApiService.updateQuotation(quote.id, {
+      status: 'Converted',
+      convertedOrderId: newOrder.id,
+      salesOrderNumber: newOrder.orderNumber,
+    }).catch(() => {});
+
     return newOrder;
   };
 
   // Sales Order Handlers
   const addSalesOrder = (orderData: Omit<CrmSalesOrder, 'id'>) => {
+    const uniqueId = `ord-${Date.now()}`;
     const newOrder: CrmSalesOrder = {
       ...orderData,
-      id: `ord-${Date.now()}`,
+      id: uniqueId,
       orderNumber: orderData.orderNumber || `SO-${Date.now().toString().slice(-4)}`,
     };
     const updated = [newOrder, ...salesOrders];
     setSalesOrders(updated);
     persist('crm_orders_data', updated);
+
+    salesOrderApiService.createSalesOrder(newOrder).then((res) => {
+      if (res?.order) {
+        setSalesOrders((prev) => prev.map((o) => (o.id === uniqueId ? res.order : o)));
+      }
+    }).catch((err) => {
+      console.warn('[EnterpriseCrmContext] Failed to persist sales order to D1:', err);
+    });
   };
 
   const updateSalesOrder = (id: string, updated: Partial<CrmSalesOrder>) => {
     const list = salesOrders.map((o) => (o.id === id ? { ...o, ...updated } : o));
     setSalesOrders(list);
     persist('crm_orders_data', list);
+
+    salesOrderApiService.updateSalesOrder(id, updated).catch((err) => {
+      console.warn('[EnterpriseCrmContext] Failed to update sales order on D1:', err);
+    });
   };
 
   const deleteSalesOrder = (id: string) => {
     const list = salesOrders.filter((o) => o.id !== id);
     setSalesOrders(list);
     persist('crm_orders_data', list);
+
+    salesOrderApiService.deleteSalesOrder(id).catch(() => {});
   };
 
   // Invoice Handlers
   const addInvoice = (invData: Omit<CrmInvoice, 'id'>) => {
+    let currentInvoices = invoices;
+    try {
+      const stored = localStorage.getItem('crm_invoices_data');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          currentInvoices = parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to read crm_invoices_data from localStorage:', e);
+    }
+
+    const totalAmt = Number(invData.totalAmount) || 0;
+    const paidAmt = Number(invData.paidAmount) || 0;
+    const balanceAmt = Math.max(0, totalAmt - paidAmt);
+    let derivedStatus = invData.status;
+    if (!derivedStatus || derivedStatus === 'Pending') {
+      if (paidAmt >= totalAmt && totalAmt > 0) {
+        derivedStatus = 'Paid';
+      } else if (paidAmt > 0 && paidAmt < totalAmt) {
+        derivedStatus = 'Partially Paid';
+      } else {
+        derivedStatus = 'Unpaid';
+      }
+    }
+
+    const uniqueId = `inv-${Date.now()}`;
     const newInv: CrmInvoice = {
       ...invData,
-      id: `inv-${Date.now()}`,
-      slNo: invData.slNo || (invoices.length + 1),
+      id: uniqueId,
+      slNo: invData.slNo || (currentInvoices.length + 1),
       invoiceNumber: invData.invoiceNumber || `INV-${Date.now().toString().slice(-4)}`,
+      paidAmount: paidAmt,
+      balanceAmount: balanceAmt,
+      status: derivedStatus,
     };
-    const updated = [newInv, ...invoices];
+    const updated = [newInv, ...currentInvoices.filter((inv) => inv.id !== newInv.id)];
     setInvoices(updated);
     persist('crm_invoices_data', updated);
+
+    invoiceApiService.createInvoice(newInv).then((created) => {
+      if (created) {
+        setInvoices((prev) => prev.map((inv) => (inv.id === uniqueId ? created : inv)));
+      }
+    }).catch((err) => {
+      console.warn('[EnterpriseCrmContext] Failed to persist invoice to D1:', err);
+    });
   };
 
   const updateInvoice = (id: string, updated: Partial<CrmInvoice>) => {
-    const list = invoices.map((inv) => (inv.id === id ? { ...inv, ...updated } : inv));
+    let currentInvoices = invoices;
+    try {
+      const stored = localStorage.getItem('crm_invoices_data');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          currentInvoices = parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to read crm_invoices_data from localStorage:', e);
+    }
+
+    const exists = currentInvoices.some((inv) => inv.id === id);
+    let list: CrmInvoice[];
+    if (exists) {
+      list = currentInvoices.map((inv) => {
+        if (inv.id !== id) return inv;
+        const total = updated.totalAmount !== undefined ? Number(updated.totalAmount) : Number(inv.totalAmount || 0);
+        const paid = updated.paidAmount !== undefined ? Number(updated.paidAmount) : Number(inv.paidAmount || 0);
+        const balance = Math.max(0, total - paid);
+
+        let status = updated.status !== undefined ? updated.status : inv.status;
+        if (updated.paidAmount !== undefined || updated.totalAmount !== undefined) {
+          if (paid >= total && total > 0) {
+            status = 'Paid';
+          } else if (paid > 0 && paid < total) {
+            status = 'Partially Paid';
+          } else {
+            status = 'Unpaid';
+          }
+        }
+
+        return {
+          ...inv,
+          ...updated,
+          id, // Never change id
+          paidAmount: paid,
+          balanceAmount: balance,
+          status,
+        };
+      });
+    } else {
+      list = [{ ...(updated as CrmInvoice), id }, ...currentInvoices];
+    }
     setInvoices(list);
     persist('crm_invoices_data', list);
+
+    invoiceApiService.updateInvoice(id, updated).catch((err) => {
+      console.warn('[EnterpriseCrmContext] Failed to update invoice on D1:', err);
+    });
   };
 
   const deleteInvoice = (id: string) => {
-    const list = invoices.filter((inv) => inv.id !== id);
+    let currentInvoices = invoices;
+    try {
+      const stored = localStorage.getItem('crm_invoices_data');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) currentInvoices = parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    const list = currentInvoices.filter((inv) => inv.id !== id);
     setInvoices(list);
     persist('crm_invoices_data', list);
+
+    invoiceApiService.deleteInvoice(id).catch(() => {});
+  };
+
+  // Proforma Invoice Handlers
+  const addProforma = (piData: Omit<CrmProformaInvoice, 'id' | 'slNo'>) => {
+    const newPi: CrmProformaInvoice = {
+      ...piData,
+      id: `pi_${Date.now()}`,
+      slNo: proformas.length + 1,
+      piNumber: piData.piNumber || `CTPI#${Date.now().toString().slice(-4)}`,
+    };
+    const updated = [newPi, ...proformas];
+    setProformas(updated);
+    persist('crm_proforma_invoices', updated);
+    proformaApiService.createProforma(newPi).catch(() => {});
+  };
+
+  const updateProforma = (id: string, updatedFields: Partial<CrmProformaInvoice>) => {
+    const updated = proformas.map((p) => (p.id === id ? { ...p, ...updatedFields } : p));
+    setProformas(updated);
+    persist('crm_proforma_invoices', updated);
+    proformaApiService.updateProforma(id, updatedFields).catch(() => {});
+  };
+
+  const deleteProforma = (id: string) => {
+    const updated = proformas.filter((p) => p.id !== id);
+    setProformas(updated);
+    persist('crm_proforma_invoices', updated);
+    proformaApiService.deleteProforma(id).catch(() => {});
   };
 
   // Receipt Handlers
@@ -1301,12 +1811,21 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newRec, ...receipts];
     setReceipts(updated);
     persist('crm_receipts_data', updated);
+    receiptApiService.createReceipt(newRec).catch(() => {});
+  };
+
+  const updateReceipt = (id: string, updatedFields: Partial<CrmReceipt>) => {
+    const updated = receipts.map((r) => (r.id === id ? { ...r, ...updatedFields } : r));
+    setReceipts(updated);
+    persist('crm_receipts_data', updated);
+    receiptApiService.updateReceipt(id, updatedFields).catch(() => {});
   };
 
   const deleteReceipt = (id: string) => {
     const updated = receipts.filter((r) => r.id !== id);
     setReceipts(updated);
     persist('crm_receipts_data', updated);
+    receiptApiService.deleteReceipt(id).catch(() => {});
   };
 
   // Delivery Note Handlers
@@ -1319,12 +1838,21 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newDn, ...deliveryNotes];
     setDeliveryNotes(updated);
     persist('crm_delivery_notes_data', updated);
+    deliveryNoteApiService.createDeliveryNote(newDn).catch(() => {});
+  };
+
+  const updateDeliveryNote = (id: string, updatedFields: Partial<CrmDeliveryNote>) => {
+    const updated = deliveryNotes.map((d) => (d.id === id ? { ...d, ...updatedFields } : d));
+    setDeliveryNotes(updated);
+    persist('crm_delivery_notes_data', updated);
+    deliveryNoteApiService.updateDeliveryNote(id, updatedFields).catch(() => {});
   };
 
   const deleteDeliveryNote = (id: string) => {
     const updated = deliveryNotes.filter((d) => d.id !== id);
     setDeliveryNotes(updated);
     persist('crm_delivery_notes_data', updated);
+    deliveryNoteApiService.deleteDeliveryNote(id).catch(() => {});
   };
 
   // Stock / Purchase Handlers
@@ -1337,18 +1865,109 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newItem, ...purchaseStocks];
     setPurchaseStocks(updated);
     persist('crm_stocks_data', updated);
+    crmInventoryApiService.createInventoryItem({
+      id: newItem.id,
+      name: newItem.productName,
+      code: newItem.sku,
+      store: newItem.store,
+      supplier: newItem.supplier,
+      stock: newItem.quantity,
+      purchaseRate: newItem.unitPrice,
+    } as any).catch(() => {});
   };
 
   const updateStockItem = (id: string, updated: Partial<CrmPurchaseStock>) => {
     const list = purchaseStocks.map((s) => (s.id === id ? { ...s, ...updated } : s));
     setPurchaseStocks(list);
     persist('crm_stocks_data', list);
+    crmInventoryApiService.updateInventoryItem(id, {
+      name: updated.productName,
+      code: updated.sku,
+      store: updated.store,
+      stock: updated.quantity,
+      purchaseRate: updated.unitPrice,
+    } as any).catch(() => {});
   };
 
   const deleteStockItem = (id: string) => {
     const list = purchaseStocks.filter((s) => s.id !== id);
     setPurchaseStocks(list);
     persist('crm_stocks_data', list);
+    crmInventoryApiService.deleteInventoryItem(id).catch(() => {});
+  };
+
+  // Supplier Handlers
+  const addSupplier = (supData: Omit<CrmSupplier, 'id' | 'slNo'>) => {
+    const newSup: CrmSupplier = {
+      ...supData,
+      id: `sup-${Date.now()}`,
+      slNo: suppliers.length + 1,
+    };
+    const updated = [newSup, ...suppliers];
+    setSuppliers(updated);
+    persist('crm_suppliers_list', updated);
+    supplierApiService.createSupplier(newSup).catch(() => {});
+  };
+
+  const updateSupplier = (id: string, updated: Partial<CrmSupplier>) => {
+    const list = suppliers.map((s) => (s.id === id ? { ...s, ...updated } : s));
+    setSuppliers(list);
+    persist('crm_suppliers_list', list);
+    supplierApiService.updateSupplier(id, updated).catch(() => {});
+  };
+
+  const deleteSupplier = (id: string) => {
+    const list = suppliers.filter((s) => s.id !== id);
+    setSuppliers(list);
+    persist('crm_suppliers_list', list);
+    supplierApiService.deleteSupplier(id).catch(() => {});
+  };
+
+  // Purchase Order Handlers
+  const addPurchaseOrder = (poData: Omit<CrmPurchaseOrder, 'id' | 'slNo'>) => {
+    const newPo: CrmPurchaseOrder = {
+      ...poData,
+      id: `po-${Date.now()}`,
+      slNo: purchaseOrders.length + 1,
+    };
+    const updated = [newPo, ...purchaseOrders];
+    setPurchaseOrders(updated);
+    persist('crm_purchase_orders', updated);
+    purchaseOrderApiService.createPurchaseOrder(newPo).catch(() => {});
+  };
+
+  const updatePurchaseOrder = (id: string, updated: Partial<CrmPurchaseOrder>) => {
+    const list = purchaseOrders.map((p) => (p.id === id ? { ...p, ...updated } : p));
+    setPurchaseOrders(list);
+    persist('crm_purchase_orders', list);
+    purchaseOrderApiService.updatePurchaseOrder(id, updated).catch(() => {});
+  };
+
+  const deletePurchaseOrder = (id: string) => {
+    const list = purchaseOrders.filter((p) => p.id !== id);
+    setPurchaseOrders(list);
+    persist('crm_purchase_orders', list);
+    purchaseOrderApiService.deletePurchaseOrder(id).catch(() => {});
+  };
+
+  // Stock Transfer Handlers
+  const addStockTransfer = (stData: Omit<CrmStockTransfer, 'id' | 'slNo'>) => {
+    const newSt: CrmStockTransfer = {
+      ...stData,
+      id: `st-${Date.now()}`,
+      slNo: stockTransfers.length + 1,
+    };
+    const updated = [newSt, ...stockTransfers];
+    setStockTransfers(updated);
+    persist('crm_stock_transfers', updated);
+    stockTransferApiService.createStockTransfer(newSt).catch(() => {});
+  };
+
+  const deleteStockTransfer = (id: string) => {
+    const list = stockTransfers.filter((st) => st.id !== id);
+    setStockTransfers(list);
+    persist('crm_stock_transfers', list);
+    stockTransferApiService.deleteStockTransfer(id).catch(() => {});
   };
 
   // User Handlers
@@ -1408,6 +2027,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         quotations,
         salesOrders,
         invoices,
+        proformas,
         receipts,
         deliveryNotes,
         purchaseStocks,
@@ -1458,13 +2078,29 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         addInvoice,
         updateInvoice,
         deleteInvoice,
+        addProforma,
+        updateProforma,
+        deleteProforma,
         addReceipt,
+        updateReceipt,
         deleteReceipt,
         addDeliveryNote,
+        updateDeliveryNote,
         deleteDeliveryNote,
         addStockItem,
         updateStockItem,
         deleteStockItem,
+        suppliers,
+        purchaseOrders,
+        stockTransfers,
+        addSupplier,
+        updateSupplier,
+        deleteSupplier,
+        addPurchaseOrder,
+        updatePurchaseOrder,
+        deletePurchaseOrder,
+        addStockTransfer,
+        deleteStockTransfer,
         addUser,
         deleteUser,
         addCampaign,

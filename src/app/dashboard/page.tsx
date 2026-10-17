@@ -513,7 +513,7 @@ export default function DashboardPage() {
         <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              Open Quotations
+              Open Commercial Offers
             </span>
             <span className="p-1 rounded bg-indigo-50 text-indigo-600">
               <FileText className="w-3.5 h-3.5" />

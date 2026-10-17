@@ -48,6 +48,7 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
     quotations: crmQuotations,
     users,
     salesOpportunities,
+    addOpportunity,
     addQuotation,
     updateQuotation,
     updateOpportunity,
@@ -148,6 +149,52 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
   const [formAdjustment, setFormAdjustment] = useState<number | ''>('');
   const [formUpdateOppAmount, setFormUpdateOppAmount] = useState<boolean>(true);
 
+  // Quick Add Opportunity State
+  const [isQuickAddOppOpen, setIsQuickAddOppOpen] = useState(false);
+  const [quickAddOppForm, setQuickAddOppForm] = useState({
+    title: '',
+    customer: '',
+    amount: '',
+    contactPerson: '',
+    phone: '',
+  });
+
+  const handleQuickAddOpportunity = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickAddOppForm.title.trim()) return;
+
+    const code = `OPP-${Math.floor(1000 + Math.random() * 9000)}`;
+    const custName = quickAddOppForm.customer.trim() || 'Direct Customer';
+    const oppAmount = Number(quickAddOppForm.amount) || 0;
+
+    const newOpp = {
+      opportunityCode: code,
+      title: quickAddOppForm.title.trim(),
+      customer: custName,
+      contactPerson: quickAddOppForm.contactPerson.trim() || undefined,
+      phone: quickAddOppForm.phone.trim() || undefined,
+      amount: oppAmount,
+      stage: 'Opportunity' as const,
+      probability: 50,
+      owner: currentUser?.name || 'shaheer',
+      expectedClose: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    };
+
+    if (addOpportunity) {
+      addOpportunity(newOpp);
+    }
+
+    // Auto-select in current quotation form
+    setFormOppCode(code);
+    setFormCustomer(custName);
+    setFormDescription(quickAddOppForm.title.trim());
+    if (quickAddOppForm.contactPerson.trim()) setFormContactPerson(quickAddOppForm.contactPerson.trim());
+    if (quickAddOppForm.phone.trim()) setFormPhone(quickAddOppForm.phone.trim());
+    if (oppAmount > 0 && !formAmount) setFormAmount(oppAmount);
+
+    setIsQuickAddOppOpen(false);
+  };
+
   // List Filters State matching exact Cezcon CRM reference image
   const [filterOwner, setFilterOwner] = useState<string>('All');
   const [filterDateRange, setFilterDateRange] = useState<string>('07-09-2026 - 06-10-2026');
@@ -176,7 +223,7 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Auto-open quote overview when navigated to via URL (e.g. from "Open in new tab")
+  // Auto-open quote overview or auto-fill quotation creation when navigated via URL
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -187,8 +234,35 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
           setSelectedQuote(found);
         }
       }
+
+      const oppId = params.get('oppId');
+      if (oppId && salesOpportunities && salesOpportunities.length > 0) {
+        const foundOpp = salesOpportunities.find(
+          (o) => o.id === oppId || o.opportunityCode === oppId
+        );
+        if (foundOpp) {
+          setIsCreating(true);
+          setSelectedQuote(null);
+          setQuoteToEdit(null);
+          setFormOppId(foundOpp.id);
+          setFormOppCode(foundOpp.opportunityCode || foundOpp.id);
+          setFormCustomer(foundOpp.customer || 'Direct Customer');
+          setFormContactPerson(foundOpp.contactPerson || '');
+          setFormPhone(foundOpp.phone || '');
+          setFormDescription(foundOpp.title || 'Commercial Proposal');
+          if (foundOpp.amount) {
+            setFormAmount(foundOpp.amount);
+          }
+          const todayStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+          setFormQuoteDate(todayStr);
+          if (!formQuoteNumber) {
+            const randNum = Math.floor(4300 + Math.random() * 200);
+            setFormQuoteNumber(`CTSQ#${randNum}`);
+          }
+        }
+      }
     }
-  }, [crmQuotations]);
+  }, [crmQuotations, salesOpportunities]);
 
   const handleCloseOverview = () => {
     setSelectedQuote(null);
@@ -419,6 +493,33 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
     e.preventDefault();
     if (!formQuoteNumber) return;
 
+    const oppMatched = salesOpportunities?.find((o) => o.id === formOppId || o.opportunityCode === formOppCode);
+    const quoteItems = (oppMatched as any)?.items && (oppMatched as any).items.length > 0
+      ? (oppMatched as any).items.map((it: any, idx: number) => ({
+          id: it.id || `item-${Date.now()}-${idx}`,
+          productName: it.productName || it.description || formDescription || 'Commercial Supply & Installation',
+          description: it.description || formDescription || 'Commercial Proposal',
+          quantity: Number(it.quantity || it.qty || 1),
+          unitPrice: Number(it.unitPrice || it.price || numAmount),
+          discount: Number(it.discount || 0),
+          taxRate: formVatRate,
+          taxAmount: Number(it.taxAmount || 0),
+          totalAmount: Number(it.totalAmount || it.total || grandTotal),
+        }))
+      : [
+          {
+            id: `item-${Date.now()}`,
+            productName: formDescription || 'Commercial Supply & Installation',
+            description: formDescription || 'Commercial Proposal',
+            quantity: 1,
+            unitPrice: numAmount,
+            discount: numDiscount,
+            taxRate: formVatRate,
+            taxAmount: calculatedVat,
+            totalAmount: grandTotal,
+          },
+        ];
+
     const finalQuote: CrmQuotation = {
       id: quoteToEdit?.id || `qtn-${Date.now()}`,
       slNo: quoteToEdit?.slNo || (crmQuotations?.length || 0) + 1,
@@ -438,20 +539,8 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
       totalAmount: grandTotal,
       status: quoteToEdit?.status || 'Approved',
       owner: quoteToEdit?.owner || currentUser?.name || 'shaheer',
-      itemsCount: 1,
-      items: [
-        {
-          id: `item-${Date.now()}`,
-          productName: formDescription || 'Commercial Supply & Installation',
-          description: formDescription || 'Commercial Proposal',
-          quantity: 1,
-          unitPrice: numAmount,
-          discount: numDiscount,
-          taxRate: formVatRate,
-          taxAmount: calculatedVat,
-          totalAmount: grandTotal,
-        },
-      ],
+      itemsCount: quoteItems.length,
+      items: quoteItems,
     };
 
     if (quoteToEdit) {
@@ -1682,19 +1771,38 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
                   <label className="sm:w-36 font-semibold text-slate-700 shrink-0">
                     Opportunity <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    required
-                    value={formOppCode}
-                    onChange={(e) => handleOpportunitySelect(e.target.value)}
-                    className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="">Select Opportunity</option>
-                    {salesOpportunities?.map((opp) => (
-                      <option key={opp.id} value={opp.opportunityCode || opp.id}>
-                        {opp.opportunityCode} - {opp.title} ({opp.customer})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex-1 flex items-center gap-1.5">
+                    <select
+                      required
+                      value={formOppCode}
+                      onChange={(e) => handleOpportunitySelect(e.target.value)}
+                      className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Select Opportunity</option>
+                      {salesOpportunities?.map((opp) => (
+                        <option key={opp.id} value={opp.opportunityCode || opp.id}>
+                          {opp.opportunityCode} - {opp.title} ({opp.customer})
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickAddOppForm({
+                          title: '',
+                          customer: '',
+                          amount: '',
+                          contactPerson: '',
+                          phone: '',
+                        });
+                        setIsQuickAddOppOpen(true);
+                      }}
+                      className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer flex items-center gap-0.5 transition-colors px-1 whitespace-nowrap"
+                      title="Add New Opportunity"
+                    >
+                      <span>+ New</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* File Upload */}
@@ -3678,7 +3786,7 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
             <div className="bg-[#f8f9fa] border-b border-slate-200 px-4 py-2 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-slate-400" />
-                <span className="font-normal text-slate-800 text-[13px]">Quotation</span>
+                <span className="font-normal text-slate-800 text-[13px]">Commercial Offer</span>
               </div>
 
               <button
@@ -3687,7 +3795,7 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
                 className="flex items-center gap-1 px-3 py-1.5 bg-[#28a745] hover:bg-[#218838] text-white rounded text-xs font-bold cursor-pointer shadow-2xs transition select-none tracking-wide"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                <span>QUOTATION</span>
+                <span>COMMERCIAL OFFER</span>
               </button>
             </div>
 
@@ -4195,6 +4303,126 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
                   className="px-4 py-1.5 rounded bg-[#0A2540] hover:bg-[#061B30] text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
                 >
                   Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add Opportunity Modal */}
+      {isQuickAddOppOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 font-sans">
+            <div className="bg-[#F8FAFC] border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-blue-50 text-[#2563EB] flex items-center justify-center font-bold">
+                  <Plus className="w-3.5 h-3.5" />
+                </div>
+                <h3 className="font-bold text-slate-800 text-xs uppercase tracking-tight">
+                  + New Opportunity
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQuickAddOppOpen(false)}
+                className="bg-[#DC2626] hover:bg-[#B91C1C] text-white w-5 h-5 flex items-center justify-center rounded transition-colors cursor-pointer text-xs font-bold"
+                title="Close"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickAddOpportunity} className="p-4 space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Opportunity Title <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. HVAC Repair & Maintenance"
+                  value={quickAddOppForm.title}
+                  onChange={(e) => setQuickAddOppForm({ ...quickAddOppForm, title: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Customer Name
+                </label>
+                <input
+                  type="text"
+                  list="quick-add-opp-customers"
+                  placeholder="e.g. DAMAC Properties"
+                  value={quickAddOppForm.customer}
+                  onChange={(e) => setQuickAddOppForm({ ...quickAddOppForm, customer: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                />
+                <datalist id="quick-add-opp-customers">
+                  {customers?.map((c) => (
+                    <option key={c.id} value={c.companyName || c.customerName} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Expected Amount (AED)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="0.00"
+                    value={quickAddOppForm.amount}
+                    onChange={(e) => setQuickAddOppForm({ ...quickAddOppForm, amount: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Contact Person
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. John Doe"
+                    value={quickAddOppForm.contactPerson}
+                    onChange={(e) => setQuickAddOppForm({ ...quickAddOppForm, contactPerson: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. +971 50 123 4567"
+                  value={quickAddOppForm.phone}
+                  onChange={(e) => setQuickAddOppForm({ ...quickAddOppForm, phone: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickAddOppOpen(false)}
+                  className="px-3 py-1.5 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 text-xs font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded text-xs font-bold cursor-pointer transition shadow-2xs flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Create Opportunity</span>
                 </button>
               </div>
             </form>

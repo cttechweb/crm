@@ -10,6 +10,24 @@ import { authMiddleware } from './auth.ts';
 import { customersApp } from './customers.ts';
 import { leadsApp } from './leads.ts';
 import { usersApp } from './users.ts';
+import { opportunitiesApp, quotationsApp, salesOrdersApp, invoicesApp } from './sales.ts';
+import { proformasApp, receiptsApp, deliveryNotesApp } from './salesAuxiliary.ts';
+import { tasksApp } from './tasks.ts';
+import { workerOpsApp } from './workerOps.ts';
+import {
+  suppliersApp,
+  storesApp,
+  crmInventoryApp,
+  purchaseOrdersApp,
+  stockInApp,
+  stockTransfersApp,
+} from './procurement.ts';
+import {
+  settingsApp,
+  targetsApp,
+  opportunityStagesApp,
+  opportunityLostReasonsApp,
+} from './settings.ts';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -341,6 +359,36 @@ app.route('/api/leads', leadsApp);
 
 // 7. Staff Management Endpoints (Protected by authMiddleware & Admin RBAC)
 app.route('/api/users', usersApp);
+
+// 8. Sales Workflow Endpoints (Protected by authMiddleware & RBAC)
+app.route('/api/opportunities', opportunitiesApp);
+app.route('/api/quotations', quotationsApp);
+app.route('/api/orders', salesOrdersApp);
+app.route('/api/sales-orders', salesOrdersApp);
+app.route('/api/invoices', invoicesApp);
+
+// 9. Tasks & Field Operations Endpoints (Protected by authMiddleware & RBAC)
+app.route('/api/tasks', tasksApp);
+app.route('/api/worker', workerOpsApp);
+
+// 10. Sales Auxiliary Documents (Protected by authMiddleware & RBAC)
+app.route('/api/proformas', proformasApp);
+app.route('/api/receipts', receiptsApp);
+app.route('/api/delivery-notes', deliveryNotesApp);
+
+// 11. Procurement & Inventory Endpoints (Protected by authMiddleware & RBAC)
+app.route('/api/suppliers', suppliersApp);
+app.route('/api/stores', storesApp);
+app.route('/api/inventory', crmInventoryApp);
+app.route('/api/purchase-orders', purchaseOrdersApp);
+app.route('/api/stock-in', stockInApp);
+app.route('/api/stock-transfers', stockTransfersApp);
+
+// 12. Settings, Targets, and Pipeline Stages Endpoints (Protected by authMiddleware & RBAC)
+app.route('/api/settings', settingsApp);
+app.route('/api/targets', targetsApp);
+app.route('/api/opportunity-stages', opportunityStagesApp);
+app.route('/api/opportunity-lost-reasons', opportunityLostReasonsApp);
 
 // Global 404 handler
 app.notFound((c) => {

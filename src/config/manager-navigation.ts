@@ -65,7 +65,7 @@ export const MANAGER_NAVIGATION: ManagerNavSection[] = [
           { title: 'Deals', href: '/manager/sales?tab=deals' },
           { title: 'Sales Pipeline', href: '/manager/sales?tab=pipeline' },
           { title: 'Commercial Offers', href: '/manager/sales?tab=quotations' },
-          { title: 'Orders', href: '/manager/sales?tab=orders' },
+          { title: 'Sales Orders', href: '/manager/sales?tab=orders' },
           { title: 'Invoices', href: '/manager/sales?tab=invoices' },
           { title: 'Sales Activities', href: '/manager/sales?tab=activities' },
         ],

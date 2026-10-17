@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { BarChart3, Calendar, Settings, ChevronDown, Edit, Trash2, CheckCircle2, X } from 'lucide-react';
+import { companyTargetApiService } from '@/services/settingsApiService';
 
 export interface MonthlyCompanyTarget {
   id: string | number;
@@ -38,6 +39,28 @@ export function CompanyTargetTab() {
   const [openActionMenuId, setOpenActionMenuId] = useState<string | number | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    let isMounted = true;
+    async function loadCompanyTargets() {
+      try {
+        const serverTargets = await companyTargetApiService.getCompanyTargets();
+        if (isMounted) {
+          if (serverTargets.length > 0) {
+            setTargetList(serverTargets);
+          } else if (targetList.length > 0) {
+            companyTargetApiService.syncBatchCompanyTargets(targetList).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load company targets from API:', e);
+      }
+    }
+    loadCompanyTargets();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const showToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3000);
@@ -50,7 +73,7 @@ export function CompanyTargetTab() {
     } catch (e) {}
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!saleTargetInput) return;
 
@@ -79,10 +102,23 @@ export function CompanyTargetTab() {
       );
       saveTargets(updated);
       showToast(`Company target for ${displayMonth} updated successfully!`);
+
+      try {
+        await companyTargetApiService.updateCompanyTarget(editingTargetId, {
+          month: displayMonth,
+          saleTarget: sale,
+          profitTarget: profit,
+          invoiceTarget: invoice,
+          collectionTarget: collection,
+        });
+      } catch (err: unknown) {
+        console.warn('Could not sync update to server:', err);
+      }
       setEditingTargetId(null);
     } else {
+      const tempId = Date.now();
       const newTarget: MonthlyCompanyTarget = {
-        id: Date.now(),
+        id: tempId,
         month: displayMonth || 'SEP 2026',
         saleTarget: sale,
         profitTarget: profit,
@@ -91,6 +127,19 @@ export function CompanyTargetTab() {
       };
       saveTargets([...targetList, newTarget]);
       showToast(`Company target for ${displayMonth || 'SEP 2026'} added successfully!`);
+
+      try {
+        const created = await companyTargetApiService.createCompanyTarget({
+          month: displayMonth || 'SEP 2026',
+          saleTarget: sale,
+          profitTarget: profit,
+          invoiceTarget: invoice,
+          collectionTarget: collection,
+        });
+        setTargetList((prev) => prev.map((item) => (item.id === tempId ? { ...item, id: created.id } : item)));
+      } catch (err: unknown) {
+        console.warn('Could not sync new target to server:', err);
+      }
     }
 
     // Reset Form
@@ -110,11 +159,17 @@ export function CompanyTargetTab() {
     setOpenActionMenuId(null);
   };
 
-  const handleDelete = (id: string | number) => {
+  const handleDelete = async (id: string | number) => {
     const updated = targetList.filter((t) => t.id !== id);
     saveTargets(updated);
     setOpenActionMenuId(null);
     showToast('Company target deleted.');
+
+    try {
+      await companyTargetApiService.deleteCompanyTarget(id);
+    } catch (err: unknown) {
+      console.warn('Could not sync delete to server:', err);
+    }
   };
 
   const handleCancelEdit = () => {

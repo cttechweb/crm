@@ -902,4 +902,105 @@ describe('Staff Management API Test Suite', () => {
     const body = await res.json();
     assert.equal(body.code, 'PROFILE_NOT_FOUND');
   });
+
+  // 19. POST /api/users persists staff profile directly into D1 with matching firebase_uid and fields
+  it('19. POST /api/users permanently persists staff profile into D1 and can be immediately fetched by ID', async () => {
+    const rootToken = await createToken(ROOT_SUPERADMIN.firebase_uid, ROOT_SUPERADMIN.email);
+    const newStaff = {
+      firebase_uid: 'uid_persisted_emp_888',
+      email: 'persisted.employee@cooltechuae.com',
+      full_name: 'Persisted Employee',
+      role: 'EMPLOYEE',
+      position: 'Field Engineer',
+      department: 'Operations',
+      team_id: 'team_ops_01',
+      reports_to: ROOT_SUPERADMIN.id,
+      is_active: 1,
+    };
+
+    const resCreate = await app.request('/api/users', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${rootToken}`,
+      },
+      body: JSON.stringify(newStaff),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+
+    assert.equal(resCreate.status, 201);
+    const bodyCreate = await resCreate.json();
+    assert.equal(bodyCreate.success, true);
+    assert.equal(bodyCreate.user.email, newStaff.email);
+    assert.equal(bodyCreate.user.firebase_uid, newStaff.firebase_uid);
+    assert.equal(bodyCreate.user.role, 'EMPLOYEE');
+    const createdId = bodyCreate.user.id;
+
+    // Direct SQLite D1 persistence verification
+    const d1Record = db.sqlite.prepare('SELECT * FROM users WHERE id = ?').get(createdId);
+    assert.ok(d1Record, 'User must exist in SQLite/D1 database');
+    assert.equal(d1Record.firebase_uid, newStaff.firebase_uid);
+    assert.equal(d1Record.email, newStaff.email);
+    assert.equal(d1Record.full_name, newStaff.full_name);
+    assert.equal(d1Record.role, 'EMPLOYEE');
+    assert.equal(d1Record.is_active, 1);
+
+    // API GET /api/users/:id retrieval verification
+    const resGet = await app.request(`/api/users/${createdId}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${rootToken}` },
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+
+    assert.equal(resGet.status, 200);
+    const bodyGet = await resGet.json();
+    assert.equal(bodyGet.success, true);
+    assert.equal(bodyGet.user.id, createdId);
+    assert.equal(bodyGet.user.email, newStaff.email);
+    assert.equal(bodyGet.user.firebase_uid, newStaff.firebase_uid);
+  });
+
+  // 20. POST /api/users without authentication token returns 401 and prevents D1 write
+  it('20. POST /api/users rejects unauthenticated requests with 401 UNAUTHORIZED without writing to D1', async () => {
+    const unauthPayload = {
+      firebase_uid: 'uid_unauth_attempt_999',
+      email: 'unauth.user@cooltechuae.com',
+      full_name: 'Unauth User',
+      role: 'EMPLOYEE',
+    };
+
+    const res = await app.request('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(unauthPayload),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+
+    assert.equal(res.status, 401);
+    const d1Check = db.sqlite.prepare('SELECT * FROM users WHERE email = ?').get(unauthPayload.email);
+    assert.equal(d1Check, undefined, 'No D1 row should be inserted without authentication');
+  });
+
+  // 21. POST /api/users by user lacking D1 profile returns 403 PROFILE_NOT_FOUND
+  it('21. POST /api/users by authenticated Firebase user lacking D1 profile returns 403 PROFILE_NOT_FOUND', async () => {
+    const orphanToken = await createToken('uid_orphan_firebase_user_777', 'orphan@gmail.com');
+    const attemptPayload = {
+      firebase_uid: 'uid_new_staff_777',
+      email: 'newstaff@cooltechuae.com',
+      full_name: 'New Staff',
+      role: 'EMPLOYEE',
+    };
+
+    const res = await app.request('/api/users', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${orphanToken}`,
+      },
+      body: JSON.stringify(attemptPayload),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.equal(body.code, 'PROFILE_NOT_FOUND');
+    const d1Check = db.sqlite.prepare('SELECT * FROM users WHERE email = ?').get(attemptPayload.email);
+    assert.equal(d1Check, undefined, 'No D1 row should be inserted by unauthorized orphan user');
+  });
 });

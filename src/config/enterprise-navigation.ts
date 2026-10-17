@@ -52,11 +52,6 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
     iconName: 'ListChecks',
     children: [
       { label: 'All Leads', href: '/leads', iconName: 'ListChecks' },
-      { label: 'Lead Sources', href: '/leads/sources', iconName: 'Globe' },
-      { label: 'Lead Status', href: '/leads/status', iconName: 'Activity' },
-      { label: 'Follow-ups', href: '/leads/followups', iconName: 'Clock' },
-      { label: 'Import Leads', href: '/leads/import', iconName: 'Upload' },
-      { label: 'Lead Reports', href: '/leads/reports', iconName: 'FileText' },
     ],
   },
   {
@@ -77,7 +72,7 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
     children: [
       { label: 'Opportunity', href: '/sales?tab=opportunities', iconName: 'Key' },
       { label: 'Commercial Offers', href: '/sales?tab=quotations', iconName: 'FileText' },
-      { label: 'Order', href: '/sales?tab=orders', iconName: 'ThumbsUp' },
+      { label: 'Sales Order', href: '/sales?tab=orders', iconName: 'ThumbsUp' },
       { label: 'Proforma Invoice', href: '/sales?tab=proforma', iconName: 'CreditCard' },
       { label: 'Invoice', href: '/sales?tab=invoice', iconName: 'FileSpreadsheet' },
       { label: 'Receipt', href: '/sales?tab=receipt', iconName: 'Receipt' },
@@ -277,7 +272,7 @@ export const MANAGER_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Opportunities', href: '/manager/sales?tab=opportunities', iconName: 'Key' },
       { label: 'Sales Pipeline', href: '/manager/sales?tab=pipeline', iconName: 'TrendingUp' },
       { label: 'Commercial Offers', href: '/manager/sales?tab=quotations', iconName: 'FileText' },
-      { label: 'Orders', href: '/manager/sales?tab=orders', iconName: 'ThumbsUp' },
+      { label: 'Sales Orders', href: '/manager/sales?tab=orders', iconName: 'ThumbsUp' },
       { label: 'Proforma Invoices', href: '/manager/sales?tab=proforma', iconName: 'CreditCard' },
       { label: 'Invoices', href: '/manager/sales?tab=invoices', iconName: 'FileSpreadsheet' },
       { label: 'Receipts / Payments', href: '/manager/sales?tab=receipts', iconName: 'Receipt' },

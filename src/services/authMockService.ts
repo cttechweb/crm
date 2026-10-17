@@ -1710,7 +1710,8 @@ export const authMockService = {
     const staticMatch = MOCK_CREDENTIALS.find(
       (c) =>
         c.email.toLowerCase() === normalizedEmail ||
-        (c.user.email && c.user.email.toLowerCase() === normalizedEmail)
+        c.email.toLowerCase().split('@')[0] === normalizedEmail ||
+        (c.user.email && (c.user.email.toLowerCase() === normalizedEmail || c.user.email.toLowerCase().split('@')[0] === normalizedEmail))
     );
 
     if (staticMatch && staticMatch.password === trimmedPassword) {
@@ -1726,7 +1727,8 @@ export const authMockService = {
       let serverUserResult: { user: MockAuthUser; redirectUrl: string } | null = null;
       let realFbUid: string | null = null;
       try {
-        const cred = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
+        const canonicalEmail = staticMatch.email.toLowerCase();
+        const cred = await signInWithEmailAndPassword(auth, canonicalEmail, trimmedPassword);
         if (cred.user) {
           realFbUid = cred.user.uid;
           serverUserResult = await fetchBackendUserProfile(cred.user);
@@ -1792,21 +1794,40 @@ export const authMockService = {
               }
               const storedPwd = (matchedUser.password || '').trim();
               if (storedPwd === trimmedPassword || !storedPwd) {
-                const resolved = resolveCrmUserByEmail(matchedUser.email || trimmedEmail);
+                const targetEmail = (matchedUser.email || (matchedUser.username?.includes('@') ? matchedUser.username : '') || trimmedEmail).trim().toLowerCase();
+                let serverUserResult: { user: MockAuthUser; redirectUrl: string } | null = null;
+                let realFbUid: string | null = matchedUser.firebaseUid || null;
+                try {
+                  const cred = await signInWithEmailAndPassword(auth, targetEmail, trimmedPassword);
+                  if (cred.user) {
+                    realFbUid = cred.user.uid;
+                    serverUserResult = await fetchBackendUserProfile(cred.user);
+                  }
+                } catch (fbErr) {
+                  // Non-blocking fallback
+                }
+
+                const resolved = resolveCrmUserByEmail(targetEmail, realFbUid || undefined);
+                const isServerVerified = Boolean(serverUserResult);
+                const finalUser: MockAuthUser = serverUserResult
+                  ? serverUserResult.user
+                  : { ...resolved.user, isServerVerified: false };
+                const finalRedirectUrl = serverUserResult?.redirectUrl || resolved.redirectUrl;
+
                 const sessionData = {
                   authenticated: true,
-                  user: { ...resolved.user, isServerVerified: false },
-                  role: resolved.user.role,
-                  firebaseUid: `crm_${resolved.user.id}`,
-                  isServerVerified: false,
+                  user: finalUser,
+                  role: finalUser.role,
+                  firebaseUid: realFbUid || `crm_${resolved.user.id}`,
+                  isServerVerified,
                   rememberMe,
                   timestamp: Date.now(),
                 };
                 localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
                 return {
                   success: true,
-                  user: { ...resolved.user, isServerVerified: false },
-                  redirectUrl: resolved.redirectUrl,
+                  user: finalUser,
+                  redirectUrl: finalRedirectUrl,
                 };
               }
             }
@@ -1833,21 +1854,40 @@ export const authMockService = {
               }
               const storedPwd = (matchedAdmin.password || '').trim();
               if (storedPwd === trimmedPassword || !storedPwd) {
-                const resolved = resolveCrmUserByEmail(matchedAdmin.email || trimmedEmail);
+                const targetEmail = (matchedAdmin.email || (matchedAdmin.username?.includes('@') ? matchedAdmin.username : '') || trimmedEmail).trim().toLowerCase();
+                let serverUserResult: { user: MockAuthUser; redirectUrl: string } | null = null;
+                let realFbUid: string | null = null;
+                try {
+                  const cred = await signInWithEmailAndPassword(auth, targetEmail, trimmedPassword);
+                  if (cred.user) {
+                    realFbUid = cred.user.uid;
+                    serverUserResult = await fetchBackendUserProfile(cred.user);
+                  }
+                } catch (fbErr) {
+                  // Non-blocking fallback
+                }
+
+                const resolved = resolveCrmUserByEmail(targetEmail, realFbUid || undefined);
+                const isServerVerified = Boolean(serverUserResult);
+                const finalUser: MockAuthUser = serverUserResult
+                  ? serverUserResult.user
+                  : { ...resolved.user, isServerVerified: false };
+                const finalRedirectUrl = serverUserResult?.redirectUrl || resolved.redirectUrl;
+
                 const sessionData = {
                   authenticated: true,
-                  user: { ...resolved.user, isServerVerified: false },
-                  role: resolved.user.role,
-                  firebaseUid: `crm_${resolved.user.id}`,
-                  isServerVerified: false,
+                  user: finalUser,
+                  role: finalUser.role,
+                  firebaseUid: realFbUid || `crm_${resolved.user.id}`,
+                  isServerVerified,
                   rememberMe,
                   timestamp: Date.now(),
                 };
                 localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
                 return {
                   success: true,
-                  user: { ...resolved.user, isServerVerified: false },
-                  redirectUrl: resolved.redirectUrl,
+                  user: finalUser,
+                  redirectUrl: finalRedirectUrl,
                 };
               }
             }
@@ -1860,7 +1900,10 @@ export const authMockService = {
 
     // 3. Fallback to Firebase Authentication
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
+      const canonicalFallbackEmail = normalizedEmail.includes('@')
+        ? normalizedEmail
+        : `${normalizedEmail}@gmail.com`;
+      const userCredential = await signInWithEmailAndPassword(auth, canonicalFallbackEmail, trimmedPassword);
       const fbUser = userCredential.user;
 
       // Attempt non-blocking server verification with Cloudflare Worker

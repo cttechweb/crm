@@ -429,6 +429,7 @@ export interface CrmSalesOrder {
   slNo?: number;
   orderNumber: string;
   quotationRef?: string;
+  quotationId?: string;
   opportunityRef?: string;
   subject?: string;
   customer: string;
@@ -500,6 +501,7 @@ export interface CrmInvoice {
   slNo: number;
   invoiceNumber: string;
   orderRef?: string;
+  orderId?: string;
   opportunityOrderRef?: string;
   customer: string;
   contactPerson?: string;
@@ -609,5 +611,122 @@ export interface CrmStockTransfer {
   ownerAvatar?: string;
   transferFrom: string;
   transferTo: string;
+  status?: string;
+  notes?: string;
 }
+
+export interface CrmSupplier {
+  id: string;
+  slNo: number;
+  supplierName: string;
+  companyName?: string;
+  trn?: string;
+  contactPerson?: string;
+  email?: string;
+  phone: string;
+  mobile?: string;
+  address?: string;
+  city?: string;
+  stateRegion?: string;
+  country?: string;
+  paymentTerms?: string;
+  status: 'Active' | 'Inactive' | 'Blocked' | string;
+  customerId?: string;
+  owner?: string;
+  createdBy?: string;
+  remarks?: string;
+}
+
+export interface CrmStore {
+  id: string;
+  slNo: number;
+  name: string;
+  code?: string;
+  location?: string;
+  address?: string;
+  managerName?: string;
+  phone?: string;
+  isActive: boolean;
+}
+
+export interface CrmPurchaseOrderItem {
+  id: string;
+  code?: string;
+  description: string;
+  unit?: string;
+  brand?: string;
+  qty: number;
+  deliveryPending?: number;
+  amount: number;
+  total: number;
+}
+
+export interface CrmPurchaseOrder {
+  id: string;
+  slNo: number;
+  poNumber: string;
+  date: string;
+  expectedDeliveryDate?: string;
+  supplier: string;
+  supplierId?: string;
+  orderRef?: string;
+  reference?: string;
+  description?: string;
+  opportunityOrder?: string;
+  projectNumber?: string;
+  projectName?: string;
+  vatType?: string;
+  vatRate?: number;
+  attention?: string;
+  preparedBy?: string;
+  preparedByMobile?: string;
+  preparedByEmail?: string;
+  preparedByDesignation?: string;
+  termsCondition?: string;
+  termsConditionText?: string;
+  amount: number;
+  vat: number;
+  discount: number;
+  adjustment: number;
+  totalAmount: number;
+  invoiceReceived?: string;
+  approval: 'Approved' | 'Reject' | 'Waiting for Final Approval' | string;
+  deliveryStatus: 'Delivered' | 'Partially Delivered' | 'Pending' | string;
+  paymentStatus: 'Paid' | 'Partially Paid' | 'Due' | string;
+  owner?: string;
+  ownerAvatar?: string;
+  items?: CrmPurchaseOrderItem[];
+}
+
+export interface CrmStockInItem {
+  id: string;
+  slNo?: number;
+  code?: string;
+  item: string;
+  unit?: string;
+  brand?: string;
+  purchaseRate: number;
+  sellingPrice: number;
+  qty: number;
+  currentStock?: number;
+}
+
+export interface CrmStockInRecord {
+  id: string;
+  slNo: number;
+  stockInNo: string;
+  date: string;
+  supplier: string;
+  purchaseInvoiceNumber?: string;
+  deliveryNote?: string;
+  lpoNumber?: string;
+  store: string;
+  totalAmount?: number;
+  totalItems?: number;
+  notes?: string;
+  createdBy?: string;
+  createdFormatted?: string;
+  items?: CrmStockInItem[];
+}
+
 

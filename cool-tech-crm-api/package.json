@@ -8,7 +8,7 @@
     "dev": "npx wrangler dev",
     "deploy": "npx wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test test/auth.test.mjs test/customers.test.mjs test/leads.test.mjs test/products.test.mjs test/leadStorageMigration.test.mjs test/automaticLeadCreation.test.mjs test/users.test.mjs"
+    "test": "node --experimental-strip-types --test test/auth.test.mjs test/customers.test.mjs test/leads.test.mjs test/products.test.mjs test/leadStorageMigration.test.mjs test/automaticLeadCreation.test.mjs test/users.test.mjs test/salesWorkflow.test.mjs test/tasksAndWorker.test.mjs test/salesAuxiliary.test.mjs test/procurementAndInventory.test.mjs test/settingsAndTargets.test.mjs"
   },
   "dependencies": {
     "hono": "^4.7.2",

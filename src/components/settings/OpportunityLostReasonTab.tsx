@@ -5,6 +5,8 @@ import { SlidersHorizontal, Plus, CheckCircle } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { CezconLostReason } from '@/types/settings';
 import { CEZCON_LOST_REASONS_DATA } from '@/data/settingsMockData';
+import { opportunityLostReasonApiService } from '@/services/settingsApiService';
+import { useEffect } from 'react';
 
 export function OpportunityLostReasonTab() {
   const [lostReasonsList, setLostReasonsList] = useState<CezconLostReason[]>(CEZCON_LOST_REASONS_DATA);
@@ -15,6 +17,28 @@ export function OpportunityLostReasonTab() {
   const [newLostReasonText, setNewLostReasonText] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  useEffect(() => {
+    let isMounted = true;
+    async function loadReasons() {
+      try {
+        const apiReasons = await opportunityLostReasonApiService.getOpportunityLostReasons();
+        if (isMounted) {
+          if (apiReasons.length > 0) {
+            setLostReasonsList(apiReasons);
+          } else {
+            opportunityLostReasonApiService.syncBatchOpportunityLostReasons(CEZCON_LOST_REASONS_DATA).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load opportunity lost reasons from API:', e);
+      }
+    }
+    loadReasons();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const filteredLostReasons = lostReasonsList.filter((lr) =>
     lr.reason.toLowerCase().includes(lostReasonSearch.toLowerCase())
   );
@@ -24,19 +48,28 @@ export function OpportunityLostReasonTab() {
     lostReasonCurrentPage * lostReasonRowsPerPage
   );
 
-  const handleAddLostReason = (e: React.FormEvent) => {
+  const handleAddLostReason = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLostReasonText.trim()) return;
 
-    const newReason: CezconLostReason = {
+    const trimmed = newLostReasonText.trim();
+    const tempReason: CezconLostReason = {
       id: Date.now(),
-      reason: newLostReasonText.trim(),
+      reason: trimmed,
+      active: true,
     };
 
-    setLostReasonsList([...lostReasonsList, newReason]);
+    setLostReasonsList((prev) => [...prev, tempReason]);
     setNewLostReasonText('');
     setIsAddLostReasonModalOpen(false);
-    setSaveSuccess(true);
+
+    try {
+      const created = await opportunityLostReasonApiService.createOpportunityLostReason(trimmed);
+      setLostReasonsList((prev) => prev.map((r) => (r.id === tempReason.id ? created : r)));
+      setSaveSuccess(true);
+    } catch {
+      setSaveSuccess(true);
+    }
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 

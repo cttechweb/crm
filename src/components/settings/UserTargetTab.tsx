@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Plus, Target, Award, TrendingUp, DollarSign, Users, X, Check, CheckCircle2 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
+import { userTargetApiService } from '@/services/settingsApiService';
 
 interface UserTargetRow {
   id?: string;
@@ -32,6 +33,34 @@ export function UserTargetTab() {
     targetRev: 100000,
     period: 'Q1 - 2026',
   });
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadUserTargets() {
+      try {
+        const serverTargets = await userTargetApiService.getUserTargets(2026);
+        if (isMounted && serverTargets.length > 0) {
+          setCustomTargets(
+            serverTargets.map((st) => ({
+              id: st.id,
+              name: st.name,
+              role: st.role,
+              deals: st.deals,
+              targetRev: st.targetRev,
+              closedRev: st.closedRev || 0,
+              pct: st.targetRev > 0 ? Math.round(((st.closedRev || 0) / st.targetRev) * 100) : 0,
+            }))
+          );
+        }
+      } catch (e) {
+        console.warn('Failed to load user targets from API:', e);
+      }
+    }
+    loadUserTargets();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const targets = useMemo(() => {
     // Generate targets from active CRM users
@@ -106,7 +135,7 @@ export function UserTargetTab() {
     ? [...targets].sort((a, b) => b.pct - a.pct)[0] 
     : { name: 'Manager', pct: 100 };
 
-  const handleSaveTarget = (e: React.FormEvent) => {
+  const handleSaveTarget = async (e: React.FormEvent) => {
     e.preventDefault();
     const newTarget: UserTargetRow = {
       name: targetForm.name,
@@ -119,8 +148,22 @@ export function UserTargetTab() {
 
     setCustomTargets((prev) => [newTarget, ...prev.filter((p) => p.name !== targetForm.name)]);
     setIsModalOpen(false);
-    setToastMsg(`Target quota for ${targetForm.name} successfully updated!`);
-    setTimeout(() => setToastMsg(null), 3000);
+
+    try {
+      await userTargetApiService.saveUserTarget({
+        name: targetForm.name,
+        role: targetForm.role,
+        deals: targetForm.targetDeals,
+        targetRev: targetForm.targetRev,
+        period: targetForm.period,
+        year: 2026,
+      });
+      setToastMsg(`Target quota for ${targetForm.name} successfully saved to CRM backend!`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Target quota saved locally.';
+      setToastMsg(`Quota updated: ${msg}`);
+    }
+    setTimeout(() => setToastMsg(null), 3500);
   };
 
   return (

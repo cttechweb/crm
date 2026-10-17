@@ -8,6 +8,8 @@ import {
 } from '@/types/worker';
 
 import { authMockService, MockAuthUser } from '@/services/authMockService';
+import { workerApiService } from '@/services/workerApiService';
+import { taskApiService } from '@/services/taskApiService';
 
 const INITIAL_WORKER_TASKS: WorkerTask[] = [];
 
@@ -101,6 +103,7 @@ export const workerMockService = {
     if (typeof window !== 'undefined') {
       localStorage.setItem('cool_worker_tasks', JSON.stringify(tasks));
     }
+    taskApiService.updateTaskStatus(taskId, { status: newStatus as any, notes }).catch(() => {});
     return tasks[idx];
   },
 
@@ -161,6 +164,13 @@ export const workerMockService = {
     if (typeof window !== 'undefined') {
       localStorage.setItem('cool_worker_tasks', JSON.stringify(tasks));
     }
+    taskApiService.updateTaskStatus(taskId, {
+      status: 'Completed',
+      notes: data.notes,
+      customerSignature: data.customerSignature,
+      customerSignedBy: data.customerSignedBy,
+      rating: data.rating,
+    }).catch(() => {});
     return tasks[idx];
   },
 
@@ -200,6 +210,11 @@ export const workerMockService = {
     if (typeof window !== 'undefined') {
       localStorage.setItem('cool_worker_attendance', JSON.stringify(updated));
     }
+    if (updated.isClockedIn) {
+      workerApiService.clockIn(current.currentLocation).catch(() => {});
+    } else {
+      workerApiService.clockOut().catch(() => {});
+    }
     return updated;
   },
 
@@ -230,6 +245,7 @@ export const workerMockService = {
     if (typeof window !== 'undefined') {
       localStorage.setItem('cool_worker_requests', JSON.stringify(requests));
     }
+    workerApiService.createMaterialRequest(request).catch(() => {});
     return newReq;
   },
 
@@ -257,6 +273,7 @@ export const workerMockService = {
     if (typeof window !== 'undefined') {
       localStorage.setItem('cool_worker_timesheet', JSON.stringify(entries));
     }
+    workerApiService.addTimesheetEntry(entry).catch(() => {});
     return newEntry;
   },
 

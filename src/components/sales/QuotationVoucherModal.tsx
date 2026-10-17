@@ -253,14 +253,14 @@ export function QuotationVoucherModal({
                 ) : null}
               </div>
 
-              {/* Right: Quotation Details */}
+              {/* Right: Document Details */}
               <div className="col-span-5 space-y-1 text-[11px] text-slate-800">
                 <div className="border-l-2 border-[#0088CC] pl-1.5 font-bold text-[#0088CC] text-xs">
-                  Quotation Details
+                  Document Details
                 </div>
                 <div className="space-y-0.5 pt-0.5">
-                  <p><span className="font-medium text-slate-600">Quotation Number :</span> <span className="font-bold">{quoteNumber}</span></p>
-                  <p><span className="font-medium text-slate-600">Quotation Date :</span> <span className="font-bold">{quoteDate}</span></p>
+                  <p><span className="font-medium text-slate-600">Number :</span> <span className="font-bold">{quoteNumber}</span></p>
+                  <p><span className="font-medium text-slate-600">Date :</span> <span className="font-bold">{quoteDate}</span></p>
                   {preparedBy ? (
                     <p><span className="font-medium text-slate-600">Prepared By :</span> <span className="font-bold">{preparedBy}</span></p>
                   ) : null}

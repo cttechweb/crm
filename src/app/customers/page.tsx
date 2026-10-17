@@ -3609,7 +3609,7 @@ function CustomersContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {isCustomersLoading ? (
+                  {isCustomersLoading && displayCustomers.length === 0 ? (
                     <tr>
                       <td colSpan={10} className="py-12 text-center text-xs text-slate-500">
                         <div className="flex flex-col items-center justify-center gap-2">

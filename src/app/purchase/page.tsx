@@ -48,6 +48,14 @@ import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { CrmCezconStock, CrmStockTransfer } from '@/types/enterprise-crm';
 import { ProductSettingItem } from '@/types/settings';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
+import {
+  supplierApiService,
+  storeApiService,
+  crmInventoryApiService,
+  purchaseOrderApiService,
+  stockInApiService,
+  stockTransferApiService,
+} from '@/services/procurementApiService';
 import { cn } from '@/lib/utils';
 
 // Helper Barcode Component
@@ -125,12 +133,120 @@ const mockPurchaseOrders: any[] = [];
 const defaultPurchaseInvoicesList: any[] = [];
 const mockPurchasePayments: any[] = [];
 const mockStockInList: any[] = [];
-const mockSuppliersList: any[] = [];
-const mockStoresList: any[] = [];
+const defaultSuppliersList: any[] = [
+  {
+    id: 'sup_1',
+    slNo: 1,
+    name: 'LUTFI TRADING LLC',
+    companyName: 'Lutfi Trading Co LLC',
+    trn: '100234567800003',
+    contact: '+971 4 222 5335',
+    email: 'info@lutfigroup.com',
+    address: 'Deira, Dubai, UAE',
+    outstanding: 0,
+    owner: 'MUSTHAFA CHIRAMMAL',
+    ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+    status: 'Active',
+  },
+  {
+    id: 'sup_2',
+    slNo: 2,
+    name: 'SUPER GENERAL COMPANY LLC',
+    companyName: 'Super General Co LLC',
+    trn: '100345678900003',
+    contact: '+971 4 883 1255',
+    email: 'sales@supergeneral.com',
+    address: 'Jebel Ali Free Zone, Dubai, UAE',
+    outstanding: 0,
+    owner: 'MUSTHAFA CHIRAMMAL',
+    ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+    status: 'Active',
+  },
+  {
+    id: 'sup_3',
+    slNo: 3,
+    name: 'CENTRAL TRADING COMPANY LLC',
+    companyName: 'Central Trading Company LLC',
+    trn: '100456789000003',
+    contact: '+971 4 282 2222',
+    email: 'info@ctcuae.com',
+    address: 'Al Garhoud, Dubai, UAE',
+    outstanding: 0,
+    owner: 'Rashid Ali',
+    ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=faces',
+    status: 'Active',
+  },
+  {
+    id: 'sup_4',
+    slNo: 4,
+    name: 'Shajarath Al Thalj Trading LLC',
+    companyName: 'Shajarath Al Thalj For Freezer Manufacturing LLC',
+    trn: '100567890100003',
+    contact: '+971 6 534 1122',
+    email: 'sales@shajarathalthalj.ae',
+    address: 'Industrial Area 13, Sharjah, UAE',
+    outstanding: 0,
+    owner: 'MOHAMMED ISHAQ',
+    ownerAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=faces',
+    status: 'Active',
+  },
+];
+
+const defaultStoresList: any[] = [
+  {
+    id: 'str_1',
+    slNo: 1,
+    name: 'MAIN WAREHOUSE',
+    code: 'WH-01',
+    manager: 'MOHAMMED ISHAQ',
+    phone: '+971 4 345 6789',
+    location: 'Al Quoz Industrial Area 3, Dubai',
+    capacity: '15,000 sq.ft',
+    status: 'Active',
+  },
+  {
+    id: 'str_2',
+    slNo: 2,
+    name: 'M-42 OFFICE & SHOWROOM',
+    code: 'SH-M42',
+    manager: 'MUSTHAFA CHIRAMMAL',
+    phone: '+971 4 288 9900',
+    location: 'M-42, Al Garhoud, Dubai',
+    capacity: '3,500 sq.ft',
+    status: 'Active',
+  },
+  {
+    id: 'str_3',
+    slNo: 3,
+    name: 'CT CENTRAL STORE',
+    code: 'CT-STORE',
+    manager: 'Rashid Ali',
+    phone: '+971 50 123 4567',
+    location: 'Deira Central, Dubai',
+    capacity: '5,000 sq.ft',
+    status: 'Active',
+  },
+];
+
+const mockSuppliersList: any[] = defaultSuppliersList;
+const mockStoresList: any[] = defaultStoresList;
 const mockManufacturingOrders: any[] = [];
 
 function PurchasePageInner() {
-  const { users } = useEnterpriseCrm();
+  const {
+    users,
+    suppliers: contextSuppliers,
+    addSupplier: contextAddSupplier,
+    updateSupplier: contextUpdateSupplier,
+    deleteSupplier: contextDeleteSupplier,
+    purchaseOrders: contextPurchaseOrders,
+    addPurchaseOrder: contextAddPurchaseOrder,
+    updatePurchaseOrder: contextUpdatePurchaseOrder,
+    deletePurchaseOrder: contextDeletePurchaseOrder,
+    stockTransfers: contextStockTransfers,
+    addStockTransfer: contextAddStockTransfer,
+    deleteStockTransfer: contextDeleteStockTransfer,
+  } = useEnterpriseCrm();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -150,6 +266,173 @@ function PurchasePageInner() {
   const [showInvoiceFiltersMobile, setShowInvoiceFiltersMobile] = useState(false);
   const [showStockFiltersMobile, setShowStockFiltersMobile] = useState(false);
   const [showTransferFiltersMobile, setShowTransferFiltersMobile] = useState(false);
+
+  // Suppliers State & Add Modal
+  const [suppliersList, setSuppliersList] = useState<any[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('crm_suppliers_list');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return defaultSuppliersList;
+  });
+
+  useEffect(() => {
+    if (contextSuppliers && contextSuppliers.length > 0) {
+      setSuppliersList(contextSuppliers);
+    }
+  }, [contextSuppliers]);
+
+  const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
+  const [newSupplierForm, setNewSupplierForm] = useState({
+    name: '',
+    companyName: '',
+    trn: '',
+    phone: '',
+    email: '',
+    address: '',
+    paymentTerms: '30 Days',
+  });
+
+  const handleAddNewSupplier = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSupplierForm.name.trim()) return;
+    const sup: any = {
+      id: `sup_${Date.now()}`,
+      slNo: suppliersList.length + 1,
+      name: newSupplierForm.name.trim(),
+      companyName: newSupplierForm.companyName.trim() || undefined,
+      trn: newSupplierForm.trn.trim() || undefined,
+      contact: newSupplierForm.phone.trim() || undefined,
+      email: newSupplierForm.email.trim() || undefined,
+      address: newSupplierForm.address.trim() || undefined,
+      paymentTerms: newSupplierForm.paymentTerms.trim() || undefined,
+      outstanding: 0,
+      status: 'Active',
+      owner: currentUser?.name || 'Musthafa Chirammal',
+      ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+    };
+    contextAddSupplier(sup);
+    const updated = [sup, ...suppliersList];
+    setSuppliersList(updated);
+    try {
+      localStorage.setItem('crm_suppliers_list', JSON.stringify(updated));
+    } catch (err) {}
+    setIsAddSupplierModalOpen(false);
+    setNewSupplierForm({ name: '', companyName: '', trn: '', phone: '', email: '', address: '', paymentTerms: '30 Days' });
+  };
+
+  // Stores State & Add Modal
+  const [storesList, setStoresList] = useState<any[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('crm_stores_list');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return defaultStoresList;
+  });
+
+  useEffect(() => {
+    storeApiService
+      .getStores()
+      .then((res) => {
+        if (res && res.success && res.stores && res.stores.length > 0) {
+          setStoresList(res.stores);
+          try {
+            localStorage.setItem('crm_stores_list', JSON.stringify(res.stores));
+          } catch (e) {}
+        }
+      })
+      .catch(() => {});
+    storeApiService.migrateLocalStoresToDatabase().catch(() => {});
+  }, []);
+
+  const [isAddStoreModalOpen, setIsAddStoreModalOpen] = useState(false);
+  const [newStoreForm, setNewStoreForm] = useState({
+    name: '',
+    code: '',
+    location: '',
+    manager: '',
+    phone: '',
+    capacity: '',
+  });
+
+  const handleAddNewStore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStoreForm.name.trim()) return;
+    const storeData: any = {
+      id: `str_${Date.now()}`,
+      slNo: storesList.length + 1,
+      name: newStoreForm.name.trim(),
+      code: newStoreForm.code.trim() || `WH-${Date.now().toString().slice(-3)}`,
+      location: newStoreForm.location.trim() || 'Dubai, UAE',
+      manager: newStoreForm.manager.trim() || currentUser?.name || 'Store Manager',
+      phone: newStoreForm.phone.trim() || '+971 4 000 0000',
+      capacity: newStoreForm.capacity.trim() || '10,000 sq.ft',
+      status: 'Active',
+    };
+    try {
+      const res = await storeApiService.createStore(storeData);
+      const created = res.store || storeData;
+      const updated = [created, ...storesList];
+      setStoresList(updated);
+      localStorage.setItem('crm_stores_list', JSON.stringify(updated));
+    } catch (err) {
+      console.warn('Failed to save store to backend, stored locally:', err);
+      const updated = [storeData, ...storesList];
+      setStoresList(updated);
+      try {
+        localStorage.setItem('crm_stores_list', JSON.stringify(updated));
+      } catch (e) {}
+    }
+    setIsAddStoreModalOpen(false);
+    setNewStoreForm({ name: '', code: '', location: '', manager: '', phone: '', capacity: '' });
+  };
+
+  // Stock Transfer Add Modal
+  const [isAddTransferModalOpen, setIsAddTransferModalOpen] = useState(false);
+  const [newTransferForm, setNewTransferForm] = useState({
+    transferNo: '',
+    transferFrom: 'MAIN WAREHOUSE',
+    transferTo: 'M-42 OFFICE & SHOWROOM',
+    notes: '',
+  });
+
+  const handleAddNewTransfer = (e: React.FormEvent) => {
+    e.preventDefault();
+    const transferData: any = {
+      id: `st_${Date.now()}`,
+      slNo: transfers.length + 1,
+      transferNo: newTransferForm.transferNo.trim() || `TRF-${Math.floor(1000 + Math.random() * 9000)}`,
+      date: getLiveTodayDateString(),
+      owner: currentUser?.name || 'Muhammad Ali',
+      ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=faces',
+      transferFrom: newTransferForm.transferFrom,
+      transferTo: newTransferForm.transferTo,
+      status: 'Completed',
+      notes: newTransferForm.notes.trim() || undefined,
+    };
+    contextAddStockTransfer(transferData);
+    const updated = [transferData, ...transfers];
+    setTransfers(updated);
+    try {
+      localStorage.setItem('crm_stock_transfers', JSON.stringify(updated));
+    } catch (err) {}
+    setIsAddTransferModalOpen(false);
+    setNewTransferForm({ transferNo: '', transferFrom: 'MAIN WAREHOUSE', transferTo: 'M-42 OFFICE & SHOWROOM', notes: '' });
+  };
 
   // Filter States - Purchase Order
   const [poFilterOwner, setPoFilterOwner] = useState<string>('All Owners');
@@ -300,6 +583,12 @@ function PurchasePageInner() {
   const [viewingPo, setViewingPo] = useState<any | null>(null);
   const [poDetailActiveTab, setPoDetailActiveTab] = useState<'details' | 'invoice' | 'do' | 'history'>('details');
 
+  useEffect(() => {
+    if (contextPurchaseOrders && contextPurchaseOrders.length > 0) {
+      setPurchaseOrders(contextPurchaseOrders);
+    }
+  }, [contextPurchaseOrders]);
+
   const handleDeletePurchaseOrder = (poId: string, poNumber: string) => {
     if (window.confirm(`Are you sure you want to delete Purchase Order ${poNumber}?`)) {
       const updated = purchaseOrders.filter((po) => po.id !== poId);
@@ -310,6 +599,7 @@ function PurchasePageInner() {
       } catch (e) {
         console.error(e);
       }
+      contextDeletePurchaseOrder(poId);
       setActivePoActionDropdownId(null);
       if (viewingPo?.id === poId) {
         setViewingPo(null);
@@ -406,6 +696,9 @@ function PurchasePageInner() {
           } catch (e) {
             console.error(e);
           }
+        }
+        if (target.id) {
+          contextUpdatePurchaseOrder(target.id, { deliveryStatus: deliveryStatusModalSelected });
         }
       }
     }
@@ -1013,7 +1306,7 @@ function PurchasePageInner() {
     }
   }, [searchParams, stockInList]);
 
-  const availableStockInProducts = [
+  const INITIAL_STOCK_IN_PRODUCTS = [
     { name: 'COOLER', unit: 'Each', purchaseRate: '2000.00', sellingPrice: '2500.00' },
     { name: 'REFRIGERATOR 140 LTR SINGLE DOOR NOBEL NR140', unit: 'Pcs', purchaseRate: '335.00', sellingPrice: '420.00' },
     { name: 'Single Ring Infrared Cooker-Touch Control Nobel I', unit: 'Pcs', purchaseRate: '85.00', sellingPrice: '110.00' },
@@ -1023,6 +1316,26 @@ function PurchasePageInner() {
     { name: 'GREE 2.0 TON INVERTER SPLIT AC', unit: 'Set', purchaseRate: '1650.00', sellingPrice: '2100.00' },
     { name: 'DAIKIN 2.5 TON CASSETTE AC', unit: 'Set', purchaseRate: '3200.00', sellingPrice: '4100.00' },
   ];
+
+  const [availableStockInProducts, setAvailableStockInProducts] = useState<
+    Array<{ name: string; unit: string; purchaseRate: string; sellingPrice: string }>
+  >(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cezcon_stock_in_products');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_STOCK_IN_PRODUCTS;
+  });
+
+  const [isStockInAddingNewProductFullPage, setIsStockInAddingNewProductFullPage] = useState(false);
+  const [currentStockInItemIndex, setCurrentStockInItemIndex] = useState<number>(0);
 
   const handlePoProductChange = (idx: number, val: string) => {
     const updated = [...poLineItems];
@@ -1274,6 +1587,7 @@ function PurchasePageInner() {
     } catch (e) {
       console.error(e);
     }
+    contextAddPurchaseOrder(newPo as any);
     setPoViewMode('list');
   };
 
@@ -2107,6 +2421,609 @@ function PurchasePageInner() {
   const [viewingProduct, setViewingProduct] = useState<CrmCezconStock | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
+  const INITIAL_UNITS = ['Pcs', 'Set', 'Each', 'Box', 'Meter', 'Kg', 'Roll', 'Unit', 'Nos'];
+  const INITIAL_CATEGORIES = ['CASSETTE AC', 'SPLIT AC', 'DUCTED AC', 'PACKAGE UNIT', 'REFRIGERATOR', 'ACCESSORIES', 'SPARE PARTS', 'COPPER PIPES', 'INSULATION'];
+  const INITIAL_BRANDS = ['MIDEA', 'LG', 'DAIKIN', 'O GENERAL', 'MITSUBISHI', 'GREE', 'CARRIER', 'YORK', 'AKAI'];
+
+  const [unitList, setUnitList] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cezcon_product_units');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_UNITS;
+  });
+
+  const [categoryList, setCategoryList] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cezcon_product_categories');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_CATEGORIES;
+  });
+
+  const [brandList, setBrandList] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cezcon_product_brands');
+        if (saved) return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return INITIAL_BRANDS;
+  });
+
+  const [isNewUnitModalOpen, setIsNewUnitModalOpen] = useState(false);
+  const [newUnitInput, setNewUnitInput] = useState('');
+
+  const [isNewCategoryModalOpen, setIsNewCategoryModalOpen] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+
+  const [isNewBrandModalOpen, setIsNewBrandModalOpen] = useState(false);
+  const [newBrandInput, setNewBrandInput] = useState('');
+
+  const handleAddNewUnit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newUnitInput.trim();
+    if (!trimmed) return;
+    if (!unitList.some((u) => u.toLowerCase() === trimmed.toLowerCase())) {
+      const updated = [...unitList, trimmed];
+      setUnitList(updated);
+      try {
+        localStorage.setItem('cezcon_product_units', JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    setProductFormData((prev) => ({ ...prev, unit: trimmed }));
+    setNewUnitInput('');
+    setIsNewUnitModalOpen(false);
+  };
+
+  const handleAddNewCategory = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newCategoryInput.trim().toUpperCase();
+    if (!trimmed) return;
+    if (!categoryList.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+      const updated = [...categoryList, trimmed];
+      setCategoryList(updated);
+      try {
+        localStorage.setItem('cezcon_product_categories', JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    setProductFormData((prev) => ({ ...prev, category: trimmed }));
+    setNewCategoryInput('');
+    setIsNewCategoryModalOpen(false);
+  };
+
+  const handleAddNewBrand = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newBrandInput.trim().toUpperCase();
+    if (!trimmed) return;
+    if (!brandList.some((b) => b.toLowerCase() === trimmed.toLowerCase())) {
+      const updated = [...brandList, trimmed];
+      setBrandList(updated);
+      try {
+        localStorage.setItem('cezcon_product_brands', JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    setProductFormData((prev) => ({ ...prev, brand: trimmed }));
+    setNewBrandInput('');
+    setIsNewBrandModalOpen(false);
+  };
+
+  const handleCancelAddProduct = () => {
+    if (isStockInAddingNewProductFullPage) {
+      setIsStockInAddingNewProductFullPage(false);
+    } else {
+      setProductViewMode('list');
+      setEditingProductId(null);
+    }
+  };
+
+  const handleSubmitAddProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    const activeUser = currentUser || (typeof window !== 'undefined' ? authMockService.getCurrentUser() : null);
+    const userRole = (activeUser?.role || '').toLowerCase();
+    const isEmp = userRole === 'employee' || (activeUser?.profileType || '').toLowerCase().includes('employee');
+    const creatorRole = isEmp ? 'employee' : (userRole === 'admin' ? 'admin' : userRole.includes('super') ? 'super_admin' : 'manager');
+
+    const targetId = editingProductId || String(Date.now());
+    const existingProduct = editingProductId ? stockItems.find((i) => i.id === editingProductId) : null;
+
+    const savedProduct: CrmCezconStock = {
+      id: String(targetId),
+      slNo: existingProduct?.slNo || stockItems.length + 1,
+      serialNo: productFormData.serialNumber || '',
+      code: productFormData.code || (existingProduct?.code || `CQ4N-XMI${Math.floor(10 + Math.random() * 90)}S`),
+      name: productFormData.name || 'New Product',
+      image: existingProduct?.image || '',
+      unit: productFormData.unit !== 'Select Unit' ? productFormData.unit : (existingProduct?.unit || 'Pcs'),
+      brand: productFormData.brand !== 'Select Brand' ? productFormData.brand : (existingProduct?.brand || 'MIDEA'),
+      category: productFormData.category !== 'Select Category' ? productFormData.category : (existingProduct?.category || 'SPLIT AC'),
+      type: productFormData.type,
+      purchaseRate: Number(productFormData.purchaseRate) || 0,
+      sellingPrice: Number(productFormData.sellingPrice) || 0,
+      status: existingProduct?.status || 'Active',
+      store: productFormData.store !== 'Select Store' ? productFormData.store : (existingProduct?.store || 'Main Warehouse - Bay A'),
+      stock: Number(productFormData.currentStock) || 0,
+      currentStock: Number(productFormData.currentStock) || 0,
+      minimumStock: Number(productFormData.minimumStock) || 0,
+      createdBy: existingProduct?.createdBy || activeUser?.name || (isEmp ? 'Purchase Employee' : 'Rashid Ali'),
+      createdByRole: existingProduct?.createdByRole || creatorRole,
+      createdById: existingProduct?.createdById || (activeUser?.id ? String(activeUser.id) : (isEmp ? 'emp_faisal_001' : 'usr_rashid_001')),
+      createdByEmail: existingProduct?.createdByEmail || activeUser?.email || (isEmp ? 'purchaseemp@gmail.com' : 'purchasemanager@gmail.com'),
+      owner: existingProduct?.owner || activeUser?.name || (isEmp ? 'Purchase Employee' : 'Rashid Ali'),
+    };
+
+    const updatedItems = editingProductId
+      ? stockItems.map((item) => (item.id === editingProductId ? savedProduct : item))
+      : [savedProduct, ...stockItems];
+
+    setStockItems(updatedItems);
+
+    // Persist to unified localStorage master
+    try {
+      const productSettingItem: ProductSettingItem = {
+        id: Number(targetId) || Date.now(),
+        sku: savedProduct.code,
+        code: savedProduct.code,
+        serialNo: savedProduct.serialNo,
+        name: savedProduct.name,
+        category: savedProduct.category,
+        brand: savedProduct.brand,
+        unit: savedProduct.unit,
+        type: savedProduct.type as any,
+        purchaseRate: savedProduct.purchaseRate,
+        sellingPrice: savedProduct.sellingPrice,
+        basePrice: savedProduct.sellingPrice,
+        status: true,
+        store: savedProduct.store,
+        currentStock: savedProduct.currentStock,
+        minStock: savedProduct.minimumStock,
+        additionalDescription: productFormData.additionalDescription,
+        createdBy: savedProduct.createdBy,
+        createdByRole: savedProduct.createdByRole,
+        createdById: savedProduct.createdById,
+        createdByEmail: savedProduct.createdByEmail,
+        owner: savedProduct.owner,
+      };
+
+      const existingRaw = localStorage.getItem('cezcon_products_master_live');
+      const existingList = existingRaw ? JSON.parse(existingRaw) : [];
+      const filteredList = Array.isArray(existingList) ? existingList.filter((x: any) => String(x.id) !== String(targetId)) : [];
+      const mergedList = [productSettingItem, ...filteredList];
+      localStorage.setItem('cezcon_products_master_live', JSON.stringify(mergedList));
+      window.dispatchEvent(new Event('crm_products_updated'));
+    } catch (err) {
+      console.error('Failed to persist product to localStorage', err);
+    }
+
+    crmInventoryApiService.createInventoryItem(savedProduct).catch(() => {});
+
+    // Also update availableStockInProducts
+    const stockInProd = {
+      name: savedProduct.name,
+      unit: savedProduct.unit,
+      purchaseRate: String(savedProduct.purchaseRate),
+      sellingPrice: String(savedProduct.sellingPrice),
+    };
+    setAvailableStockInProducts((prev) => {
+      const filtered = prev.filter((p) => p.name.toLowerCase() !== savedProduct.name.toLowerCase());
+      const merged = [stockInProd, ...filtered];
+      try {
+        localStorage.setItem('cezcon_stock_in_products', JSON.stringify(merged));
+      } catch (e) {
+        console.error(e);
+      }
+      return merged;
+    });
+
+    if (isStockInAddingNewProductFullPage) {
+      const updated = [...stockInItems];
+      if (updated[currentStockInItemIndex]) {
+        updated[currentStockInItemIndex] = {
+          ...updated[currentStockInItemIndex],
+          item: savedProduct.name,
+          unit: savedProduct.unit,
+          purchaseRate: String(savedProduct.purchaseRate),
+          sellingPrice: String(savedProduct.sellingPrice),
+          qty: updated[currentStockInItemIndex].qty || '1',
+        };
+        setStockInItems(updated);
+      }
+      setIsStockInAddingNewProductFullPage(false);
+    } else {
+      setProductViewMode('list');
+    }
+
+    setEditingProductId(null);
+    setProductFormData({
+      serialNumber: '',
+      code: '',
+      name: '',
+      thumbnailName: '',
+      unit: 'Select Unit',
+      category: 'Select Category',
+      purchaseRate: '',
+      sellingPrice: '',
+      store: 'Select Store',
+      currentStock: '',
+      minimumStock: '',
+      type: 'Product',
+      imagesCountText: '',
+      brand: 'Select Brand',
+      additionalDescription: '',
+      wordCount: 0,
+    });
+  };
+
+  const renderFullPageAddProductView = () => (
+    <div className="bg-white border border-[#CBD5E1] rounded-sm shadow-xs overflow-hidden text-xs animate-in fade-in duration-150">
+      {/* Header with red close icon */}
+      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <div className="flex items-center gap-2 font-semibold text-slate-800 text-xs">
+          <FileText className="w-4 h-4 text-slate-500" />
+          <span>{editingProductId ? 'Edit Product / Item' : 'Add Product / Item'}</span>
+        </div>
+        <button
+          type="button"
+          onClick={handleCancelAddProduct}
+          className="w-5 h-5 bg-[#DC2626] hover:bg-[#B91C1C] text-white flex items-center justify-center rounded-xs transition-colors cursor-pointer"
+          title="Close"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Form Fields - Only Essential Urgent Fields */}
+      <form onSubmit={handleSubmitAddProduct} className="p-4 sm:p-6 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
+          {/* Left Column */}
+          <div className="space-y-4">
+            {/* Item Name * */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+              <label className="text-slate-700 font-medium text-xs flex items-center gap-1">
+                Name <span className="text-red-500">*</span>
+              </label>
+              <div className="sm:col-span-2">
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. DAIKIN 1.5 TON INVERTER SPLIT AC"
+                  value={productFormData.name}
+                  onChange={(e) => setProductFormData({ ...productFormData, name: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400 font-medium"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Unit */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+              <label className="text-slate-700 font-medium text-xs">Unit</label>
+              <div className="sm:col-span-2 flex items-center gap-2">
+                <select
+                  value={productFormData.unit}
+                  onChange={(e) => setProductFormData({ ...productFormData, unit: e.target.value })}
+                  className="flex-1 min-w-0 px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
+                >
+                  <option value="Select Unit">Select Unit</option>
+                  {unitList.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setIsNewUnitModalOpen(true)}
+                  className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer transition-colors px-1 whitespace-nowrap"
+                  title="Add New Unit"
+                >
+                  + New
+                </button>
+              </div>
+            </div>
+
+            {/* Purchase Rate */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+              <label className="text-slate-700 font-medium text-xs">Purchase Rate</label>
+              <div className="sm:col-span-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={productFormData.purchaseRate}
+                  onChange={(e) => setProductFormData({ ...productFormData, purchaseRate: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                />
+              </div>
+            </div>
+
+            {/* Selling Price */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+              <label className="text-slate-700 font-medium text-xs">Selling Price</label>
+              <div className="sm:col-span-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={productFormData.sellingPrice}
+                  onChange={(e) => setProductFormData({ ...productFormData, sellingPrice: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column */}
+          <div className="space-y-4">
+            {/* Code */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+              <label className="text-slate-700 font-medium text-xs">Code</label>
+              <div className="sm:col-span-2">
+                <input
+                  type="text"
+                  placeholder="Item / Product Code (e.g. CQ4N-XMI48S)"
+                  value={productFormData.code}
+                  onChange={(e) => setProductFormData({ ...productFormData, code: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Category */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+              <label className="text-slate-700 font-medium text-xs">Category</label>
+              <div className="sm:col-span-2 flex items-center gap-2">
+                <select
+                  value={productFormData.category}
+                  onChange={(e) => setProductFormData({ ...productFormData, category: e.target.value })}
+                  className="flex-1 min-w-0 px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
+                >
+                  <option value="Select Category">Select Category</option>
+                  {categoryList.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setIsNewCategoryModalOpen(true)}
+                  className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer transition-colors px-1 whitespace-nowrap"
+                  title="Add New Category"
+                >
+                  + New
+                </button>
+              </div>
+            </div>
+
+            {/* Brand */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+              <label className="text-slate-700 font-medium text-xs">Brand</label>
+              <div className="sm:col-span-2 flex items-center gap-2">
+                <select
+                  value={productFormData.brand}
+                  onChange={(e) => setProductFormData({ ...productFormData, brand: e.target.value })}
+                  className="flex-1 min-w-0 px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
+                >
+                  <option value="Select Brand">Select Brand</option>
+                  {brandList.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setIsNewBrandModalOpen(true)}
+                  className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer transition-colors px-1 whitespace-nowrap"
+                  title="Add New Brand"
+                >
+                  + New
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Form Bottom Actions */}
+        <div className="mt-8 pt-4 border-t border-slate-200 flex items-center justify-end gap-2">
+          <button
+            type="submit"
+            className="px-5 py-1.5 bg-[#0B1E2E] hover:bg-[#020617] text-white text-xs font-semibold rounded-xs shadow-xs cursor-pointer transition"
+          >
+            Submit
+          </button>
+          <button
+            type="button"
+            onClick={handleCancelAddProduct}
+            className="inline-flex items-center gap-1 px-4 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-medium rounded-xs shadow-xs cursor-pointer transition"
+          >
+            <span>←</span>
+            <span>Back</span>
+          </button>
+        </div>
+      </form>
+
+      {/* Modal: Add New Unit */}
+      {isNewUnitModalOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded shadow-xl w-full max-w-sm border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <span className="font-semibold text-xs text-slate-800">Add New Unit</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNewUnitModalOpen(false);
+                  setNewUnitInput('');
+                }}
+                className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleAddNewUnit} className="p-4 space-y-3">
+              <div>
+                <label className="block text-slate-700 text-xs font-medium mb-1">Unit Name</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. Bundle, Drum, Carton"
+                  value={newUnitInput}
+                  onChange={(e) => setNewUnitInput(e.target.value)}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsNewUnitModalOpen(false);
+                    setNewUnitInput('');
+                  }}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded border border-slate-300 cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 text-xs bg-[#5CB85C] hover:bg-[#4CAE4C] text-white font-semibold rounded shadow-xs cursor-pointer transition inline-flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Save Unit</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add New Category */}
+      {isNewCategoryModalOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded shadow-xl w-full max-w-sm border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <span className="font-semibold text-xs text-slate-800">Add New Category</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNewCategoryModalOpen(false);
+                  setNewCategoryInput('');
+                }}
+                className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleAddNewCategory} className="p-4 space-y-3">
+              <div>
+                <label className="block text-slate-700 text-xs font-medium mb-1">Category Name</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. CHILLER, VENTILATION, THERMOSTAT"
+                  value={newCategoryInput}
+                  onChange={(e) => setNewCategoryInput(e.target.value)}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 uppercase"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsNewCategoryModalOpen(false);
+                    setNewCategoryInput('');
+                  }}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded border border-slate-300 cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 text-xs bg-[#5CB85C] hover:bg-[#4CAE4C] text-white font-semibold rounded shadow-xs cursor-pointer transition inline-flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Save Category</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add New Brand */}
+      {isNewBrandModalOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded shadow-xl w-full max-w-sm border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <span className="font-semibold text-xs text-slate-800">Add New Brand</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNewBrandModalOpen(false);
+                  setNewBrandInput('');
+                }}
+                className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleAddNewBrand} className="p-4 space-y-3">
+              <div>
+                <label className="block text-slate-700 text-xs font-medium mb-1">Brand Name</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. TOSHIBA, PANASONIC, TRANE"
+                  value={newBrandInput}
+                  onChange={(e) => setNewBrandInput(e.target.value)}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 uppercase"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsNewBrandModalOpen(false);
+                    setNewBrandInput('');
+                  }}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded border border-slate-300 cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 text-xs bg-[#5CB85C] hover:bg-[#4CAE4C] text-white font-semibold rounded shadow-xs cursor-pointer transition inline-flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Save Brand</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const liveStockMovements = useMemo(() => {
     if (!viewingProduct) return [];
     const movements: Array<{
@@ -2306,19 +3223,19 @@ function PurchasePageInner() {
 
   // Filtered Suppliers
   const filteredSuppliers = useMemo(() => {
-    return mockSuppliersList.filter((item) => {
+    return suppliersList.filter((item) => {
       if (supplierSearch) {
         const q = supplierSearch.toLowerCase();
-        const matchName = item.name.toLowerCase().includes(q);
-        const matchContact = item.contact.toLowerCase().includes(q);
-        const matchEmail = item.email.toLowerCase().includes(q);
-        const matchTrn = item.trn.toLowerCase().includes(q);
-        const matchAddress = item.address.toLowerCase().includes(q);
+        const matchName = (item.name || '').toLowerCase().includes(q);
+        const matchContact = (item.contact || item.phone || '').toLowerCase().includes(q);
+        const matchEmail = (item.email || '').toLowerCase().includes(q);
+        const matchTrn = (item.trn || '').toLowerCase().includes(q);
+        const matchAddress = (item.address || '').toLowerCase().includes(q);
         if (!matchName && !matchContact && !matchEmail && !matchTrn && !matchAddress) return false;
       }
       return true;
     });
-  }, [supplierSearch]);
+  }, [suppliersList, supplierSearch]);
 
   // Filtered Purchase Invoices
   const filteredPurchaseInvoices = useMemo(() => {
@@ -4703,10 +5620,10 @@ function PurchasePageInner() {
                           <button
                             type="button"
                             onClick={() => setIsAddInvoiceOwnerModalOpen(true)}
-                            className="px-2.5 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold inline-flex items-center gap-1 shrink-0 transition cursor-pointer shadow-xs"
+                            className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer transition-colors px-1 whitespace-nowrap"
                             title="Add New Owner"
                           >
-                            <span>+ New</span>
+                            + New
                           </button>
                         </div>
                       </div>
@@ -6762,7 +7679,9 @@ function PurchasePageInner() {
         {/* ========================================================= */}
         {mainTab === 'stock-in' && (
           <>
-            {stockInViewMode === 'add' ? (
+            {isStockInAddingNewProductFullPage ? (
+              renderFullPageAddProductView()
+            ) : stockInViewMode === 'add' ? (
               <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs">
                 {/* Header bar */}
                 <div className="px-4 py-2.5 border-b border-slate-200 flex items-center justify-between bg-white">
@@ -6899,11 +7818,11 @@ function PurchasePageInner() {
                         <label className="sm:w-36 text-slate-700 font-medium text-xs shrink-0">
                           Supplier <span className="text-red-500">*</span>
                         </label>
-                        <div className="flex-1 flex items-center gap-1.5">
+                        <div className="flex-1 flex items-center gap-2">
                           <select
                             value={stockInSupplier}
                             onChange={(e) => setStockInSupplier(e.target.value)}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                            className="flex-1 min-w-0 px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                           >
                             <option value="Select">Select</option>
                             {stockInSupplierList.map((sup) => (
@@ -6915,9 +7834,10 @@ function PurchasePageInner() {
                           <button
                             type="button"
                             onClick={() => setIsStockInNewSupplierOpen(true)}
-                            className="px-2.5 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold inline-flex items-center gap-1 shrink-0 transition cursor-pointer shadow-xs"
+                            className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer transition-colors px-1 whitespace-nowrap"
+                            title="Add New Supplier"
                           >
-                            <span>+ New</span>
+                            + New
                           </button>
                         </div>
                       </div>
@@ -6997,7 +7917,7 @@ function PurchasePageInner() {
                     {stockInItems.map((itemRow, idx) => (
                       <div key={itemRow.id} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
                         {/* Item */}
-                        <div className="sm:col-span-4">
+                        <div className="sm:col-span-4 flex items-center gap-2">
                           <select
                             value={itemRow.item}
                             onChange={(e) => {
@@ -7013,7 +7933,7 @@ function PurchasePageInner() {
                               }
                               setStockInItems(updated);
                             }}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                            className="flex-1 min-w-0 px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                           >
                             <option value="">Select Item</option>
                             {availableStockInProducts.map((p) => (
@@ -7022,6 +7942,36 @@ function PurchasePageInner() {
                               </option>
                             ))}
                           </select>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentStockInItemIndex(idx);
+                              setProductFormData({
+                                serialNumber: '',
+                                code: `CQ4N-XMI${Math.floor(10 + Math.random() * 90)}S`,
+                                name: '',
+                                thumbnailName: '',
+                                unit: 'Pcs',
+                                category: 'Select Category',
+                                purchaseRate: '',
+                                sellingPrice: '',
+                                store: stockInStore !== 'Select' ? stockInStore : 'Main Warehouse - Bay A',
+                                currentStock: '0',
+                                minimumStock: '5',
+                                type: 'Product',
+                                imagesCountText: '',
+                                brand: 'Select Brand',
+                                additionalDescription: '',
+                                wordCount: 0,
+                              });
+                              setEditingProductId(null);
+                              setIsStockInAddingNewProductFullPage(true);
+                            }}
+                            className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer transition-colors px-1 whitespace-nowrap"
+                            title="Add New Item"
+                          >
+                            + New
+                          </button>
                         </div>
 
                         {/* Unit */}
@@ -7153,6 +8103,10 @@ function PurchasePageInner() {
                           } catch (e) {
                             console.error(e);
                           }
+                          const updatedRec = updated.find((it) => (it.id || it.stockInNo) === editingStockInId);
+                          if (updatedRec && editingStockInId) {
+                            stockInApiService.updateStockInRecord(editingStockInId, updatedRec as any).catch(() => {});
+                          }
                           alert(`Stock In ${stockInNumber} updated successfully!`);
                           resetStockInForm();
                           setStockInViewMode('register');
@@ -7181,6 +8135,7 @@ function PurchasePageInner() {
                           } catch (e) {
                             console.error(e);
                           }
+                          stockInApiService.createStockInRecord(newRecord as any).catch(() => {});
                           alert(`Stock In ${stockInNumber} created successfully!`);
                           resetStockInForm();
                           setStockInViewMode('register');
@@ -7824,6 +8779,7 @@ function PurchasePageInner() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setIsAddSupplierModalOpen(true)}
                     className="inline-flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-semibold uppercase rounded-xs shadow-xs cursor-pointer transition"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -7986,6 +8942,123 @@ function PurchasePageInner() {
                 </div>
               </div>
             </div>
+
+            {/* Modal: Add New Supplier */}
+            {isAddSupplierModalOpen && (
+              <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+                <div className="bg-white rounded shadow-xl w-full max-w-lg border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <span className="font-semibold text-xs text-slate-800 flex items-center gap-1.5">
+                      <Truck className="w-4 h-4 text-emerald-600" />
+                      <span>Add New Supplier</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddSupplierModalOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <form onSubmit={handleAddNewSupplier} className="p-4 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-700 text-xs font-medium mb-1">Supplier / Trade Name *</label>
+                        <input
+                          type="text"
+                          required
+                          autoFocus
+                          placeholder="e.g. Al Futtaim Electronics LLC"
+                          value={newSupplierForm.name}
+                          onChange={(e) => setNewSupplierForm({ ...newSupplierForm, name: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 text-xs font-medium mb-1">Company / Legal Name</label>
+                        <input
+                          type="text"
+                          placeholder="Full registered entity name"
+                          value={newSupplierForm.companyName}
+                          onChange={(e) => setNewSupplierForm({ ...newSupplierForm, companyName: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 text-xs font-medium mb-1">TRN (Tax Registration No.)</label>
+                        <input
+                          type="text"
+                          placeholder="100XXXXXXXXXXXX"
+                          value={newSupplierForm.trn}
+                          onChange={(e) => setNewSupplierForm({ ...newSupplierForm, trn: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs font-mono focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 text-xs font-medium mb-1">Phone / Mobile</label>
+                        <input
+                          type="text"
+                          placeholder="+971 4 000 0000"
+                          value={newSupplierForm.phone}
+                          onChange={(e) => setNewSupplierForm({ ...newSupplierForm, phone: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs font-mono focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 text-xs font-medium mb-1">Email Address</label>
+                        <input
+                          type="email"
+                          placeholder="sales@supplier.ae"
+                          value={newSupplierForm.email}
+                          onChange={(e) => setNewSupplierForm({ ...newSupplierForm, email: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 text-xs font-medium mb-1">Payment Terms</label>
+                        <select
+                          value={newSupplierForm.paymentTerms}
+                          onChange={(e) => setNewSupplierForm({ ...newSupplierForm, paymentTerms: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="Cash / COD">Cash on Delivery (COD)</option>
+                          <option value="15 Days">15 Days</option>
+                          <option value="30 Days">30 Days</option>
+                          <option value="60 Days">60 Days</option>
+                          <option value="100% Advance">100% Advance</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 text-xs font-medium mb-1">Physical Address / Emirate</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Al Quoz Industrial Area 3, Dubai, UAE"
+                        value={newSupplierForm.address}
+                        onChange={(e) => setNewSupplierForm({ ...newSupplierForm, address: e.target.value })}
+                        className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddSupplierModalOpen(false)}
+                        className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded border border-slate-300 cursor-pointer transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-1.5 text-xs bg-[#16A34A] hover:bg-[#15803D] text-white font-semibold rounded shadow-xs cursor-pointer transition inline-flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Save Supplier</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -8408,565 +9481,7 @@ function PurchasePageInner() {
                   /* ========================================================= */
                   /* ADD PRODUCT/SERVICE/RAW MATERIAL/ASSET VIEW (Image 1)     */
                   /* ========================================================= */
-                  <div className="bg-white border border-[#CBD5E1] rounded-sm shadow-xs overflow-hidden text-xs animate-in fade-in duration-150">
-                    {/* Header with red close icon */}
-                    <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2 font-semibold text-slate-700 text-xs">
-                        <FileText className="w-4 h-4 text-slate-500" />
-                        <span>{editingProductId ? 'Edit Product/Service/Raw Material/Asset' : 'Add Product/Service/Raw Material/Asset'}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProductViewMode('list');
-                          setEditingProductId(null);
-                        }}
-                        className="w-5 h-5 bg-[#DC2626] hover:bg-[#B91C1C] text-white flex items-center justify-center rounded-xs transition-colors cursor-pointer"
-                        title="Close"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    {/* Form Fields */}
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const activeUser = currentUser || (typeof window !== 'undefined' ? authMockService.getCurrentUser() : null);
-                        const userRole = (activeUser?.role || '').toLowerCase();
-                        const isEmp = userRole === 'employee' || (activeUser?.profileType || '').toLowerCase().includes('employee');
-                        const creatorRole = isEmp ? 'employee' : (userRole === 'admin' ? 'admin' : userRole.includes('super') ? 'super_admin' : 'manager');
-
-                        const targetId = editingProductId || String(Date.now());
-                        const existingProduct = editingProductId ? stockItems.find((i) => i.id === editingProductId) : null;
-
-                        const savedProduct: CrmCezconStock = {
-                          id: String(targetId),
-                          slNo: existingProduct?.slNo || stockItems.length + 1,
-                          serialNo: productFormData.serialNumber || '',
-                          code: productFormData.code || (existingProduct?.code || `CQ4N-XMI${Math.floor(10 + Math.random() * 90)}S`),
-                          name: productFormData.name || 'New Product',
-                          image: existingProduct?.image || '',
-                          unit: productFormData.unit !== 'Select Unit' ? productFormData.unit : (existingProduct?.unit || 'Pcs'),
-                          brand: productFormData.brand !== 'Select Brand' ? productFormData.brand : (existingProduct?.brand || 'MIDEA'),
-                          category: productFormData.category !== 'Select Category' ? productFormData.category : (existingProduct?.category || 'SPLIT AC'),
-                          type: productFormData.type,
-                          purchaseRate: Number(productFormData.purchaseRate) || 0,
-                          sellingPrice: Number(productFormData.sellingPrice) || 0,
-                          status: existingProduct?.status || 'Active',
-                          store: productFormData.store !== 'Select Store' ? productFormData.store : (existingProduct?.store || 'Main Warehouse - Bay A'),
-                          stock: Number(productFormData.currentStock) || 0,
-                          currentStock: Number(productFormData.currentStock) || 0,
-                          minimumStock: Number(productFormData.minimumStock) || 0,
-                          createdBy: existingProduct?.createdBy || activeUser?.name || (isEmp ? 'Purchase Employee' : 'Rashid Ali'),
-                          createdByRole: existingProduct?.createdByRole || creatorRole,
-                          createdById: existingProduct?.createdById || (activeUser?.id ? String(activeUser.id) : (isEmp ? 'emp_faisal_001' : 'usr_rashid_001')),
-                          createdByEmail: existingProduct?.createdByEmail || activeUser?.email || (isEmp ? 'purchaseemp@gmail.com' : 'purchasemanager@gmail.com'),
-                          owner: existingProduct?.owner || activeUser?.name || (isEmp ? 'Purchase Employee' : 'Rashid Ali'),
-                        };
-
-                        const updatedItems = editingProductId
-                          ? stockItems.map((item) => (item.id === editingProductId ? savedProduct : item))
-                          : [savedProduct, ...stockItems];
-
-                        setStockItems(updatedItems);
-
-                        // Persist to unified localStorage master
-                        try {
-                          const productSettingItem: ProductSettingItem = {
-                            id: Number(targetId) || Date.now(),
-                            sku: savedProduct.code,
-                            code: savedProduct.code,
-                            serialNo: savedProduct.serialNo,
-                            name: savedProduct.name,
-                            category: savedProduct.category,
-                            brand: savedProduct.brand,
-                            unit: savedProduct.unit,
-                            type: savedProduct.type as any,
-                            purchaseRate: savedProduct.purchaseRate,
-                            sellingPrice: savedProduct.sellingPrice,
-                            basePrice: savedProduct.sellingPrice,
-                            status: true,
-                            store: savedProduct.store,
-                            currentStock: savedProduct.currentStock,
-                            minStock: savedProduct.minimumStock,
-                            additionalDescription: productFormData.additionalDescription,
-                            createdBy: savedProduct.createdBy,
-                            createdByRole: savedProduct.createdByRole,
-                            createdById: savedProduct.createdById,
-                            createdByEmail: savedProduct.createdByEmail,
-                            owner: savedProduct.owner,
-                          };
-
-                          const existingRaw = localStorage.getItem('cezcon_products_master_live');
-                          const existingList = existingRaw ? JSON.parse(existingRaw) : [];
-                          const filteredList = Array.isArray(existingList) ? existingList.filter((x: any) => String(x.id) !== String(targetId)) : [];
-                          const mergedList = [productSettingItem, ...filteredList];
-                          localStorage.setItem('cezcon_products_master_live', JSON.stringify(mergedList));
-                          window.dispatchEvent(new Event('crm_products_updated'));
-                        } catch (err) {
-                          console.error('Failed to persist product to localStorage', err);
-                        }
-
-                        setEditingProductId(null);
-                        setProductViewMode('list');
-                        setProductFormData({
-                          serialNumber: '',
-                          code: '',
-                          name: '',
-                          thumbnailName: '',
-                          unit: 'Select Unit',
-                          category: 'Select Category',
-                          purchaseRate: '',
-                          sellingPrice: '',
-                          store: 'Select Store',
-                          currentStock: '',
-                          minimumStock: '',
-                          type: 'Product',
-                          imagesCountText: '',
-                          brand: 'Select Brand',
-                          additionalDescription: '',
-                          wordCount: 0,
-                        });
-                      }}
-                      className="p-4 sm:p-6"
-                    >
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-3">
-                        {/* Left Column */}
-                        <div className="space-y-3">
-                          {/* Serial Number */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                            <label className="text-slate-700 font-medium text-xs">Serial Number</label>
-                            <div className="sm:col-span-2">
-                              <input
-                                type="text"
-                                placeholder="Serial Number"
-                                value={productFormData.serialNumber}
-                                onChange={(e) => setProductFormData({ ...productFormData, serialNumber: e.target.value })}
-                                className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Name * */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                            <label className="text-slate-700 font-medium text-xs flex items-center gap-1">
-                              Name <span className="text-red-500">*</span>
-                            </label>
-                            <div className="sm:col-span-2">
-                              <input
-                                type="text"
-                                required
-                                placeholder="Name"
-                                value={productFormData.name}
-                                onChange={(e) => setProductFormData({ ...productFormData, name: e.target.value })}
-                                className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Thumbnail Image */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                            <label className="text-slate-700 font-medium text-xs">Thumbnail Image</label>
-                            <div className="sm:col-span-2 flex items-center gap-2">
-                              <label className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded text-xs text-slate-700 cursor-pointer font-medium transition">
-                                Choose file
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    setProductFormData({ ...productFormData, thumbnailName: file ? file.name : 'No file chosen' });
-                                  }}
-                                  className="hidden"
-                                />
-                              </label>
-                              <span className="text-xs text-slate-500 truncate">{productFormData.thumbnailName || 'No file chosen'}</span>
-                            </div>
-                          </div>
-
-                          {/* Unit */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                            <label className="text-slate-700 font-medium text-xs">Unit</label>
-                            <div className="sm:col-span-2">
-                              <select
-                                value={productFormData.unit}
-                                onChange={(e) => setProductFormData({ ...productFormData, unit: e.target.value })}
-                                className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
-                              >
-                                <option value="Select Unit">Select Unit</option>
-                                <option value="Pcs">Pcs</option>
-                                <option value="Set">Set</option>
-                                <option value="Each">Each</option>
-                                <option value="Box">Box</option>
-                                <option value="Meter">Meter</option>
-                                <option value="Kg">Kg</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          {/* Category */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                            <label className="text-slate-700 font-medium text-xs">Category</label>
-                            <div className="sm:col-span-2">
-                              <select
-                                value={productFormData.category}
-                                onChange={(e) => setProductFormData({ ...productFormData, category: e.target.value })}
-                                className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
-                              >
-                                <option value="Select Category">Select Category</option>
-                                <option value="CASSETTE AC">CASSETTE AC</option>
-                                <option value="SPLIT AC">SPLIT AC</option>
-                                <option value="REFRIGERATOR">REFRIGERATOR</option>
-                                <option value="ACCESSORIES">ACCESSORIES</option>
-                                <option value="SPARE PARTS">SPARE PARTS</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          {/* Purchase Rate */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                            <label className="text-slate-700 font-medium text-xs">Purchase Rate</label>
-                            <div className="sm:col-span-2">
-                              <input
-                                type="number"
-                                step="0.01"
-                                placeholder="Enter Purchase Rate"
-                                value={productFormData.purchaseRate}
-                                onChange={(e) => setProductFormData({ ...productFormData, purchaseRate: e.target.value })}
-                                className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Selling Price */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                            <label className="text-slate-700 font-medium text-xs">Selling Price</label>
-                            <div className="sm:col-span-2">
-                              <input
-                                type="number"
-                                step="0.01"
-                                placeholder="Enter Selling Price"
-                                value={productFormData.sellingPrice}
-                                onChange={(e) => setProductFormData({ ...productFormData, sellingPrice: e.target.value })}
-                                className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Store */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                            <label className="text-slate-700 font-medium text-xs">Store</label>
-                            <div className="sm:col-span-2">
-                              <select
-                                value={productFormData.store}
-                                onChange={(e) => setProductFormData({ ...productFormData, store: e.target.value })}
-                                className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
-                              >
-                                <option value="Select Store">Select Store</option>
-                                <option value="Main Warehouse - Bay A">Main Warehouse - Bay A</option>
-                                <option value="Central Spares Hub">Central Spares Hub</option>
-                                <option value="Hardware Depot - Austin">Hardware Depot - Austin</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          {/* Current Stock */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                            <label className="text-slate-700 font-medium text-xs">Current Stock</label>
-                            <div className="sm:col-span-2">
-                              <input
-                                type="number"
-                                placeholder="Enter Current Stock"
-                                value={productFormData.currentStock}
-                                onChange={(e) => setProductFormData({ ...productFormData, currentStock: e.target.value })}
-                                className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Minimum Stock */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                            <label className="text-slate-700 font-medium text-xs">Minimum Stock</label>
-                            <div className="sm:col-span-2">
-                              <input
-                                type="number"
-                                placeholder="Enter minimum stock"
-                                value={productFormData.minimumStock}
-                                onChange={(e) => setProductFormData({ ...productFormData, minimumStock: e.target.value })}
-                                className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Right Column */}
-                        <div className="space-y-3 flex flex-col justify-between">
-                          <div className="space-y-3">
-                            {/* Code */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                              <label className="text-slate-700 font-medium text-xs">Code</label>
-                              <div className="sm:col-span-2">
-                                <input
-                                  type="text"
-                                  placeholder="Last Product/Service/Raw Material Code CQ4N-XMI48S"
-                                  value={productFormData.code}
-                                  onChange={(e) => setProductFormData({ ...productFormData, code: e.target.value })}
-                                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Type */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                              <label className="text-slate-700 font-medium text-xs">Type</label>
-                              <div className="sm:col-span-2">
-                                <select
-                                  value={productFormData.type}
-                                  onChange={(e) => setProductFormData({ ...productFormData, type: e.target.value })}
-                                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
-                                >
-                                  <option value="Product">Product</option>
-                                  <option value="Service">Service</option>
-                                  <option value="Raw Material">Raw Material</option>
-                                  <option value="Asset">Asset</option>
-                                </select>
-                              </div>
-                            </div>
-
-                            {/* Images */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                              <label className="text-slate-700 font-medium text-xs flex items-center gap-1">
-                                Images
-                                <span className="w-3.5 h-3.5 rounded-full bg-slate-800 text-white text-[9px] font-bold flex items-center justify-center cursor-pointer" title="Upload multiple product images">
-                                  ?
-                                </span>
-                              </label>
-                              <div className="sm:col-span-2 flex items-center gap-2">
-                                <label className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded text-xs text-slate-700 cursor-pointer font-medium transition">
-                                  Choose files
-                                  <input
-                                    type="file"
-                                    multiple
-                                    accept="image/*"
-                                    onChange={(e) => {
-                                      const files = e.target.files;
-                                      setProductFormData({
-                                        ...productFormData,
-                                        imagesCountText: files && files.length > 0 ? `${files.length} file(s) chosen` : 'No file chosen',
-                                      });
-                                    }}
-                                    className="hidden"
-                                  />
-                                </label>
-                                <span className="text-xs text-slate-500 truncate">{productFormData.imagesCountText || 'No file chosen'}</span>
-                              </div>
-                            </div>
-
-                            {/* Brand */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                              <label className="text-slate-700 font-medium text-xs">Brand</label>
-                              <div className="sm:col-span-2">
-                                <select
-                                  value={productFormData.brand}
-                                  onChange={(e) => setProductFormData({ ...productFormData, brand: e.target.value })}
-                                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
-                                >
-                                  <option value="Select Brand">Select Brand</option>
-                                  <option value="MIDEA">MIDEA</option>
-                                  <option value="LG">LG</option>
-                                  <option value="AKAI">AKAI</option>
-                                  <option value="MITSUBISHI">MITSUBISHI</option>
-                                  <option value="O GENERAL">O GENERAL</option>
-                                  <option value="CARRIER">CARRIER</option>
-                                </select>
-                              </div>
-                            </div>
-
-                            {/* Additional Description with Rich Text Editor */}
-                            <div className="space-y-1.5 pt-1">
-                              <label className="text-slate-700 font-medium text-xs block">Additional Description</label>
-                              <div className="border border-slate-300 rounded overflow-hidden bg-white shadow-2xs">
-                                {/* Rich Text Toolbar */}
-                                <div className="p-1.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-1 text-slate-700 select-none">
-                                  <button
-                                    type="button"
-                                    onClick={() => document.execCommand('undo')}
-                                    className="p-1 rounded hover:bg-slate-200 text-slate-700 cursor-pointer text-xs"
-                                    title="Undo"
-                                  >
-                                    ↺
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => document.execCommand('redo')}
-                                    className="p-1 rounded hover:bg-slate-200 text-slate-700 cursor-pointer text-xs"
-                                    title="Redo"
-                                  >
-                                    ↻
-                                  </button>
-                                  <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
-                                  <select
-                                    onChange={(e) => document.execCommand('formatBlock', false, e.target.value)}
-                                    className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[11px] text-slate-700 cursor-pointer"
-                                  >
-                                    <option value="p">Paragraph</option>
-                                    <option value="h1">Heading 1</option>
-                                    <option value="h2">Heading 2</option>
-                                    <option value="h3">Heading 3</option>
-                                  </select>
-                                  <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
-                                  <button
-                                    type="button"
-                                    onClick={() => document.execCommand('bold')}
-                                    className="w-6 h-6 rounded hover:bg-slate-200 font-bold text-xs flex items-center justify-center cursor-pointer"
-                                    title="Bold"
-                                  >
-                                    B
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => document.execCommand('italic')}
-                                    className="w-6 h-6 rounded hover:bg-slate-200 italic text-xs flex items-center justify-center cursor-pointer"
-                                    title="Italic"
-                                  >
-                                    I
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => document.execCommand('underline')}
-                                    className="w-6 h-6 rounded hover:bg-slate-200 underline text-xs flex items-center justify-center cursor-pointer"
-                                    title="Underline"
-                                  >
-                                    U
-                                  </button>
-                                  <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
-                                  <button
-                                    type="button"
-                                    onClick={() => document.execCommand('justifyLeft')}
-                                    className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
-                                    title="Align Left"
-                                  >
-                                    ≡
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => document.execCommand('justifyCenter')}
-                                    className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
-                                    title="Align Center"
-                                  >
-                                    ≣
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => document.execCommand('justifyRight')}
-                                    className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
-                                    title="Align Right"
-                                  >
-                                    ≡
-                                  </button>
-                                  <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
-                                  <button
-                                    type="button"
-                                    onClick={() => document.execCommand('insertUnorderedList')}
-                                    className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
-                                    title="Bullet List"
-                                  >
-                                    •≡
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => document.execCommand('insertOrderedList')}
-                                    className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
-                                    title="Numbered List"
-                                  >
-                                    1.≡
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => document.execCommand('outdent')}
-                                    className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
-                                    title="Decrease Indent"
-                                  >
-                                    ←|
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => document.execCommand('indent')}
-                                    className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
-                                    title="Increase Indent"
-                                  >
-                                    |→
-                                  </button>
-                                  <div className="w-[1px] h-4 bg-slate-300 mx-0.5" />
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const url = prompt('Enter link URL:');
-                                      if (url) document.execCommand('createLink', false, url);
-                                    }}
-                                    className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
-                                    title="Insert Link"
-                                  >
-                                    🔗
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const url = prompt('Enter image URL:');
-                                      if (url) document.execCommand('insertImage', false, url);
-                                    }}
-                                    className="w-6 h-6 rounded hover:bg-slate-200 text-xs flex items-center justify-center cursor-pointer"
-                                    title="Insert Image"
-                                  >
-                                    🖼️
-                                  </button>
-                                </div>
-
-                                {/* Editable Area */}
-                                <div
-                                  contentEditable
-                                  onInput={(e) => {
-                                    const text = e.currentTarget.innerText || '';
-                                    setProductFormData({
-                                      ...productFormData,
-                                      additionalDescription: e.currentTarget.innerHTML,
-                                      wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
-                                    });
-                                  }}
-                                  className="p-3 min-h-[160px] max-h-[220px] overflow-y-auto text-xs text-slate-800 focus:outline-none bg-white"
-                                  style={{ minHeight: '160px' }}
-                                />
-
-                                {/* Word Count Footer */}
-                                <div className="px-3 py-1 bg-slate-50 border-t border-slate-100 text-right text-[10px] text-slate-400 font-medium">
-                                  {productFormData.wordCount || 0} words
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Form Bottom Actions */}
-                      <div className="mt-6 pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
-                        <button
-                          type="submit"
-                          className="px-5 py-1.5 bg-[#0B1E2E] hover:bg-[#020617] text-white text-xs font-semibold rounded-xs shadow-xs cursor-pointer transition"
-                        >
-                          Submit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setProductViewMode('list')}
-                          className="inline-flex items-center gap-1 px-4 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-medium rounded-xs shadow-xs cursor-pointer transition"
-                        >
-                          <span>←</span>
-                          <span>Back</span>
-                        </button>
-                      </div>
-                    </form>
-                  </div>
+                  renderFullPageAddProductView()
                 ) : productViewMode === 'import' ? (
                   /* ========================================================= */
                   /* IMPORT / BULK UPDATE PRODUCTS VIEW (Exact Cezcon CRM - Image 1) */
@@ -10285,7 +10800,11 @@ function PurchasePageInner() {
                   <span className="w-4 h-4 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-[10px] font-bold">✓</span>
                   <span>Stores & Warehouses</span>
                 </div>
-                <button type="button" className="flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-bold uppercase rounded-xs transition shadow-xs cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => setIsAddStoreModalOpen(true)}
+                  className="flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-bold uppercase rounded-xs transition shadow-xs cursor-pointer"
+                >
                   <Plus className="w-3.5 h-3.5" />
                   <span>+ ADD STORE</span>
                 </button>
@@ -10325,17 +10844,17 @@ function PurchasePageInner() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {mockStoresList.map((str) => (
+                    {storesList.map((str) => (
                       <tr key={str.id} className="hover:bg-blue-50/40">
                         <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{str.slNo}</td>
                         <td className="p-2.5 border-r border-slate-100 font-bold text-slate-800">{str.name}</td>
                         <td className="p-2.5 border-r border-slate-100 font-mono text-slate-600">{str.code}</td>
-                        <td className="p-2.5 border-r border-slate-100 font-medium text-slate-700">{str.manager}</td>
+                        <td className="p-2.5 border-r border-slate-100 font-medium text-slate-700">{str.manager || str.managerName}</td>
                         <td className="p-2.5 border-r border-slate-100 text-slate-600 font-mono">{str.phone}</td>
                         <td className="p-2.5 border-r border-slate-100 text-slate-600">{str.location}</td>
-                        <td className="p-2.5 border-r border-slate-100 text-slate-600">{str.capacity}</td>
+                        <td className="p-2.5 border-r border-slate-100 text-slate-600">{str.capacity || 'Standard'}</td>
                         <td className="p-2.5 text-center border-r border-slate-100">
-                          <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-green-100 text-green-800">{str.status}</span>
+                          <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-green-100 text-green-800">{str.status || (str.isActive !== 0 ? 'Active' : 'Inactive')}</span>
                         </td>
                         <td className="p-2.5 text-center">
                           <button type="button" className="inline-flex items-center gap-1 px-2 py-1 bg-[#0B1E2E] text-white rounded text-xs cursor-pointer"><Settings className="w-3.5 h-3.5" /><ChevronDown className="w-2.5 h-2.5" /></button>
@@ -10346,9 +10865,114 @@ function PurchasePageInner() {
                 </table>
               </div>
               <div className="p-3 border-t border-slate-200 text-xs text-slate-600 bg-white">
-                Showing 1 to {mockStoresList.length} of {mockStoresList.length} entries
+                Showing 1 to {storesList.length} of {storesList.length} entries
               </div>
             </div>
+
+            {/* Modal: Add New Store */}
+            {isAddStoreModalOpen && (
+              <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+                <div className="bg-white rounded shadow-xl w-full max-w-md border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <span className="font-semibold text-xs text-slate-800 flex items-center gap-1.5">
+                      <Store className="w-4 h-4 text-emerald-600" />
+                      <span>Add New Store / Warehouse</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddStoreModalOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <form onSubmit={handleAddNewStore} className="p-4 space-y-3">
+                    <div>
+                      <label className="block text-slate-700 text-xs font-medium mb-1">Store / Warehouse Name *</label>
+                      <input
+                        type="text"
+                        required
+                        autoFocus
+                        placeholder="e.g. DIP WAREHOUSE - BAY 4"
+                        value={newStoreForm.name}
+                        onChange={(e) => setNewStoreForm({ ...newStoreForm, name: e.target.value })}
+                        className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 uppercase"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-700 text-xs font-medium mb-1">Store Code</label>
+                        <input
+                          type="text"
+                          placeholder="WH-03"
+                          value={newStoreForm.code}
+                          onChange={(e) => setNewStoreForm({ ...newStoreForm, code: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs font-mono uppercase focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 text-xs font-medium mb-1">Capacity</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 8,000 sq.ft"
+                          value={newStoreForm.capacity}
+                          onChange={(e) => setNewStoreForm({ ...newStoreForm, capacity: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 text-xs font-medium mb-1">In-Charge Manager</label>
+                      <input
+                        type="text"
+                        placeholder="Manager Name"
+                        value={newStoreForm.manager}
+                        onChange={(e) => setNewStoreForm({ ...newStoreForm, manager: e.target.value })}
+                        className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-700 text-xs font-medium mb-1">Phone</label>
+                        <input
+                          type="text"
+                          placeholder="+971 4 000 0000"
+                          value={newStoreForm.phone}
+                          onChange={(e) => setNewStoreForm({ ...newStoreForm, phone: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs font-mono focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 text-xs font-medium mb-1">Location / City</label>
+                        <input
+                          type="text"
+                          placeholder="Dubai, UAE"
+                          value={newStoreForm.location}
+                          onChange={(e) => setNewStoreForm({ ...newStoreForm, location: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddStoreModalOpen(false)}
+                        className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded border border-slate-300 cursor-pointer transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-1.5 text-xs bg-[#16A34A] hover:bg-[#15803D] text-white font-semibold rounded shadow-xs cursor-pointer transition inline-flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Save Store</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -11011,6 +11635,7 @@ function PurchasePageInner() {
                     </div>
                     <button
                       type="button"
+                      onClick={() => setIsAddTransferModalOpen(true)}
                       className="flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-bold uppercase rounded-xs transition shadow-xs cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -11233,6 +11858,95 @@ function PurchasePageInner() {
                     </div>
                   </div>
                 </div>
+
+                {/* Modal: Add Stock Transfer */}
+                {isAddTransferModalOpen && (
+                  <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+                    <div className="bg-white rounded shadow-xl w-full max-w-md border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                        <span className="font-semibold text-xs text-slate-800 flex items-center gap-1.5">
+                          <ArrowLeftRight className="w-4 h-4 text-emerald-600" />
+                          <span>New Stock Transfer</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddTransferModalOpen(false)}
+                          className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <form onSubmit={handleAddNewTransfer} className="p-4 space-y-3">
+                        <div>
+                          <label className="block text-slate-700 text-xs font-medium mb-1">Transfer Number</label>
+                          <input
+                            type="text"
+                            placeholder="Auto-generated (e.g. TRF-5821)"
+                            value={newTransferForm.transferNo}
+                            onChange={(e) => setNewTransferForm({ ...newTransferForm, transferNo: e.target.value })}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs font-mono uppercase focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-slate-700 text-xs font-medium mb-1">Transfer From *</label>
+                            <select
+                              value={newTransferForm.transferFrom}
+                              onChange={(e) => setNewTransferForm({ ...newTransferForm, transferFrom: e.target.value })}
+                              className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-500"
+                            >
+                              {storesList.map((st) => (
+                                <option key={st.id} value={st.name}>
+                                  {st.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-slate-700 text-xs font-medium mb-1">Transfer To *</label>
+                            <select
+                              value={newTransferForm.transferTo}
+                              onChange={(e) => setNewTransferForm({ ...newTransferForm, transferTo: e.target.value })}
+                              className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-500"
+                            >
+                              {storesList.map((st) => (
+                                <option key={st.id} value={st.name}>
+                                  {st.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-slate-700 text-xs font-medium mb-1">Transfer Notes / Reason</label>
+                          <textarea
+                            rows={2}
+                            placeholder="Reason for transfer, project reference, or vehicle details..."
+                            value={newTransferForm.notes}
+                            onChange={(e) => setNewTransferForm({ ...newTransferForm, notes: e.target.value })}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setIsAddTransferModalOpen(false)}
+                            className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded border border-slate-300 cursor-pointer transition"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-1.5 text-xs bg-[#16A34A] hover:bg-[#15803D] text-white font-semibold rounded shadow-xs cursor-pointer transition inline-flex items-center gap-1.5"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Create Transfer</span>
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               /* --------------------------------------------------------- */

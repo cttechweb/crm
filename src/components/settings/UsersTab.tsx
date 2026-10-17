@@ -43,6 +43,7 @@ import { CEZCON_PROFILES_DATA } from '@/data/settingsMockData';
 import { createFirebaseAuthUser } from '@/services/firebaseAuthService';
 import { userApiService, CrmRole, CrmBackendUser } from '@/services/userApiService';
 import { ApiError } from '@/lib/apiClient';
+import { auth } from '@/firebase/config';
 
 const ALL_ORGANIZATIONAL_POSITIONS = [
   'CEO',
@@ -1387,6 +1388,12 @@ export function UsersTab({
     }
 
     if (!firebaseUid) {
+      // Pre-flight check: ensure active administrator has a valid Firebase session before provisioning
+      if (!auth?.currentUser) {
+        alert('Authentication Session Required: No active Firebase session found for your administrator account. Please log in with your administrator credentials to create and save staff profiles to the database.');
+        return;
+      }
+
       setIsCreatingFirebaseUser(true);
       setUserCreationError(null);
       try {
@@ -3453,15 +3460,30 @@ export function UsersTab({
                   <strong>Database sync error:</strong> {userFetchError}. Displaying cached offline records.
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => fetchAndMergeServerUsers()}
-                disabled={isSyncingWithServer}
-                className="self-start sm:self-auto inline-flex items-center gap-1 px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-semibold transition-colors cursor-pointer shrink-0 disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3 h-3 ${isSyncingWithServer ? 'animate-spin' : ''}`} />
-                Retry Sync
-              </button>
+              <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
+                {userFetchError.toLowerCase().includes('authentication') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        window.location.href = '/login';
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold transition-colors cursor-pointer shrink-0"
+                  >
+                    Sign In to Authenticate
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => fetchAndMergeServerUsers()}
+                  disabled={isSyncingWithServer}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-semibold transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isSyncingWithServer ? 'animate-spin' : ''}`} />
+                  Retry Sync
+                </button>
+              </div>
             </div>
           )}
 

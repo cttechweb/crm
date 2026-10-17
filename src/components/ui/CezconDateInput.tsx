@@ -85,7 +85,7 @@ export function CezconDateInput({
         tabIndex={-1}
         onClick={handleOpenPicker}
         disabled={disabled}
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer pointer-events-none z-10"
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer z-10"
       >
         <Calendar className="w-3.5 h-3.5" />
       </button>

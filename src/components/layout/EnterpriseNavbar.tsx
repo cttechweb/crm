@@ -158,7 +158,7 @@ const SALES_EMPLOYEE_NAV_ITEMS: EnterpriseNavItem[] = [
     children: [
       { label: 'Opportunities', href: '/sales?tab=opportunities', iconName: 'Key' },
       { label: 'Commercial Offers', href: '/sales?tab=quotations', iconName: 'FileText' },
-      { label: 'Orders', href: '/sales?tab=orders', iconName: 'ThumbsUp' },
+      { label: 'Sales Orders', href: '/sales?tab=orders', iconName: 'ThumbsUp' },
       { label: 'Proforma Invoices', href: '/sales?tab=proforma', iconName: 'CreditCard' },
       { label: 'Invoices', href: '/sales?tab=invoice', iconName: 'FileSpreadsheet' },
       { label: 'Delivery Notes', href: '/sales?tab=delivery', iconName: 'Table' },
