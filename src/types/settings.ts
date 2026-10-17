@@ -32,8 +32,10 @@ export interface CezconUserItem {
   signatureImage?: string | null;
   designation?: string;
   businessOpportunity?: string;
+  businessOpportunityAll?: boolean;
   salesVisitPermission?: boolean;
   store?: string;
+  storeAll?: boolean;
   workerCode?: string;
   grade?: string;
   hourlyRate?: string | number;

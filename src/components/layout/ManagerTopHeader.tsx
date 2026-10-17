@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -27,16 +27,33 @@ export function ManagerTopHeader({
 }: ManagerTopHeaderProps) {
   const router = useRouter();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
-  const currentUser = authMockService.getCurrentUser() || {
+  const [currentUser, setCurrentUser] = useState(() => authMockService.getCurrentUser() || {
     name: 'Muhammed Shibil',
     email: 'shibil@gmail.com',
     designation: 'Sales Manager',
-  };
+  });
+  const [avatarError, setAvatarError] = useState(false);
+
+  useEffect(() => {
+    const syncUser = () => {
+      const u = authMockService.getCurrentUser();
+      if (u) setCurrentUser(u);
+    };
+    syncUser();
+    window.addEventListener('crm_auth_updated', syncUser);
+    window.addEventListener('storage', syncUser);
+    return () => {
+      window.removeEventListener('crm_auth_updated', syncUser);
+      window.removeEventListener('storage', syncUser);
+    };
+  }, []);
 
   const handleSignOut = async () => {
     await authMockService.logout();
     router.push('/login');
   };
+
+  const avatarSrc = !avatarError ? ((currentUser as any)?.avatar || (currentUser as any)?.avatarImage) : null;
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-200 bg-white/95 px-6 backdrop-blur-md">
@@ -89,12 +106,21 @@ export function ManagerTopHeader({
             onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
             className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-slate-100 transition-colors"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-xs font-bold text-white shadow-sm">
-              {currentUser.name
-                .split(' ')
-                .map((n) => n[0])
-                .join('')
-                .toUpperCase()}
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-xs font-bold text-white shadow-sm overflow-hidden shrink-0">
+              {avatarSrc ? (
+                <img
+                  src={avatarSrc}
+                  alt={currentUser.name}
+                  className="w-full h-full object-cover"
+                  onError={() => setAvatarError(true)}
+                />
+              ) : (
+                currentUser.name
+                  .split(' ')
+                  .map((n) => n[0])
+                  .join('')
+                  .toUpperCase()
+              )}
             </div>
           </button>
 

@@ -2075,6 +2075,9 @@ export const authMockService = {
         if (u.name === 'System Super Admin' || (u.role === 'super_admin' && (!u.name || u.name === 'System Super Admin'))) {
           u.name = 'Nafal';
         }
+        if (!u.avatar && (u as any).avatarImage) {
+          u.avatar = (u as any).avatarImage;
+        }
         if (!u.position) {
           const r = String(u.role || '').toLowerCase();
           if (r === 'super_admin' || r.includes('super')) u.position = 'CEO';
@@ -2091,6 +2094,35 @@ export const authMockService = {
       }
       return null;
     } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Immediately updates the active authenticated session in localStorage and notifies all components.
+   */
+  updateCurrentSession(updates: Partial<MockAuthUser>): MockAuthUser | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const data = localStorage.getItem('cool_crm_auth');
+      if (!data) return null;
+      const parsed = JSON.parse(data);
+      if (parsed && parsed.user) {
+        parsed.user = {
+          ...parsed.user,
+          ...updates,
+        };
+        if (updates.role) {
+          parsed.role = updates.role;
+        }
+        localStorage.setItem('cool_crm_auth', JSON.stringify(parsed));
+        window.dispatchEvent(new Event('crm_auth_updated'));
+        window.dispatchEvent(new Event('storage'));
+        return parsed.user;
+      }
+      return null;
+    } catch (e) {
+      console.error('Failed to update session:', e);
       return null;
     }
   },

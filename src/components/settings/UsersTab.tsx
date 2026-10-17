@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Users,
@@ -42,9 +42,10 @@ import { CezconUserItem, CezconProfileItem } from '@/types/settings';
 import { CEZCON_PROFILES_DATA } from '@/data/settingsMockData';
 import {
   createFirebaseAuthUser,
-  sendPasswordReset,
   updateAuthEmail,
   updateAuthPassword,
+  updateUserPasswordSecurely,
+  updateUserEmailSecurely,
 } from '@/services/firebaseAuthService';
 import { userApiService, CrmRole, CrmBackendUser } from '@/services/userApiService';
 import { ApiError } from '@/lib/apiClient';
@@ -102,14 +103,11 @@ export function UsersTab({
   const [isDeleteUserModalOpen, setIsDeleteUserModalOpen] = useState(false);
   const [assignWorkerUser, setAssignWorkerUser] = useState<CezconUserItem | null>(null);
   const [assignWorkerTab, setAssignWorkerTab] = useState<'NEW' | 'EXISTING'>('NEW');
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState<string | boolean>(false);
   const [isCreatingFirebaseUser, setIsCreatingFirebaseUser] = useState(false);
   const [isSavingUserToDb, setIsSavingUserToDb] = useState(false);
   const [userCreationError, setUserCreationError] = useState<string | null>(null);
   const [pendingFirebaseUid, setPendingFirebaseUid] = useState<string | null>(null);
-  const [passwordResetSent, setPasswordResetSent] = useState(false);
-  const [isSendingReset, setIsSendingReset] = useState(false);
-  const [passwordResetError, setPasswordResetError] = useState<string | null>(null);
 
   const [workerFormData, setWorkerFormData] = useState({
     workerCode: '',
@@ -271,6 +269,7 @@ export function UsersTab({
   // Mobile & DOB Enhancements
   const [isCountryCodeDropdownOpen, setIsCountryCodeDropdownOpen] = useState(false);
   const [countrySearchQuery, setCountrySearchQuery] = useState('');
+  const isSyncingRef = useRef(false);
 
   const [userFormData, setUserFormData] = useState({
     name: '',
@@ -861,15 +860,23 @@ export function UsersTab({
   /**
    * Fetches the authoritative staff directory from Cloudflare D1 via authenticated GET /api/users
    * and merges server profiles with localStorage records without creating duplicates.
+   * Supports silent background polling without interrupting active UI filters, forms, or pagination.
    */
-  const fetchAndMergeServerUsers = async () => {
-    setIsSyncingWithServer(true);
-    setUserFetchError(null);
+  const fetchAndMergeServerUsers = async (isSilentBackground = false) => {
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
+
+    if (!isSilentBackground) {
+      setIsSyncingWithServer(true);
+      setUserFetchError(null);
+    }
+
     try {
       const response = await userApiService.getUsers({
         limit: 100,
         scope: isEmployeeSession ? 'assignable' : undefined,
       });
+
       if (response && response.success && Array.isArray(response.users)) {
         const serverUsers = response.users;
 
@@ -923,13 +930,18 @@ export function UsersTab({
           console.error('[UsersTab] Error updating localStorage with server users:', err);
         }
       } else {
-        throw new Error('API returned an invalid or unsuccessful response');
+        if (!isSilentBackground) {
+          throw new Error('API returned an invalid or unsuccessful response');
+        }
       }
     } catch (err: unknown) {
-      console.error('[UsersTab] Failed to sync users from CRM API:', err);
-      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to retrieve staff from database';
-      setUserFetchError(msg);
+      if (!isSilentBackground) {
+        console.error('[UsersTab] Failed to sync users from CRM API:', err);
+        const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to retrieve staff from database';
+        setUserFetchError(msg);
+      }
     } finally {
+      isSyncingRef.current = false;
       setIsLoadingUsers(false);
       setIsSyncingWithServer(false);
     }
@@ -941,13 +953,42 @@ export function UsersTab({
 
     const handleLocalUpdate = () => {
       loadUnifiedUsers();
-      fetchAndMergeServerUsers();
+      fetchAndMergeServerUsers(true);
     };
 
+    // Auto-poll the authorized user-list API every 15 seconds to sync changes across laptops
+    const pollInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'hidden') {
+        fetchAndMergeServerUsers(true);
+      }
+    }, 15000);
+
+    // Refresh immediately when the browser tab becomes visible
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchAndMergeServerUsers(true);
+      }
+    };
+
+    // Refresh when the window gains focus
+    const handleFocus = () => {
+      fetchAndMergeServerUsers(true);
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+    window.addEventListener('focus', handleFocus);
     window.addEventListener('crm_users_updated', handleLocalUpdate);
     window.addEventListener('crm_admins_updated', handleLocalUpdate);
     window.addEventListener('storage', handleLocalUpdate);
+
     return () => {
+      clearInterval(pollInterval);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+      window.removeEventListener('focus', handleFocus);
       window.removeEventListener('crm_users_updated', handleLocalUpdate);
       window.removeEventListener('crm_admins_updated', handleLocalUpdate);
       window.removeEventListener('storage', handleLocalUpdate);
@@ -1254,8 +1295,6 @@ export function UsersTab({
 
   const handleEditUser = (user: CezconUserItem) => {
     setEditingUserId(user.id);
-    setPasswordResetSent(false);
-    setPasswordResetError(null);
     setUserCreationError(null);
     setPendingFirebaseUid(user.firebaseUid || null);
 
@@ -1276,11 +1315,15 @@ export function UsersTab({
       }
     }
 
+    const savedModulePermissions = user.permissions?.modules || user.modulePermissions;
+    const savedActionPermissions = user.permissions?.actions || user.actionPermissions;
+    const savedDataScope = user.permissions?.dataScope || user.dataScope;
+
     setUserFormData({
       name: user.name || '',
       email: user.email || '',
       username: (user.username || user.email || '').replace('@cooltechuae.com', '').replace(/@.*/, ''),
-      password: '', // Never expose existing or mock password in edit mode
+      password: '', // Kept empty in edit mode unless a new password is entered
       showPassword: false,
       mobileCountry,
       mobileNumber: mobileNum,
@@ -1292,22 +1335,22 @@ export function UsersTab({
       employeeType: user.employeeType || 'Sales Executive',
       assignedManagerId: String(user.managerId || user.reportsTo || user.reportingManagerId || ''),
       businessOpportunity: user.businessOpportunity || 'None selected',
-      businessOpportunityAll: true,
+      businessOpportunityAll: user.businessOpportunityAll ?? (user.businessOpportunity === 'All Works' || !user.businessOpportunity),
       designation: user.designation || user.position || user.managerType || user.employeeType || (isSuper ? 'CEO' : 'Sales Executive'),
       signatureImage: user.signatureImage || null,
-      avatarImage: user.avatarImage || null,
+      avatarImage: user.avatarImage || user.avatarUrl || null,
       loginPermission: (user.loginPermission as any) || 'Web & Mobile',
       salesVisitPermission: user.salesVisitPermission ?? false,
       store: user.store || 'None selected',
-      storeAll: false,
+      storeAll: user.storeAll ?? (user.store === 'All Stores'),
       isWorker: user.isWorker ?? false,
       monthlyTargets: user.hasTarget ?? false,
-      dataScope: user.dataScope || (isSuper ? 'all' : defaults.dataScope),
-      modulePermissions: user.modulePermissions
-        ? ({ ...defaults.modulePermissions, ...(user.modulePermissions as Record<string, boolean>) } as Record<string, boolean>)
+      dataScope: savedDataScope || (isSuper ? 'all' : defaults.dataScope),
+      modulePermissions: savedModulePermissions
+        ? ({ ...defaults.modulePermissions, ...(savedModulePermissions as Record<string, boolean>) } as Record<string, boolean>)
         : defaults.modulePermissions,
-      actionPermissions: user.actionPermissions
-        ? ({ ...defaults.actionPermissions, ...(user.actionPermissions as Record<string, boolean>) } as Record<string, boolean>)
+      actionPermissions: savedActionPermissions
+        ? ({ ...defaults.actionPermissions, ...(savedActionPermissions as Record<string, boolean>) } as Record<string, boolean>)
         : defaults.actionPermissions,
     });
     setIsAddUserModalOpen(true);
@@ -1322,7 +1365,7 @@ export function UsersTab({
 
     if (!editingUserId) {
       if (!userFormData.password.trim()) {
-        alert('Validation Error: Please enter a password.');
+        alert('Validation Error: Please enter a password for the new user.');
         return;
       }
       if (userFormData.password.trim().length < 6) {
@@ -1330,9 +1373,11 @@ export function UsersTab({
         return;
       }
     } else {
-      if (userFormData.password.trim() && userFormData.password.trim().length < 6) {
-        alert('Validation Error: Password must be at least 6 characters for Firebase Authentication.');
-        return;
+      if (userFormData.password.trim()) {
+        if (userFormData.password.trim().length < 6) {
+          alert('Validation Error: New password must be at least 6 characters for Firebase Authentication.');
+          return;
+        }
       }
     }
 
@@ -1506,19 +1551,38 @@ export function UsersTab({
         const isSuperAdmin = isEditingExistingSuperAdmin || isSuperAdminAttempt;
         const backendRole: CrmRole = isSuperAdmin ? 'SUPER_ADMIN' : isAdminUser ? 'ADMIN' : isManager ? 'MANAGER' : 'EMPLOYEE';
 
-        // If email or password updated and this is the active Firebase user, update Firebase Auth credentials
-        if (auth?.currentUser && (auth.currentUser.uid === firebaseUid || auth.currentUser.email?.toLowerCase() === existingUser?.email?.toLowerCase())) {
-          if (userFormData.password.trim()) {
-            const pwdRes = await updateAuthPassword(userFormData.password.trim());
-            if (!pwdRes.success) {
-              console.warn('[UsersTab] Could not update Firebase password directly:', pwdRes.error);
-            }
+        const isEmailChanged = Boolean(
+          existingUser?.email &&
+          userEmail &&
+          existingUser.email.toLowerCase() !== userEmail.toLowerCase()
+        );
+
+        // 1. If email updated, securely update Firebase Authentication and handle reauthentication safely
+        if (isEmailChanged) {
+          const emailRes = await updateUserEmailSecurely({
+            currentEmail: existingUser!.email,
+            newEmail: userEmail,
+            firebaseUid,
+          });
+          if (!emailRes.success) {
+            console.warn('[UsersTab] Could not update Firebase email:', emailRes.error);
+            setUserCreationError(`Email update error: ${emailRes.error || 'Failed to update Firebase email.'}`);
+            setIsSavingUserToDb(false);
+            return;
           }
-          if (userEmail && userEmail.toLowerCase() !== (existingUser?.email || '').toLowerCase()) {
-            const emailRes = await updateAuthEmail(userEmail);
-            if (!emailRes.success) {
-              console.warn('[UsersTab] Could not update Firebase email directly:', emailRes.error);
-            }
+        }
+
+        // 2. If a new password is provided, securely update Firebase Authentication
+        if (userFormData.password.trim()) {
+          const pwdRes = await updateUserPasswordSecurely({
+            email: userEmail,
+            newPassword: userFormData.password.trim(),
+            firebaseUid,
+          });
+          if (!pwdRes.success) {
+            setUserCreationError(`Password update error: ${pwdRes.error || 'Failed to update Firebase password.'}`);
+            setIsSavingUserToDb(false);
+            return;
           }
         }
 
@@ -1596,7 +1660,6 @@ export function UsersTab({
             name: userFormData.name.trim(),
             email: userEmail,
             username: fullUsername,
-            password: userFormData.password.trim() || u.password,
             position: userFormData.position || u.position,
             department: userFormData.department || u.department,
             profileType: isSuperAdmin ? 'Super Admin' : profileName,
@@ -1620,6 +1683,12 @@ export function UsersTab({
             avatarImage: userFormData.avatarImage || u.avatarImage,
             signatureImage: userFormData.signatureImage || u.signatureImage,
             loginPermission: userFormData.loginPermission || 'Web & Mobile',
+            salesVisitPermission: userFormData.salesVisitPermission,
+            businessOpportunity: userFormData.businessOpportunity,
+            businessOpportunityAll: userFormData.businessOpportunityAll,
+            store: userFormData.store,
+            storeAll: userFormData.storeAll,
+            isWorker: userFormData.isWorker,
             permissions: permissionsPayload,
           };
         }
@@ -1629,6 +1698,25 @@ export function UsersTab({
       setCezconUsersList(updated);
       try {
         localStorage.setItem('cezcon_crm_users_list', JSON.stringify(updated));
+
+        // Immediately synchronize active session if this was the logged-in user
+        const isSelf = Boolean(
+          loggedInUser &&
+          (String(loggedInUser.id) === String(editingUserId) ||
+            loggedInUser.email.toLowerCase() === userEmail.toLowerCase() ||
+            (firebaseUid && loggedInUser.firebaseUid === firebaseUid))
+        );
+        if (isSelf) {
+          authMockService.updateCurrentSession({
+            name: userFormData.name.trim(),
+            email: userEmail,
+            avatar: userFormData.avatarImage || undefined,
+            position: userFormData.position || undefined,
+            department: userFormData.department || undefined,
+            designation: userFormData.designation || undefined,
+          });
+        }
+
         window.dispatchEvent(new Event('crm_users_updated'));
         window.dispatchEvent(new Event('crm_team_updated'));
         window.dispatchEvent(new Event('crm_data_updated'));
@@ -1689,7 +1777,6 @@ export function UsersTab({
         name: userFormData.name.trim(),
         email: userEmail,
         username: fullUsername,
-        password: userFormData.password.trim(),
         firebaseUid: firebaseUid,
         position: userFormData.position || undefined,
         department: userFormData.department || (userFormData.position ? POSITION_HIERARCHY_CONFIG[userFormData.position]?.department : undefined),
@@ -1716,8 +1803,10 @@ export function UsersTab({
           userFormData.position ||
           (isManager ? userFormData.managerType : isEmployee ? resolvedEmployeeType : profileName),
         businessOpportunity: userFormData.businessOpportunity || 'All Works',
+        businessOpportunityAll: userFormData.businessOpportunityAll,
         salesVisitPermission: userFormData.salesVisitPermission ?? true,
         store: userFormData.store || 'All Stores',
+        storeAll: userFormData.storeAll,
         avatarImage: userFormData.avatarImage,
         signatureImage: userFormData.signatureImage,
         loginPermission: userFormData.loginPermission || 'Web & Mobile',
@@ -1763,7 +1852,6 @@ export function UsersTab({
               name: newUser.name,
               email: newUser.email,
               username: newUser.username,
-              password: newUser.password,
               phone: newUser.phone,
               role: 'Admin',
               organizationId: 'org_cool_tech_001',
@@ -1817,11 +1905,13 @@ export function UsersTab({
       }
     }
 
+    const wasPasswordUpdated = Boolean(editingUserId && userFormData.password.trim());
+    setUserFormData((prev) => ({ ...prev, password: '', showPassword: false }));
     setIsAddUserModalOpen(false);
     resetUserForm();
 
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    setSaveSuccess(wasPasswordUpdated ? 'User profile and credentials updated successfully.' : 'Changes saved successfully.');
+    setTimeout(() => setSaveSuccess(false), 3500);
     fetchAndMergeServerUsers();
   };
 
@@ -1948,7 +2038,7 @@ export function UsersTab({
     <div className="space-y-4">
       {saveSuccess && (
         <div className="p-3 rounded-md bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-700 flex items-center gap-2">
-          <CheckCircle className="w-4 h-4" /> Changes saved successfully.
+          <CheckCircle className="w-4 h-4" /> {typeof saveSuccess === 'string' ? saveSuccess : 'Changes saved successfully.'}
         </div>
       )}
 
@@ -2048,145 +2138,40 @@ export function UsersTab({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
-                    Password {!editingUserId && <span className="text-red-500">*</span>}
-                    {editingUserId && <span className="text-[10px] text-slate-400 font-normal ml-1">(Leave blank to retain current password)</span>}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={userFormData.showPassword ? 'text' : 'password'}
-                      required={!editingUserId}
-                      name="new_admin_user_secure_key"
-                      autoComplete="new-password"
-                      value={userFormData.password}
-                      onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
-                      placeholder={editingUserId ? 'Enter new password (optional)' : 'Enter new password'}
-                      className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 pr-8 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setUserFormData({ ...userFormData, showPassword: !userFormData.showPassword })}
-                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                    >
-                      {userFormData.showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                  {(() => {
-                    const pwd = userFormData.password || '';
-                    if (!pwd && editingUserId) return null;
-                    const hasUpperAndLower = /[a-z]/.test(pwd) && /[A-Z]/.test(pwd);
-                    const hasNumber = /[0-9]/.test(pwd);
-                    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(pwd);
-                    const hasMin8 = pwd.length >= 8;
-                    return (
-                      <div className="mt-1 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-slate-500">Password Strength:</span>
-                          <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden max-w-[120px]">
-                            <div
-                              className={`h-full transition-all duration-300 ${hasUpperAndLower && hasNumber && hasSpecial && hasMin8
-                                ? 'bg-emerald-500 w-full'
-                                : [hasUpperAndLower, hasNumber, hasSpecial, hasMin8].filter(Boolean).length >= 2
-                                  ? 'bg-amber-500 w-1/2'
-                                  : pwd.length > 0
-                                    ? 'bg-rose-400 w-1/4'
-                                    : 'w-0'
-                                }`}
-                            />
-                          </div>
-                        </div>
-                        <div className="text-[10px] space-y-0.5 pl-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className={`w-3 h-3 rounded-xs flex items-center justify-center text-[8px] font-bold ${hasUpperAndLower ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-transparent'
-                                }`}
-                            >
-                              ✓
-                            </span>
-                            <span className={hasUpperAndLower ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
-                              1 lowercase &amp; 1 uppercase
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className={`w-3 h-3 rounded-xs flex items-center justify-center text-[8px] font-bold ${hasNumber ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-transparent'
-                                }`}
-                            >
-                              ✓
-                            </span>
-                            <span className={hasNumber ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
-                              1 number (0-9)
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className={`w-3 h-3 rounded-xs flex items-center justify-center text-[8px] font-bold ${hasSpecial ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-transparent'
-                                }`}
-                            >
-                              ✓
-                            </span>
-                            <span className={hasSpecial ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
-                              1 Special Character (!@#$%^&amp;*).
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className={`w-3 h-3 rounded-xs flex items-center justify-center text-[8px] font-bold ${hasMin8 ? 'bg-emerald-600 text-white' : 'border border-slate-300 text-transparent'
-                                }`}
-                            >
-                              ✓
-                            </span>
-                            <span className={hasMin8 ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
-                              Atleast 8 Character
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {editingUserId && (
-                    <div className="mt-2 pt-2 border-t border-slate-100 space-y-1.5">
+                  {/* Dynamic Single Password Management with Eye Toggle */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      {editingUserId ? (
+                        <>
+                          Password <span className="text-[10px] text-slate-400 font-normal">(Leave blank to keep current)</span>
+                        </>
+                      ) : (
+                        <>
+                          Password <span className="text-red-500">*</span>
+                        </>
+                      )}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={userFormData.showPassword ? 'text' : 'password'}
+                        required={!editingUserId}
+                        name="crm_user_credential_key"
+                        autoComplete="new-password"
+                        value={userFormData.password}
+                        onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
+                        placeholder={editingUserId ? 'Leave blank to preserve existing password' : 'Enter password (min. 6 chars)'}
+                        className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 pr-8 text-xs text-slate-900 focus:outline-none focus:border-sky-500 font-mono"
+                      />
                       <button
                         type="button"
-                        disabled={isSendingReset || !userFormData.email}
-                        onClick={async () => {
-                          if (!userFormData.email) return;
-                          setIsSendingReset(true);
-                          setPasswordResetError(null);
-                          setPasswordResetSent(false);
-                          try {
-                            const res = await sendPasswordReset(userFormData.email);
-                            if (res.success) {
-                              setPasswordResetSent(true);
-                            } else {
-                              setPasswordResetError(res.error || 'Failed to dispatch password reset email');
-                            }
-                          } catch (err: any) {
-                            setPasswordResetError(err?.message || 'Failed to dispatch password reset email');
-                          } finally {
-                            setIsSendingReset(false);
-                          }
-                        }}
-                        className="text-xs font-semibold text-sky-600 hover:text-sky-800 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        onClick={() => setUserFormData({ ...userFormData, showPassword: !userFormData.showPassword })}
+                        className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title={userFormData.showPassword ? 'Hide password' : 'Show password'}
                       >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isSendingReset ? 'animate-spin' : ''}`} />
-                        <span>Send Password Reset Email ({userFormData.email})</span>
+                        {userFormData.showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                       </button>
-                      {passwordResetSent && (
-                        <div className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs rounded flex items-center gap-1.5">
-                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          <span>Password reset link dispatched to {userFormData.email} via Firebase Authentication.</span>
-                        </div>
-                      )}
-                      {passwordResetError && (
-                        <div className="p-2 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded flex items-center gap-1.5">
-                          <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                          <span>{passwordResetError}</span>
-                        </div>
-                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 <div>
@@ -3779,7 +3764,18 @@ export function UsersTab({
                   filteredCezconUsers.slice(0, userRowsPerPage).map((u, idx) => (
                     <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-3 text-center font-bold text-slate-800">{idx + 1}</td>
-                      <td className="py-3 px-4 font-bold text-slate-900">{u.name}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-700 shadow-2xs">
+                            {u.avatarImage ? (
+                              <img src={u.avatarImage} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              u.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
+                            )}
+                          </div>
+                          <span className="truncate">{u.name}</span>
+                        </div>
+                      </td>
                       <td className="py-3 px-4 text-slate-700">{u.email}</td>
                       <td className="py-3 px-3 text-center">
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">

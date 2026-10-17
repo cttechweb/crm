@@ -21,6 +21,11 @@ export function EnterpriseTopHeader() {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
+  const [avatarError, setAvatarError] = useState(false);
+
+  React.useEffect(() => {
+    setAvatarError(false);
+  }, [currentUser?.avatar, (currentUser as any)?.avatarImage]);
 
   React.useEffect(() => {
     const syncUser = () => {
@@ -247,8 +252,19 @@ export function EnterpriseTopHeader() {
                 onClick={() => setShowRoleDropdown(!showRoleDropdown)}
                 className="flex items-center gap-2 p-1 rounded-md hover:bg-blue-50 transition-colors cursor-pointer"
               >
-                <div className="w-7 h-7 rounded-full bg-[#2563EB] text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                  {currentUser?.name ? currentUser.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() : 'AD'}
+                <div className="w-7 h-7 rounded-full bg-[#2563EB] text-white flex items-center justify-center font-bold text-xs shadow-xs overflow-hidden shrink-0">
+                  {(!avatarError && (currentUser?.avatar || (currentUser as any)?.avatarImage)) ? (
+                    <img
+                      src={currentUser?.avatar || (currentUser as any)?.avatarImage}
+                      alt={currentUser?.name || 'User'}
+                      className="w-full h-full object-cover"
+                      onError={() => setAvatarError(true)}
+                    />
+                  ) : (
+                    <span>
+                      {currentUser?.name ? currentUser.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() : 'AD'}
+                    </span>
+                  )}
                 </div>
                 <div className="hidden sm:flex flex-col text-left">
                   <span className="text-xs font-bold text-slate-900 leading-tight">
@@ -265,12 +281,28 @@ export function EnterpriseTopHeader() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowRoleDropdown(false)} />
                   <div className="absolute right-0 mt-1.5 w-60 bg-white border border-[#E2E8F0] rounded-md shadow-xl z-50 p-2 space-y-1 animate-in fade-in duration-150">
-                    <div className="px-3 py-2 border-b border-slate-100">
-                      <p className="text-xs font-bold text-slate-900">{currentUser?.name || 'Cool Admin'}</p>
-                      <p className="text-[11px] text-slate-500 truncate">{currentUser?.email || 'cooladmin@gmail.com'}</p>
-                      <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase">
-                        {getDisplayRole(currentUser?.role, currentUser)}
-                      </span>
+                    <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-[#2563EB] text-white flex items-center justify-center font-bold text-xs shadow-xs overflow-hidden shrink-0">
+                        {(!avatarError && (currentUser?.avatar || (currentUser as any)?.avatarImage)) ? (
+                          <img
+                            src={currentUser?.avatar || (currentUser as any)?.avatarImage}
+                            alt={currentUser?.name || 'User'}
+                            className="w-full h-full object-cover"
+                            onError={() => setAvatarError(true)}
+                          />
+                        ) : (
+                          <span>
+                            {currentUser?.name ? currentUser.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() : 'AD'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-slate-900 truncate">{currentUser?.name || 'Cool Admin'}</p>
+                        <p className="text-[11px] text-slate-500 truncate">{currentUser?.email || 'cooladmin@gmail.com'}</p>
+                        <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase">
+                          {getDisplayRole(currentUser?.role, currentUser)}
+                        </span>
+                      </div>
                     </div>
 
                     {isEmployeeUser && (
