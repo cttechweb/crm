@@ -1,13 +1,14 @@
 /**
  * Staff & User Management Endpoints for cool-tech-crm-api
  * 
- * - Full staff lifecycle: GET /, POST /, PUT /:id, PATCH /:id/status
+ * - Full staff lifecycle: GET /, GET /:id, POST /, PUT /:id, PATCH /:id/status, DELETE /:id
  * - Strict authentication via authMiddleware (Firebase ID Token)
- * - Strict RBAC: Only SUPER_ADMIN and ADMIN roles are authorized to manage staff
+ * - Server-side RBAC & Dynamic Permissions enforcement
  * - Privilege escalation prevention: ADMIN cannot create, edit, or grant SUPER_ADMIN
+ * - Last-Super-Admin protection: cannot delete, demote, or deactivate the last active Super Admin
+ * - Email modification with uniqueness checking
  * - Referential integrity: reports_to must exist in users table
  * - Unique constraint enforcement: email and firebase_uid must be unique
- * - Self-lockout prevention: cannot deactivate the primary Super Admin account
  * - Parameterized SQL (zero raw string concatenation)
  */
 
@@ -19,6 +20,7 @@ import type {
   CrmRole,
 } from './types.ts';
 import { authMiddleware } from './auth.ts';
+import { requirePermission, hasPermission, resolveUserPermissions } from './permissions.ts';
 
 const VALID_CRM_ROLES: ReadonlySet<CrmRole> = new Set([
   'SUPER_ADMIN',
@@ -32,6 +34,31 @@ const usersApp = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 // All staff management routes require authenticated staff context
 usersApp.use('*', authMiddleware);
 
+/**
+ * Inspects available columns in the users table to maintain 100% backward compatibility
+ * between baseline and extended schema migrations.
+ */
+let cachedTableColumns: Set<string> | null = null;
+async function getTableColumns(db: D1Database): Promise<Set<string>> {
+  if (cachedTableColumns) return cachedTableColumns;
+  try {
+    const info = await db.prepare('PRAGMA table_info(users)').bind().all<{ name: string }>();
+    if (info.results && info.results.length > 0) {
+      cachedTableColumns = new Set(info.results.map((r) => r.name.toLowerCase()));
+      return cachedTableColumns;
+    }
+  } catch {}
+  return new Set([
+    'id', 'firebase_uid', 'email', 'full_name', 'role', 'position',
+    'department', 'team_id', 'reports_to', 'is_active', 'created_at', 'updated_at'
+  ]);
+}
+
+// Reset column cache for testing
+export function resetTableColumnsCache(): void {
+  cachedTableColumns = null;
+}
+
 // ============================================================================
 // 1. GET /api/users - List staff members with search, filters & pagination
 // ============================================================================
@@ -39,11 +66,20 @@ usersApp.get('/', async (c) => {
   const caller = c.get('user');
 
   const url = new URL(c.req.url);
+  const scopeParam = (url.searchParams.get('scope') || '').trim().toLowerCase();
+
+  // Allow assignable scope for employee self-retrieval; require users permission otherwise
+  if (scopeParam !== 'assignable' && !hasPermission(caller, 'users', 'canView')) {
+    return c.json(
+      { success: false, code: 'FORBIDDEN', message: 'Permission denied: canView access to "users" module is not permitted for your account.' },
+      403
+    );
+  }
+
   const q = (url.searchParams.get('q') || url.searchParams.get('search') || '').trim();
   const roleParam = (url.searchParams.get('role') || '').trim().toUpperCase();
   const departmentParam = (url.searchParams.get('department') || '').trim();
   const statusParam = (url.searchParams.get('status') || '').trim().toLowerCase();
-  const scopeParam = (url.searchParams.get('scope') || '').trim().toLowerCase();
   const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10) || 1);
   const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '25', 10) || 25));
   const offset = (page - 1) * limit;
@@ -103,8 +139,15 @@ usersApp.get('/', async (c) => {
     const total = countResult?.total ?? 0;
 
     // 2. Paginated records
+    const cols = await getTableColumns(c.env.DB);
+    const hasExtended = cols.has('phone');
+
+    const selectColumns = hasExtended
+      ? 'u.id, u.firebase_uid, u.email, u.full_name, u.role, u.position, u.department, u.team_id, u.reports_to, u.is_active, u.phone, u.username, u.avatar_image, u.dob, u.designation, u.business_opportunity, u.store, u.sales_visit_permission, u.permissions, u.created_at, u.updated_at'
+      : 'u.id, u.firebase_uid, u.email, u.full_name, u.role, u.position, u.department, u.team_id, u.reports_to, u.is_active, u.created_at, u.updated_at';
+
     const listQuery = `
-      SELECT u.id, u.firebase_uid, u.email, u.full_name, u.role, u.position, u.department, u.team_id, u.reports_to, u.is_active, u.created_at, u.updated_at
+      SELECT ${selectColumns}
       FROM users u
       ${whereSql}
       ORDER BY u.created_at DESC
@@ -115,9 +158,14 @@ usersApp.get('/', async (c) => {
       .bind(...listParams)
       .all<CrmUserProfile>();
 
+    const usersWithPerms = (results || []).map((u) => ({
+      ...u,
+      resolvedPermissions: resolveUserPermissions(u),
+    }));
+
     return c.json({
       success: true,
-      users: results || [],
+      users: usersWithPerms,
       pagination: {
         page,
         limit,
@@ -134,14 +182,19 @@ usersApp.get('/', async (c) => {
 // ============================================================================
 // 2. GET /api/users/:id - Fetch single staff member by ID
 // ============================================================================
-usersApp.get('/:id', async (c) => {
+usersApp.get('/:id', requirePermission('users', 'canView'), async (c) => {
   const caller = c.get('user');
   const idParam = c.req.param('id');
 
   try {
-    const user = await c.env.DB.prepare(
-      'SELECT id, firebase_uid, email, full_name, role, position, department, team_id, reports_to, is_active, created_at, updated_at FROM users WHERE id = ? LIMIT 1'
-    )
+    const cols = await getTableColumns(c.env.DB);
+    const hasExtended = cols.has('phone');
+
+    const selectColumns = hasExtended
+      ? 'id, firebase_uid, email, full_name, role, position, department, team_id, reports_to, is_active, phone, username, avatar_image, dob, designation, business_opportunity, store, sales_visit_permission, permissions, created_at, updated_at'
+      : 'id, firebase_uid, email, full_name, role, position, department, team_id, reports_to, is_active, created_at, updated_at';
+
+    const user = await c.env.DB.prepare(`SELECT ${selectColumns} FROM users WHERE id = ? LIMIT 1`)
       .bind(idParam)
       .first<CrmUserProfile>();
 
@@ -157,7 +210,13 @@ usersApp.get('/:id', async (c) => {
       return c.json({ success: false, code: 'FORBIDDEN', message: 'Managers can only view staff within their reporting scope.' }, 403);
     }
 
-    return c.json({ success: true, user });
+    return c.json({
+      success: true,
+      user: {
+        ...user,
+        resolvedPermissions: resolveUserPermissions(user),
+      },
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to retrieve staff member';
     return c.json({ success: false, code: 'DATABASE_ERROR', message }, 500);
@@ -167,7 +226,7 @@ usersApp.get('/:id', async (c) => {
 // ============================================================================
 // 3. POST /api/users - Create new staff profile in D1
 // ============================================================================
-usersApp.post('/', async (c) => {
+usersApp.post('/', requirePermission('users', 'canCreate'), async (c) => {
   const caller = c.get('user');
 
   // Employees cannot create staff accounts
@@ -194,6 +253,17 @@ usersApp.post('/', async (c) => {
   let teamId = typeof body.team_id === 'string' ? body.team_id.trim() : null;
   let reportsTo = typeof body.reports_to === 'string' && body.reports_to.trim() ? body.reports_to.trim() : null;
   const isActive = body.is_active === 0 || body.is_active === false ? 0 : 1;
+
+  // Optional profile fields
+  const phone = typeof body.phone === 'string' ? body.phone.trim() : null;
+  const username = typeof body.username === 'string' ? body.username.trim() : null;
+  const avatarImage = typeof body.avatar_image === 'string' ? body.avatar_image.trim() : null;
+  const dob = typeof body.dob === 'string' ? body.dob.trim() : null;
+  const designation = typeof body.designation === 'string' ? body.designation.trim() : null;
+  const businessOpportunity = typeof body.business_opportunity === 'string' ? body.business_opportunity.trim() : null;
+  const store = typeof body.store === 'string' ? body.store.trim() : null;
+  const salesVisitPermission = body.sales_visit_permission === 1 || body.sales_visit_permission === true ? 1 : 0;
+  const permissions = body.permissions ? (typeof body.permissions === 'string' ? body.permissions : JSON.stringify(body.permissions)) : null;
 
   // Validation
   if (!fullName) {
@@ -261,7 +331,7 @@ usersApp.post('/', async (c) => {
   }
 
   // 3. Super Admin Role Rules:
-  // Super Admins can create Admins, Managers, and Employees. Super Admin cannot be created via standard registration.
+  // Super Admins can create Admins, Managers, and Employees. Super Admin accounts cannot be created via standard registration.
   if (caller.role === 'SUPER_ADMIN') {
     if (rawRole === 'SUPER_ADMIN') {
       return c.json(
@@ -278,7 +348,7 @@ usersApp.post('/', async (c) => {
   // Check for unique email and firebase_uid
   try {
     const existing = await c.env.DB.prepare(
-      'SELECT id, email, firebase_uid FROM users WHERE email = ? OR firebase_uid = ? LIMIT 1'
+      'SELECT id, email, firebase_uid FROM users WHERE LOWER(email) = LOWER(?) OR firebase_uid = ? LIMIT 1'
     )
       .bind(email, firebaseUid)
       .first<{ id: string; email: string; firebase_uid: string }>();
@@ -330,28 +400,65 @@ usersApp.post('/', async (c) => {
     const customId = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : null;
     const id = customId || `usr_${crypto.randomUUID().replace(/-/g, '')}`;
 
-    const insertSql = `
-      INSERT INTO users (
-        id, firebase_uid, email, full_name, role, position, department, team_id, reports_to, is_active, created_at, updated_at
-      ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
-      )
-    `;
+    const cols = await getTableColumns(c.env.DB);
+    const hasExtended = cols.has('phone');
 
-    await c.env.DB.prepare(insertSql)
-      .bind(
-        id,
-        firebaseUid,
-        email,
-        fullName,
-        rawRole,
-        position,
-        department,
-        teamId,
-        reportsTo,
-        isActive
-      )
-      .run();
+    if (hasExtended) {
+      const insertSql = `
+        INSERT INTO users (
+          id, firebase_uid, email, full_name, role, position, department, team_id,
+          reports_to, is_active, phone, username, avatar_image, dob, designation,
+          business_opportunity, store, sales_visit_permission, permissions, created_at, updated_at
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+        )
+      `;
+      await c.env.DB.prepare(insertSql)
+        .bind(
+          id,
+          firebaseUid,
+          email,
+          fullName,
+          rawRole,
+          position,
+          department,
+          teamId,
+          reportsTo,
+          isActive,
+          phone,
+          username,
+          avatarImage,
+          dob,
+          designation,
+          businessOpportunity,
+          store,
+          salesVisitPermission,
+          permissions
+        )
+        .run();
+    } else {
+      const insertSql = `
+        INSERT INTO users (
+          id, firebase_uid, email, full_name, role, position, department, team_id, reports_to, is_active, created_at, updated_at
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now')
+        )
+      `;
+      await c.env.DB.prepare(insertSql)
+        .bind(
+          id,
+          firebaseUid,
+          email,
+          fullName,
+          rawRole,
+          position,
+          department,
+          teamId,
+          reportsTo,
+          isActive
+        )
+        .run();
+    }
 
     const createdUser: CrmUserProfile = {
       id,
@@ -364,6 +471,15 @@ usersApp.post('/', async (c) => {
       team_id: teamId || undefined,
       reports_to: reportsTo || undefined,
       is_active: isActive,
+      phone: phone || undefined,
+      username: username || undefined,
+      avatar_image: avatarImage || undefined,
+      dob: dob || undefined,
+      designation: designation || undefined,
+      business_opportunity: businessOpportunity || undefined,
+      store: store || undefined,
+      sales_visit_permission: salesVisitPermission,
+      permissions: permissions || undefined,
     };
 
     return c.json({ success: true, user: createdUser }, 201);
@@ -376,7 +492,7 @@ usersApp.post('/', async (c) => {
 // ============================================================================
 // 4. PUT /api/users/:id - Update existing staff profile
 // ============================================================================
-usersApp.put('/:id', async (c) => {
+usersApp.put('/:id', requirePermission('users', 'canEdit'), async (c) => {
   const caller = c.get('user');
 
   if (caller.role === 'EMPLOYEE') {
@@ -459,6 +575,82 @@ usersApp.put('/:id', async (c) => {
       targetRole = normalizedRole;
     }
 
+    // Last-Super-Admin Demotion Protection
+    if (existing.role === 'SUPER_ADMIN' && targetRole !== 'SUPER_ADMIN') {
+      const otherSuperAdmins = await c.env.DB.prepare(
+        'SELECT COUNT(*) as count FROM users WHERE role = \'SUPER_ADMIN\' AND is_active = 1 AND id != ?'
+      )
+        .bind(idParam)
+        .first<{ count: number }>();
+
+      if (!otherSuperAdmins || otherSuperAdmins.count === 0) {
+        return c.json(
+          {
+            success: false,
+            code: 'FORBIDDEN',
+            message: 'Cannot demote the last active Super Admin account.',
+          },
+          400
+        );
+      }
+    }
+
+    // Email update & uniqueness verification
+    let targetEmail = existing.email;
+    if (typeof body.email === 'string' && body.email.trim()) {
+      const candidateEmail = body.email.trim().toLowerCase();
+      if (!candidateEmail.includes('@')) {
+        return c.json(
+          { success: false, code: 'INVALID_INPUT', message: 'A valid email address is required.' },
+          400
+        );
+      }
+      if (candidateEmail !== existing.email.toLowerCase()) {
+        const emailExists = await c.env.DB.prepare(
+          'SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ? LIMIT 1'
+        )
+          .bind(candidateEmail, idParam)
+          .first<{ id: string }>();
+
+        if (emailExists) {
+          return c.json(
+            {
+              success: false,
+              code: 'EMAIL_ALREADY_EXISTS',
+              message: `A staff profile with email "${candidateEmail}" already exists in the CRM database.`,
+            },
+            409
+          );
+        }
+        targetEmail = candidateEmail;
+      }
+    }
+
+    // Firebase UID update
+    let targetFirebaseUid = existing.firebase_uid;
+    if (typeof body.firebase_uid === 'string' && body.firebase_uid.trim()) {
+      const candidateUid = body.firebase_uid.trim();
+      if (candidateUid !== existing.firebase_uid) {
+        const uidExists = await c.env.DB.prepare(
+          'SELECT id FROM users WHERE firebase_uid = ? AND id != ? LIMIT 1'
+        )
+          .bind(candidateUid, idParam)
+          .first<{ id: string }>();
+
+        if (uidExists) {
+          return c.json(
+            {
+              success: false,
+              code: 'UID_ALREADY_EXISTS',
+              message: 'This Firebase UID is already associated with another staff profile.',
+            },
+            409
+          );
+        }
+        targetFirebaseUid = candidateUid;
+      }
+    }
+
     const fullName = typeof body.full_name === 'string' && body.full_name.trim()
       ? body.full_name.trim()
       : existing.full_name;
@@ -477,7 +669,6 @@ usersApp.put('/:id', async (c) => {
 
     let reportsTo: string | null | undefined = existing.reports_to;
     if (caller.role === 'MANAGER') {
-      // Managers cannot reassign reports_to away from themselves
       reportsTo = caller.id;
     } else if (body.reports_to !== undefined) {
       const candidateReportsTo = typeof body.reports_to === 'string' && body.reports_to.trim()
@@ -509,42 +700,120 @@ usersApp.put('/:id', async (c) => {
       ? (body.is_active === 0 || body.is_active === false ? 0 : 1)
       : (existing.is_active === 1 || existing.is_active === true ? 1 : 0);
 
-    // Self-lockout check
+    // Last-Super-Admin Deactivation Protection
     if (existing.role === 'SUPER_ADMIN' && isActive === 0) {
-      return c.json(
-        { success: false, code: 'FORBIDDEN', message: 'Cannot deactivate a Super Admin account.' },
-        400
-      );
+      const otherSuperAdmins = await c.env.DB.prepare(
+        'SELECT COUNT(*) as count FROM users WHERE role = \'SUPER_ADMIN\' AND is_active = 1 AND id != ?'
+      )
+        .bind(idParam)
+        .first<{ count: number }>();
+
+      if (!otherSuperAdmins || otherSuperAdmins.count === 0) {
+        return c.json(
+          { success: false, code: 'FORBIDDEN', message: 'Cannot deactivate the last active Super Admin account.' },
+          400
+        );
+      }
     }
 
-    const updateSql = `
-      UPDATE users SET
-        full_name = ?,
-        role = ?,
-        position = ?,
-        department = ?,
-        team_id = ?,
-        reports_to = ?,
-        is_active = ?,
-        updated_at = datetime('now')
-      WHERE id = ?
-    `;
+    // Extended profile fields
+    const phone = body.phone !== undefined ? (typeof body.phone === 'string' ? body.phone.trim() : null) : existing.phone;
+    const username = body.username !== undefined ? (typeof body.username === 'string' ? body.username.trim() : null) : existing.username;
+    const avatarImage = body.avatar_image !== undefined ? (typeof body.avatar_image === 'string' ? body.avatar_image.trim() : null) : existing.avatar_image;
+    const dob = body.dob !== undefined ? (typeof body.dob === 'string' ? body.dob.trim() : null) : existing.dob;
+    const designation = body.designation !== undefined ? (typeof body.designation === 'string' ? body.designation.trim() : null) : existing.designation;
+    const businessOpportunity = body.business_opportunity !== undefined ? (typeof body.business_opportunity === 'string' ? body.business_opportunity.trim() : null) : existing.business_opportunity;
+    const store = body.store !== undefined ? (typeof body.store === 'string' ? body.store.trim() : null) : existing.store;
+    const salesVisitPermission = body.sales_visit_permission !== undefined ? (body.sales_visit_permission === 1 || body.sales_visit_permission === true ? 1 : 0) : existing.sales_visit_permission;
+    const permissions = body.permissions !== undefined ? (typeof body.permissions === 'string' ? body.permissions : JSON.stringify(body.permissions)) : existing.permissions;
 
-    await c.env.DB.prepare(updateSql)
-      .bind(
-        fullName,
-        targetRole,
-        position,
-        department,
-        teamId,
-        reportsTo,
-        isActive,
-        idParam
-      )
-      .run();
+    const cols = await getTableColumns(c.env.DB);
+    const hasExtended = cols.has('phone');
+
+    if (hasExtended) {
+      const updateSql = `
+        UPDATE users SET
+          email = ?,
+          firebase_uid = ?,
+          full_name = ?,
+          role = ?,
+          position = ?,
+          department = ?,
+          team_id = ?,
+          reports_to = ?,
+          is_active = ?,
+          phone = ?,
+          username = ?,
+          avatar_image = ?,
+          dob = ?,
+          designation = ?,
+          business_opportunity = ?,
+          store = ?,
+          sales_visit_permission = ?,
+          permissions = ?,
+          updated_at = datetime('now')
+        WHERE id = ?
+      `;
+
+      await c.env.DB.prepare(updateSql)
+        .bind(
+          targetEmail,
+          targetFirebaseUid,
+          fullName,
+          targetRole,
+          position,
+          department,
+          teamId,
+          reportsTo,
+          isActive,
+          phone,
+          username,
+          avatarImage,
+          dob,
+          designation,
+          businessOpportunity,
+          store,
+          salesVisitPermission,
+          permissions,
+          idParam
+        )
+        .run();
+    } else {
+      const updateSql = `
+        UPDATE users SET
+          email = ?,
+          firebase_uid = ?,
+          full_name = ?,
+          role = ?,
+          position = ?,
+          department = ?,
+          team_id = ?,
+          reports_to = ?,
+          is_active = ?,
+          updated_at = datetime('now')
+        WHERE id = ?
+      `;
+
+      await c.env.DB.prepare(updateSql)
+        .bind(
+          targetEmail,
+          targetFirebaseUid,
+          fullName,
+          targetRole,
+          position,
+          department,
+          teamId,
+          reportsTo,
+          isActive,
+          idParam
+        )
+        .run();
+    }
 
     const updatedUser: CrmUserProfile = {
       ...existing,
+      email: targetEmail,
+      firebase_uid: targetFirebaseUid,
       full_name: fullName,
       role: targetRole,
       position: position || undefined,
@@ -552,9 +821,24 @@ usersApp.put('/:id', async (c) => {
       team_id: teamId || undefined,
       reports_to: reportsTo || undefined,
       is_active: isActive,
+      phone: phone || undefined,
+      username: username || undefined,
+      avatar_image: avatarImage || undefined,
+      dob: dob || undefined,
+      designation: designation || undefined,
+      business_opportunity: businessOpportunity || undefined,
+      store: store || undefined,
+      sales_visit_permission: salesVisitPermission,
+      permissions: permissions || undefined,
     };
 
-    return c.json({ success: true, user: updatedUser });
+    return c.json({
+      success: true,
+      user: {
+        ...updatedUser,
+        resolvedPermissions: resolveUserPermissions(updatedUser),
+      },
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Database update failed';
     return c.json({ success: false, code: 'DATABASE_ERROR', message }, 500);
@@ -564,7 +848,7 @@ usersApp.put('/:id', async (c) => {
 // ============================================================================
 // 5. PATCH /api/users/:id/status - Activate or deactivate staff member
 // ============================================================================
-usersApp.patch('/:id/status', async (c) => {
+usersApp.patch('/:id/status', requirePermission('users', 'canEdit'), async (c) => {
   const caller = c.get('user');
 
   if (caller.role === 'EMPLOYEE') {
@@ -620,16 +904,35 @@ usersApp.patch('/:id/status', async (c) => {
       );
     }
 
-    // Self-lockout check: Cannot deactivate self if caller is Super Admin
-    if (target.role === 'SUPER_ADMIN' && nextStatus === 0 && target.id === caller.id) {
-      return c.json(
-        {
-          success: false,
-          code: 'FORBIDDEN',
-          message: 'You cannot deactivate your own Super Admin account.',
-        },
-        400
-      );
+    // Last-Super-Admin Protection: Check count of other active Super Admins
+    if (target.role === 'SUPER_ADMIN' && nextStatus === 0) {
+      if (target.id === caller.id) {
+        return c.json(
+          {
+            success: false,
+            code: 'FORBIDDEN',
+            message: 'You cannot deactivate your own Super Admin account.',
+          },
+          400
+        );
+      }
+
+      const otherSuperAdmins = await c.env.DB.prepare(
+        'SELECT COUNT(*) as count FROM users WHERE role = \'SUPER_ADMIN\' AND is_active = 1 AND id != ?'
+      )
+        .bind(idParam)
+        .first<{ count: number }>();
+
+      if (!otherSuperAdmins || otherSuperAdmins.count === 0) {
+        return c.json(
+          {
+            success: false,
+            code: 'FORBIDDEN',
+            message: 'Cannot deactivate the last active Super Admin account.',
+          },
+          400
+        );
+      }
     }
 
     await c.env.DB.prepare('UPDATE users SET is_active = ?, updated_at = datetime(\'now\') WHERE id = ?')
@@ -644,6 +947,72 @@ usersApp.patch('/:id/status', async (c) => {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to update account status';
+    return c.json({ success: false, code: 'DATABASE_ERROR', message }, 500);
+  }
+});
+
+// ============================================================================
+// 6. DELETE /api/users/:id - Delete staff member
+// ============================================================================
+usersApp.delete('/:id', requirePermission('users', 'canDelete'), async (c) => {
+  const caller = c.get('user');
+
+  if (caller.role === 'EMPLOYEE' || caller.role === 'MANAGER') {
+    return c.json(
+      { success: false, code: 'FORBIDDEN', message: 'You do not have permission to delete staff profiles.' },
+      403
+    );
+  }
+
+  const idParam = c.req.param('id');
+
+  try {
+    const target = await c.env.DB.prepare('SELECT id, role, is_active FROM users WHERE id = ? LIMIT 1')
+      .bind(idParam)
+      .first<{ id: string; role: CrmRole; is_active: number }>();
+
+    if (!target) {
+      return c.json({ success: false, code: 'NOT_FOUND', message: 'Staff member not found.' }, 404);
+    }
+
+    if (caller.role === 'ADMIN' && target.role === 'SUPER_ADMIN') {
+      return c.json(
+        { success: false, code: 'FORBIDDEN', message: 'Administrators cannot delete a Super Admin account.' },
+        403
+      );
+    }
+
+    if (target.role === 'SUPER_ADMIN') {
+      const otherSuperAdmins = await c.env.DB.prepare(
+        'SELECT COUNT(*) as count FROM users WHERE role = \'SUPER_ADMIN\' AND is_active = 1 AND id != ?'
+      )
+        .bind(idParam)
+        .first<{ count: number }>();
+
+      if (!otherSuperAdmins || otherSuperAdmins.count === 0) {
+        return c.json(
+          { success: false, code: 'FORBIDDEN', message: 'Cannot delete the last active Super Admin account.' },
+          400
+        );
+      }
+    }
+
+    // Reassign reports_to references to NULL so child records don't fail foreign key checks
+    await c.env.DB.prepare('UPDATE users SET reports_to = NULL WHERE reports_to = ?')
+      .bind(idParam)
+      .run();
+
+    await c.env.DB.prepare('DELETE FROM users WHERE id = ?')
+      .bind(idParam)
+      .run();
+
+    return c.json({
+      success: true,
+      id: idParam,
+      message: 'Staff member profile deleted successfully.',
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Database delete failed';
     return c.json({ success: false, code: 'DATABASE_ERROR', message }, 500);
   }
 });

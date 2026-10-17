@@ -18,6 +18,17 @@ export interface CrmUserProfile {
   department?: string;
   team_id?: string;
   reports_to?: string;
+  phone?: string;
+  username?: string;
+  avatar_image?: string;
+  dob?: string;
+  designation?: string;
+  business_opportunity?: string;
+  store?: string;
+  sales_visit_permission?: number | boolean;
+  permissions?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Env {

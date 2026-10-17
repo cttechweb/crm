@@ -4,7 +4,7 @@
  * Interacts directly with cool-tech-crm-api Cloudflare Worker (/api/users)
  * to persist and manage staff profiles in Cloudflare D1 (users table).
  * 
- * - Full CRUD: GET /, GET /:id, POST /, PUT /:id, PATCH /:id/status
+ * - Full CRUD: GET /, GET /:id, POST /, PUT /:id, PATCH /:id/status, DELETE /:id
  * - Automatically attaches Firebase ID Token via apiClient (requireAuth: true)
  * - Strict type definitions aligned with Cloudflare D1 users schema
  * - Explicit error classification (401, 403, 409 Conflict, validation, network)
@@ -25,6 +25,19 @@ export interface CrmBackendUser {
   team_id?: string;
   reports_to?: string;
   is_active: number | boolean;
+  phone?: string;
+  username?: string;
+  avatar_image?: string;
+  dob?: string;
+  designation?: string;
+  business_opportunity?: string;
+  store?: string;
+  sales_visit_permission?: number | boolean;
+  permissions?: string | Record<string, unknown>;
+  resolvedPermissions?: {
+    modulePermissions: Record<string, boolean>;
+    actionPermissions: Record<string, boolean>;
+  };
   created_at?: string;
   updated_at?: string;
 }
@@ -61,16 +74,36 @@ export interface CreateUserPayload {
   team_id?: string;
   reports_to?: string | null;
   is_active?: number | boolean;
+  phone?: string;
+  username?: string;
+  avatar_image?: string;
+  dob?: string;
+  designation?: string;
+  business_opportunity?: string;
+  store?: string;
+  sales_visit_permission?: number | boolean;
+  permissions?: string | Record<string, unknown>;
 }
 
 export interface UpdateUserPayload {
   full_name?: string;
+  email?: string;
+  firebase_uid?: string;
   role?: CrmRole;
   position?: string | null;
   department?: string | null;
   team_id?: string | null;
   reports_to?: string | null;
   is_active?: number | boolean;
+  phone?: string | null;
+  username?: string | null;
+  avatar_image?: string | null;
+  dob?: string | null;
+  designation?: string | null;
+  business_opportunity?: string | null;
+  store?: string | null;
+  sales_visit_permission?: number | boolean;
+  permissions?: string | Record<string, unknown>;
 }
 
 export const userApiService = {
@@ -137,4 +170,18 @@ export const userApiService = {
       timeoutMs: 10000,
     });
   },
+
+  /**
+   * Permanently deletes a staff profile from Cloudflare D1
+   */
+  async deleteUser(id: string): Promise<{ success: boolean; message: string; id: string }> {
+    return await apiClient.delete<{ success: boolean; message: string; id: string }>(
+      `/api/users/${encodeURIComponent(id)}`,
+      {
+        requireAuth: true,
+        timeoutMs: 10000,
+      }
+    );
+  },
 };
+export { ApiError };

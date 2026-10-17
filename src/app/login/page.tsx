@@ -21,6 +21,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { authMockService } from '@/services/authMockService';
+import { sendPasswordReset } from '@/services/firebaseAuthService';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,6 +35,9 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [showForgotModal, setShowForgotModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [resetFeedback, setResetFeedback] = useState<{ success?: string; error?: string } | null>(null);
   const [activePreviewTab, setActivePreviewTab] = useState<'overview' | 'sales' | 'pipeline'>('overview');
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -527,52 +531,98 @@ export default function LoginPage() {
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div className="text-center">
-              <h3 className="text-base font-bold text-slate-900">Configured Login Credentials</h3>
+              <h3 className="text-base font-bold text-slate-900">Reset Password & Account Recovery</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Your pre-configured test accounts are:
+                Enter your account email to receive a secure Firebase password reset link:
               </p>
             </div>
 
+            {/* Interactive Reset Form */}
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setResetFeedback(null);
+                if (!resetEmail.trim()) {
+                  setResetFeedback({ error: 'Please enter your registered email address.' });
+                  return;
+                }
+                setIsSendingReset(true);
+                const res = await sendPasswordReset(resetEmail.trim());
+                setIsSendingReset(false);
+                if (res.success) {
+                  setResetFeedback({ success: res.message });
+                } else {
+                  setResetFeedback({ error: res.error });
+                }
+              }}
+              className="space-y-2 pt-1"
+            >
+              <input
+                type="email"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                placeholder="Enter your registered email"
+                className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-sky-500 focus:bg-white"
+              />
+              {resetFeedback?.error && (
+                <p className="text-[11px] text-rose-600 font-medium">{resetFeedback.error}</p>
+              )}
+              {resetFeedback?.success && (
+                <p className="text-[11px] text-emerald-600 font-medium">{resetFeedback.success}</p>
+              )}
+              <button
+                type="submit"
+                disabled={isSendingReset}
+                className="w-full py-2 bg-[#002B49] hover:bg-[#001D33] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-2"
+              >
+                {isSendingReset ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Sending Reset Link...</span>
+                  </>
+                ) : (
+                  <span>Send Password Reset Email</span>
+                )}
+              </button>
+            </form>
+
+            <div className="relative my-2">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200"></div></div>
+              <div className="relative flex justify-center text-[10px] uppercase text-slate-400 bg-white px-2">Or Quick Test Login</div>
+            </div>
+
             {/* Admin Credentials */}
-            <div className="bg-sky-50/60 p-3 rounded-xl text-xs space-y-1.5 border border-sky-200/80">
-              <div className="flex items-center justify-between pb-1 border-b border-sky-100 font-bold text-sky-900">
+            <div className="bg-sky-50/60 p-2.5 rounded-xl text-xs space-y-1 border border-sky-200/80">
+              <div className="flex items-center justify-between pb-1 border-b border-sky-100 font-bold text-sky-900 text-[11px]">
                 <span>🏢 Admin Role</span>
                 <span className="text-[10px] text-sky-600 font-semibold">/admin/dashboard</span>
               </div>
-              <p className="flex justify-between">
+              <p className="flex justify-between text-[11px]">
                 <span className="text-slate-500">Email:</span>
                 <span className="font-bold text-slate-800">admin@gmail.com</span>
-              </p>
-              <p className="flex justify-between">
-                <span className="text-slate-500">Password:</span>
-                <span className="font-bold text-slate-800">admin@123</span>
               </p>
             </div>
 
             {/* Super Admin Credentials */}
-            <div className="bg-purple-50/60 p-3 rounded-xl text-xs space-y-1.5 border border-purple-200/80">
-              <div className="flex items-center justify-between pb-1 border-b border-purple-100 font-bold text-purple-900">
+            <div className="bg-purple-50/60 p-2.5 rounded-xl text-xs space-y-1 border border-purple-200/80">
+              <div className="flex items-center justify-between pb-1 border-b border-purple-100 font-bold text-purple-900 text-[11px]">
                 <span>👑 Super Admin Role</span>
                 <span className="text-[10px] text-purple-600 font-semibold">/dashboard</span>
               </div>
-              <p className="flex justify-between">
+              <p className="flex justify-between text-[11px]">
                 <span className="text-slate-500">Email:</span>
                 <span className="font-bold text-slate-800">superadmin@gmail.com</span>
               </p>
-              <p className="flex justify-between">
-                <span className="text-slate-500">Password:</span>
-                <span className="font-bold text-slate-800">super@123</span>
-              </p>
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => {
                   fillAdminCredentials();
                   setShowForgotModal(false);
                 }}
-                className="flex-1 py-2 bg-[#1677FF] hover:bg-[#0958D9] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                className="flex-1 py-1.5 bg-[#1677FF] hover:bg-[#0958D9] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
               >
                 Use Admin
               </button>
@@ -582,9 +632,19 @@ export default function LoginPage() {
                   fillSuperAdminCredentials();
                   setShowForgotModal(false);
                 }}
-                className="flex-1 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                className="flex-1 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
               >
                 Use Super Admin
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgotModal(false);
+                  setResetFeedback(null);
+                }}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>

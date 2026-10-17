@@ -82,6 +82,7 @@ export interface CezconUserItem {
     canReassign?: boolean;
     canViewFinancials?: boolean;
   };
+  permissions?: any;
 }
 
 export interface CezconProfileItem {

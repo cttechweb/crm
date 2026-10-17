@@ -1,17 +1,35 @@
 import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
-import { firebaseConfig } from '@/firebase/config';
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
+  updateEmail,
+  verifyBeforeUpdateEmail,
+  updatePassword,
+  sendPasswordResetEmail,
+  signOut,
+} from 'firebase/auth';
+import { firebaseConfig, auth as defaultAuth } from '@/firebase/config';
 
 export interface CreateFirebaseUserResult {
   success: boolean;
   uid?: string;
   error?: string;
   alreadyExists?: boolean;
+  isReconciled?: boolean;
+}
+
+export interface PasswordResetResult {
+  success: boolean;
+  message?: string;
+  error?: string;
 }
 
 /**
  * Creates a new user in Firebase Authentication directly from the frontend
- * without logging out the currently logged-in Admin/Manager user.
+ * using an isolated secondary app instance so it does NOT log out the currently
+ * active Super Admin or Administrator.
  */
 export async function createFirebaseAuthUser(
   email: string,
@@ -51,12 +69,10 @@ export async function createFirebaseAuthUser(
 
     const uid = userCredential.user.uid;
 
-    // 3. Immediately sign out the secondary auth instance so it does not persist
+    // 3. Immediately sign out the secondary auth instance
     try {
       await signOut(tempAuth);
-    } catch (signOutErr) {
-      console.warn('Could not sign out temporary auth instance:', signOutErr);
-    }
+    } catch {}
 
     return {
       success: true,
@@ -65,24 +81,25 @@ export async function createFirebaseAuthUser(
   } catch (err: any) {
     console.error('Firebase user creation error:', err);
 
-    // Handle specific Firebase error codes
     let errorMessage = 'Failed to create user in Firebase Authentication.';
     let alreadyExists = false;
 
     if (err?.code === 'auth/email-already-in-use') {
+      alreadyExists = true;
+
       // 1. If currently active user in main app matches this email, recover their UID
       try {
-        const defaultAuth = getAuth();
         if (defaultAuth.currentUser && defaultAuth.currentUser.email?.toLowerCase() === trimmedEmail.toLowerCase()) {
           return {
             success: true,
             uid: defaultAuth.currentUser.uid,
             alreadyExists: true,
+            isReconciled: true,
           };
         }
       } catch {}
 
-      // 2. Attempt to sign in to temporary auth instance with provided credentials
+      // 2. Attempt to sign in to temporary auth instance with provided credentials to verify ownership
       if (tempAuth) {
         try {
           const signinCred = await signInWithEmailAndPassword(tempAuth, trimmedEmail, trimmedPassword);
@@ -100,13 +117,15 @@ export async function createFirebaseAuthUser(
               success: true,
               uid,
               alreadyExists: true,
+              isReconciled: true,
             };
           }
-        } catch {}
+        } catch {
+          // If credentials don't match, report that email already exists
+        }
       }
 
       errorMessage = 'This email is already registered in Firebase Authentication.';
-      alreadyExists = true;
     } else if (err?.code === 'auth/weak-password') {
       errorMessage = 'The password is too weak. Firebase requires at least 6 characters.';
     } else if (err?.code === 'auth/invalid-email') {
@@ -125,9 +144,103 @@ export async function createFirebaseAuthUser(
     if (tempApp) {
       try {
         await deleteApp(tempApp);
-      } catch (delErr) {
-        // Non-blocking cleanup
-      }
+      } catch {}
     }
+  }
+}
+
+/**
+ * Dispatches an official Firebase password-reset email to the specified user address.
+ */
+export async function sendPasswordReset(email: string): Promise<PasswordResetResult> {
+  const trimmed = (email || '').trim();
+  if (!trimmed || !trimmed.includes('@')) {
+    return { success: false, error: 'A valid email address is required to send a password reset link.' };
+  }
+
+  try {
+    await sendPasswordResetEmail(defaultAuth, trimmed);
+    return {
+      success: true,
+      message: `Password reset email dispatched to ${trimmed}. The user can securely establish a new password from the email link.`,
+    };
+  } catch (err: any) {
+    console.error('Password reset dispatch error:', err);
+    let msg = 'Failed to send password reset email.';
+    if (err?.code === 'auth/user-not-found') {
+      msg = `No Firebase Authentication user found with email "${trimmed}".`;
+    } else if (err?.code === 'auth/invalid-email') {
+      msg = 'The email address is invalid.';
+    } else if (err?.message) {
+      msg = err.message;
+    }
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Updates the authentication email address for the currently authenticated Firebase user.
+ */
+export async function updateAuthEmail(newEmail: string): Promise<{ success: boolean; error?: string }> {
+  const currentUser = defaultAuth.currentUser;
+  if (!currentUser) {
+    return { success: false, error: 'No active Firebase user session found.' };
+  }
+
+  const trimmed = newEmail.trim();
+  if (!trimmed || !trimmed.includes('@')) {
+    return { success: false, error: 'A valid email address is required.' };
+  }
+
+  try {
+    // Try verifyBeforeUpdateEmail if supported by project settings, falling back to updateEmail
+    try {
+      await verifyBeforeUpdateEmail(currentUser, trimmed);
+    } catch {
+      await updateEmail(currentUser, trimmed);
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('Failed to update Firebase email:', err);
+    let msg = 'Failed to update email in Firebase Authentication.';
+    if (err?.code === 'auth/requires-recent-login') {
+      msg = 'This security-sensitive action requires recent re-authentication. Please log out and log back in before changing your email.';
+    } else if (err?.code === 'auth/email-already-in-use') {
+      msg = 'This email is already in use by another Firebase Authentication account.';
+    } else if (err?.message) {
+      msg = err.message;
+    }
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Updates the authentication password for the currently authenticated Firebase user.
+ */
+export async function updateAuthPassword(newPassword: string): Promise<{ success: boolean; error?: string }> {
+  const currentUser = defaultAuth.currentUser;
+  if (!currentUser) {
+    return { success: false, error: 'No active Firebase user session found.' };
+  }
+
+  const trimmed = newPassword.trim();
+  if (!trimmed || trimmed.length < 6) {
+    return { success: false, error: 'Password must be at least 6 characters long.' };
+  }
+
+  try {
+    await updatePassword(currentUser, trimmed);
+    return { success: true };
+  } catch (err: any) {
+    console.error('Failed to update Firebase password:', err);
+    let msg = 'Failed to update password in Firebase Authentication.';
+    if (err?.code === 'auth/requires-recent-login') {
+      msg = 'This security-sensitive action requires recent re-authentication. Please log out and log back in, or use the "Send Password Reset Link" option.';
+    } else if (err?.code === 'auth/weak-password') {
+      msg = 'Password is too weak. Please use at least 6 characters with mixed letters and numbers.';
+    } else if (err?.message) {
+      msg = err.message;
+    }
+    return { success: false, error: msg };
   }
 }

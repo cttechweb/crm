@@ -1003,4 +1003,125 @@ describe('Staff Management API Test Suite', () => {
     const d1Check = db.sqlite.prepare('SELECT * FROM users WHERE email = ?').get(attemptPayload.email);
     assert.equal(d1Check, undefined, 'No D1 row should be inserted by unauthorized orphan user');
   });
+
+  // 22. PUT /api/users/:id updates email and enforces uniqueness check
+  it('22. PUT /api/users/:id updates email and enforces uniqueness check (409 on duplicate)', async () => {
+    const superAdminToken = await createToken(ROOT_SUPERADMIN.firebase_uid, ROOT_SUPERADMIN.email);
+
+    // 1. Successfully update email
+    const resUpdate = await app.request(`/api/users/${STAFF_EMPLOYEE.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${superAdminToken}`,
+      },
+      body: JSON.stringify({
+        email: 'shaheer_updated@cooltechuae.com',
+        full_name: 'Shaheer Updated',
+      }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+
+    assert.equal(resUpdate.status, 200);
+    const bodyUpdate = await resUpdate.json();
+    assert.equal(bodyUpdate.success, true);
+    assert.equal(bodyUpdate.user.email, 'shaheer_updated@cooltechuae.com');
+
+    // 2. Reject duplicate email update (409 Conflict)
+    const resDuplicate = await app.request(`/api/users/${STAFF_EMPLOYEE.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${superAdminToken}`,
+      },
+      body: JSON.stringify({
+        email: STAFF_ADMIN.email, // already in use
+      }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+
+    assert.equal(resDuplicate.status, 409);
+    const bodyDuplicate = await resDuplicate.json();
+    assert.equal(bodyDuplicate.code, 'EMAIL_ALREADY_EXISTS');
+  });
+
+  // 23. Last-Super-Admin Demotion Protection
+  it('23. PUT /api/users/:id blocks demoting the last active Super Admin (400)', async () => {
+    const superAdminToken = await createToken(ROOT_SUPERADMIN.firebase_uid, ROOT_SUPERADMIN.email);
+
+    const res = await app.request(`/api/users/${ROOT_SUPERADMIN.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${superAdminToken}`,
+      },
+      body: JSON.stringify({
+        role: 'EMPLOYEE',
+      }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.code, 'FORBIDDEN');
+    assert.match(body.message, /Cannot demote the last active Super Admin/i);
+  });
+
+  // 24. Last-Super-Admin Deactivation Protection
+  it('24. PATCH /api/users/:id/status blocks deactivating the last active Super Admin (400)', async () => {
+    const superAdminToken = await createToken(ROOT_SUPERADMIN.firebase_uid, ROOT_SUPERADMIN.email);
+
+    const res = await app.request(`/api/users/${ROOT_SUPERADMIN.id}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${superAdminToken}`,
+      },
+      body: JSON.stringify({
+        is_active: 0,
+      }),
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.code, 'FORBIDDEN');
+  });
+
+  // 25. DELETE /api/users/:id safely deletes staff and protects Super Admin from deletion
+  it('25. DELETE /api/users/:id safely deletes staff and protects Super Admin from deletion', async () => {
+    const superAdminToken = await createToken(ROOT_SUPERADMIN.firebase_uid, ROOT_SUPERADMIN.email);
+    const adminToken = await createToken(STAFF_ADMIN.firebase_uid, STAFF_ADMIN.email);
+    const empToken = await createToken(STAFF_EMPLOYEE.firebase_uid, STAFF_EMPLOYEE.email);
+
+    // 1. Employee cannot delete staff (403)
+    const resEmp = await app.request(`/api/users/${OUTSIDE_EMPLOYEE.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${empToken}` },
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resEmp.status, 403);
+
+    // 2. Admin cannot delete Super Admin (403)
+    const resAdminDeleteSuper = await app.request(`/api/users/${ROOT_SUPERADMIN.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resAdminDeleteSuper.status, 403);
+
+    // 3. Cannot delete the last active Super Admin (400)
+    const resSuperDeleteSelf = await app.request(`/api/users/${ROOT_SUPERADMIN.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${superAdminToken}` },
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resSuperDeleteSelf.status, 400);
+
+    // 4. Super Admin can delete standard staff
+    const resSuccess = await app.request(`/api/users/${OUTSIDE_EMPLOYEE.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${superAdminToken}` },
+    }, { DB: db, FIREBASE_PROJECT_ID: PROJECT_ID });
+    assert.equal(resSuccess.status, 200);
+    const bodySuccess = await resSuccess.json();
+    assert.equal(bodySuccess.success, true);
+
+    // Verify row removed from D1
+    const checkDeleted = db.sqlite.prepare('SELECT id FROM users WHERE id = ?').get(OUTSIDE_EMPLOYEE.id);
+    assert.equal(checkDeleted, undefined);
+  });
 });

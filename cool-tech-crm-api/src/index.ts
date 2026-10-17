@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Env, AppVariables, CrmProductItem } from './types.ts';
 import { authMiddleware } from './auth.ts';
+import { resolveUserPermissions } from './permissions.ts';
 import { customersApp } from './customers.ts';
 import { leadsApp } from './leads.ts';
 import { usersApp } from './users.ts';
@@ -77,10 +78,12 @@ app.get('/api/health', (c) => {
 // 3. Protected Auth Verification Endpoint (Inspects verified server context)
 app.get('/api/auth/me', authMiddleware, (c) => {
   const user = c.get('user');
+  const perms = resolveUserPermissions(user);
   return c.json({
     success: true,
     user: {
       id: user.id,
+      firebase_uid: user.firebase_uid,
       email: user.email,
       full_name: user.full_name || null,
       role: user.role,
@@ -88,6 +91,15 @@ app.get('/api/auth/me', authMiddleware, (c) => {
       department: user.department || null,
       reports_to: user.reports_to || null,
       is_active: user.is_active,
+      phone: user.phone || null,
+      username: user.username || null,
+      avatar_image: user.avatar_image || null,
+      dob: user.dob || null,
+      designation: user.designation || null,
+      business_opportunity: user.business_opportunity || null,
+      store: user.store || null,
+      sales_visit_permission: user.sales_visit_permission ?? 0,
+      permissions: perms,
     },
   });
 });

@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# nested dependencies and wrangler
+**/node_modules/
+.wrangler/
+**/.wrangler/
+
+# backups and patches
+backups/
+**/backups/
+*.patch

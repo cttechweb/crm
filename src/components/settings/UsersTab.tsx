@@ -40,7 +40,12 @@ import { Modal } from '@/components/ui/Modal';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { CezconUserItem, CezconProfileItem } from '@/types/settings';
 import { CEZCON_PROFILES_DATA } from '@/data/settingsMockData';
-import { createFirebaseAuthUser } from '@/services/firebaseAuthService';
+import {
+  createFirebaseAuthUser,
+  sendPasswordReset,
+  updateAuthEmail,
+  updateAuthPassword,
+} from '@/services/firebaseAuthService';
 import { userApiService, CrmRole, CrmBackendUser } from '@/services/userApiService';
 import { ApiError } from '@/lib/apiClient';
 import { auth } from '@/firebase/config';
@@ -102,6 +107,9 @@ export function UsersTab({
   const [isSavingUserToDb, setIsSavingUserToDb] = useState(false);
   const [userCreationError, setUserCreationError] = useState<string | null>(null);
   const [pendingFirebaseUid, setPendingFirebaseUid] = useState<string | null>(null);
+  const [passwordResetSent, setPasswordResetSent] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [passwordResetError, setPasswordResetError] = useState<string | null>(null);
 
   const [workerFormData, setWorkerFormData] = useState({
     workerCode: '',
@@ -381,6 +389,9 @@ export function UsersTab({
   const availablePositionsForSession = useMemo(() => {
     const allPositions = Array.from(new Set([...ALL_ORGANIZATIONAL_POSITIONS, ...customPositions]));
     if (isSuperAdminSession) {
+      if (!editingUserId) {
+        return allPositions.filter((pos) => pos !== 'CEO');
+      }
       return allPositions;
     }
     if (isAdminSession) {
@@ -402,7 +413,7 @@ export function UsersTab({
       return allPositions.filter((p) => !['CEO', 'COO', 'CSO', 'CPO'].includes(p));
     }
     return allPositions;
-  }, [isSuperAdminSession, isAdminSession, isManagerSession, loggedInUser, customPositions]);
+  }, [isSuperAdminSession, isAdminSession, isManagerSession, loggedInUser, customPositions, editingUserId]);
 
   // Derive which employee type this manager's department maps to
   const managerDeptType = useMemo(() => {
@@ -807,21 +818,19 @@ export function UsersTab({
     const isActive = backendUser.is_active === 1 || backendUser.is_active === true;
     const statusStr = isActive ? 'Active' : 'Inactive';
 
-    const profileType = existingLocal?.profileType || (
-      isSuperAdmin ? 'Admin' :
-      isAdmin ? 'Admin' :
-      backendUser.position || displayRole
-    );
+    const profileType = isSuperAdmin
+      ? 'Super Admin'
+      : (existingLocal?.profileType || (isAdmin ? 'Admin' : backendUser.position || displayRole));
 
     return {
       // Preserve rich non-server local fields if existing
       ...(existingLocal || {}),
 
-      // Authoritative server data OVERWRITES stale local data (Rule 5)
+      // Authoritative server data OVERWRITES stale local data
       id: backendUser.id,
       name: backendUser.full_name || existingLocal?.name || backendUser.email,
       email: backendUser.email,
-      username: existingLocal?.username || backendUser.email,
+      username: backendUser.username || existingLocal?.username || backendUser.email,
       firebaseUid: backendUser.firebase_uid || existingLocal?.firebaseUid,
       role: displayRole,
       position: backendUser.position || existingLocal?.position,
@@ -835,11 +844,17 @@ export function UsersTab({
       isAdmin: isAdmin,
       isWorker: existingLocal?.isWorker ?? isEmployee,
       profileType: profileType,
-      designation: backendUser.position || existingLocal?.designation || profileType,
-      phone: existingLocal?.phone || '+971 50 123 4567',
+      designation: backendUser.designation || backendUser.position || existingLocal?.designation || profileType,
+      phone: backendUser.phone || existingLocal?.phone || '+971 50 123 4567',
+      dob: backendUser.dob || existingLocal?.dob,
+      avatarImage: backendUser.avatar_image || existingLocal?.avatarImage,
+      businessOpportunity: backendUser.business_opportunity || existingLocal?.businessOpportunity || 'All Works',
+      store: backendUser.store || existingLocal?.store || 'All Stores',
+      salesVisitPermission: backendUser.sales_visit_permission !== undefined ? (backendUser.sales_visit_permission === 1 || backendUser.sales_visit_permission === true) : existingLocal?.salesVisitPermission,
       avatarBg: existingLocal?.avatarBg || (isSuperAdmin ? 'bg-purple-600' : isAdmin ? 'bg-indigo-600' : isManager ? 'bg-blue-600' : 'bg-emerald-600'),
       loginPermission: existingLocal?.loginPermission || 'Web & Mobile',
       isServerRecord: true,
+      permissions: backendUser.permissions || existingLocal?.permissions,
     };
   };
 
@@ -991,6 +1006,12 @@ export function UsersTab({
     const combined = Array.from(new Set([...base, ...profileOptionsList, ...dynamic]));
 
     if (isSuperAdminSession) {
+      if (!editingUserId) {
+        return combined.filter((p) => {
+          const l = p.toLowerCase().trim();
+          return !l.includes('super admin') && !l.includes('superadmin') && !l.includes('super_admin');
+        });
+      }
       return combined;
     }
     if (isAdminSession) {
@@ -1016,7 +1037,7 @@ export function UsersTab({
       const l = p.toLowerCase().trim();
       return !l.includes('admin') && !l.includes('manager') && !l.includes('super');
     });
-  }, [isSuperAdminSession, isAdminSession, isManagerSession, profilesList, profileOptionsList]);
+  }, [isSuperAdminSession, isAdminSession, isManagerSession, profilesList, profileOptionsList, editingUserId]);
 
   const filteredProfileOptions = useMemo(() => {
     if (!profileSearchQuery.trim()) return availableProfileOptions;
@@ -1233,29 +1254,46 @@ export function UsersTab({
 
   const handleEditUser = (user: CezconUserItem) => {
     setEditingUserId(user.id);
+    setPasswordResetSent(false);
+    setPasswordResetError(null);
+    setUserCreationError(null);
+    setPendingFirebaseUid(user.firebaseUid || null);
+
+    const isSuper = user.role === 'Super Admin' || (user.profileType || '').toLowerCase().includes('super');
     const defaults = resolveDefaultPermissions(
-      user.profileType || 'Sales',
+      user.profileType || (isSuper ? 'Admin' : 'Sales'),
       undefined,
       user.managerType || user.employeeType
     );
+
+    let mobileNum = (user.phone || '').trim();
+    let mobileCountry = '+971';
+    for (const c of COUNTRY_CODES) {
+      if (mobileNum.startsWith(c.code)) {
+        mobileCountry = c.code;
+        mobileNum = mobileNum.replace(c.code, '').trim();
+        break;
+      }
+    }
+
     setUserFormData({
       name: user.name || '',
       email: user.email || '',
-      username: (user.username || '').replace('@cooltechuae.com', ''),
-      password: user.password || 'password@123',
+      username: (user.username || user.email || '').replace('@cooltechuae.com', '').replace(/@.*/, ''),
+      password: '', // Never expose existing or mock password in edit mode
       showPassword: false,
-      mobileCountry: '+971',
-      mobileNumber: (user.phone || '').replace('+971', '').trim(),
+      mobileCountry,
+      mobileNumber: mobileNum,
       dob: user.dob || '',
-      position: user.position || '',
-      department: user.department || '',
-      profile: user.profileType || 'Select Profile',
+      position: user.position || (isSuper ? 'CEO' : ''),
+      department: user.department || (isSuper ? 'Executive Operations' : ''),
+      profile: isSuper ? 'Super Admin' : (user.profileType || 'Select Profile'),
       managerType: user.managerType || 'Sales Manager',
       employeeType: user.employeeType || 'Sales Executive',
       assignedManagerId: String(user.managerId || user.reportsTo || user.reportingManagerId || ''),
       businessOpportunity: user.businessOpportunity || 'None selected',
       businessOpportunityAll: true,
-      designation: user.designation || user.managerType || user.employeeType || 'Sales Executive',
+      designation: user.designation || user.position || user.managerType || user.employeeType || (isSuper ? 'CEO' : 'Sales Executive'),
       signatureImage: user.signatureImage || null,
       avatarImage: user.avatarImage || null,
       loginPermission: (user.loginPermission as any) || 'Web & Mobile',
@@ -1264,7 +1302,7 @@ export function UsersTab({
       storeAll: false,
       isWorker: user.isWorker ?? false,
       monthlyTargets: user.hasTarget ?? false,
-      dataScope: user.dataScope || defaults.dataScope,
+      dataScope: user.dataScope || (isSuper ? 'all' : defaults.dataScope),
       modulePermissions: user.modulePermissions
         ? ({ ...defaults.modulePermissions, ...(user.modulePermissions as Record<string, boolean>) } as Record<string, boolean>)
         : defaults.modulePermissions,
@@ -1282,14 +1320,20 @@ export function UsersTab({
       return;
     }
 
-    if (!userFormData.password.trim()) {
-      alert('Validation Error: Please enter a password.');
-      return;
-    }
-
-    if (userFormData.password.trim().length < 6) {
-      alert('Validation Error: Password must be at least 6 characters for Firebase Authentication.');
-      return;
+    if (!editingUserId) {
+      if (!userFormData.password.trim()) {
+        alert('Validation Error: Please enter a password.');
+        return;
+      }
+      if (userFormData.password.trim().length < 6) {
+        alert('Validation Error: Password must be at least 6 characters for Firebase Authentication.');
+        return;
+      }
+    } else {
+      if (userFormData.password.trim() && userFormData.password.trim().length < 6) {
+        alert('Validation Error: Password must be at least 6 characters for Firebase Authentication.');
+        return;
+      }
     }
 
     if (isDobInFuture) {
@@ -1318,6 +1362,11 @@ export function UsersTab({
     }
 
     const isSuperAdminAttempt = profileName.toLowerCase().includes('super') || userFormData.position === 'CEO';
+    if (!editingUserId && isSuperAdminAttempt) {
+      alert('Authority Restriction: Super Admin accounts cannot be created via standard registration. Please select an Admin, Manager, or Employee role.');
+      return;
+    }
+
     if (isSuperAdminAttempt && !isSuperAdminSession) {
       alert('Authority Restriction: Only Super Admin can create or manage Super Admin / CEO accounts.');
       return;
@@ -1336,14 +1385,22 @@ export function UsersTab({
     }
     const isEmployee = !isAdminUser && !isManager && !isSuperAdminAttempt;
 
-    const authCheck = validateUserCreationAuthority(
-      loggedInUser,
-      profileName,
-      isSuperAdminAttempt ? 'super_admin' : isAdminUser ? 'admin' : isManager ? 'manager' : 'employee'
-    );
-    if (!authCheck.allowed) {
-      alert(authCheck.error || 'Authority Restriction: Unauthorized action.');
-      return;
+    const isEditingExistingSuperAdmin = editingUserId ? (
+      cezconUsersList.some(
+        (u) => String(u.id) === String(editingUserId) && (u.role === 'Super Admin' || (u.profileType || '').toLowerCase().includes('super'))
+      )
+    ) : false;
+
+    if (!isEditingExistingSuperAdmin) {
+      const authCheck = validateUserCreationAuthority(
+        loggedInUser,
+        profileName,
+        isSuperAdminAttempt ? 'super_admin' : isAdminUser ? 'admin' : isManager ? 'manager' : 'employee'
+      );
+      if (!authCheck.allowed) {
+        alert(authCheck.error || 'Authority Restriction: Unauthorized action.');
+        return;
+      }
     }
 
     // For manager sessions: force the employee type to match the manager's own department
@@ -1387,7 +1444,7 @@ export function UsersTab({
       }
     }
 
-    if (!firebaseUid) {
+    if (!firebaseUid && !editingUserId) {
       // Pre-flight check: ensure active administrator has a valid Firebase session before provisioning
       if (!auth?.currentUser) {
         alert('Authentication Session Required: No active Firebase session found for your administrator account. Please log in with your administrator credentials to create and save staff profiles to the database.');
@@ -1406,9 +1463,14 @@ export function UsersTab({
           firebaseUid = fbResult.uid;
           setPendingFirebaseUid(firebaseUid);
         } else if (fbResult.alreadyExists) {
-          setUserCreationError('This email is already registered in Firebase Authentication. Please verify the email address or manage the existing account.');
-          setIsCreatingFirebaseUser(false);
-          return;
+          if (fbResult.uid) {
+            firebaseUid = fbResult.uid;
+            setPendingFirebaseUid(firebaseUid);
+          } else {
+            setUserCreationError('This email is already registered in Firebase Authentication. Please verify the email address or manage the existing account.');
+            setIsCreatingFirebaseUser(false);
+            return;
+          }
         } else if (fbResult.error) {
           setUserCreationError(fbResult.error);
           setIsCreatingFirebaseUser(false);
@@ -1429,21 +1491,56 @@ export function UsersTab({
       return;
     }
 
+    const permissionsPayload = {
+      dataScope: userFormData.dataScope,
+      modules: userFormData.modulePermissions,
+      actions: userFormData.actionPermissions,
+    };
+
     if (editingUserId) {
       setIsSavingUserToDb(true);
       setUserCreationError(null);
       const existingUser = cezconUsersList.find((u) => String(u.id) === String(editingUserId));
       const currentIsActive = existingUser?.isActive !== undefined ? (existingUser.isActive ? 1 : 0) : (existingUser?.status === 'Inactive' ? 0 : 1);
       try {
-        const backendRole: CrmRole = isSuperAdminAttempt ? 'SUPER_ADMIN' : isAdminUser ? 'ADMIN' : isManager ? 'MANAGER' : 'EMPLOYEE';
+        const isSuperAdmin = isEditingExistingSuperAdmin || isSuperAdminAttempt;
+        const backendRole: CrmRole = isSuperAdmin ? 'SUPER_ADMIN' : isAdminUser ? 'ADMIN' : isManager ? 'MANAGER' : 'EMPLOYEE';
+
+        // If email or password updated and this is the active Firebase user, update Firebase Auth credentials
+        if (auth?.currentUser && (auth.currentUser.uid === firebaseUid || auth.currentUser.email?.toLowerCase() === existingUser?.email?.toLowerCase())) {
+          if (userFormData.password.trim()) {
+            const pwdRes = await updateAuthPassword(userFormData.password.trim());
+            if (!pwdRes.success) {
+              console.warn('[UsersTab] Could not update Firebase password directly:', pwdRes.error);
+            }
+          }
+          if (userEmail && userEmail.toLowerCase() !== (existingUser?.email || '').toLowerCase()) {
+            const emailRes = await updateAuthEmail(userEmail);
+            if (!emailRes.success) {
+              console.warn('[UsersTab] Could not update Firebase email directly:', emailRes.error);
+            }
+          }
+        }
+
         try {
           await userApiService.updateUser(String(editingUserId), {
+            email: userEmail,
             full_name: userFormData.name.trim(),
             role: backendRole,
             position: userFormData.position || undefined,
             department: userFormData.department || (userFormData.position ? POSITION_HIERARCHY_CONFIG[userFormData.position]?.department : undefined),
             reports_to: finalReportsTo,
             is_active: currentIsActive,
+            firebase_uid: firebaseUid,
+            phone: userFormData.mobileNumber ? `${userFormData.mobileCountry} ${userFormData.mobileNumber}` : undefined,
+            username: fullUsername,
+            avatar_image: userFormData.avatarImage || undefined,
+            dob: userFormData.dob || undefined,
+            designation: userFormData.designation || undefined,
+            business_opportunity: userFormData.businessOpportunity || undefined,
+            store: userFormData.store || undefined,
+            sales_visit_permission: userFormData.salesVisitPermission ? 1 : 0,
+            permissions: permissionsPayload,
           });
         } catch (updateErr: unknown) {
           // If profile does not exist in D1 yet, seamlessly create it if we have a Firebase UID
@@ -1458,6 +1555,15 @@ export function UsersTab({
               department: userFormData.department || (userFormData.position ? POSITION_HIERARCHY_CONFIG[userFormData.position]?.department : undefined),
               reports_to: finalReportsTo,
               is_active: currentIsActive,
+              phone: userFormData.mobileNumber ? `${userFormData.mobileCountry} ${userFormData.mobileNumber}` : undefined,
+              username: fullUsername,
+              avatar_image: userFormData.avatarImage || undefined,
+              dob: userFormData.dob || undefined,
+              designation: userFormData.designation || undefined,
+              business_opportunity: userFormData.businessOpportunity || undefined,
+              store: userFormData.store || undefined,
+              sales_visit_permission: userFormData.salesVisitPermission ? 1 : 0,
+              permissions: permissionsPayload,
             });
           } else {
             throw updateErr;
@@ -1482,6 +1588,7 @@ export function UsersTab({
         currentList = cezconUsersList;
       }
 
+      const isSuperAdmin = isEditingExistingSuperAdmin || isSuperAdminAttempt;
       const updated = currentList.map((u) => {
         if (String(u.id) === String(editingUserId)) {
           return {
@@ -1489,10 +1596,10 @@ export function UsersTab({
             name: userFormData.name.trim(),
             email: userEmail,
             username: fullUsername,
-            password: userFormData.password.trim(),
+            password: userFormData.password.trim() || u.password,
             position: userFormData.position || u.position,
             department: userFormData.department || u.department,
-            profileType: profileName,
+            profileType: isSuperAdmin ? 'Super Admin' : profileName,
             managerType: isManager ? userFormData.managerType : undefined,
             employeeType: isEmployee ? resolvedEmployeeType : undefined,
             managerId: effectiveManagerId,
@@ -1501,7 +1608,8 @@ export function UsersTab({
             dataScope: userFormData.dataScope,
             modulePermissions: userFormData.modulePermissions,
             actionPermissions: userFormData.actionPermissions,
-            isAdmin: isAdminUser,
+            isAdmin: isAdminUser || isSuperAdmin,
+            role: isSuperAdmin ? 'Super Admin' : (isAdminUser ? 'Admin' : isManager ? 'Manager' : 'Employee'),
             hasTarget: userFormData.monthlyTargets,
             designation:
               userFormData.designation ||
@@ -1512,6 +1620,7 @@ export function UsersTab({
             avatarImage: userFormData.avatarImage || u.avatarImage,
             signatureImage: userFormData.signatureImage || u.signatureImage,
             loginPermission: userFormData.loginPermission || 'Web & Mobile',
+            permissions: permissionsPayload,
           };
         }
         return u;
@@ -1528,8 +1637,8 @@ export function UsersTab({
         console.error(err);
       }
     } else {
-      const resolvedRole = isSuperAdminAttempt ? 'Super Admin' : isAdminUser ? 'Admin' : isManager ? 'Manager' : 'Employee';
-      const backendRole: CrmRole = isSuperAdminAttempt ? 'SUPER_ADMIN' : isAdminUser ? 'ADMIN' : isManager ? 'MANAGER' : 'EMPLOYEE';
+      const resolvedRole = isAdminUser ? 'Admin' : isManager ? 'Manager' : 'Employee';
+      const backendRole: CrmRole = isAdminUser ? 'ADMIN' : isManager ? 'MANAGER' : 'EMPLOYEE';
       const newUserId = `usr_${Date.now()}`;
 
       // Persist to Cloudflare D1 via authenticated Worker API
@@ -1547,6 +1656,15 @@ export function UsersTab({
           team_id: isManager || isEmployee ? (managerDeptType ? `team_${managerDeptType.toLowerCase().replace(/\s+/g, '_')}` : undefined) : undefined,
           reports_to: finalReportsTo,
           is_active: 1,
+          phone: userFormData.mobileNumber ? `${userFormData.mobileCountry} ${userFormData.mobileNumber}` : undefined,
+          username: fullUsername,
+          avatar_image: userFormData.avatarImage || undefined,
+          dob: userFormData.dob || undefined,
+          designation: userFormData.designation || undefined,
+          business_opportunity: userFormData.businessOpportunity || undefined,
+          store: userFormData.store || undefined,
+          sales_visit_permission: userFormData.salesVisitPermission ? 1 : 0,
+          permissions: permissionsPayload,
         });
 
         // Clear pending UID once confirmed saved in D1
@@ -1744,11 +1862,36 @@ export function UsersTab({
     const targetEmail = (userToDelete.email || '').toLowerCase();
     const targetUsername = (userToDelete.username || '').toLowerCase();
 
-    // 0. Automatically update CRM D1 database (deactivate account)
+    // Prevent deleting the last active Super Admin
+    const isSuperAdminTarget =
+      userToDelete.role === 'Super Admin' ||
+      (userToDelete.profileType || '').toLowerCase().includes('super');
+    if (isSuperAdminTarget) {
+      const activeSuperAdmins = cezconUsersList.filter(
+        (u) =>
+          (u.role === 'Super Admin' || (u.profileType || '').toLowerCase().includes('super')) &&
+          u.status === 'Active'
+      );
+      if (activeSuperAdmins.length <= 1) {
+        alert('Action Denied: Cannot delete the last active Super Admin account. The system must always retain at least one active Super Admin.');
+        setIsDeleteUserModalOpen(false);
+        setUserToDelete(null);
+        return;
+      }
+    }
+
+    // 0. Automatically update CRM D1 database (safe delete / cleanup via backend API)
     try {
-      await userApiService.updateUserStatus(String(userToDelete.id), 0);
-    } catch (err) {
-      console.warn('[UsersTab] Could not deactivate user in D1:', err);
+      await userApiService.deleteUser(String(userToDelete.id));
+    } catch (err: unknown) {
+      console.warn('[UsersTab] Could not delete user in D1:', err);
+      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Database delete failed';
+      if (err instanceof ApiError && (err.status === 400 || err.status === 403)) {
+        alert(`Deletion Denied: ${msg}`);
+        setIsDeleteUserModalOpen(false);
+        setUserToDelete(null);
+        return;
+      }
     }
 
     // 1. Update deleted registry in localStorage
@@ -1798,6 +1941,7 @@ export function UsersTab({
     }
     setUserToDelete(null);
     setIsDeleteUserModalOpen(false);
+    fetchAndMergeServerUsers();
   };
 
   return (
@@ -1813,7 +1957,7 @@ export function UsersTab({
           <div className="flex items-center justify-between px-4 py-2.5 bg-[#F1F5F9] border-b border-slate-200">
             <div className="flex items-center gap-2 font-bold text-xs text-slate-800">
               <User className="w-4 h-4 text-slate-700" />
-              <span>Add User</span>
+              <span>{editingUserId ? 'Edit User' : 'Add User'}</span>
             </div>
             <button
               type="button"
@@ -1905,17 +2049,18 @@ export function UsersTab({
 
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">
-                    Password <span className="text-red-500">*</span>
+                    Password {!editingUserId && <span className="text-red-500">*</span>}
+                    {editingUserId && <span className="text-[10px] text-slate-400 font-normal ml-1">(Leave blank to retain current password)</span>}
                   </label>
                   <div className="relative">
                     <input
                       type={userFormData.showPassword ? 'text' : 'password'}
-                      required
+                      required={!editingUserId}
                       name="new_admin_user_secure_key"
                       autoComplete="new-password"
                       value={userFormData.password}
                       onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
-                      placeholder="Enter new password"
+                      placeholder={editingUserId ? 'Enter new password (optional)' : 'Enter new password'}
                       className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 pr-8 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
                     />
                     <button
@@ -1928,6 +2073,7 @@ export function UsersTab({
                   </div>
                   {(() => {
                     const pwd = userFormData.password || '';
+                    if (!pwd && editingUserId) return null;
                     const hasUpperAndLower = /[a-z]/.test(pwd) && /[A-Z]/.test(pwd);
                     const hasNumber = /[0-9]/.test(pwd);
                     const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(pwd);
@@ -1998,6 +2144,49 @@ export function UsersTab({
                       </div>
                     );
                   })()}
+
+                  {editingUserId && (
+                    <div className="mt-2 pt-2 border-t border-slate-100 space-y-1.5">
+                      <button
+                        type="button"
+                        disabled={isSendingReset || !userFormData.email}
+                        onClick={async () => {
+                          if (!userFormData.email) return;
+                          setIsSendingReset(true);
+                          setPasswordResetError(null);
+                          setPasswordResetSent(false);
+                          try {
+                            const res = await sendPasswordReset(userFormData.email);
+                            if (res.success) {
+                              setPasswordResetSent(true);
+                            } else {
+                              setPasswordResetError(res.error || 'Failed to dispatch password reset email');
+                            }
+                          } catch (err: any) {
+                            setPasswordResetError(err?.message || 'Failed to dispatch password reset email');
+                          } finally {
+                            setIsSendingReset(false);
+                          }
+                        }}
+                        className="text-xs font-semibold text-sky-600 hover:text-sky-800 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSendingReset ? 'animate-spin' : ''}`} />
+                        <span>Send Password Reset Email ({userFormData.email})</span>
+                      </button>
+                      {passwordResetSent && (
+                        <div className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs rounded flex items-center gap-1.5">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>Password reset link dispatched to {userFormData.email} via Firebase Authentication.</span>
+                        </div>
+                      )}
+                      {passwordResetError && (
+                        <div className="p-2 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                          <span>{passwordResetError}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -3402,8 +3591,19 @@ export function UsersTab({
               </div>
             </div>
 
-            {/* Back Button */}
-            <div className="flex justify-end pt-2">
+            {/* Action Buttons */}
+            <div className="flex justify-end items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const targetUser = activeViewUser;
+                  handleCloseUserDetails();
+                  handleEditUser(targetUser);
+                }}
+                className="px-4 py-1.5 rounded bg-[#002B49] hover:bg-[#001D33] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <span>Edit User</span>
+              </button>
               <button
                 type="button"
                 onClick={handleCloseUserDetails}
