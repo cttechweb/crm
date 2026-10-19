@@ -282,6 +282,7 @@ export default function ManagerDashboardPage() {
               const uemail = String(u.email || '').toLowerCase();
               const uuser = String(u.username || '').toLowerCase();
               if (deletedSet.has(uid) || deletedSet.has(uemail) || deletedSet.has(uuser)) return false;
+              if (u.status === 'Inactive' || u.status === 'inactive' || u.is_active === 0 || u.isActive === false) return false;
 
               const uMgrId = String(u.managerId || u.reportingManagerId || '').toLowerCase();
               const uEmpType = String(u.employeeType || u.designation || '').toLowerCase();

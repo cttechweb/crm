@@ -176,7 +176,7 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
       amount: oppAmount,
       stage: 'Opportunity' as const,
       probability: 50,
-      owner: currentUser?.name || 'shaheer',
+      owner: currentUser?.name || '',
       expectedClose: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     };
 
@@ -538,7 +538,7 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
       vatAmount: calculatedVat,
       totalAmount: grandTotal,
       status: quoteToEdit?.status || 'Approved',
-      owner: quoteToEdit?.owner || currentUser?.name || 'shaheer',
+      owner: quoteToEdit?.owner || currentUser?.name || '',
       itemsCount: quoteItems.length,
       items: quoteItems,
     };

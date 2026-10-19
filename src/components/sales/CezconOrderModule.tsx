@@ -122,7 +122,7 @@ export function CezconOrderModule() {
   const [contactPerson, setContactPerson] = useState('');
 
   // Right Column
-  const [orderOwner, setOrderOwner] = useState(currentUser?.name || 'Nafal');
+  const [orderOwner, setOrderOwner] = useState(currentUser?.name || '');
   const [isQuickAddOwnerOpen, setIsQuickAddOwnerOpen] = useState(false);
   const [newOwnerName, setNewOwnerName] = useState('');
   const [customOwners, setCustomOwners] = useState<string[]>(() => {
@@ -133,13 +133,16 @@ export function CezconOrderModule() {
           localStorage.getItem('crm_opportunity_owners');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const LEGACY_MOCKS = new Set(['nafal', 'shaheer', 'mohammed ishaq', 'super admin']);
+            return parsed.filter((name: string) => !LEGACY_MOCKS.has(String(name).toLowerCase().trim()));
+          }
         }
       } catch (e) {
         console.error(e);
       }
     }
-    return ['Nafal', 'Shaheer', 'Mohammed Ishaq', 'Super Admin'];
+    return [];
   });
 
   const handleQuickAddOwner = (e: React.FormEvent) => {
@@ -503,7 +506,7 @@ export function CezconOrderModule() {
     setOrderType('Select Type');
     setDeliveryMethod('');
     setContactPerson('');
-    setOrderOwner(currentUser?.name || 'Nafal');
+    setOrderOwner(currentUser?.name || '');
     setPointOfContact('Select Customer First');
     setSourceName('');
     setOrderNumber(`CTSO#${Math.floor(3900 + Math.random() * 100)}`);
@@ -547,7 +550,7 @@ export function CezconOrderModule() {
     setOrderNumber(order.orderNumber || '');
     setOpportunityNumber(order.opportunityRef || `CTEQ#${Math.floor(7200 + Math.random() * 100)}`);
     setOrderDate(order.orderDate || '14-10-2026');
-    setOrderOwner(order.owner || currentUser?.name || 'Nafal');
+    setOrderOwner(order.owner || currentUser?.name || '');
     setContactPerson(order.contactPerson || '');
     setOrderStatus(order.status || 'Completed');
     setOrderType(order.category || 'Supply And Installation');
@@ -1075,20 +1078,25 @@ export function CezconOrderModule() {
                       required
                       className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                     >
-                      <option value="Nafal">Nafal</option>
-                      <option value="Shaheer">Shaheer</option>
-                      <option value="Mohammed Ishaq">Mohammed Ishaq</option>
-                      <option value="Super Admin">Super Admin</option>
-                      {customOwners?.filter((o) => !['Nafal', 'Shaheer', 'Mohammed Ishaq', 'Super Admin'].includes(o)).map((owner) => (
-                        <option key={owner} value={owner}>
-                          {owner}
-                        </option>
-                      ))}
-                      {users?.filter((u) => !['Nafal', 'Shaheer', 'Mohammed Ishaq', 'Super Admin'].includes(u.name) && !customOwners.includes(u.name)).map((u) => (
-                        <option key={u.id} value={u.name}>
-                          {u.name}
-                        </option>
-                      ))}
+                      {users
+                        ?.filter((u) => u.status === 'Active' || u.status === undefined)
+                        .map((u) => (
+                          <option key={u.id} value={u.name}>
+                            {u.name}
+                          </option>
+                        ))}
+                      {customOwners
+                        ?.filter((o) => !users?.some((u) => u.name === o))
+                        .map((owner) => (
+                          <option key={owner} value={owner}>
+                            {owner}
+                          </option>
+                        ))}
+                      {orderOwner &&
+                        !users?.some((u) => u.name === orderOwner) &&
+                        !customOwners?.includes(orderOwner) && (
+                          <option value={orderOwner}>{orderOwner}</option>
+                        )}
                     </select>
                   </div>
                   <button
@@ -2387,10 +2395,13 @@ export function CezconOrderModule() {
                 className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
               >
                 <option value="All">All Owners</option>
-                <option value="Nafal">Nafal</option>
-                <option value="Shaheer">Shaheer</option>
-                <option value="Mohammed Ishaq">Mohammed Ishaq</option>
-                <option value="Super Admin">Super Admin</option>
+                {users
+                  ?.filter((u) => u.status === 'Active' || u.status === undefined)
+                  .map((u) => (
+                    <option key={u.id} value={u.name}>
+                      {u.name}
+                    </option>
+                  ))}
               </select>
             </div>
 

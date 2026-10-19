@@ -177,6 +177,27 @@ export default function EditLeadPage({ params }: PageProps) {
       } catch (e) {}
     }
 
+    const LEGACY_MOCK_IDS = new Set([
+      'usr_shaheer',
+      'usr_shibil',
+      'usr_jismon',
+      'usr_ahsan',
+      'usr_adhil',
+      'usr_afsal',
+      'usr_arun',
+      'usr_shameem',
+      'usr_rashid',
+      'emp_shaheer_001',
+      'emp_adhil_001',
+      'emp_shameem_001',
+      'emp_arun_001',
+      'emp_faisal_001',
+      'usr_shibil_001',
+      'usr_rashid_001',
+      'usr_afsal_001',
+      'usr_shemin_001',
+    ]);
+
     const userMap = new Map<string, { id: string; name: string; role: string; department?: string; avatar?: string }>();
 
     if (typeof window !== 'undefined') {
@@ -187,9 +208,16 @@ export default function EditLeadPage({ params }: PageProps) {
           if (Array.isArray(parsed)) {
             parsed.forEach((u: any) => {
               const uId = String(u.id || '');
-              if (deletedIds.includes(uId) || deletedIds.includes(`usr_${uId}`) || deletedIds.includes(uId.replace('usr_', ''))) {
+              if (
+                deletedIds.includes(uId) ||
+                deletedIds.includes(`usr_${uId}`) ||
+                deletedIds.includes(uId.replace('usr_', '')) ||
+                LEGACY_MOCK_IDS.has(uId)
+              ) {
                 return;
               }
+              const isActive = u.status === 'Active' || u.isActive === true || u.is_active === 1;
+              if (!isActive) return;
               const name = u.name?.trim() || u.username?.trim();
               if (name && !userMap.has(name.toLowerCase())) {
                 userMap.set(name.toLowerCase(), {
@@ -207,7 +235,13 @@ export default function EditLeadPage({ params }: PageProps) {
     }
 
     users.forEach((u) => {
-      if (u.name && !userMap.has(u.name.toLowerCase())) {
+      const uId = String(u.id || '');
+      if (
+        u.name &&
+        !LEGACY_MOCK_IDS.has(uId) &&
+        !userMap.has(u.name.toLowerCase()) &&
+        (u.status === 'Active' || u.status === undefined)
+      ) {
         userMap.set(u.name.toLowerCase(), {
           id: u.id,
           name: u.name,
@@ -218,31 +252,13 @@ export default function EditLeadPage({ params }: PageProps) {
       }
     });
 
-    const fallbacks = [
-      { id: 'usr_shaheer', name: 'Shaheer', role: 'Sales Executive' },
-      { id: 'usr_shibil', name: 'Muhammed Shibil', role: 'Sales Manager' },
-      { id: 'usr_jismon', name: 'JISMON JOSE', role: 'Sales Executive' },
-      { id: 'usr_ahsan', name: 'MUHAMMED AHSAN P V', role: 'Sales Executive' },
-      { id: 'usr_adhil', name: 'Muhammed Adhil', role: 'Sales Executive' },
-      { id: 'usr_afsal', name: 'Afsal', role: 'Marketing Manager' },
-      { id: 'usr_arun', name: 'Arun', role: 'Marketing Executive' },
-      { id: 'usr_shameem', name: 'Shameem', role: 'Marketing Executive' },
-      { id: 'usr_rashid', name: 'Mohammed Rashid', role: 'Purchase Manager' },
-    ];
-
-    fallbacks.forEach((f) => {
-      if (!userMap.has(f.name.toLowerCase())) {
-        userMap.set(f.name.toLowerCase(), f);
-      }
-    });
-
     return Array.from(userMap.values());
   }, [users]);
 
   // Form State
-  const [owner, setOwner] = useState(lead.owner || 'JISMON JOSE');
+  const [owner, setOwner] = useState(lead.owner || '');
   const [assignedEmployee, setAssignedEmployee] = useState(
-    lead.assignedEmployee || lead.leadAssigned?.name || lead.owner || 'JISMON JOSE'
+    lead.assignedEmployee || lead.leadAssigned?.name || lead.owner || ''
   );
   const [leadDate, setLeadDate] = useState(lead.leadDate || '21-09-2026');
   const [salutation, setSalutation] = useState(lead.contactDetails.salutation || 'Mr.');

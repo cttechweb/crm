@@ -29,7 +29,7 @@ export function CezconUploadOpportunityModule({
   const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
 
   // Form State
-  const [selectedOwner, setSelectedOwner] = useState<string>(currentUser?.name || 'Shaheer');
+  const [selectedOwner, setSelectedOwner] = useState<string>(currentUser?.name || '');
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [selectedCampaign, setSelectedCampaign] = useState<string>('');
   const [selectedSource, setSelectedSource] = useState<string>('');
@@ -98,7 +98,7 @@ export function CezconUploadOpportunityModule({
       const expectedClose = row[4] || '15-08-2026';
       const winProb = parseInt(row[5], 10) || 50;
       const rating = row[6] || 'Warm';
-      const owner = row[7] || selectedOwner || 'Shaheer';
+      const owner = row[7] || selectedOwner || currentUser?.name || users[0]?.name || '';
       const campaign = row[8] || selectedCampaign || 'Standard';
       const source = row[9] || selectedSource || 'Import';
       const description = row[10] || '';
@@ -153,7 +153,7 @@ export function CezconUploadOpportunityModule({
           amount: 85000,
           expectedClose: '30-08-2026',
           probability: 60,
-          owner: selectedOwner || 'Shaheer',
+          owner: selectedOwner || currentUser?.name || users[0]?.name || '',
           rating: 'Warm',
           businessOpportunity: businessOpportunity || 'Industrial Coolers',
           campaign: selectedCampaign || 'Standard',
@@ -259,20 +259,18 @@ export function CezconUploadOpportunityModule({
                   onChange={(e) => setSelectedOwner(e.target.value)}
                   className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500"
                 >
-                  {users && users.length > 0 ? (
-                    users.map((u) => (
+                  {users
+                    ?.filter((u) => u.status === 'Active' || u.status === undefined)
+                    .map((u) => (
                       <option key={u.id} value={u.name}>
                         {u.name}
                       </option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="Shaheer">Shaheer</option>
-                      <option value="SUPER ADMIN">SUPER ADMIN</option>
-                      <option value="HANY IBRAHIM">HANY IBRAHIM</option>
-                      <option value="COOL TECH">COOL TECH</option>
-                    </>
-                  )}
+                    ))}
+                  {selectedOwner &&
+                    !['shaheer', 'nafal', 'nebin benny', 'super admin'].includes(selectedOwner.toLowerCase().trim()) &&
+                    !users?.some((u) => u.name === selectedOwner) && (
+                      <option value={selectedOwner}>{selectedOwner}</option>
+                    )}
                 </select>
               </div>
             </div>

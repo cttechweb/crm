@@ -278,7 +278,7 @@ export default function LeadDetailPage({ params }: PageProps) {
     },
     {
       id: '2',
-      sender: authMockService.getCurrentUser()?.name || 'shaheer',
+      sender: authMockService.getCurrentUser()?.name || 'Staff',
       time: '2:18 PM',
       text: `Checking with European supplier catalog for alternative compatible model.`,
       isSelf: true,
@@ -346,7 +346,7 @@ export default function LeadDetailPage({ params }: PageProps) {
     if (!newTaskData.title.trim()) return;
     addTask({
       assignee: {
-        name: lead.owner || authMockService.getCurrentUser()?.name || 'shaheer',
+        name: lead.owner || authMockService.getCurrentUser()?.name || 'Staff',
         avatar: lead.ownerAvatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
       },
       taskDetails: newTaskData.title,
@@ -413,7 +413,7 @@ export default function LeadDetailPage({ params }: PageProps) {
     if (!newChatText.trim()) return;
     const msg = {
       id: `chat-${Date.now()}`,
-      sender: authMockService.getCurrentUser()?.name || 'shaheer',
+      sender: authMockService.getCurrentUser()?.name || 'Staff',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       text: newChatText.trim(),
       isSelf: true,
@@ -1030,20 +1030,13 @@ export default function LeadDetailPage({ params }: PageProps) {
                     }}
                     className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-semibold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
                   >
-                    {users.length > 0 ? (
-                      users.map((u) => (
+                    {users
+                      .filter((u) => u.status === 'Active' || u.status === undefined)
+                      .map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.name}
                         </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="usr_shaheer">Shaheer</option>
-                        <option value="usr_shibil">Muhammed Shibil</option>
-                        <option value="usr_jismon">JISMON JOSE</option>
-                        <option value="usr_rashid">Mohammed Rashid</option>
-                      </>
-                    )}
+                      ))}
                     {assignOwnerId && !users.some((u) => u.id === assignOwnerId) && (
                       <option value={assignOwnerId}>{assignOwner || assignOwnerId}</option>
                     )}
@@ -1115,7 +1108,7 @@ export default function LeadDetailPage({ params }: PageProps) {
                     contactPerson: lead.contactDetails.name,
                     phone: lead.contactDetails.phone,
                     email: lead.contactDetails.email || '',
-                    owner: lead.owner || authMockService.getCurrentUser()?.name || 'shaheer',
+                    owner: lead.owner || authMockService.getCurrentUser()?.name || 'Staff',
                     status: 'Active',
                     lastActivity: 'Just converted from Lead',
                     companyGroup: 'Key Corporate Accounts',
@@ -1127,7 +1120,7 @@ export default function LeadDetailPage({ params }: PageProps) {
                     customer: lead.contactDetails.company,
                     amount: lead.value || 45000,
                     stage: 'Opportunity',
-                    owner: lead.owner || authMockService.getCurrentUser()?.name || 'shaheer',
+                    owner: lead.owner || authMockService.getCurrentUser()?.name || 'Staff',
                     probability: 75,
                     expectedClose: '2026-10-15',
                   });

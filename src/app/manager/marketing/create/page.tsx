@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -30,14 +30,14 @@ import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 
 export default function ManagerCreateCampaignPage() {
   const router = useRouter();
-  const { addCampaign } = useEnterpriseCrm();
+  const { addCampaign, users } = useEnterpriseCrm();
 
   const [formData, setFormData] = useState({
     name: '',
     type: 'Service Promotion',
     channel: 'WhatsApp & Email',
     targetSegment: 'Commercial Facilities',
-    ownerName: 'Manager',
+    ownerName: '',
     budget: 10000,
     targetLeads: 120,
     startDate: new Date().toISOString().split('T')[0],
@@ -47,6 +47,12 @@ export default function ManagerCreateCampaignPage() {
     promoCode: '',
     description: '',
   });
+
+  useEffect(() => {
+    if (!formData.ownerName && users && users.length > 0) {
+      setFormData((prev) => ({ ...prev, ownerName: users[0]?.name || '' }));
+    }
+  }, [users, formData.ownerName]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successToast, setSuccessToast] = useState(false);
@@ -222,10 +228,16 @@ export default function ManagerCreateCampaignPage() {
                   onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
                 >
-                  <option value="Manager">Marketing Manager</option>
-                  <option value="Muhammed Shibil">Muhammed Shibil</option>
-                  <option value="Mohammed Rashid">Mohammed Rashid</option>
-                  <option value="Operations Team">Operations Team</option>
+                  {users
+                    ?.filter((u) => u.status === 'Active' || u.status === undefined)
+                    .map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name} ({u.role || 'Staff'})
+                      </option>
+                    ))}
+                  {formData.ownerName && !users?.some((u) => u.name === formData.ownerName) && (
+                    <option value={formData.ownerName}>{formData.ownerName}</option>
+                  )}
                 </select>
               </div>
 

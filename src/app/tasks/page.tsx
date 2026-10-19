@@ -61,7 +61,10 @@ function TasksContent() {
     invoices, addInvoice
   } = useEnterpriseCrm();
   const currentUser = authMockService.getCurrentUser();
-  const defaultUser = currentUser?.name || users[0]?.name || 'shaheer';
+  const activeUsers = useMemo(() => {
+    return users.filter((u) => u.status === 'Active' || u.status === undefined);
+  }, [users]);
+  const defaultUser = currentUser?.name || activeUsers[0]?.name || '';
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<TaskTab>(initialView);
@@ -1754,7 +1757,7 @@ function TasksContent() {
                     className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
                   >
                     <option value="All Owners">All Owners</option>
-                    {users.map((u) => (
+                    {activeUsers.map((u) => (
                       <option key={u.id} value={u.name}>
                         {u.name}
                       </option>
@@ -2049,7 +2052,7 @@ function TasksContent() {
                   className="w-64 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
                 >
                   <option value="">Select</option>
-                  {users.map((u) => (
+                  {activeUsers.map((u) => (
                     <option key={u.id} value={u.name}>
                       {u.name}
                     </option>
@@ -2145,7 +2148,7 @@ function TasksContent() {
                       onChange={(e) => setEditingTask({ ...editingTask, assignee: { name: e.target.value } })}
                       className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:border-blue-500 appearance-none cursor-pointer pr-8 shadow-2xs"
                     >
-                      {users.map((u) => (
+                      {activeUsers.map((u) => (
                         <option key={u.id} value={u.name}>
                           {u.name.toUpperCase()}
                         </option>
@@ -2273,7 +2276,7 @@ function TasksContent() {
                       className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-600 focus:outline-none focus:border-blue-500 appearance-none cursor-pointer pr-8 shadow-2xs"
                     >
                       <option value="">None selected</option>
-                      {users.map((u) => (
+                      {activeUsers.map((u) => (
                         <option key={u.id} value={u.name}>
                           {u.name} ({u.role})
                         </option>
@@ -4429,7 +4432,7 @@ function TasksContent() {
                     className="w-full bg-slate-50/80 border border-slate-200 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
                   >
                     <option value="All Owners">All Owners</option>
-                    {users.map((u) => (
+                    {activeUsers.map((u) => (
                       <option key={u.id} value={u.name}>
                         {u.name}
                       </option>
@@ -5307,7 +5310,7 @@ function TasksContent() {
               <Select
                 label="Assignee Team Member"
                 value={formData.assignee.name}
-                options={users.map((u) => ({ label: `${u.name} (${u.role})`, value: u.name }))}
+                options={activeUsers.map((u) => ({ label: `${u.name} (${u.role})`, value: u.name }))}
                 onChange={(e) => setFormData({ ...formData, assignee: { name: e.target.value } })}
               />
             </div>

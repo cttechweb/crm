@@ -109,23 +109,27 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
           localStorage.getItem('crm_opportunity_owners');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const LEGACY_MOCKS = new Set([
+              'nafal',
+              'shaheer',
+              'muhammed shibil',
+              'shibil',
+              'afsal',
+              'muhammed adhil',
+              'adhil',
+              'shameem',
+              'arun',
+              'system super admin',
+            ]);
+            return parsed.filter((name: string) => !LEGACY_MOCKS.has(String(name).toLowerCase().trim()));
+          }
         }
       } catch (e) {
         console.error(e);
       }
     }
-    return [
-      'Nafal',
-      'Muhammed Shemin',
-      'Muhammed Shibil',
-      'Afsal',
-      'Shaheer',
-      'Muhammed Adhil',
-      'shameem',
-      'Arun',
-      'System Super Admin',
-    ];
+    return [];
   });
 
   const handleQuickAddOwner = (e: React.FormEvent) => {
@@ -188,7 +192,7 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
       setFormAmount(target.amount || '');
       setFormOppDate(target.opportunityDate || todayStr);
       setFormCloseDate(target.expectedClose || closeStr);
-      setFormOwner(target.owner || currentUser?.name || 'shaheer');
+      setFormOwner(target.owner || currentUser?.name || '');
       setFormRating(target.rating || 'Warm');
       setFormBizType(target.businessOpportunity || 'HVAC Equipment & Supply');
       setFormCampaign(target.campaign || 'Direct Sales / Walk-in');
@@ -206,7 +210,7 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
       setFormAmount(150000);
       setFormOppDate(todayStr);
       setFormCloseDate(closeStr);
-      setFormOwner(currentUser?.name || 'shaheer');
+      setFormOwner(currentUser?.name || '');
       setFormRating('Hot');
       setFormBizType('HVAC Equipment & Supply');
       setFormCampaign('Direct Inbound Lead');
@@ -287,7 +291,7 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
       amount: Number(formAmount) || 0,
       stage: formStage,
       probability: Number(formProbability) || 50,
-      owner: formOwner || currentUser?.name || 'shaheer',
+      owner: formOwner || currentUser?.name || '',
       expectedClose: formCloseDate,
       opportunityDate: formOppDate,
       opportunityAssigned: formOwner,
@@ -295,7 +299,7 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
       rating: formRating,
       businessOpportunity: formBizType,
       campaign: formCampaign,
-      createdBy: oppToEdit?.createdBy || currentUser?.name || 'shaheer',
+      createdBy: oppToEdit?.createdBy || currentUser?.name || 'Admin',
       createdAt: oppToEdit?.createdAt || new Date().toISOString(),
     };
 
@@ -695,19 +699,26 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
                     onChange={(e) => setFormOwner(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                   >
-                    {customOwners.map((owner) => (
-                      <option key={owner} value={owner}>
-                        {owner}
-                      </option>
-                    ))}
-                    {users &&
-                      users
-                        .filter((u) => !customOwners.includes(u.name))
-                        .map((u) => (
-                          <option key={u.id} value={u.name}>
-                            {u.name} ({u.role || u.department || 'Sales'})
-                          </option>
-                        ))}
+                    {users
+                      ?.filter((u) => u.status === 'Active' || u.status === undefined)
+                      .map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name} ({u.role || u.department || 'Sales'})
+                        </option>
+                      ))}
+                    {customOwners
+                      .filter((owner) => !users?.some((u) => u.name === owner))
+                      .map((owner) => (
+                        <option key={owner} value={owner}>
+                          {owner}
+                        </option>
+                      ))}
+                    {formOwner &&
+                      !['shaheer', 'nafal', 'nebin benny', 'super admin', 'afsal', 'shibil', 'rashid', 'jismon'].includes(formOwner.toLowerCase().trim()) &&
+                      !users?.some((u) => u.name === formOwner) &&
+                      !customOwners.includes(formOwner) && (
+                        <option value={formOwner}>{formOwner}</option>
+                      )}
                   </select>
                 </div>
 
@@ -1135,9 +1146,9 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
                           <td className="py-3 px-2.5">
                             <div
                               className="w-7 h-7 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-[10px] shadow-xs"
-                              title={opp.owner || currentUser?.name || 'shaheer'}
+                              title={opp.owner || currentUser?.name || 'Staff'}
                             >
-                              {(opp.owner || currentUser?.name || 'SH').slice(0, 2).toUpperCase()}
+                              {(opp.owner || currentUser?.name || 'ST').slice(0, 2).toUpperCase()}
                             </div>
                           </td>
 
@@ -1152,7 +1163,7 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
                           {/* Opportunity Assigned */}
                           <td className="py-3 px-3 whitespace-nowrap">
                             <p className="text-[11px] font-medium text-slate-700">
-                              {opp.opportunityAssigned || opp.owner || currentUser?.name || 'shaheer'}
+                              {opp.opportunityAssigned || opp.owner || currentUser?.name || 'Staff'}
                             </p>
                           </td>
 

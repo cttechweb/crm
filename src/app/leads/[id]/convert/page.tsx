@@ -160,7 +160,7 @@ export default function ConvertLeadPage({ params }: PageProps) {
   }, [leads, resolvedParams.id]);
 
   // Top Owner
-  const [owner, setOwner] = useState(lead.owner || 'JISMON JOSE');
+  const [owner, setOwner] = useState(lead.owner || '');
 
   // ── Section 1: Contact Details ──
   const [salutation, setSalutation] = useState(lead.contactDetails.salutation || 'Mr.');
@@ -425,23 +425,18 @@ export default function ConvertLeadPage({ params }: PageProps) {
                 onChange={(e) => setOwner(e.target.value)}
                 className="w-full bg-transparent text-slate-800 text-xs sm:text-[13px] font-semibold uppercase focus:outline-none cursor-pointer pr-4 appearance-none"
               >
-                {users.length > 0 ? (
-                  users.map((u) => (
+                {users
+                  .filter((u) => u.status === 'Active' || u.status === undefined)
+                  .map((u) => (
                     <option key={u.id} value={u.name}>
                       {u.name}
                     </option>
-                  ))
-                ) : (
-                  <>
-                    <option value="Shaheer">Shaheer</option>
-                    <option value="Muhammed Shibil">Muhammed Shibil</option>
-                    <option value="JISMON JOSE">JISMON JOSE</option>
-                    <option value="Mohammed Rashid">Mohammed Rashid</option>
-                  </>
-                )}
-                {owner && !users.some((u) => u.name === owner) && (
-                  <option value={owner}>{owner}</option>
-                )}
+                  ))}
+                {owner &&
+                  !['shaheer', 'nafal', 'nebin benny', 'super admin', 'afsal', 'shibil', 'rashid'].includes(owner.toLowerCase().trim()) &&
+                  !users.some((u) => u.name === owner) && (
+                    <option value={owner}>{owner}</option>
+                  )}
               </select>
               <span className="absolute right-2.5 pointer-events-none text-slate-500 text-[10px]">▼</span>
             </div>

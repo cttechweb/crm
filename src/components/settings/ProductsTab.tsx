@@ -886,14 +886,14 @@ export function ProductsTab() {
                   </div>
                 </div>
 
-                {/* Purchase Rate */}
+                {/* Purchase Cost */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                  <label className="text-slate-700 font-medium">Purchase Rate</label>
+                  <label className="text-slate-700 font-medium">Purchase Cost</label>
                   <div className="sm:col-span-2">
                     <input
                       type="number"
                       step="0.01"
-                      placeholder="Enter Purchase Rate"
+                      placeholder="Enter Purchase Cost"
                       value={formData.purchaseRate}
                       onChange={(e) => setFormData({ ...formData, purchaseRate: e.target.value })}
                       className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white font-mono"
@@ -1303,7 +1303,7 @@ export function ProductsTab() {
                   <th className="py-2.5 px-4 w-24 border-r border-slate-200">Brand</th>
                   <th className="py-2.5 px-4 w-32 border-r border-slate-200">Category</th>
                   <th className="py-2.5 px-3 w-20 border-r border-slate-200">Type ⓘ</th>
-                  <th className="py-2.5 px-4 w-28 text-right border-r border-slate-200">Purchase Rate</th>
+                  <th className="py-2.5 px-4 w-28 text-right border-r border-slate-200">Purchase Cost</th>
                   <th className="py-2.5 px-4 w-24 text-right border-r border-slate-200">Selling Price</th>
                   <th className="py-2.5 px-3 w-24 text-center border-r border-slate-200">Stock</th>
                   <th className="py-2.5 px-3 w-20 text-center border-r border-slate-200">Status</th>

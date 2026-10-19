@@ -1598,6 +1598,8 @@ interface BackendUserProfileResponse {
     department: string | null;
     reports_to: string | null;
     is_active: number | boolean;
+    avatar_image?: string | null;
+    avatar?: string | null;
   };
   code?: string;
   message?: string;
@@ -1640,6 +1642,23 @@ async function fetchBackendUserProfile(
 
       const perms = resolveDefaultPermissions(profileType, normalizedRole);
 
+      let localAvatar: string | undefined = undefined;
+      if (typeof window !== 'undefined') {
+        try {
+          const stored = localStorage.getItem('cezcon_crm_users_list');
+          if (stored) {
+            const users = JSON.parse(stored);
+            const matched = users.find((usr: any) =>
+              (usr.email && usr.email.toLowerCase() === (u.email || '').toLowerCase()) ||
+              (usr.id && (usr.id === u.id || `usr_${usr.id}` === u.id))
+            );
+            if (matched?.avatarImage || matched?.avatar) {
+              localAvatar = matched.avatarImage || matched.avatar;
+            }
+          }
+        } catch {}
+      }
+
       const verifiedUser: MockAuthUser = {
         id: u.id,
         name: u.full_name || fbUser.displayName || u.email.split('@')[0],
@@ -1647,6 +1666,7 @@ async function fetchBackendUserProfile(
         role: normalizedRole,
         organizationId: 'org_cool_tech_001',
         organizationName: 'Cool Technologies LLC',
+        avatar: u.avatar_image || u.avatar || localAvatar || fbUser.photoURL || undefined,
         designation: u.position || (normalizedRole === 'super_admin' ? 'CEO' : normalizedRole === 'admin' ? 'COO' : profileType),
         position: u.position || undefined,
         department: u.department || undefined,
@@ -2078,6 +2098,21 @@ export const authMockService = {
         if (!u.avatar && (u as any).avatarImage) {
           u.avatar = (u as any).avatarImage;
         }
+        if (!u.avatar && typeof window !== 'undefined') {
+          try {
+            const stored = localStorage.getItem('cezcon_crm_users_list');
+            if (stored) {
+              const users = JSON.parse(stored);
+              const matched = users.find((usr: any) =>
+                (usr.email && usr.email.toLowerCase() === (u.email || '').toLowerCase()) ||
+                (usr.id && (usr.id === u.id || `usr_${usr.id}` === u.id))
+              );
+              if (matched?.avatarImage || matched?.avatar) {
+                u.avatar = matched.avatarImage || matched.avatar;
+              }
+            }
+          } catch {}
+        }
         if (!u.position) {
           const r = String(u.role || '').toLowerCase();
           if (r === 'super_admin' || r.includes('super')) u.position = 'CEO';
@@ -2146,9 +2181,17 @@ export const authMockService = {
             fetchBackendUserProfile(fbUser)
               .then((serverRes) => {
                 if (serverRes && typeof window !== 'undefined') {
+                  const resolvedAvatar =
+                    serverRes.user.avatar ||
+                    existingSession.avatar ||
+                    (existingSession as any).avatarImage;
+                  const finalUserWithAvatar = {
+                    ...serverRes.user,
+                    avatar: resolvedAvatar,
+                  };
                   const updatedSession = {
                     authenticated: true,
-                    user: serverRes.user,
+                    user: finalUserWithAvatar,
                     role: serverRes.user.role,
                     firebaseUid: fbUser.uid,
                     isServerVerified: true,
@@ -2156,7 +2199,7 @@ export const authMockService = {
                   };
                   try {
                     localStorage.setItem('cool_crm_auth', JSON.stringify(updatedSession));
-                    callback(serverRes.user, fbUser);
+                    callback(finalUserWithAvatar, fbUser);
                   } catch (err) {}
                 }
               })
@@ -2168,11 +2211,18 @@ export const authMockService = {
             serverUserResult = await fetchBackendUserProfile(fbUser);
           } catch {}
 
+          const resolvedFallback = resolveCrmUserByEmail(fbUser.email || '', fbUser.uid);
           const isServerVerified = Boolean(serverUserResult);
           const finalUser: MockAuthUser = serverUserResult
-            ? serverUserResult.user
+            ? {
+                ...serverUserResult.user,
+                avatar:
+                  serverUserResult.user.avatar ||
+                  resolvedFallback.user.avatar ||
+                  (resolvedFallback.user as any).avatarImage,
+              }
             : {
-                ...resolveCrmUserByEmail(fbUser.email || '', fbUser.uid).user,
+                ...resolvedFallback.user,
                 isServerVerified: false,
               };
 

@@ -3697,8 +3697,8 @@ function CustomersContent() {
 
                           {/* 4. Owner */}
                           <td className="py-3 px-3 text-center border-r border-slate-100">
-                            <div className="inline-block" title={`Account Owner: ${cust.owner || currentUser?.name || 'shaheer'}`}>
-                              {renderUserAvatar(cust.owner || currentUser?.name || 'shaheer', cust.ownerAvatar, 'w-6 h-6')}
+                            <div className="inline-block" title={`Account Owner: ${cust.owner || currentUser?.name || 'Staff'}`}>
+                              {renderUserAvatar(cust.owner || currentUser?.name || 'Staff', cust.ownerAvatar, 'w-6 h-6')}
                             </div>
                           </td>
 

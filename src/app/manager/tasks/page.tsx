@@ -93,32 +93,11 @@ const DEFAULT_CATEGORIES = [
   'Customer Success & Support',
 ];
 
-// Fallback Employees Per Department
-const FALLBACK_SALES_EMPLOYEES = [
-  { id: 'emp_shaheer_001', name: 'Shaheer', role: 'Sales Executive', department: 'Sales Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 50 776 5432', type: 'Sales Executive', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' },
-  { id: 'emp_adhil_001', name: 'Muhammed Adhil', role: 'Sales Executive', department: 'Sales Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 56 881 1334', type: 'Sales Executive', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' },
-  { id: 'emp_1', name: 'Employee 1', role: 'Sales Executive', department: 'Sales Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 50 111 0001', type: 'Sales Executive', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' },
-  { id: 'emp_2', name: 'Employee 2', role: 'Sales Executive', department: 'Sales Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 50 111 0002', type: 'Sales Executive', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' },
-  { id: 'emp_3', name: 'Employee 3', role: 'Sales Executive', department: 'Sales Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 50 111 0003', type: 'Sales Executive', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' },
-];
-
-const FALLBACK_MARKETING_EMPLOYEES = [
-  { id: 'emp_shameem_001', name: 'Shameem', role: 'Marketing Executive', department: 'Marketing Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 52 443 8901', type: 'Marketing Employee', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' },
-  { id: 'emp_arun_001', name: 'Arun', role: 'Marketing Specialist', department: 'Marketing Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 54 321 0987', type: 'Marketing Employee', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150' },
-  { id: 'emp_7', name: 'Employee 7', role: 'Marketing Specialist', department: 'Marketing Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 50 333 0007', type: 'Marketing Employee', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150' },
-  { id: 'emp_8', name: 'Employee 8', role: 'Marketing Executive', department: 'Marketing Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 50 333 0008', type: 'Marketing Employee', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150' },
-];
-
-const FALLBACK_PURCHASE_EMPLOYEES = [
-  { id: 'emp_4', name: 'Employee 4', role: 'Purchase Officer', department: 'Purchase Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 50 222 0004', type: 'Purchase Employee', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150' },
-  { id: 'emp_5', name: 'Employee 5', role: 'Purchase Specialist', department: 'Purchase Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 50 222 0005', type: 'Purchase Employee', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150' },
-  { id: 'emp_6', name: 'Employee 6', role: 'Inventory Officer', department: 'Purchase Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 50 222 0006', type: 'Purchase Employee', avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150' },
-];
-
-const FALLBACK_OPERATIONS_EMPLOYEES = [
-  { id: 'emp_9', name: 'Employee 9', role: 'Operations Specialist', department: 'Operations Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 50 444 0009', type: 'Operations Employee', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' },
-  { id: 'emp_10', name: 'Employee 10', role: 'Field Technician', department: 'Operations Department', territory: 'Dubai Corporate HQ (Main Sales Desk)', phone: '+971 50 444 0010', type: 'Operations Employee', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' },
-];
+// Fallback Employees Per Department (Empty to ensure only authoritative active users are used)
+const FALLBACK_SALES_EMPLOYEES: any[] = [];
+const FALLBACK_MARKETING_EMPLOYEES: any[] = [];
+const FALLBACK_PURCHASE_EMPLOYEES: any[] = [];
+const FALLBACK_OPERATIONS_EMPLOYEES: any[] = [];
 
 function ManagerTasksContent() {
   const router = useRouter();
@@ -519,7 +498,15 @@ function ManagerTasksContent() {
             const curMgrEmail = String(currentUser?.email || '').toLowerCase();
             const curMgrName = String(currentUser?.name || '').toLowerCase();
 
+            let deletedIds = new Set<string>();
+            try {
+              deletedIds = new Set(JSON.parse(localStorage.getItem('cezcon_crm_deleted_user_ids') || '[]'));
+            } catch (_) {}
+
             const filteredUsers = parsed.filter((u: any) => {
+              if (deletedIds.has(u.id)) return false;
+              if (u.status === 'Inactive' || u.status === 'inactive' || u.is_active === 0 || u.isActive === false) return false;
+
               const uEmpType = String(u.employeeType || '').toLowerCase();
               const uProfile = String(u.profileType || '').toLowerCase();
               const uDept = String(u.department || '').toLowerCase();
@@ -659,17 +646,7 @@ function ManagerTasksContent() {
       }
     }
 
-    // If dynamic list has items, use it; otherwise provide department-specific default team members
-    if (dynamicList.length > 0) {
-      return dynamicList;
-    }
-
-    if (isMarketingManager) return FALLBACK_MARKETING_EMPLOYEES;
-    if (isSalesManager) return FALLBACK_SALES_EMPLOYEES;
-    if (isPurchaseManager) return FALLBACK_PURCHASE_EMPLOYEES;
-    if (isOperationsManager) return FALLBACK_OPERATIONS_EMPLOYEES;
-
-    return FALLBACK_SALES_EMPLOYEES;
+    return dynamicList;
   }, [
     usersVersion,
     isSuperAdminOrAdmin,

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -30,7 +30,7 @@ export default function CreateCampaignPage() {
     name: '',
     type: 'Inbound Portal',
     channel: 'Website Inbound',
-    ownerName: users[0]?.name || 'Shaheer',
+    ownerName: users[0]?.name || '',
     budget: 10000,
     targetLeads: 120,
     startDate: '2026-01-01',
@@ -39,6 +39,12 @@ export default function CreateCampaignPage() {
     listing: true,
     description: '',
   });
+
+  useEffect(() => {
+    if (!formData.ownerName && users.length > 0) {
+      setFormData((prev) => ({ ...prev, ownerName: users[0]?.name || '' }));
+    }
+  }, [users, formData.ownerName]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successToast, setSuccessToast] = useState(false);
@@ -209,18 +215,15 @@ export default function CreateCampaignPage() {
                   onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
                 >
-                  {users && users.length > 0 ? (
-                    users.map((u) => (
+                  {users
+                    ?.filter((u) => u.status === 'Active' || u.status === undefined)
+                    .map((u) => (
                       <option key={u.id} value={u.name}>
                         {u.name}
                       </option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="Afsal">Afsal</option>
-                      <option value="Shaheer">Shaheer</option>
-                      <option value="Mohammed Rashid">Mohammed Rashid</option>
-                    </>
+                    ))}
+                  {formData.ownerName && !users?.some((u) => u.name === formData.ownerName) && (
+                    <option value={formData.ownerName}>{formData.ownerName}</option>
                   )}
                 </select>
               </div>

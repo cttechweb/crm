@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import {
   Upload,
@@ -50,10 +50,16 @@ function ImportLeadsContent() {
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedSource, setSelectedSource] = useState('Website Inbound');
-  const [selectedRep, setSelectedRep] = useState(users[0]?.name || 'shaheer');
+  const [selectedRep, setSelectedRep] = useState(users[0]?.name || '');
   const [dedupPolicy, setDedupPolicy] = useState('skip');
   const [isImporting, setIsImporting] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedRep && users.length > 0) {
+      setSelectedRep(users[0]?.name || '');
+    }
+  }, [users, selectedRep]);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -237,18 +243,19 @@ function ImportLeadsContent() {
                 onChange={(e) => setSelectedRep(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none"
               >
-                {users && users.length > 0 ? (
-                  users.map((u) => (
-                    <option key={u.id} value={u.name}>
-                      {u.name}
-                    </option>
-                  ))
-                ) : (
-                  <>
-                    <option value="Shaheer">Shaheer</option>
-                    <option value="Muhammed Shibil">Muhammed Shibil</option>
-                  </>
-                )}
+                {users &&
+                  users
+                    .filter((u) => u.status === 'Active' || u.status === undefined)
+                    .map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name}
+                      </option>
+                    ))}
+                {selectedRep &&
+                  !['shaheer', 'nafal', 'nebin benny', 'super admin', 'afsal', 'shibil', 'rashid'].includes(selectedRep.toLowerCase().trim()) &&
+                  !users.some((u) => u.name === selectedRep) && (
+                    <option value={selectedRep}>{selectedRep}</option>
+                  )}
               </select>
             </div>
 

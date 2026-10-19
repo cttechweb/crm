@@ -819,12 +819,7 @@ function PurchasePageInner() {
     vatRate: 5,
   });
 
-  const [poOwnersList, setPoOwnersList] = useState<string[]>([
-    'Rashid Ali',
-    'Muhammad Ali',
-    'Super Admin',
-    'Shaheer',
-  ]);
+  const [poOwnersList, setPoOwnersList] = useState<string[]>([]);
   const [isAddOwnerModalOpen, setIsAddOwnerModalOpen] = useState<boolean>(false);
   const [newOwnerInputName, setNewOwnerInputName] = useState<string>('');
 
@@ -941,6 +936,10 @@ function PurchasePageInner() {
   const [stockInPurchaseInvoiceNumber, setStockInPurchaseInvoiceNumber] = useState<string>('');
   const [isStockInNewSupplierOpen, setIsStockInNewSupplierOpen] = useState(false);
   const [stockInNewSupplierInput, setStockInNewSupplierInput] = useState('');
+  const [isStockInNewStoreOpen, setIsStockInNewStoreOpen] = useState(false);
+  const [stockInNewStoreName, setStockInNewStoreName] = useState('');
+  const [stockInNewStoreCode, setStockInNewStoreCode] = useState('');
+  const [stockInNewStoreLocation, setStockInNewStoreLocation] = useState('');
   const [stockInSupplierList, setStockInSupplierList] = useState<string[]>([
     'Shajarath Al Thalj Trading LLC',
     'CENTRAL TRADING COMPANY LLC',
@@ -971,278 +970,7 @@ function PurchasePageInner() {
     },
   ]);
 
-  const defaultStockInList = [
-    {
-      id: 'si_923',
-      slNo: 1,
-      stockInNo: 'STK 923',
-      date: '03-10-2026',
-      supplier: 'Shajarath Al Thalj For Freezer Manufacturing LLC',
-      purchaseInvoiceNumber: '',
-      deliveryNote: '',
-      lpoNumber: 'CTPO#2528',
-      store: 'M-42 OFFICE',
-      createdBy: 'MOHAMMED ISHAQ',
-      createdFormatted: 'SAT 03-10-2026 3:33:03 PM',
-      items: [
-        {
-          slNo: 1,
-          code: 'CT25F2-01',
-          item: '25 usg water cooler cooltech',
-          unit: 'Pcs',
-          brand: 'COOLTECH',
-          purchaseRate: '625.00',
-          sellingPrice: '0.00',
-          qty: '5',
-          currentStock: '5',
-        },
-      ],
-      files: [],
-    },
-    {
-      id: 'si_922',
-      slNo: 2,
-      stockInNo: 'STK 922',
-      date: '02-10-2026',
-      supplier: 'CENTRAL TRADING COMPANY LLC',
-      purchaseInvoiceNumber: '',
-      deliveryNote: '',
-      lpoNumber: 'CTPO#2527',
-      store: 'MAIN WAREHOUSE',
-      createdBy: 'MOHAMMED ISHAQ',
-      createdFormatted: 'FRI 02-10-2026 10:15:20 AM',
-      items: [
-        {
-          slNo: 1,
-          code: 'RF-140-SN',
-          item: 'REFRIGERATOR 140 LTR SINGLE DOOR NOBEL NR140',
-          unit: 'Pcs',
-          brand: 'NOBEL',
-          purchaseRate: '335.00',
-          sellingPrice: '420.00',
-          qty: '10',
-          currentStock: '10',
-        },
-      ],
-      files: [],
-    },
-    {
-      id: 'si_921',
-      slNo: 3,
-      stockInNo: 'STK 921',
-      date: '01-10-2026',
-      supplier: 'LUTFI TRADING LLC',
-      purchaseInvoiceNumber: '',
-      deliveryNote: '',
-      lpoNumber: 'CTPO#2526',
-      store: 'M-42 OFFICE',
-      createdBy: 'MOHAMMED ISHAQ',
-      createdFormatted: 'THU 01-10-2026 02:45:10 PM',
-      items: [
-        {
-          slNo: 1,
-          code: 'MS-20T',
-          item: 'MITSUBISHI SPLIT AC 2.0 TON',
-          unit: 'Set',
-          brand: 'MITSUBISHI',
-          purchaseRate: '1850.00',
-          sellingPrice: '2300.00',
-          qty: '4',
-          currentStock: '4',
-        },
-      ],
-      files: [],
-    },
-    {
-      id: 'si_920',
-      slNo: 4,
-      stockInNo: 'STK 920',
-      date: '30-09-2026',
-      supplier: 'SUPER GENERAL COMPANY LLC',
-      purchaseInvoiceNumber: '',
-      deliveryNote: '',
-      lpoNumber: 'CTPO#2525',
-      store: 'MAIN WAREHOUSE',
-      createdBy: 'MOHAMMED ISHAQ',
-      createdFormatted: 'WED 30-09-2026 11:20:00 AM',
-      items: [
-        {
-          slNo: 1,
-          code: 'SG-15R',
-          item: 'SUPER GENERAL 1.5 TON ROTARY AC',
-          unit: 'Set',
-          brand: 'SUPER GENERAL',
-          purchaseRate: '1200.00',
-          sellingPrice: '1550.00',
-          qty: '8',
-          currentStock: '8',
-        },
-      ],
-      files: [],
-    },
-    {
-      id: 'si_919',
-      slNo: 5,
-      stockInNo: 'STK 919',
-      date: '29-09-2026',
-      supplier: 'AL GHANDI ELECTRONICS',
-      purchaseInvoiceNumber: '',
-      deliveryNote: '',
-      lpoNumber: 'CTPO#2524',
-      store: 'M-42 OFFICE',
-      createdBy: 'MOHAMMED ISHAQ',
-      createdFormatted: 'TUE 29-09-2026 04:10:00 PM',
-      items: [
-        {
-          slNo: 1,
-          code: 'NIC101',
-          item: 'Single Ring Infrared Cooker-Touch Control Nobel I',
-          unit: 'Pcs',
-          brand: 'NOBEL',
-          purchaseRate: '85.00',
-          sellingPrice: '110.00',
-          qty: '15',
-          currentStock: '15',
-        },
-      ],
-      files: [],
-    },
-    {
-      id: 'si_918',
-      slNo: 6,
-      stockInNo: 'STK 918',
-      date: '28-09-2026',
-      supplier: 'EROS GROUP LLC',
-      purchaseInvoiceNumber: '',
-      deliveryNote: '',
-      lpoNumber: 'CTPO#2523',
-      store: 'MAIN WAREHOUSE',
-      createdBy: 'MOHAMMED ISHAQ',
-      createdFormatted: 'MON 28-09-2026 01:15:00 PM',
-      items: [
-        {
-          slNo: 1,
-          code: 'PF-56',
-          item: 'PANASONIC CEILING FAN 56 INCH',
-          unit: 'Pcs',
-          brand: 'PANASONIC',
-          purchaseRate: '145.00',
-          sellingPrice: '195.00',
-          qty: '20',
-          currentStock: '20',
-        },
-      ],
-      files: [],
-    },
-    {
-      id: 'si_917',
-      slNo: 7,
-      stockInNo: 'STK 917',
-      date: '27-09-2026',
-      supplier: 'MITSUBISHI ELECTRIC CORP',
-      purchaseInvoiceNumber: '',
-      deliveryNote: '',
-      lpoNumber: 'CTPO#2522',
-      store: 'M-42 OFFICE',
-      createdBy: 'MOHAMMED ISHAQ',
-      createdFormatted: 'SUN 27-09-2026 12:00:00 PM',
-      items: [
-        {
-          slNo: 1,
-          code: 'DK-25C',
-          item: 'DAIKIN 2.5 TON CASSETTE AC',
-          unit: 'Set',
-          brand: 'DAIKIN',
-          purchaseRate: '3200.00',
-          sellingPrice: '4100.00',
-          qty: '2',
-          currentStock: '2',
-        },
-      ],
-      files: [],
-    },
-    {
-      id: 'si_916',
-      slNo: 8,
-      stockInNo: 'STK 916',
-      date: '26-09-2026',
-      supplier: 'Shajarath Al Thalj For Freezer Manufacturing LLC',
-      purchaseInvoiceNumber: '',
-      deliveryNote: '',
-      lpoNumber: 'CTPO#2521',
-      store: 'MAIN WAREHOUSE',
-      createdBy: 'MOHAMMED ISHAQ',
-      createdFormatted: 'SAT 26-09-2026 09:30:00 AM',
-      items: [
-        {
-          slNo: 1,
-          code: 'CT25F2-01',
-          item: '25 usg water cooler cooltech',
-          unit: 'Pcs',
-          brand: 'COOLTECH',
-          purchaseRate: '625.00',
-          sellingPrice: '0.00',
-          qty: '3',
-          currentStock: '3',
-        },
-      ],
-      files: [],
-    },
-    {
-      id: 'si_915',
-      slNo: 9,
-      stockInNo: 'STK 915',
-      date: '25-09-2026',
-      supplier: 'CENTRAL TRADING COMPANY LLC',
-      purchaseInvoiceNumber: '',
-      deliveryNote: '',
-      lpoNumber: 'CTPO#2520',
-      store: 'M-42 OFFICE',
-      createdBy: 'MOHAMMED ISHAQ',
-      createdFormatted: 'FRI 25-09-2026 03:20:00 PM',
-      items: [
-        {
-          slNo: 1,
-          code: 'GR-20I',
-          item: 'GREE 2.0 TON INVERTER SPLIT AC',
-          unit: 'Set',
-          brand: 'GREE',
-          purchaseRate: '1650.00',
-          sellingPrice: '2100.00',
-          qty: '6',
-          currentStock: '6',
-        },
-      ],
-      files: [],
-    },
-    {
-      id: 'si_914',
-      slNo: 10,
-      stockInNo: 'STK 914',
-      date: '24-09-2026',
-      supplier: 'LUTFI TRADING LLC',
-      purchaseInvoiceNumber: '',
-      deliveryNote: '',
-      lpoNumber: 'CTPO#2519',
-      store: 'MAIN WAREHOUSE',
-      createdBy: 'MOHAMMED ISHAQ',
-      createdFormatted: 'THU 24-09-2026 10:45:00 AM',
-      items: [
-        {
-          slNo: 1,
-          code: 'RF-140-SN',
-          item: 'REFRIGERATOR 140 LTR SINGLE DOOR NOBEL NR140',
-          unit: 'Pcs',
-          brand: 'NOBEL',
-          purchaseRate: '335.00',
-          sellingPrice: '420.00',
-          qty: '8',
-          currentStock: '8',
-        },
-      ],
-      files: [],
-    },
-  ];
+  const defaultStockInList: any[] = [];
 
   const [stockInList, setStockInList] = useState<any[]>(() => {
     if (typeof window !== 'undefined') {
@@ -1250,7 +978,15 @@ function PurchasePageInner() {
         const stored = localStorage.getItem('crm_stock_in_list');
         if (stored !== null) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed)) {
+            // Filter out old mock records starting with si_9 (si_923 ... si_914) or matching mock stock in numbers
+            const filtered = parsed.filter(
+              (it: any) =>
+                !String(it.id || '').startsWith('si_9') &&
+                !['STK 923', 'STK 922', 'STK 921', 'STK 920', 'STK 919', 'STK 918', 'STK 917', 'STK 916', 'STK 915', 'STK 914'].includes(it.stockInNo)
+            );
+            return filtered;
+          }
         }
       } catch (e) {
         console.error(e);
@@ -1258,6 +994,40 @@ function PurchasePageInner() {
     }
     return defaultStockInList;
   });
+
+  useEffect(() => {
+    stockInApiService
+      .getStockInRecords()
+      .then((res) => {
+        if (res && Array.isArray(res.records) && res.records.length > 0) {
+          const serverRecords = res.records
+            .filter(
+              (r: any) =>
+                !String(r.id || '').startsWith('si_9') &&
+                !['STK 923', 'STK 922', 'STK 921', 'STK 920', 'STK 919', 'STK 918', 'STK 917', 'STK 916', 'STK 915', 'STK 914'].includes(r.stockInNo)
+            )
+            .map((r: any, idx: number) => ({
+              id: r.id,
+              slNo: r.slNo ?? idx + 1,
+              stockInNo: r.stockInNo,
+              date: r.date,
+              supplier: r.supplier,
+              purchaseInvoiceNumber: r.purchaseInvoiceNumber || '',
+              deliveryNote: r.deliveryNote || '',
+              lpoNumber: r.lpoNumber || '',
+              store: r.store || 'MAIN WAREHOUSE',
+              createdBy: r.createdBy || '',
+              createdFormatted: r.createdFormatted || '',
+              items: r.items || [],
+              files: [],
+            }));
+          if (serverRecords.length > 0) {
+            setStockInList(serverRecords);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const resetStockInForm = () => {
     setEditingStockInId(null);
@@ -2107,10 +1877,14 @@ function PurchasePageInner() {
 
   useEffect(() => {
     if (users && users.length > 0) {
-      setPoOwnersList((prev) => {
-        const userNames = users.map((u) => u.name);
-        return Array.from(new Set([...prev, ...userNames])).filter((n) => n !== 'Nafal');
-      });
+      const activeNames = users
+        .filter(
+          (u) =>
+            (u.status === 'Active' || u.status === undefined) &&
+            !['Shaheer', 'Nafal'].includes(u.name)
+        )
+        .map((u) => u.name);
+      setPoOwnersList(Array.from(new Set(activeNames)));
     }
   }, [users]);
 
@@ -2237,7 +2011,7 @@ function PurchasePageInner() {
   const handleDownloadProductImportFormat = () => {
     const csvContent =
       'data:text/csv;charset=utf-8,' +
-      'SL.No,Code,Name,Unit,Brand,Category,Type,Purchase Rate,Selling Price,Store,Current Stock,Minimum Stock,Serial No\n' +
+      'SL.No,Code,Name,Unit,Brand,Category,Type,Purchase Cost,Selling Price,Store,Current Stock,Minimum Stock,Serial No\n' +
       '1,32432wefew,COOLER,Each,LG,SPLIT AC,Product,2000.00,3000.00,CT,10,2,12345678\n' +
       '2,MIDEA-INV-01,Midea 1.5 Ton Split AC,Pcs,MIDEA,SPLIT AC,Product,1850.00,2450.00,M-42 SHOP,15,3,98765432\n' +
       '3,DAIKIN-CAS-02,Daikin Cassette AC 3 Ton,Set,DAIKIN,CASSETTE AC,Product,4200.00,5500.00,MAIN WAREHOUSE,8,1,45678901\n';
@@ -2738,9 +2512,9 @@ function PurchasePageInner() {
               </div>
             </div>
 
-            {/* Purchase Rate */}
+            {/* Purchase Cost */}
             <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-              <label className="text-slate-700 font-medium text-xs">Purchase Rate</label>
+              <label className="text-slate-700 font-medium text-xs">Purchase Cost</label>
               <div className="sm:col-span-2">
                 <input
                   type="number"
@@ -5002,19 +4776,13 @@ function PurchasePageInner() {
                         className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                       >
                         <option value="All Owners">All Owners</option>
-                        {users && users.length > 0 ? (
-                          users.map((u) => (
+                        {users
+                          ?.filter((u) => u.status === 'Active' || u.status === undefined)
+                          .map((u) => (
                             <option key={u.id} value={u.name}>
                               {u.name}
                             </option>
-                          ))
-                        ) : (
-                          <>
-                            <option value="Muhammad Ali">Muhammad Ali</option>
-                            <option value="Super Admin">Super Admin</option>
-                            <option value="Shaheer">Shaheer</option>
-                          </>
-                        )}
+                          ))}
                       </select>
                     </div>
 
@@ -6456,7 +6224,7 @@ function PurchasePageInner() {
                           <tr className="border-b border-slate-200 text-slate-600 font-semibold select-none">
                             <th className="py-2.5 px-3">Item</th>
                             <th className="py-2.5 px-3 w-24 text-center">QTY</th>
-                            <th className="py-2.5 px-3 w-36 text-right">Purchase Rate</th>
+                            <th className="py-2.5 px-3 w-36 text-right">Purchase Cost</th>
                             <th className="py-2.5 px-3 w-36 text-right">Selling Price</th>
                           </tr>
                         </thead>
@@ -7754,19 +7522,26 @@ function PurchasePageInner() {
                         <label className="sm:w-36 text-slate-700 font-medium text-xs shrink-0">
                           Store <span className="text-red-500">*</span>
                         </label>
-                        <div className="flex-1">
+                        <div className="flex-1 flex items-center gap-2">
                           <select
                             value={stockInStore}
                             onChange={(e) => setStockInStore(e.target.value)}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                            className="flex-1 min-w-0 px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                           >
                             <option value="Select">Select</option>
-                            <option value="Main Warehouse - Bay A">Main Warehouse - Bay A</option>
-                            <option value="Mussafah Store">Mussafah Store</option>
-                            <option value="Abu Dhabi Central Depot">Abu Dhabi Central Depot</option>
-                            <option value="Dubai Jebel Ali Hub">Dubai Jebel Ali Hub</option>
-                            <option value="Hardware Depot - Austin">Hardware Depot - Austin</option>
+                            {storesList.map((st: any) => (
+                              <option key={st.id || st.name} value={st.name}>
+                                {st.name} {st.code ? `(${st.code})` : ''}
+                              </option>
+                            ))}
                           </select>
+                          <button
+                            type="button"
+                            onClick={() => setIsStockInNewStoreOpen(true)}
+                            className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer transition-colors px-1 whitespace-nowrap"
+                          >
+                            + New
+                          </button>
                         </div>
                       </div>
 
@@ -7908,7 +7683,7 @@ function PurchasePageInner() {
                     <div className="hidden sm:grid grid-cols-12 gap-2 text-xs font-semibold text-slate-700 px-1">
                       <div className="col-span-4">Item</div>
                       <div className="col-span-2">Unit</div>
-                      <div className="col-span-2 text-left">Purchase Rate</div>
+                      <div className="col-span-2 text-left">Purchase Cost</div>
                       <div className="col-span-2 text-left">Selling Price</div>
                       <div className="col-span-2 text-left">Stock In Quantity</div>
                     </div>
@@ -7988,7 +7763,7 @@ function PurchasePageInner() {
                           />
                         </div>
 
-                        {/* Purchase Rate */}
+                        {/* Purchase Cost */}
                         <div className="sm:col-span-2">
                           <input
                             type="text"
@@ -8271,7 +8046,7 @@ function PurchasePageInner() {
                           <th className="p-2.5 border-r border-slate-200">Item</th>
                           <th className="p-2.5 border-r border-slate-200">Unit</th>
                           <th className="p-2.5 border-r border-slate-200">Brand</th>
-                          <th className="p-2.5 text-right border-r border-slate-200">Stockin Purchase Rate</th>
+                          <th className="p-2.5 text-right border-r border-slate-200">Stockin Purchase Cost</th>
                           <th className="p-2.5 text-right border-r border-slate-200">Stockin Selling Price</th>
                           <th className="p-2.5 text-center border-r border-slate-200">Stock In Qty</th>
                           <th className="p-2.5 text-center">Current Stock</th>
@@ -8486,8 +8261,8 @@ function PurchasePageInner() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 bg-white">
-                        {stockInList
-                          .filter((si) => {
+                        {(() => {
+                          const filtered = stockInList.filter((si) => {
                             if (stockInSupplierFilter !== 'All' && si.supplier !== stockInSupplierFilter) {
                               return false;
                             }
@@ -8501,12 +8276,24 @@ function PurchasePageInner() {
                               );
                             }
                             return true;
-                          })
-                          .slice(
-                            (stockInCurrentPage - 1) * stockInRowsPerPage,
-                            stockInCurrentPage * stockInRowsPerPage
-                          )
-                          .map((si, idx) => (
+                          });
+
+                          if (filtered.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan={8} className="p-8 text-center text-slate-500 italic text-xs">
+                                  No Stock In records found. Click &quot;+ STOCK IN&quot; above to register a new stock inward voucher.
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return filtered
+                            .slice(
+                              (stockInCurrentPage - 1) * stockInRowsPerPage,
+                              stockInCurrentPage * stockInRowsPerPage
+                            )
+                            .map((si, idx) => (
                             <tr key={si.id || idx} className="hover:bg-blue-50/40 transition-colors">
                               <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">
                                 {si.slNo || idx + 1}
@@ -8659,7 +8446,8 @@ function PurchasePageInner() {
                                 </div>
                               </td>
                             </tr>
-                          ))}
+                          ));
+                        })()}
                       </tbody>
                     </table>
                   </div>
@@ -8667,7 +8455,7 @@ function PurchasePageInner() {
                   {/* Table Footer */}
                   <div className="p-3 border-t border-slate-200 text-xs text-slate-600 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                      Showing 1 to {Math.min(stockInRowsPerPage, stockInList.length)} of {stockInList.length} entries
+                      Showing {stockInList.length === 0 ? 0 : 1} to {Math.min(stockInRowsPerPage, stockInList.length)} of {stockInList.length} entries
                     </div>
                     <div className="flex items-center gap-1">
                       <button
@@ -8749,6 +8537,101 @@ function PurchasePageInner() {
                       className="px-4 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-bold cursor-pointer"
                     >
                       Add Supplier
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal for + New Store */}
+            {isStockInNewStoreOpen && (
+              <div
+                className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 animate-in fade-in"
+                onClick={() => setIsStockInNewStoreOpen(false)}
+              >
+                <div
+                  className="bg-white rounded shadow-2xl border border-slate-200 w-full max-w-md p-5 space-y-4"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <h3 className="font-bold text-sm text-slate-900">Add New Store / Warehouse</h3>
+                    <button
+                      type="button"
+                      onClick={() => setIsStockInNewStoreOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="space-y-3 text-xs">
+                    <div>
+                      <label className="block font-medium text-slate-700 mb-1">Store / Warehouse Name *</label>
+                      <input
+                        type="text"
+                        value={stockInNewStoreName}
+                        onChange={(e) => setStockInNewStoreName(e.target.value)}
+                        placeholder="e.g. ABU DHABI MAIN HUB"
+                        className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-slate-700 mb-1">Store Code</label>
+                      <input
+                        type="text"
+                        value={stockInNewStoreCode}
+                        onChange={(e) => setStockInNewStoreCode(e.target.value)}
+                        placeholder="e.g. WH-04"
+                        className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-slate-700 mb-1">Location / Address</label>
+                      <input
+                        type="text"
+                        value={stockInNewStoreLocation}
+                        onChange={(e) => setStockInNewStoreLocation(e.target.value)}
+                        placeholder="e.g. Musaffah Industrial, Abu Dhabi"
+                        className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setIsStockInNewStoreOpen(false)}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-medium cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (stockInNewStoreName.trim()) {
+                          const trimmed = stockInNewStoreName.trim();
+                          const newStore = {
+                            id: `str_${Date.now()}`,
+                            slNo: storesList.length + 1,
+                            name: trimmed,
+                            code: stockInNewStoreCode.trim() || undefined,
+                            location: stockInNewStoreLocation.trim() || undefined,
+                            status: 'Active',
+                          };
+                          const updated = [...storesList, newStore];
+                          setStoresList(updated);
+                          try {
+                            localStorage.setItem('crm_stores_list', JSON.stringify(updated));
+                          } catch (err) {}
+                          storeApiService.createStore(newStore as any).catch(() => {});
+                          setStockInStore(trimmed);
+                          setStockInNewStoreName('');
+                          setStockInNewStoreCode('');
+                          setStockInNewStoreLocation('');
+                          setIsStockInNewStoreOpen(false);
+                        }
+                      }}
+                      className="px-4 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-bold cursor-pointer"
+                    >
+                      Add Store
                     </button>
                   </div>
                 </div>
@@ -9131,7 +9014,7 @@ function PurchasePageInner() {
                                 <span className="font-semibold text-slate-800 text-xs">{viewingProduct.type}</span>
                               </div>
                               <div>
-                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">PURCHASE RATE</span>
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">PURCHASE COST</span>
                                 <span className="font-bold text-slate-900 text-xs">
                                   {viewingProduct.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
@@ -9849,7 +9732,7 @@ function PurchasePageInner() {
 
                             <div className="grid grid-cols-2 gap-2 py-1.5 border-t border-b border-slate-100 text-center bg-slate-50/50 rounded">
                               <div>
-                                <div className="text-[10px] text-slate-500">Purchase Rate</div>
+                                <div className="text-[10px] text-slate-500">Purchase Cost</div>
                                 <div className="font-semibold text-slate-800">
                                   {item.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
                                 </div>
@@ -9978,7 +9861,7 @@ function PurchasePageInner() {
                                   <span className="text-[10px] text-slate-400">❓</span>
                                 </span>
                               </th>
-                              <th className="p-2.5 text-right w-28 border-r border-slate-200">Purchase Rate</th>
+                              <th className="p-2.5 text-right w-28 border-r border-slate-200">Purchase Cost</th>
                               <th className="p-2.5 text-right w-24 border-r border-slate-200">Selling Price</th>
                               <th className="p-2.5 text-center w-20 border-r border-slate-200">Status</th>
                               <th className="p-2.5 text-center w-20">Actions</th>
@@ -11159,9 +11042,9 @@ function PurchasePageInner() {
                       </span>
                     </div>
 
-                    {/* Purchase Rate */}
+                    {/* Purchase Cost */}
                     <div className="space-y-0.5">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">PURCHASE RATE</span>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">PURCHASE COST</span>
                       <span className="text-xs font-bold text-slate-800 block">
                         {viewingProduct.purchaseRate.toLocaleString('en-US', {
                           minimumFractionDigits: 2,
@@ -11654,19 +11537,13 @@ function PurchasePageInner() {
                           className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                         >
                           <option value="Select">Select</option>
-                          {users && users.length > 0 ? (
-                            users.map((u) => (
+                          {users
+                            ?.filter((u) => u.status === 'Active' || u.status === undefined)
+                            .map((u) => (
                               <option key={u.id} value={u.name}>
                                 {u.name}
                               </option>
-                            ))
-                          ) : (
-                            <>
-                              <option value="Muhammad Ali">Muhammad Ali</option>
-                              <option value="Shaheer">Shaheer</option>
-                              <option value="Super Admin">Super Admin</option>
-                            </>
-                          )}
+                            ))}
                         </select>
                       </div>
 
@@ -12140,7 +12017,7 @@ function PurchasePageInner() {
 
                           <div className="grid grid-cols-2 gap-2 py-1.5 border-t border-b border-slate-100 text-center bg-slate-50/50 rounded">
                             <div>
-                              <div className="text-[10px] text-slate-500">Purchase Rate</div>
+                              <div className="text-[10px] text-slate-500">Purchase Cost</div>
                               <div className="font-semibold text-slate-800">
                                 {item.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
                               </div>
@@ -12190,7 +12067,7 @@ function PurchasePageInner() {
                               Type <Info className="w-3 h-3 text-slate-400" />
                             </span>
                           </th>
-                          <th className="p-2.5 text-right w-24 border-r border-slate-200">Purchase Rate</th>
+                          <th className="p-2.5 text-right w-24 border-r border-slate-200">Purchase Cost</th>
                           <th className="p-2.5 text-right w-24 border-r border-slate-200">Selling Price</th>
                           <th className="p-2.5 text-center w-20 border-r border-slate-200">Minimum Stock</th>
                           <th className="p-2.5 text-center w-16 border-r border-slate-200 font-bold">Stock</th>

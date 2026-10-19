@@ -55,7 +55,7 @@ const FacebookIcon = ({ className }: { className?: string }) => (
 );
 
 function ManagerCampaignsTabContent() {
-  const { campaigns, addCampaign, updateCampaign, deleteCampaign } = useEnterpriseCrm();
+  const { campaigns, addCampaign, updateCampaign, deleteCampaign, users } = useEnterpriseCrm();
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -540,9 +540,14 @@ function ManagerCampaignsTabContent() {
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Auto-Assign Imported Leads To</label>
                 <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none">
-                  <option>Muhammed Shibil (Manager)</option>
-                  <option>Mohammed Rashid (Lead Exec)</option>
-                  <option>Round Robin Distribution</option>
+                  {users
+                    ?.filter((u) => u.status === 'Active' || u.status === undefined)
+                    .map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name} ({u.role || 'Staff'})
+                      </option>
+                    ))}
+                  <option value="Round Robin">Round Robin Distribution</option>
                 </select>
               </div>
             </div>

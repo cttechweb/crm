@@ -146,6 +146,25 @@ function SalesPipelineInner() {
     deleteDeliveryNote: contextDeleteDeliveryNote,
   } = useEnterpriseCrm();
 
+  const activeSalesUsers = useMemo(() => {
+    const LEGACY_MOCK_IDS = new Set([
+      'usr_shaheer',
+      'emp_shaheer_001',
+      'emp_adhil_001',
+      'emp_shameem_001',
+      'emp_arun_001',
+      'emp_faisal_001',
+      'usr_shibil_001',
+      'usr_rashid_001',
+      'usr_afsal_001',
+    ]);
+    return users.filter(
+      (u) =>
+        (u.status === 'Active' || u.status === undefined) &&
+        !LEGACY_MOCK_IDS.has(String(u.id))
+    );
+  }, [users]);
+
   // Mobile Filter Accordion States
   const [showQuoteFiltersMobile, setShowQuoteFiltersMobile] = useState(false);
   const [showOrderFiltersMobile, setShowOrderFiltersMobile] = useState(false);
@@ -605,7 +624,19 @@ function SalesPipelineInner() {
   const [editingOpportunityId, setEditingOpportunityId] = useState<string | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [assignedToUser, setAssignedToUser] = useState<string>('NEBIN BENNY');
+  const [assignedToUser, setAssignedToUser] = useState<string>('');
+
+  useEffect(() => {
+    if (activeSalesUsers.length > 0) {
+      setAssignedToUser((prev) => {
+        if (!prev || prev === 'NEBIN BENNY' || prev === 'Shaheer' || prev === 'Nafal') {
+          const matchedCurrent = activeSalesUsers.find((u) => u.name === currentUser?.name);
+          return matchedCurrent ? matchedCurrent.name : activeSalesUsers[0].name;
+        }
+        return prev;
+      });
+    }
+  }, [activeSalesUsers, currentUser]);
   const [deleteOppConfirm, setDeleteOppConfirm] = useState<CrmSalesOpportunity | null>(null);
   const [isChangeStageModalOpen, setIsChangeStageModalOpen] = useState(false);
   const [changeStageOpp, setChangeStageOpp] = useState<CrmSalesOpportunity | null>(null);
@@ -689,7 +720,7 @@ function SalesPipelineInner() {
     customer: '',
     contactPerson: '',
     phone: '',
-    owner: 'Nafal',
+    owner: currentUser?.name || '',
     title: '',
     source: '',
     sourceName: '',
@@ -764,7 +795,7 @@ function SalesPipelineInner() {
         phone: quickCustomerForm.phone.trim(),
         email: quickCustomerForm.email.trim(),
         status: 'Active',
-        owner: oppFormData.owner || 'Nafal',
+        owner: oppFormData.owner || currentUser?.name || activeSalesUsers[0]?.name || '',
       } as any);
     }
     setOppFormData((prev) => ({
@@ -892,24 +923,53 @@ function SalesPipelineInner() {
           localStorage.getItem('crm_opportunity_owners');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const LEGACY_MOCKS = new Set([
+              'nafal',
+              'shaheer',
+              'muhammed shibil',
+              'shibil',
+              'afsal',
+              'muhammed adhil',
+              'adhil',
+              'shameem',
+              'arun',
+              'system super admin',
+              'mohammed ishaq',
+              'super admin',
+              'nebin benny',
+            ]);
+            const sanitized = parsed.filter(
+              (name: string) => !LEGACY_MOCKS.has(String(name).toLowerCase().trim())
+            );
+            try {
+              localStorage.setItem('cezcon_opportunity_owners', JSON.stringify(sanitized));
+              localStorage.setItem('crm_opportunity_owners', JSON.stringify(sanitized));
+            } catch (err) {}
+            return sanitized;
+          }
         }
       } catch (e) {
         console.error(e);
       }
     }
-    return [
-      'Nafal',
-      'Muhammed Shemin',
-      'Muhammed Shibil',
-      'Afsal',
-      'Shaheer',
-      'Muhammed Adhil',
-      'shameem',
-      'Arun',
-      'System Super Admin',
-    ];
+    return [];
   });
+
+  useEffect(() => {
+    const LEGACY_MOCKS = new Set(['nafal', 'shaheer', 'super admin', 'nebin benny']);
+    if (activeSalesUsers.length > 0) {
+      setOppFormData((prev) => {
+        if (!prev.owner || LEGACY_MOCKS.has(prev.owner.toLowerCase().trim())) {
+          return {
+            ...prev,
+            owner: currentUser?.name || activeSalesUsers[0]?.name || '',
+          };
+        }
+        return prev;
+      });
+    }
+  }, [activeSalesUsers, currentUser]);
 
   const [isQuickAddOwnerOpen, setIsQuickAddOwnerOpen] = useState(false);
   const [newOwnerName, setNewOwnerName] = useState('');
@@ -994,7 +1054,7 @@ function SalesPipelineInner() {
         phone: quickInvoiceCustomerForm.phone.trim(),
         email: quickInvoiceCustomerForm.email.trim(),
         status: 'Active',
-        owner: currentUser?.name || 'shaheer',
+        owner: currentUser?.name || activeSalesUsers[0]?.name || 'Staff',
       } as any);
     }
     setAddInvoiceData((prev) => ({
@@ -1495,7 +1555,7 @@ function SalesPipelineInner() {
     vatAmount: 250,
     totalAmount: 5250,
     status: 'Sent' as const,
-    owner: currentUser?.name || 'shaheer',
+    owner: currentUser?.name || activeSalesUsers[0]?.name || '',
     itemsCount: 1,
   });
 
@@ -1635,7 +1695,7 @@ function SalesPipelineInner() {
       customer: opp.customer || '',
       contactPerson: opp.contactPerson || '',
       phone: opp.phone || '',
-      owner: opp.owner || 'Nafal',
+      owner: opp.owner || currentUser?.name || activeSalesUsers[0]?.name || '',
       title: opp.title || '',
       source: opp.source || 'Direct Inquiry',
       sourceName: opp.sourceName || '',
@@ -1695,7 +1755,7 @@ function SalesPipelineInner() {
       customer: '',
       contactPerson: '',
       phone: '',
-      owner: 'Nafal',
+      owner: currentUser?.name || activeSalesUsers[0]?.name || '',
       title: '',
       source: '',
       sourceName: '',
@@ -1815,7 +1875,7 @@ function SalesPipelineInner() {
       termsAndConditions: termsAndConditionsText || '',
       stage: oppFormData.stage,
       probability: Number(oppFormData.probability) || 10,
-      owner: oppFormData.owner || 'Nafal',
+      owner: oppFormData.owner || currentUser?.name || activeSalesUsers[0]?.name || '',
       opportunityDate: toDisplayDateFormat(oppFormData.opportunityDate) || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
       opportunityDateDaysAgo: '0 days',
       expectedClose: toDisplayDateFormat(oppFormData.expectedClose) || 'Pending',
@@ -2397,9 +2457,14 @@ function SalesPipelineInner() {
                                   onChange={(e) => updateConvertRow(row.id, 'owner', e.target.value)}
                                   className="w-full border border-slate-300 rounded px-2 py-1 text-xs text-slate-700 bg-white"
                                 >
-                                  <option value="NEBIN BENNY">NEBIN BENNY</option>
-                                  <option value="Nafal">Nafal</option>
-                                  <option value="Super Admin">Super Admin</option>
+                                  {activeSalesUsers.map((u) => (
+                                    <option key={u.id} value={u.name}>
+                                      {u.name}
+                                    </option>
+                                  ))}
+                                  {row.owner && !activeSalesUsers.some((u) => u.name === row.owner) && (
+                                    <option value={row.owner}>{row.owner}</option>
+                                  )}
                                 </select>
                               </div>
 
@@ -3107,14 +3172,23 @@ function SalesPipelineInner() {
                               onChange={(e) => setOppFormData({ ...oppFormData, owner: e.target.value })}
                               className="w-full bg-white border border-slate-300 rounded pl-7 pr-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
                             >
-                              {opportunityOwners.map((owner) => (
-                                <option key={owner} value={owner}>
-                                  {owner}
+                              {activeSalesUsers.map((u) => (
+                                <option key={u.id} value={u.name}>
+                                  {u.name}
                                 </option>
                               ))}
-                              {oppFormData.owner && !opportunityOwners.includes(oppFormData.owner) && (
-                                <option value={oppFormData.owner}>{oppFormData.owner}</option>
-                              )}
+                              {opportunityOwners
+                                .filter((owner) => !activeSalesUsers.some((u) => u.name === owner))
+                                .map((owner) => (
+                                  <option key={owner} value={owner}>
+                                    {owner}
+                                  </option>
+                                ))}
+                              {oppFormData.owner &&
+                                !activeSalesUsers.some((u) => u.name === oppFormData.owner) &&
+                                !opportunityOwners.includes(oppFormData.owner) && (
+                                  <option value={oppFormData.owner}>{oppFormData.owner}</option>
+                                )}
                             </select>
                             <User className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2 pointer-events-none" />
                           </div>
@@ -4597,7 +4671,7 @@ function SalesPipelineInner() {
                         (viewOpp.customer || '').toLowerCase()
                     ) as any || null;
 
-                    const liveOwner = viewOpp.owner || matchedCustomer?.owner || 'NAFAL';
+                    const liveOwner = viewOpp.owner || matchedCustomer?.owner || currentUser?.name || 'Staff';
                     const livePhone = viewOpp.phone || matchedCustomer?.phone || matchedCustomer?.mobile || '—';
                     const liveWebsite = (viewOpp as any).website || matchedCustomer?.website || '—';
                     const liveAddress = (viewOpp as any).address || (viewOpp as any).location || matchedCustomer?.address || matchedCustomer?.billingAddress || '—';
@@ -5847,10 +5921,10 @@ function SalesPipelineInner() {
                                       />
                                     ) : (
                                       <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 flex items-center justify-center text-[10px] font-bold">
-                                        {(viewOpp.owner || 'N').charAt(0).toUpperCase()}
+                                        {(viewOpp.owner || currentUser?.name || 'S').charAt(0).toUpperCase()}
                                       </div>
                                     )}
-                                    <span className="font-bold text-slate-800 uppercase">{viewOpp.owner || 'NAFAL'}</span>
+                                    <span className="font-bold text-slate-800 uppercase">{viewOpp.owner || currentUser?.name || 'Staff'}</span>
                                   </div>
                                 </div>
 
@@ -6352,20 +6426,11 @@ function SalesPipelineInner() {
                         className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                       >
                         <option value="All">All Owners</option>
-                        {users && users.length > 0 ? (
-                          users.map((u) => (
-                            <option key={u.id} value={u.name}>
-                              {u.name}
-                            </option>
-                          ))
-                        ) : (
-                          <>
-                            <option value="Shaheer">Shaheer</option>
-                            <option value="SUPER ADMIN">SUPER ADMIN</option>
-                            <option value="HANY IBRAHIM">HANY IBRAHIM</option>
-                            <option value="COOL TECH">COOL TECH</option>
-                          </>
-                        )}
+                        {activeSalesUsers.map((u) => (
+                          <option key={u.id} value={u.name}>
+                            {u.name}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -7038,20 +7103,11 @@ function SalesPipelineInner() {
                       <label className="text-slate-600 font-medium block">Owner</label>
                       <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700">
                         <option value="All Owners">All Owners</option>
-                        {users && users.length > 0 ? (
-                          users.map((u) => (
-                            <option key={u.id} value={u.name}>
-                              {u.name}
-                            </option>
-                          ))
-                        ) : (
-                          <>
-                            <option value="Shaheer">Shaheer</option>
-                            <option value="SUPER ADMIN">SUPER ADMIN</option>
-                            <option value="HANY IBRAHIM">HANY IBRAHIM</option>
-                            <option value="COOL TECH">COOL TECH</option>
-                          </>
-                        )}
+                        {activeSalesUsers.map((u) => (
+                          <option key={u.id} value={u.name}>
+                            {u.name}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -7185,15 +7241,11 @@ function SalesPipelineInner() {
                           className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                         >
                           <option value="All">All Owners</option>
-                          {users && users.length > 0 ? (
-                            users.map((u) => (
-                              <option key={u.id} value={u.name}>
-                                {u.name}
-                              </option>
-                            ))
-                          ) : (
-                            <option value={currentUser?.name || 'shaheer'}>{currentUser?.name || 'shaheer'}</option>
-                          )}
+                          {activeSalesUsers.map((u) => (
+                            <option key={u.id} value={u.name}>
+                              {u.name}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
@@ -7433,7 +7485,7 @@ function SalesPipelineInner() {
                                   </div>
                                 );
                               })()}
-                              <span className="text-[11px] text-slate-600 font-medium">{o.owner || currentUser?.name || 'shaheer'}</span>
+                              <span className="text-[11px] text-slate-600 font-medium">{o.owner || currentUser?.name || 'Staff'}</span>
                             </div>
 
                             <button
@@ -8891,15 +8943,11 @@ function SalesPipelineInner() {
                         className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                       >
                         <option value="All">All Owners</option>
-                        {users && users.length > 0 ? (
-                          users.map((u) => (
-                            <option key={u.id} value={u.name}>
-                              {u.name}
-                            </option>
-                          ))
-                        ) : (
-                          <option value={currentUser?.name || 'shaheer'}>{currentUser?.name || 'shaheer'}</option>
-                        )}
+                        {activeSalesUsers.map((u) => (
+                          <option key={u.id} value={u.name}>
+                            {u.name}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -9094,7 +9142,7 @@ function SalesPipelineInner() {
                                 </div>
                               );
                             })()}
-                            <span className="text-[11px] text-slate-600 font-medium">{p.owner || currentUser?.name || 'shaheer'}</span>
+                            <span className="text-[11px] text-slate-600 font-medium">{p.owner || currentUser?.name || 'Staff'}</span>
                           </div>
 
                           <div className="relative">
@@ -9554,7 +9602,7 @@ function SalesPipelineInner() {
                         contactPerson: addInvoiceData.attention?.trim() || existingInv?.contactPerson || '',
                         attention: addInvoiceData.attention?.trim() || existingInv?.attention || '',
                         phone: existingInv?.phone || '+971 0506693043',
-                        owner: existingInv?.owner || currentUser?.name || 'shaheer',
+                        owner: existingInv?.owner || currentUser?.name || 'Staff',
                         ownerAvatar: existingInv?.ownerAvatar || currentUser?.avatar || undefined,
                         issueDate: addInvoiceData.invoiceDate || existingInv?.issueDate || new Date().toISOString().split('T')[0],
                         dueDate: addInvoiceData.invoiceDueDate || existingInv?.dueDate || '',
@@ -10738,7 +10786,7 @@ function SalesPipelineInner() {
                         customer: addInvoiceData.customer || 'OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN',
                         contactPerson: addInvoiceData.attention?.trim() || '',
                         phone: '+971 0506693043',
-                        owner: currentUser?.name || 'shaheer',
+                        owner: currentUser?.name || 'Staff',
                         ownerAvatar: currentUser?.avatar || undefined,
                         issueDate: addInvoiceData.invoiceDate || '06-10-2026',
                         dueDate: addInvoiceData.invoiceDueDate,
@@ -11397,7 +11445,7 @@ function SalesPipelineInner() {
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-800 tracking-wide">
                   <ExternalLink className="w-3.5 h-3.5 text-slate-600" />
                   <span>
-                    INVOICE CREATED BY <span className="font-extrabold">{(selectedInvoice.owner && !selectedInvoice.owner.toLowerCase().includes('alex rivera') && !selectedInvoice.owner.toLowerCase().includes('nebin benny') ? selectedInvoice.owner : (currentUser?.name || 'shaheer')).toUpperCase()}</span> ON SAT {selectedInvoice.issueDate || '03-10-2026'} 2:58:36 PM
+                    INVOICE CREATED BY <span className="font-extrabold">{(selectedInvoice.owner && !selectedInvoice.owner.toLowerCase().includes('alex rivera') && !selectedInvoice.owner.toLowerCase().includes('nebin benny') ? selectedInvoice.owner : (currentUser?.name || 'Staff')).toUpperCase()}</span> ON SAT {selectedInvoice.issueDate || '03-10-2026'} 2:58:36 PM
                   </span>
                 </div>
                 <button
@@ -11459,7 +11507,7 @@ function SalesPipelineInner() {
                               !selectedInvoice.owner.toLowerCase().includes('alex rivera') &&
                               !selectedInvoice.owner.toLowerCase().includes('nebin benny')
                               ? selectedInvoice.owner
-                              : currentUser?.name || 'shaheer'}
+                              : currentUser?.name || 'Staff'}
                           </span>
                         </div>
 
@@ -12011,20 +12059,11 @@ function SalesPipelineInner() {
                         className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                       >
                         <option value="All">All Owners</option>
-                        {users && users.length > 0 ? (
-                          users.map((u) => (
-                            <option key={u.id} value={u.name}>
-                              {u.name}
-                            </option>
-                          ))
-                        ) : (
-                          <>
-                            <option value="Shaheer">Shaheer</option>
-                            <option value="SUPER ADMIN">SUPER ADMIN</option>
-                            <option value="HANY IBRAHIM">HANY IBRAHIM</option>
-                            <option value="COOL TECH">COOL TECH</option>
-                          </>
-                        )}
+                        {activeSalesUsers.map((u) => (
+                          <option key={u.id} value={u.name}>
+                            {u.name}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -12357,7 +12396,7 @@ function SalesPipelineInner() {
                                 </div>
                               );
                             })()}
-                            <span className="text-[11px] text-slate-600 font-medium">{inv.owner || currentUser?.name || 'shaheer'}</span>
+                            <span className="text-[11px] text-slate-600 font-medium">{inv.owner || currentUser?.name || 'Staff'}</span>
                           </div>
 
                           <div className="inline-block text-left">
@@ -12848,15 +12887,11 @@ function SalesPipelineInner() {
                     className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                   >
                     <option value="All">All</option>
-                    {users && users.length > 0 ? (
-                      users.map((u) => (
-                        <option key={u.id} value={u.name}>
-                          {u.name}
-                        </option>
-                      ))
-                    ) : (
-                      <option value={currentUser?.name || 'shaheer'}>{currentUser?.name || 'shaheer'}</option>
-                    )}
+                    {activeSalesUsers.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -13069,7 +13104,7 @@ function SalesPipelineInner() {
                             </div>
                           );
                         })()}
-                        <span className="text-[11px] text-slate-600 font-medium">{r.createdBy || currentUser?.name || 'shaheer'}</span>
+                        <span className="text-[11px] text-slate-600 font-medium">{r.createdBy || currentUser?.name || 'Staff'}</span>
                       </div>
 
                       <button
@@ -13170,7 +13205,7 @@ function SalesPipelineInner() {
                               );
                             })()}
                             <span className="text-slate-800 font-medium text-xs">
-                              {r.createdBy || currentUser?.name || 'shaheer'}
+                              {r.createdBy || currentUser?.name || 'Staff'}
                             </span>
                           </div>
                         </td>
@@ -13336,15 +13371,11 @@ function SalesPipelineInner() {
                     className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                   >
                     <option value="All">All Owners</option>
-                    {users && users.length > 0 ? (
-                      users.map((u) => (
-                        <option key={u.id} value={u.name}>
-                          {u.name}
-                        </option>
-                      ))
-                    ) : (
-                      <option value={currentUser?.name || 'shaheer'}>{currentUser?.name || 'shaheer'}</option>
-                    )}
+                    {activeSalesUsers.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -13558,7 +13589,7 @@ function SalesPipelineInner() {
                             </div>
                           );
                         })()}
-                        <span className="text-[11px] text-slate-600 font-medium">{dn.owner || currentUser?.name || 'shaheer'}</span>
+                        <span className="text-[11px] text-slate-600 font-medium">{dn.owner || currentUser?.name || 'Staff'}</span>
                       </div>
 
                       <button
@@ -14004,8 +14035,8 @@ function SalesPipelineInner() {
               customer: receiptFormData.customer,
               contactPerson: receiptFormData.contactPerson,
               phone: receiptFormData.phone,
-              createdBy: currentUser?.name || 'shaheer',
-              createdByAvatar: currentUser?.avatar || getEmployeePhoto(currentUser?.name || 'shaheer'),
+              createdBy: currentUser?.name || 'Staff',
+              createdByAvatar: currentUser?.avatar || getEmployeePhoto(currentUser?.name || 'Staff'),
               receiptType: receiptFormData.receiptType,
               tags: receiptFormData.tags ? [receiptFormData.tags] : ['Direct Transfer'],
               paymentMethod: receiptFormData.paymentMethod,
@@ -14200,8 +14231,8 @@ function SalesPipelineInner() {
               location: deliveryFormData.location,
               receivedBy: deliveryFormData.receivedBy,
               receivedPhone: deliveryFormData.receivedPhone,
-              owner: currentUser?.name || 'shaheer',
-              ownerAvatar: currentUser?.avatar || getEmployeePhoto(currentUser?.name || 'shaheer'),
+              owner: currentUser?.name || 'Staff',
+              ownerAvatar: currentUser?.avatar || getEmployeePhoto(currentUser?.name || 'Staff'),
               dispatchDate: deliveryFormData.dispatchDate,
               costUpdated: deliveryFormData.costUpdated,
               status: 'Delivered',
@@ -14447,37 +14478,14 @@ function SalesPipelineInner() {
                       onChange={(e) => setAssignedToUser(e.target.value)}
                       className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
                     >
-                      <option value="NEBIN BENNY">NEBIN BENNY</option>
-                      <option value="Nafal">Nafal</option>
-                      <option value="Muhammed Adhil">Muhammed Adhil</option>
-                      <option value="Muhammed Shemin">Muhammed Shemin</option>
-                      <option value="Muhammed Shibil">Muhammed Shibil</option>
-                      <option value="Afsal">Afsal</option>
-                      <option value="Shaheer">Shaheer</option>
-                      <option value="shameem">shameem</option>
-                      <option value="Arun">Arun</option>
-                      <option value="System Super Admin">System Super Admin</option>
-                      {users
-                        .filter(
-                          (u) =>
-                            ![
-                              'NEBIN BENNY',
-                              'Nafal',
-                              'Muhammed Adhil',
-                              'Muhammed Shemin',
-                              'Muhammed Shibil',
-                              'Afsal',
-                              'Shaheer',
-                              'shameem',
-                              'Arun',
-                              'System Super Admin',
-                            ].includes(u.name)
-                        )
-                        .map((u) => (
-                          <option key={u.id} value={u.name}>
-                            {u.name}
-                          </option>
-                        ))}
+                      {activeSalesUsers.map((u) => (
+                        <option key={u.id} value={u.name}>
+                          {u.name}
+                        </option>
+                      ))}
+                      {assignedToUser && !activeSalesUsers.some((u) => u.name === assignedToUser) && (
+                        <option value={assignedToUser}>{assignedToUser}</option>
+                      )}
                     </select>
                   </div>
                 </div>

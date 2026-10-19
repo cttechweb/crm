@@ -31,6 +31,21 @@ export function EnterpriseTopHeader() {
     const syncUser = () => {
       const user = authMockService.getCurrentUser();
       if (user) {
+        if (!user.avatar) {
+          try {
+            const storedUsersRaw = localStorage.getItem('cezcon_crm_users_list');
+            if (storedUsersRaw) {
+              const list = JSON.parse(storedUsersRaw);
+              const matched = list.find((u: any) =>
+                (u.email && u.email.toLowerCase() === user.email.toLowerCase()) ||
+                (u.id && (u.id === user.id || `usr_${u.id}` === user.id))
+              );
+              if (matched?.avatarImage || matched?.avatar) {
+                user.avatar = matched.avatarImage || matched.avatar;
+              }
+            }
+          } catch {}
+        }
         setCurrentUser(user);
       }
     };
@@ -39,6 +54,21 @@ export function EnterpriseTopHeader() {
 
     const unsubscribe = authMockService.onAuthStateChanged((user) => {
       if (user) {
+        if (!user.avatar) {
+          try {
+            const storedUsersRaw = localStorage.getItem('cezcon_crm_users_list');
+            if (storedUsersRaw) {
+              const list = JSON.parse(storedUsersRaw);
+              const matched = list.find((u: any) =>
+                (u.email && u.email.toLowerCase() === user.email.toLowerCase()) ||
+                (u.id && (u.id === user.id || `usr_${u.id}` === user.id))
+              );
+              if (matched?.avatarImage || matched?.avatar) {
+                user.avatar = matched.avatarImage || matched.avatar;
+              }
+            }
+          } catch {}
+        }
         setCurrentUser(user);
       }
     });

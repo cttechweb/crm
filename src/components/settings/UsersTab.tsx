@@ -450,6 +450,8 @@ export function UsersTab({
 
     const matches = cezconUsersList.filter((u) => {
       if (editingUserId && String(u.id) === String(editingUserId)) return false;
+      const isActive = u.status === 'Active' || u.status === 'active' || (u as any).is_active === 1 || (u as any).is_active === true;
+      if (!isActive) return false;
 
       const uPos = (u.position || '').trim();
       const uDesig = (u.designation || '').trim();
@@ -473,11 +475,13 @@ export function UsersTab({
       return false;
     });
 
-    // Fallback: If no exact hierarchy match is found yet in mock data, provide available managers
+    // Fallback: If no exact hierarchy match is found, provide active available managers
     if (matches.length === 0) {
       return cezconUsersList
         .filter((u) => {
           if (editingUserId && String(u.id) === String(editingUserId)) return false;
+          const isActive = u.status === 'Active' || u.status === 'active' || (u as any).is_active === 1 || (u as any).is_active === true;
+          if (!isActive) return false;
           const r = (u.role || '').toLowerCase();
           const p = (u.profileType || '').toLowerCase();
           return r === 'admin' || r === 'manager' || r === 'super_admin' || p.includes('manager') || p.includes('admin');
@@ -501,6 +505,8 @@ export function UsersTab({
   const availableManagers = useMemo(() => {
     return cezconUsersList
       .filter((u) => {
+        const isActive = u.status === 'Active' || u.status === 'active' || (u as any).is_active === 1 || (u as any).is_active === true;
+        if (!isActive) return false;
         const p = (u.profileType || '').toLowerCase();
         const r = (u.role || '').toLowerCase();
         const m = (u.managerType || '').toLowerCase();
@@ -547,6 +553,18 @@ export function UsersTab({
 
       const userMap = new Map<string | number, CezconUserItem>();
 
+      const LEGACY_MOCK_IDS = new Set([
+        'emp_shaheer_001',
+        'emp_adhil_001',
+        'emp_shameem_001',
+        'emp_arun_001',
+        'emp_faisal_001',
+        'usr_shibil_001',
+        'usr_rashid_001',
+        'usr_afsal_001',
+        'usr_shemin_001',
+      ]);
+
       if (storedUsersRaw !== null) {
         // Data already initialized in localStorage - respect the stored list and deletions strictly
         cezconList.forEach((u) => {
@@ -554,7 +572,7 @@ export function UsersTab({
             const uid = String(u.id).toLowerCase();
             const uemail = (u.email || '').toLowerCase();
             const uuser = (u.username || '').toLowerCase();
-            if (!deletedIdsSet.has(uid) && !deletedIdsSet.has(uemail) && !deletedIdsSet.has(uuser)) {
+            if (!LEGACY_MOCK_IDS.has(String(u.id)) && !deletedIdsSet.has(uid) && !deletedIdsSet.has(uemail) && !deletedIdsSet.has(uuser)) {
               userMap.set(u.id, u);
             }
           }
@@ -599,7 +617,7 @@ export function UsersTab({
 
       // Initial clean seed ONLY if cezcon_crm_users_list was never initialized
       cezconList.forEach((u) => {
-        if (u && u.id) {
+        if (u && u.id && !LEGACY_MOCK_IDS.has(String(u.id))) {
           userMap.set(u.id, u);
         }
       });
@@ -629,155 +647,6 @@ export function UsersTab({
             });
           }
         }
-      });
-
-      // Default baseline users on first run
-      userMap.set('usr_shemin_001', {
-        id: 'usr_shemin_001',
-        name: 'Muhammed shemin',
-        email: 'shemin@gmail.com',
-        username: 'shemin@cooltechuae.com',
-        profileType: 'Admin',
-        designation: 'Managing Director / Business Admin',
-        department: 'Executive Operations',
-        phone: '+971 50 123 4567',
-        status: 'Active',
-        isAdmin: true,
-        role: 'Admin',
-        loginPermission: 'Web & Mobile',
-      });
-
-      userMap.set('usr_afsal_001', {
-        id: 'usr_afsal_001',
-        name: 'Afsal',
-        email: 'afsal@gmail.com',
-        username: 'afsal@cooltechuae.com',
-        profileType: 'Marketing Manager',
-        managerType: 'Marketing Manager',
-        designation: 'Marketing Manager',
-        department: 'Marketing',
-        phone: '+971 55 123 9988',
-        status: 'Active',
-        role: 'Manager',
-        dataScope: 'team',
-        loginPermission: 'Web & Mobile',
-      });
-
-      userMap.set('usr_shibil_001', {
-        id: 'usr_shibil_001',
-        name: 'Muhammed Shibil',
-        email: 'shibil@gmail.com',
-        username: 'shibil@cooltechuae.com',
-        profileType: 'Sales Manager',
-        managerType: 'Sales Manager',
-        designation: 'Sales Manager',
-        department: 'Sales',
-        phone: '+971 50 987 6543',
-        status: 'Active',
-        role: 'Manager',
-        dataScope: 'team',
-        loginPermission: 'Web & Mobile',
-      });
-
-      userMap.set('usr_rashid_001', {
-        id: 'usr_rashid_001',
-        name: 'Rashid Ali',
-        email: 'purchasemanager@gmail.com',
-        username: 'purchasemanager@cooltechuae.com',
-        profileType: 'Purchase Manager',
-        managerType: 'Purchase Manager',
-        designation: 'Purchase Manager',
-        department: 'Purchase',
-        phone: '+971 50 445 6789',
-        status: 'Active',
-        role: 'Manager',
-        dataScope: 'team',
-        loginPermission: 'Web & Mobile',
-      });
-
-      userMap.set('emp_faisal_001', {
-        id: 'emp_faisal_001',
-        name: 'Faisal Khan',
-        email: 'purchaseemp@gmail.com',
-        username: 'purchaseemp@cooltechuae.com',
-        profileType: 'Purchase Employee',
-        employeeType: 'Purchase Employee',
-        designation: 'Purchase Employee',
-        department: 'Purchase',
-        managerId: 'usr_rashid_001',
-        phone: '+971 52 334 5566',
-        status: 'Active',
-        role: 'Employee',
-        dataScope: 'own',
-        loginPermission: 'Web & Mobile',
-      });
-
-      userMap.set('emp_shaheer_001', {
-        id: 'emp_shaheer_001',
-        name: 'shaheer',
-        email: 'shaheer@gmail.com',
-        username: 'shaheer@cooltechuae.com',
-        profileType: 'Sales Executive',
-        employeeType: 'Sales Executive',
-        designation: 'Sales Executive',
-        department: 'Sales',
-        managerId: 'usr_shibil_001',
-        phone: '+971 50 776 5432',
-        status: 'Active',
-        role: 'Employee',
-        dataScope: 'own',
-        loginPermission: 'Web & Mobile',
-      });
-
-      userMap.set('emp_adhil_001', {
-        id: 'emp_adhil_001',
-        name: 'adhil',
-        email: 'adhil@gmail.com',
-        username: 'adhil@cooltechuae.com',
-        profileType: 'Sales Executive',
-        employeeType: 'Sales Executive',
-        designation: 'Sales Executive',
-        department: 'Sales',
-        managerId: 'usr_shibil_001',
-        phone: '+971 56 881 1334',
-        status: 'Active',
-        role: 'Employee',
-        dataScope: 'own',
-        loginPermission: 'Web & Mobile',
-      });
-
-      userMap.set('emp_shameem_001', {
-        id: 'emp_shameem_001',
-        name: 'shameem',
-        email: 'shameem@gmail.com',
-        username: 'shameem@cooltechuae.com',
-        profileType: 'Marketing Employee',
-        employeeType: 'Marketing Employee',
-        designation: 'Marketing Executive',
-        department: 'Marketing',
-        managerId: 'usr_afsal_001',
-        phone: '+971 52 443 8901',
-        status: 'Active',
-        role: 'Employee',
-        dataScope: 'own',
-        loginPermission: 'Web & Mobile',
-      });
-
-      userMap.set('emp_arun_001', {
-        id: 'emp_arun_001',
-        name: 'arun',
-        email: 'arun@gmail.com',
-        username: 'arun@cooltechuae.com',
-        profileType: 'Marketing Employee',
-        employeeType: 'Marketing Employee',
-        designation: 'Marketing Specialist',
-        department: 'Marketing',
-        managerId: 'usr_afsal_001',
-        phone: '+971 54 321 0987',
-        status: 'Active',
-        role: 'Employee',
-        dataScope: 'own',
-        loginPermission: 'Web & Mobile',
       });
 
       const mergedUsers = Array.from(userMap.values());

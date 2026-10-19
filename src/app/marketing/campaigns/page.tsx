@@ -99,8 +99,14 @@ export function CampaignsContent() {
     endDate: '2025-12-31',
     status: 'Active' as const,
     listing: true,
-    ownerName: 'Mohammed Rashid',
+    ownerName: users[0]?.name || '',
   });
+
+  useEffect(() => {
+    if (!formData.ownerName && users.length > 0) {
+      setFormData((prev) => ({ ...prev, ownerName: users[0]?.name || '' }));
+    }
+  }, [users, formData.ownerName]);
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -142,7 +148,7 @@ export function CampaignsContent() {
       endDate: '2025-12-31',
       status: 'Active',
       listing: true,
-      ownerName: 'Mohammed Rashid',
+      ownerName: users[0]?.name || '',
     });
     showToast(`Campaign "${newCmp.name}" created successfully!`);
   };
@@ -647,19 +653,18 @@ export function CampaignsContent() {
                     onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none"
                   >
-                    {users && users.length > 0 ? (
-                      users.map((u) => (
+                    {users
+                      ?.filter((u) => u.status === 'Active' || u.status === undefined)
+                      .map((u) => (
                         <option key={u.id} value={u.name}>
                           {u.name}
                         </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="Afsal">Afsal</option>
-                        <option value="Shaheer">Shaheer</option>
-                        <option value="Mohammed Rashid">Mohammed Rashid</option>
-                      </>
-                    )}
+                      ))}
+                    {formData.ownerName &&
+                      !['shaheer', 'nafal', 'nebin benny', 'super admin', 'afsal', 'shibil', 'rashid'].includes(formData.ownerName.toLowerCase().trim()) &&
+                      !users?.some((u) => u.name === formData.ownerName) && (
+                        <option value={formData.ownerName}>{formData.ownerName}</option>
+                      )}
                   </select>
                 </div>
                 <div>

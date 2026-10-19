@@ -168,7 +168,7 @@ export function LeadsContent() {
     ];
   });
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [uploadOwner, setUploadOwner] = useState('Nafal');
+  const [uploadOwner, setUploadOwner] = useState('');
   const [uploadSource, setUploadSource] = useState('');
   const [uploadCampaign, setUploadCampaign] = useState('');
   const [uploadBusinessOpportunity, setUploadBusinessOpportunity] = useState('');
@@ -235,16 +235,16 @@ export function LeadsContent() {
       const u = authMockService.getCurrentUser();
       if (u) {
         setCurrentUser(u);
-        setAssignToOwner((prev) => prev || u.name || 'shaheer');
-        setAssignToOwnerId((prev) => prev || u.id || 'usr_shaheer');
+        setAssignToOwner((prev) => prev || u.name || '');
+        setAssignToOwnerId((prev) => prev || u.id || '');
       }
     };
     syncUser();
     const unsub = authMockService.onAuthStateChanged((u) => {
       if (u) {
         setCurrentUser(u);
-        setAssignToOwner((prev) => prev || u.name || 'shaheer');
-        setAssignToOwnerId((prev) => prev || u.id || 'usr_shaheer');
+        setAssignToOwner((prev) => prev || u.name || '');
+        setAssignToOwnerId((prev) => prev || u.id || '');
       }
     });
     window.addEventListener('storage', syncUser);
@@ -261,7 +261,10 @@ export function LeadsContent() {
 
   useEffect(() => {
     let isCancelled = false;
+    let isFetching = false;
     const fetchServerUsers = async () => {
+      if (isFetching) return;
+      isFetching = true;
       try {
         const res = await userApiService.getUsers({
           status: 'active',
@@ -273,12 +276,30 @@ export function LeadsContent() {
         }
       } catch (err) {
         console.warn('[Leads] Could not fetch server-backed users:', err);
+      } finally {
+        isFetching = false;
       }
     };
     fetchServerUsers();
     window.addEventListener('crm_users_updated', fetchServerUsers);
+
+    const pollInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'hidden') {
+        fetchServerUsers();
+      }
+    }, 25000);
+
+    const handleVis = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchServerUsers();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
+
     return () => {
       isCancelled = true;
+      clearInterval(pollInterval);
+      document.removeEventListener('visibilitychange', handleVis);
       window.removeEventListener('crm_users_updated', fetchServerUsers);
     };
   }, [isEmployee]);
@@ -368,11 +389,32 @@ export function LeadsContent() {
       } catch (e) {}
     }
 
+    const LEGACY_MOCK_IDS = new Set([
+      'usr_shaheer',
+      'usr_shibil',
+      'usr_jismon',
+      'usr_ahsan',
+      'usr_adhil',
+      'usr_afsal',
+      'usr_arun',
+      'usr_shameem',
+      'usr_rashid',
+      'emp_shaheer_001',
+      'emp_adhil_001',
+      'emp_shameem_001',
+      'emp_arun_001',
+      'emp_faisal_001',
+      'usr_shibil_001',
+      'usr_rashid_001',
+      'usr_afsal_001',
+      'usr_shemin_001',
+    ]);
+
     const userMap = new Map<string, { id: string; name: string; role: string; department?: string; avatar?: string; email?: string }>();
 
     // 1. Primary: Server-backed users from D1 database
     serverUsers.forEach((u) => {
-      if (u.id && u.full_name) {
+      if (u.id && u.full_name && (u.is_active === 1 || u.is_active === true || u.is_active === undefined)) {
         userMap.set(u.id, {
           id: u.id,
           name: u.full_name,
@@ -392,9 +434,16 @@ export function LeadsContent() {
           if (Array.isArray(parsed)) {
             parsed.forEach((u: any) => {
               const uId = String(u.id || '');
-              if (deletedIds.includes(uId) || deletedIds.includes(`usr_${uId}`) || deletedIds.includes(uId.replace('usr_', ''))) {
+              if (
+                deletedIds.includes(uId) ||
+                deletedIds.includes(`usr_${uId}`) ||
+                deletedIds.includes(uId.replace('usr_', '')) ||
+                LEGACY_MOCK_IDS.has(uId)
+              ) {
                 return;
               }
+              const isActive = u.status === 'Active' || u.isActive === true || u.is_active === 1;
+              if (!isActive) return;
               const name = u.name?.trim() || u.username?.trim();
               if (uId && !userMap.has(uId)) {
                 userMap.set(uId, {
@@ -414,7 +463,8 @@ export function LeadsContent() {
 
     // 3. Users from EnterpriseCrmContext
     users.forEach((u) => {
-      if (u.id && !userMap.has(u.id)) {
+      const uId = String(u.id || '');
+      if (uId && !LEGACY_MOCK_IDS.has(uId) && !userMap.has(uId) && (u.status === 'Active' || u.status === undefined)) {
         userMap.set(u.id, {
           id: u.id,
           name: u.name,
@@ -423,25 +473,6 @@ export function LeadsContent() {
           avatar: u.avatar,
           email: u.email,
         });
-      }
-    });
-
-    // 4. Fallback standard enterprise representatives
-    const fallbacks = [
-      { id: 'usr_shaheer', name: 'Shaheer', role: 'Sales Executive', department: 'Sales' },
-      { id: 'usr_shibil', name: 'Muhammed Shibil', role: 'Sales Manager', department: 'Sales' },
-      { id: 'usr_jismon', name: 'JISMON JOSE', role: 'Sales Executive', department: 'Sales' },
-      { id: 'usr_ahsan', name: 'MUHAMMED AHSAN P V', role: 'Sales Executive', department: 'Sales' },
-      { id: 'usr_adhil', name: 'Muhammed Adhil', role: 'Sales Executive', department: 'Sales' },
-      { id: 'usr_afsal', name: 'Afsal', role: 'Marketing Manager', department: 'Marketing' },
-      { id: 'usr_arun', name: 'Arun', role: 'Marketing Executive', department: 'Marketing' },
-      { id: 'usr_shameem', name: 'Shameem', role: 'Marketing Executive', department: 'Marketing' },
-      { id: 'usr_rashid', name: 'Mohammed Rashid', role: 'Purchase Manager', department: 'Purchase' },
-    ];
-
-    fallbacks.forEach((f) => {
-      if (!userMap.has(f.id)) {
-        userMap.set(f.id, f);
       }
     });
 
@@ -466,10 +497,10 @@ export function LeadsContent() {
 
   // New Lead Form State (Full Cezcon CRM Compatibility)
   const [newLead, setNewLead] = useState({
-    owner: currentUser?.name || 'shaheer',
-    ownerId: currentUser?.id || 'usr_shaheer',
-    assignedTo: currentUser?.name || 'shaheer',
-    assignedToId: currentUser?.id || 'usr_shaheer',
+    owner: currentUser?.name || '',
+    ownerId: currentUser?.id || '',
+    assignedTo: currentUser?.name || '',
+    assignedToId: currentUser?.id || '',
     leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
     contactPrefix: 'Mr.',
     name: '',
@@ -494,6 +525,46 @@ export function LeadsContent() {
     location: '',
     comments: '',
   });
+
+  useEffect(() => {
+    if (assignableUsers.length > 0) {
+      setNewLead((prev) => {
+        const isCurrentOwnerEmptyOrMock = !prev.ownerId || prev.ownerId === 'usr_shaheer' || prev.owner === 'shaheer';
+        if (isCurrentOwnerEmptyOrMock) {
+          const matchedCurrent = assignableUsers.find(
+            (u) => u.id === currentUser?.id || (u.email && currentUser?.email && u.email.toLowerCase() === currentUser.email.toLowerCase())
+          );
+          const defaultUser = matchedCurrent || assignableUsers[0];
+          return {
+            ...prev,
+            owner: defaultUser.name,
+            ownerId: defaultUser.id,
+            assignedTo: defaultUser.name,
+            assignedToId: defaultUser.id,
+          };
+        }
+        return prev;
+      });
+      setAssignToOwner((prev) => {
+        if (!prev || prev === 'shaheer') {
+          const matchedCurrent = assignableUsers.find(
+            (u) => u.id === currentUser?.id || (u.email && currentUser?.email && u.email.toLowerCase() === currentUser.email.toLowerCase())
+          );
+          return matchedCurrent ? matchedCurrent.name : assignableUsers[0].name;
+        }
+        return prev;
+      });
+      setAssignToOwnerId((prev) => {
+        if (!prev || prev === 'usr_shaheer') {
+          const matchedCurrent = assignableUsers.find(
+            (u) => u.id === currentUser?.id || (u.email && currentUser?.email && u.email.toLowerCase() === currentUser.email.toLowerCase())
+          );
+          return matchedCurrent ? matchedCurrent.id : assignableUsers[0].id;
+        }
+        return prev;
+      });
+    }
+  }, [assignableUsers, currentUser]);
 
   // Filtered Leads Calculation
   const filteredLeads = useMemo(() => {
@@ -727,9 +798,9 @@ export function LeadsContent() {
     const contactDisplayName = newLead.name.trim() ? `${newLead.contactPrefix} ${newLead.name.trim()}` : (newLead.customerName || 'Point of contact');
     const companyDisplayName = newLead.customerName.trim() || newLead.name.trim() || 'New Enterprise Client';
 
-    const enteredOwner = newLead.owner.trim() || currentUser?.name || 'shaheer';
+    const enteredOwner = newLead.owner.trim() || currentUser?.name || assignableUsers[0]?.name || '';
     const enteredAssignee = newLead.assignedTo.trim() || enteredOwner;
-    const effectiveOwnerId = newLead.assignedToId || newLead.ownerId || currentUser?.id;
+    const effectiveOwnerId = newLead.assignedToId || newLead.ownerId || currentUser?.id || assignableUsers[0]?.id;
     const effectiveCreatedBy = currentUser?.name || 'Super Admin';
     const effectiveAssignedEmployee = enteredAssignee;
 
@@ -779,11 +850,14 @@ export function LeadsContent() {
       setFormErrors({});
       setCreateLeadError(null);
       setIsAddModalOpen(false);
+      const defaultUser = assignableUsers.find(
+        (u) => u.id === currentUser?.id || (u.email && currentUser?.email && u.email.toLowerCase() === currentUser.email.toLowerCase())
+      ) || assignableUsers[0];
       setNewLead({
-        owner: currentUser?.name || 'shaheer',
-        ownerId: currentUser?.id || 'usr_shaheer',
-        assignedTo: currentUser?.name || 'shaheer',
-        assignedToId: currentUser?.id || 'usr_shaheer',
+        owner: currentUser?.name || defaultUser?.name || '',
+        ownerId: currentUser?.id || defaultUser?.id || '',
+        assignedTo: currentUser?.name || defaultUser?.name || '',
+        assignedToId: currentUser?.id || defaultUser?.id || '',
         leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
         contactPrefix: 'Mr.',
         name: '',
@@ -1776,7 +1850,7 @@ export function LeadsContent() {
               leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
               assignedDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
               leadAssigned: {
-                name: uploadOwner || 'Nafal',
+                name: uploadOwner || currentUser?.name || assignableUsers[0]?.name || '',
                 avatar: getEmployeePhoto(uploadOwner) || '',
               },
               contactDetails: {
@@ -1787,10 +1861,10 @@ export function LeadsContent() {
                 email: 'info@uploadedclient.com',
                 whatsapp: '+971 50 123 4567',
               },
-              createdBy: currentUser?.name || 'Nafal',
-              owner: uploadOwner || 'Nafal',
+              createdBy: currentUser?.name || assignableUsers[0]?.name || 'Admin',
+              owner: uploadOwner || currentUser?.name || assignableUsers[0]?.name || '',
               ownerAvatar: getEmployeePhoto(uploadOwner) || '',
-              assignedEmployee: uploadOwner || 'Nafal',
+              assignedEmployee: uploadOwner || currentUser?.name || assignableUsers[0]?.name || '',
               source: uploadSource || 'Website Inbound',
               campaign: uploadCampaign || 'DIRECT - 2026',
               businessOpportunity: uploadBusinessOpportunity || 'Chiller Overhaul',
@@ -1819,7 +1893,7 @@ export function LeadsContent() {
                   leadDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
                   assignedDate: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
                   leadAssigned: {
-                    name: uploadOwner || 'Nafal',
+                    name: uploadOwner || currentUser?.name || assignableUsers[0]?.name || '',
                     avatar: getEmployeePhoto(uploadOwner) || '',
                   },
                   contactDetails: {
@@ -1830,10 +1904,10 @@ export function LeadsContent() {
                     email: (emailIdx !== -1 ? cols[emailIdx] : '') || '',
                     whatsapp: leadPhone,
                   },
-                  createdBy: currentUser?.name || 'Nafal',
-                  owner: uploadOwner || 'Nafal',
+                  createdBy: currentUser?.name || assignableUsers[0]?.name || 'Admin',
+                  owner: uploadOwner || currentUser?.name || assignableUsers[0]?.name || '',
                   ownerAvatar: getEmployeePhoto(uploadOwner) || '',
-                  assignedEmployee: uploadOwner || 'Nafal',
+                  assignedEmployee: uploadOwner || currentUser?.name || assignableUsers[0]?.name || '',
                   source: uploadSource || 'Website Inbound',
                   campaign: uploadCampaign || 'DIRECT - 2026',
                   businessOpportunity: uploadBusinessOpportunity || 'Chiller Overhaul',
@@ -2614,7 +2688,7 @@ export function LeadsContent() {
                       <button
                         type="button"
                         onClick={() => {
-                          setAssignToOwner(lead.assignedEmployee || lead.owner || currentUser?.name || 'shaheer');
+                          setAssignToOwner(lead.assignedEmployee || lead.owner || currentUser?.name || assignableUsers[0]?.name || '');
                           setAssigningLead(lead);
                         }}
                         className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 text-[10px] font-bold cursor-pointer"
@@ -2680,7 +2754,7 @@ export function LeadsContent() {
                             <button
                               type="button"
                               onClick={() => {
-                                setAssignToOwner(lead.assignedEmployee || lead.owner || currentUser?.name || 'shaheer');
+                                setAssignToOwner(lead.assignedEmployee || lead.owner || currentUser?.name || assignableUsers[0]?.name || '');
                                 setAssigningLead(lead);
                                 setActionMenuId(null);
                               }}
@@ -3011,12 +3085,12 @@ export function LeadsContent() {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    const defaultOwnerName = lead.assignedEmployee || lead.owner || currentUser?.name || 'shaheer';
+                                    const defaultOwnerName = lead.assignedEmployee || lead.owner || currentUser?.name || assignableUsers[0]?.name || '';
                                     const matchedUser = assignableUsers.find(
                                       (u) => u.id === lead.ownerId || u.name.toLowerCase() === defaultOwnerName.toLowerCase()
                                     );
                                     setAssignToOwner(matchedUser ? matchedUser.name : defaultOwnerName);
-                                    setAssignToOwnerId(matchedUser ? matchedUser.id : (lead.ownerId || 'usr_shaheer'));
+                                    setAssignToOwnerId(matchedUser ? matchedUser.id : (lead.ownerId || assignableUsers[0]?.id || ''));
                                     setAssigningLead(lead);
                                     setActionMenuId(null);
                                   }}
@@ -3210,7 +3284,7 @@ export function LeadsContent() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  setAssignToOwner(viewingLead.assignedEmployee || viewingLead.owner || currentUser?.name || 'shaheer');
+                  setAssignToOwner(viewingLead.assignedEmployee || viewingLead.owner || currentUser?.name || assignableUsers[0]?.name || '');
                   setAssigningLead(viewingLead);
                 }}
               >
