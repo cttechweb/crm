@@ -311,19 +311,19 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
                           ? 'crm_receipts_updated'
                           : key === 'crm_delivery_notes_data'
                             ? 'crm_delivery_notes_updated'
-                          : key === 'crm_campaigns_data'
-                            ? 'crm_campaigns_updated'
-                            : key === 'crm_stocks_data'
-                              ? 'crm_stocks_updated'
-                              : key === 'crm_suppliers_list'
-                                ? 'crm_suppliers_updated'
-                                : key === 'crm_purchase_orders'
-                                  ? 'crm_purchase_orders_updated'
-                                  : key === 'crm_stock_transfers'
-                                    ? 'crm_stock_transfers_updated'
-                                    : key === 'cezcon_crm_users_list'
-                                ? 'crm_users_updated'
-                                : undefined);
+                            : key === 'crm_campaigns_data'
+                              ? 'crm_campaigns_updated'
+                              : key === 'crm_stocks_data'
+                                ? 'crm_stocks_updated'
+                                : key === 'crm_suppliers_list'
+                                  ? 'crm_suppliers_updated'
+                                  : key === 'crm_purchase_orders'
+                                    ? 'crm_purchase_orders_updated'
+                                    : key === 'crm_stock_transfers'
+                                      ? 'crm_stock_transfers_updated'
+                                      : key === 'cezcon_crm_users_list'
+                                        ? 'crm_users_updated'
+                                        : undefined);
 
       if (derivedEvent) {
         window.dispatchEvent(new Event(derivedEvent));
@@ -361,10 +361,10 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           const roleStr: UserRole = isSuperAdmin
             ? 'Super Admin'
             : isAdmin
-            ? 'Admin'
-            : isManager
-            ? 'Manager'
-            : 'Employee';
+              ? 'Admin'
+              : isManager
+                ? 'Manager'
+                : 'Employee';
 
           return {
             id: u.id,
@@ -433,7 +433,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
             if (Array.isArray(parsed) && parsed.length > 0) {
               setCustomers(parsed);
             }
-          } catch {}
+          } catch { }
         }
 
         // 2. Immediately prime local cached leads
@@ -444,7 +444,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
             if (Array.isArray(parsed) && parsed.length > 0) {
               setLeads(parsed);
             }
-          } catch {}
+          } catch { }
         }
 
         // 3. Background fetch leads without dispatching recursive reload event
@@ -508,7 +508,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               persist('crm_opportunities_data', res.opportunities, undefined, false);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
 
         const storedTasks = localStorage.getItem('crm_tasks_data');
         if (storedTasks) {
@@ -536,10 +536,10 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               persist('crm_tasks_data', res.tasks, undefined, false);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
 
         // Safely migrate existing offline tasks to D1
-        taskApiService.migrateLocalTasksToDatabase().catch(() => {});
+        taskApiService.migrateLocalTasksToDatabase().catch(() => { });
 
         const storedQuotes = localStorage.getItem('crm_quotations_data');
         if (storedQuotes) {
@@ -558,7 +558,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               persist('crm_quotations_data', res.quotations, undefined, false);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
 
         const storedOrders = localStorage.getItem('crm_orders_data');
         if (storedOrders) {
@@ -577,7 +577,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               persist('crm_orders_data', res.orders, undefined, false);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
 
         // Background fetch invoices from D1 database
         invoiceApiService
@@ -588,7 +588,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               persist('crm_invoices_data', res.invoices, undefined, false);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
 
         const storedInvoices = localStorage.getItem('crm_invoices_data');
         if (storedInvoices) {
@@ -636,10 +636,10 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               persist('crm_receipts_data', res.receipts, undefined, false);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
 
         // Safely migrate existing offline receipts to D1
-        receiptApiService.migrateLocalReceiptsToDatabase().catch(() => {});
+        receiptApiService.migrateLocalReceiptsToDatabase().catch(() => { });
 
         const storedDeliveryNotes = localStorage.getItem('crm_delivery_notes_data');
         if (storedDeliveryNotes) {
@@ -658,10 +658,10 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               persist('crm_delivery_notes_data', res.deliveryNotes, undefined, false);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
 
         // Safely migrate existing offline delivery notes to D1
-        deliveryNoteApiService.migrateLocalDeliveryNotesToDatabase().catch(() => {});
+        deliveryNoteApiService.migrateLocalDeliveryNotesToDatabase().catch(() => { });
 
         // Proforma Invoices
         const storedProformas = localStorage.getItem('crm_proforma_invoices');
@@ -685,10 +685,10 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               persist('crm_proforma_invoices', res.proformas, undefined, false);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
 
         // Safely migrate existing offline proforma invoices to D1
-        proformaApiService.migrateLocalProformasToDatabase().catch(() => {});
+        proformaApiService.migrateLocalProformasToDatabase().catch(() => { });
 
         const storedCampaigns = localStorage.getItem('crm_campaigns_data');
         if (storedCampaigns) {
@@ -715,8 +715,8 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               persist('crm_stocks_data', res.purchaseStocks, undefined, false);
             }
           })
-          .catch(() => {});
-        crmInventoryApiService.migrateLocalInventoryToDatabase().catch(() => {});
+          .catch(() => { });
+        crmInventoryApiService.migrateLocalInventoryToDatabase().catch(() => { });
 
         // Suppliers
         const storedSuppliers = localStorage.getItem('crm_suppliers_list');
@@ -739,8 +739,8 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               persist('crm_suppliers_list', res.suppliers, undefined, false);
             }
           })
-          .catch(() => {});
-        supplierApiService.migrateLocalSuppliersToDatabase().catch(() => {});
+          .catch(() => { });
+        supplierApiService.migrateLocalSuppliersToDatabase().catch(() => { });
 
         // Purchase Orders
         const storedPOs = localStorage.getItem('crm_purchase_orders');
@@ -763,8 +763,8 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               persist('crm_purchase_orders', res.orders, undefined, false);
             }
           })
-          .catch(() => {});
-        purchaseOrderApiService.migrateLocalPurchaseOrdersToDatabase().catch(() => {});
+          .catch(() => { });
+        purchaseOrderApiService.migrateLocalPurchaseOrdersToDatabase().catch(() => { });
 
         // Stock Transfers
         const storedTransfers = localStorage.getItem('crm_stock_transfers');
@@ -787,8 +787,8 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               persist('crm_stock_transfers', res.transfers, undefined, false);
             }
           })
-          .catch(() => {});
-        stockTransferApiService.migrateLocalStockTransfersToDatabase().catch(() => {});
+          .catch(() => { });
+        stockTransferApiService.migrateLocalStockTransfersToDatabase().catch(() => { });
 
         // Load dynamic shared users - prime active cached users immediately
         const deletedIdsRaw = typeof window !== 'undefined' ? localStorage.getItem('cezcon_crm_deleted_user_ids') : null;
@@ -824,7 +824,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
                 );
               }
             }
-          } catch {}
+          } catch { }
         }
       } catch (e) {
         console.error('EnterpriseCrmContext loadAllData error:', e);
@@ -834,19 +834,133 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     loadAllData();
     fetchAuthoritativeUsers();
 
-    // Background polling timer (every 25s)
-    const pollTimer = setInterval(() => {
-      fetchAuthoritativeUsers();
-    }, 25000);
+    // Multi-device live database synchronizer
+    let isLiveSyncInProgress = false;
+    const syncActiveDataFromDatabase = async () => {
+      if (isLiveSyncInProgress) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      isLiveSyncInProgress = true;
 
-    // Refresh when browser tab becomes visible
-    const handleVisibilityChange = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      try {
+        // 1. Keep users synchronized
         fetchAuthoritativeUsers();
+
+        // 2. Fetch authoritative leads directly from Cloudflare D1
+        try {
+          const res = await leadApiService.getLeads({ limit: 100 });
+          if (res && Array.isArray(res.leads)) {
+            setLeads((prev) => {
+              if (
+                prev.length === res.leads.length &&
+                prev.every((l, idx) => {
+                  const r = res.leads[idx];
+                  return (
+                    r &&
+                    l.id === r.id &&
+                    l.status === r.status &&
+                    l.rating === r.rating &&
+                    l.owner === r.owner &&
+                    l.lastActivity === r.lastActivity
+                  );
+                })
+              ) {
+                return prev;
+              }
+              persist('crm_leads_data', res.leads, undefined, false);
+              return res.leads;
+            });
+          }
+        } catch {
+          // Suppress background poll errors to maintain uninterrupted UX
+        }
+
+        // 3. Fetch authoritative customers directly from Cloudflare D1
+        const liveUser = authMockService.getCurrentUser();
+        if (liveUser?.isServerVerified) {
+          try {
+            const res = await customerApiService.getCustomers({ limit: 100 });
+            if (res && Array.isArray(res.customers)) {
+              setCustomers((prev) => {
+                if (
+                  prev.length === res.customers.length &&
+                  prev.every((c, idx) => {
+                    const r = res.customers[idx];
+                    return r && c.id === r.id && c.customerName === r.customerName && c.owner === r.owner;
+                  })
+                ) {
+                  return prev;
+                }
+                persist('crm_customers_data', res.customers, undefined, false);
+                return res.customers;
+              });
+            }
+          } catch {}
+        }
+
+        // 4. Fetch authoritative tasks directly from Cloudflare D1
+        try {
+          const res = await taskApiService.getTasks({ limit: 100 });
+          if (res && Array.isArray(res.tasks)) {
+            setTasks((prev) => {
+              if (
+                prev.length === res.tasks.length &&
+                prev.every((t, idx) => {
+                  const r = res.tasks[idx];
+                  return r && t.id === r.id && t.status === r.status;
+                })
+              ) {
+                return prev;
+              }
+              persist('crm_tasks_data', res.tasks, undefined, false);
+              return res.tasks;
+            });
+          }
+        } catch {}
+
+        // 5. Fetch authoritative opportunities directly from Cloudflare D1
+        try {
+          const res = await opportunityApiService.getOpportunities({ limit: 100 });
+          if (res && Array.isArray(res.opportunities)) {
+            setSalesOpportunities((prev) => {
+              if (
+                prev.length === res.opportunities.length &&
+                prev.every((o, idx) => {
+                  const r = res.opportunities[idx];
+                  return r && o.id === r.id && o.stage === r.stage && o.title === r.title;
+                })
+              ) {
+                return prev;
+              }
+              persist('crm_opportunities_data', res.opportunities, undefined, false);
+              return res.opportunities;
+            });
+          }
+        } catch {}
+      } finally {
+        isLiveSyncInProgress = false;
       }
     };
+
+    // Live sync polling interval (every 3 seconds when tab is active/visible)
+    const pollTimer = setInterval(() => {
+      syncActiveDataFromDatabase();
+    }, 3000);
+
+    // Refresh instantly when phone screen wakes up, app opens, or browser tab regains focus
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        syncActiveDataFromDatabase();
+      }
+    };
+    const handleWindowFocus = () => {
+      syncActiveDataFromDatabase();
+    };
+
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleWindowFocus);
     }
 
     const eventNames = [
@@ -887,6 +1001,9 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleWindowFocus);
+      }
       eventNames.forEach((evt) => window.removeEventListener(evt, handleDataEvent));
     };
   }, []);
@@ -909,7 +1026,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newTask, ...currentTasks.filter((t) => t.id !== uniqueId)];
     setTasks(updated);
     persist('crm_tasks_data', updated);
-    taskApiService.createTask(newTask).catch(() => {});
+    taskApiService.createTask(newTask).catch(() => { });
   };
 
   const createTask = (taskData: Partial<CrmTask> & { taskDetails: string }) => {
@@ -964,7 +1081,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newTask, ...currentTasks.filter((t) => t.id !== uniqueId)];
     setTasks(updated);
     persist('crm_tasks_data', updated);
-    taskApiService.createTask(newTask).catch(() => {});
+    taskApiService.createTask(newTask).catch(() => { });
     return newTask;
   };
 
@@ -1160,7 +1277,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     });
     setTasks(list);
     persist('crm_tasks_data', list);
-    taskApiService.addComment(taskId, text).catch(() => {});
+    taskApiService.addComment(taskId, text).catch(() => { });
   };
 
   const updateTaskStatusWorkflow = (taskId: string, status: TaskStatus, actor = 'User', role = 'Manager', note?: string) => {
@@ -1186,7 +1303,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     });
     setTasks(list);
     persist('crm_tasks_data', list);
-    taskApiService.updateTaskStatus(taskId, { status, notes: note }).catch(() => {});
+    taskApiService.updateTaskStatus(taskId, { status, notes: note }).catch(() => { });
   };
 
   const updateTask = (id: string, updated: Partial<CrmTask>) => {
@@ -1200,7 +1317,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const list = currentTasks.map((t) => (t.id === id ? { ...t, ...updated } : t));
     setTasks(list);
     persist('crm_tasks_data', list);
-    taskApiService.updateTask(id, updated).catch(() => {});
+    taskApiService.updateTask(id, updated).catch(() => { });
   };
 
   const toggleTaskStatus = (id: string) => {
@@ -1229,7 +1346,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const list = currentTasks.filter((t) => t.id !== id);
     setTasks(list);
     persist('crm_tasks_data', list);
-    taskApiService.deleteTask(id).catch(() => {});
+    taskApiService.deleteTask(id).catch(() => { });
   };
 
   // Lead Handlers
@@ -1253,7 +1370,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           if (Array.isArray(parsed) && parsed.length > 0) {
             setLeads(parsed);
           }
-        } catch {}
+        } catch { }
       }
     } finally {
       setIsLeadsLoading(false);
@@ -1282,7 +1399,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
             localStorage.setItem('cooltech_crm_leads', JSON.stringify([created, ...parsed]));
           }
         }
-      } catch {}
+      } catch { }
 
       // 4. Remote refresh to ensure canonical ordering & database state
       await refreshLeads();
@@ -1563,7 +1680,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     setSalesOpportunities(list);
     persist('crm_opportunities_data', list);
 
-    opportunityApiService.updateOpportunity(id, { stage: newStage }).catch(() => {});
+    opportunityApiService.updateOpportunity(id, { stage: newStage }).catch(() => { });
   };
 
   const deleteOpportunity = (id: string) => {
@@ -1571,7 +1688,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     setSalesOpportunities(list);
     persist('crm_opportunities_data', list);
 
-    opportunityApiService.deleteOpportunity(id).catch(() => {});
+    opportunityApiService.deleteOpportunity(id).catch(() => { });
   };
 
   // Quotation Handlers
@@ -1618,7 +1735,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     setQuotations(list);
     persist('crm_quotations_data', list);
 
-    quotationApiService.deleteQuotation(id).catch(() => {});
+    quotationApiService.deleteQuotation(id).catch(() => { });
   };
 
   const convertQuotationToSalesOrder = (quotationId: string): CrmSalesOrder | null => {
@@ -1707,7 +1824,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       status: 'Converted',
       convertedOrderId: newOrder.id,
       salesOrderNumber: newOrder.orderNumber,
-    }).catch(() => {});
+    }).catch(() => { });
 
     return newOrder;
   };
@@ -1748,7 +1865,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     setSalesOrders(list);
     persist('crm_orders_data', list);
 
-    salesOrderApiService.deleteSalesOrder(id).catch(() => {});
+    salesOrderApiService.deleteSalesOrder(id).catch(() => { });
   };
 
   // Invoice Handlers
@@ -1872,7 +1989,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     setInvoices(list);
     persist('crm_invoices_data', list);
 
-    invoiceApiService.deleteInvoice(id).catch(() => {});
+    invoiceApiService.deleteInvoice(id).catch(() => { });
   };
 
   // Proforma Invoice Handlers
@@ -1886,21 +2003,21 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newPi, ...proformas];
     setProformas(updated);
     persist('crm_proforma_invoices', updated);
-    proformaApiService.createProforma(newPi).catch(() => {});
+    proformaApiService.createProforma(newPi).catch(() => { });
   };
 
   const updateProforma = (id: string, updatedFields: Partial<CrmProformaInvoice>) => {
     const updated = proformas.map((p) => (p.id === id ? { ...p, ...updatedFields } : p));
     setProformas(updated);
     persist('crm_proforma_invoices', updated);
-    proformaApiService.updateProforma(id, updatedFields).catch(() => {});
+    proformaApiService.updateProforma(id, updatedFields).catch(() => { });
   };
 
   const deleteProforma = (id: string) => {
     const updated = proformas.filter((p) => p.id !== id);
     setProformas(updated);
     persist('crm_proforma_invoices', updated);
-    proformaApiService.deleteProforma(id).catch(() => {});
+    proformaApiService.deleteProforma(id).catch(() => { });
   };
 
   // Receipt Handlers
@@ -1913,21 +2030,21 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newRec, ...receipts];
     setReceipts(updated);
     persist('crm_receipts_data', updated);
-    receiptApiService.createReceipt(newRec).catch(() => {});
+    receiptApiService.createReceipt(newRec).catch(() => { });
   };
 
   const updateReceipt = (id: string, updatedFields: Partial<CrmReceipt>) => {
     const updated = receipts.map((r) => (r.id === id ? { ...r, ...updatedFields } : r));
     setReceipts(updated);
     persist('crm_receipts_data', updated);
-    receiptApiService.updateReceipt(id, updatedFields).catch(() => {});
+    receiptApiService.updateReceipt(id, updatedFields).catch(() => { });
   };
 
   const deleteReceipt = (id: string) => {
     const updated = receipts.filter((r) => r.id !== id);
     setReceipts(updated);
     persist('crm_receipts_data', updated);
-    receiptApiService.deleteReceipt(id).catch(() => {});
+    receiptApiService.deleteReceipt(id).catch(() => { });
   };
 
   // Delivery Note Handlers
@@ -1940,21 +2057,21 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newDn, ...deliveryNotes];
     setDeliveryNotes(updated);
     persist('crm_delivery_notes_data', updated);
-    deliveryNoteApiService.createDeliveryNote(newDn).catch(() => {});
+    deliveryNoteApiService.createDeliveryNote(newDn).catch(() => { });
   };
 
   const updateDeliveryNote = (id: string, updatedFields: Partial<CrmDeliveryNote>) => {
     const updated = deliveryNotes.map((d) => (d.id === id ? { ...d, ...updatedFields } : d));
     setDeliveryNotes(updated);
     persist('crm_delivery_notes_data', updated);
-    deliveryNoteApiService.updateDeliveryNote(id, updatedFields).catch(() => {});
+    deliveryNoteApiService.updateDeliveryNote(id, updatedFields).catch(() => { });
   };
 
   const deleteDeliveryNote = (id: string) => {
     const updated = deliveryNotes.filter((d) => d.id !== id);
     setDeliveryNotes(updated);
     persist('crm_delivery_notes_data', updated);
-    deliveryNoteApiService.deleteDeliveryNote(id).catch(() => {});
+    deliveryNoteApiService.deleteDeliveryNote(id).catch(() => { });
   };
 
   // Stock / Purchase Handlers
@@ -1975,7 +2092,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       supplier: newItem.supplier,
       stock: newItem.quantity,
       purchaseRate: newItem.unitPrice,
-    } as any).catch(() => {});
+    } as any).catch(() => { });
   };
 
   const updateStockItem = (id: string, updated: Partial<CrmPurchaseStock>) => {
@@ -1988,14 +2105,14 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       store: updated.store,
       stock: updated.quantity,
       purchaseRate: updated.unitPrice,
-    } as any).catch(() => {});
+    } as any).catch(() => { });
   };
 
   const deleteStockItem = (id: string) => {
     const list = purchaseStocks.filter((s) => s.id !== id);
     setPurchaseStocks(list);
     persist('crm_stocks_data', list);
-    crmInventoryApiService.deleteInventoryItem(id).catch(() => {});
+    crmInventoryApiService.deleteInventoryItem(id).catch(() => { });
   };
 
   // Supplier Handlers
@@ -2008,21 +2125,21 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newSup, ...suppliers];
     setSuppliers(updated);
     persist('crm_suppliers_list', updated);
-    supplierApiService.createSupplier(newSup).catch(() => {});
+    supplierApiService.createSupplier(newSup).catch(() => { });
   };
 
   const updateSupplier = (id: string, updated: Partial<CrmSupplier>) => {
     const list = suppliers.map((s) => (s.id === id ? { ...s, ...updated } : s));
     setSuppliers(list);
     persist('crm_suppliers_list', list);
-    supplierApiService.updateSupplier(id, updated).catch(() => {});
+    supplierApiService.updateSupplier(id, updated).catch(() => { });
   };
 
   const deleteSupplier = (id: string) => {
     const list = suppliers.filter((s) => s.id !== id);
     setSuppliers(list);
     persist('crm_suppliers_list', list);
-    supplierApiService.deleteSupplier(id).catch(() => {});
+    supplierApiService.deleteSupplier(id).catch(() => { });
   };
 
   // Purchase Order Handlers
@@ -2035,21 +2152,21 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newPo, ...purchaseOrders];
     setPurchaseOrders(updated);
     persist('crm_purchase_orders', updated);
-    purchaseOrderApiService.createPurchaseOrder(newPo).catch(() => {});
+    purchaseOrderApiService.createPurchaseOrder(newPo).catch(() => { });
   };
 
   const updatePurchaseOrder = (id: string, updated: Partial<CrmPurchaseOrder>) => {
     const list = purchaseOrders.map((p) => (p.id === id ? { ...p, ...updated } : p));
     setPurchaseOrders(list);
     persist('crm_purchase_orders', list);
-    purchaseOrderApiService.updatePurchaseOrder(id, updated).catch(() => {});
+    purchaseOrderApiService.updatePurchaseOrder(id, updated).catch(() => { });
   };
 
   const deletePurchaseOrder = (id: string) => {
     const list = purchaseOrders.filter((p) => p.id !== id);
     setPurchaseOrders(list);
     persist('crm_purchase_orders', list);
-    purchaseOrderApiService.deletePurchaseOrder(id).catch(() => {});
+    purchaseOrderApiService.deletePurchaseOrder(id).catch(() => { });
   };
 
   // Stock Transfer Handlers
@@ -2062,14 +2179,14 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     const updated = [newSt, ...stockTransfers];
     setStockTransfers(updated);
     persist('crm_stock_transfers', updated);
-    stockTransferApiService.createStockTransfer(newSt).catch(() => {});
+    stockTransferApiService.createStockTransfer(newSt).catch(() => { });
   };
 
   const deleteStockTransfer = (id: string) => {
     const list = stockTransfers.filter((st) => st.id !== id);
     setStockTransfers(list);
     persist('crm_stock_transfers', list);
-    stockTransferApiService.deleteStockTransfer(id).catch(() => {});
+    stockTransferApiService.deleteStockTransfer(id).catch(() => { });
   };
 
   // User Handlers
