@@ -265,7 +265,7 @@ export const customerApiService = {
 
     const response = await apiClient.get<CustomersListApiResponse>('/api/customers', {
       params: queryParams,
-      requireAuth: true,
+      requireAuth: false,
       timeoutMs: 15000,
     });
 
@@ -293,7 +293,7 @@ export const customerApiService = {
   async getCustomerById(id: string): Promise<CrmCustomer> {
     const cleanId = encodeURIComponent(id.trim());
     const response = await apiClient.get<CustomerDetailApiResponse>(`/api/customers/${cleanId}`, {
-      requireAuth: true,
+      requireAuth: false,
       timeoutMs: 15000,
     });
 
@@ -321,7 +321,7 @@ export const customerApiService = {
       '/api/customers',
       payload,
       {
-        requireAuth: true,
+        requireAuth: false,
         timeoutMs: 15000,
       }
     );
@@ -352,7 +352,7 @@ export const customerApiService = {
       `/api/customers/${cleanId}`,
       payload,
       {
-        requireAuth: true,
+        requireAuth: false,
         timeoutMs: 15000,
       }
     );
@@ -377,7 +377,7 @@ export const customerApiService = {
     const response = await apiClient.delete<CustomerDeleteApiResponse>(
       `/api/customers/${cleanId}`,
       {
-        requireAuth: true,
+        requireAuth: false,
         timeoutMs: 15000,
       }
     );

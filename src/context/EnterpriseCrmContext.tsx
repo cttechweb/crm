@@ -468,28 +468,25 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           });
 
         // 4. Background fetch customers without dispatching recursive reload event
-        if (liveUser?.isServerVerified) {
-          setIsCustomersLoading(true);
-          customerApiService
-            .getCustomers({ limit: 100 })
-            .then((res) => {
+        setIsCustomersLoading(true);
+        customerApiService
+          .getCustomers({ limit: 100 })
+          .then((res) => {
+            if (res && Array.isArray(res.customers)) {
               setCustomers(res.customers);
               setCustomersError(null);
               persist('crm_customers_data', res.customers, undefined, false);
-            })
-            .catch((err: unknown) => {
-              const msg = err instanceof Error ? err.message : 'Failed to fetch customers from CRM database';
-              console.warn('[EnterpriseCrmContext] Backend customer load failed:', msg);
-              setCustomersError(msg);
-            })
-            .finally(() => {
-              setIsCustomersLoading(false);
-              isFetchingDataRef.current = false;
-            });
-        } else {
-          setIsCustomersLoading(false);
-          isFetchingDataRef.current = false;
-        }
+            }
+          })
+          .catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : 'Failed to fetch customers from CRM database';
+            console.warn('[EnterpriseCrmContext] Backend customer load failed:', msg);
+            setCustomersError(msg);
+          })
+          .finally(() => {
+            setIsCustomersLoading(false);
+            isFetchingDataRef.current = false;
+          });
 
         const storedOpps = localStorage.getItem('crm_opportunities_data');
         if (storedOpps) {
@@ -875,27 +872,29 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         }
 
         // 3. Fetch authoritative customers directly from Cloudflare D1
-        const liveUser = authMockService.getCurrentUser();
-        if (liveUser?.isServerVerified) {
-          try {
-            const res = await customerApiService.getCustomers({ limit: 100 });
-            if (res && Array.isArray(res.customers)) {
-              setCustomers((prev) => {
-                if (
-                  prev.length === res.customers.length &&
-                  prev.every((c, idx) => {
-                    const r = res.customers[idx];
-                    return r && c.id === r.id && c.customerName === r.customerName && c.owner === r.owner;
-                  })
-                ) {
-                  return prev;
-                }
-                persist('crm_customers_data', res.customers, undefined, false);
-                return res.customers;
-              });
-            }
-          } catch {}
-        }
+        try {
+          const res = await customerApiService.getCustomers({ limit: 100 });
+          if (res && Array.isArray(res.customers)) {
+            setCustomers((prev) => {
+              if (
+                prev.length === res.customers.length &&
+                prev.every((c, idx) => {
+                  const r = res.customers[idx];
+                  return (
+                    r &&
+                    c.id === r.id &&
+                    c.customerName === r.customerName &&
+                    c.owner === r.owner
+                  );
+                })
+              ) {
+                return prev;
+              }
+              persist('crm_customers_data', res.customers, undefined, false);
+              return res.customers;
+            });
+          }
+        } catch {}
 
         // 4. Fetch authoritative tasks directly from Cloudflare D1
         try {
@@ -1512,50 +1511,41 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
 
   // Customer Handlers
   const refreshCustomers = async (): Promise<void> => {
-    const user = authMockService.getCurrentUser();
-    if (user?.isServerVerified) {
-      setIsCustomersLoading(true);
-      try {
-        const res = await customerApiService.getCustomers({ limit: 100 });
+    setIsCustomersLoading(true);
+    try {
+      const res = await customerApiService.getCustomers({ limit: 100 });
+      if (res && Array.isArray(res.customers)) {
         setCustomers(res.customers);
         setCustomersError(null);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Failed to fetch customers from CRM database';
-        setCustomersError(msg);
-      } finally {
-        setIsCustomersLoading(false);
+        persist('crm_customers_data', res.customers, undefined, false);
       }
-    } else {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to fetch customers from CRM database';
+      setCustomersError(msg);
       const stored = localStorage.getItem('crm_customers_data');
       if (stored) {
         try {
           setCustomers(JSON.parse(stored));
         } catch { }
       }
+    } finally {
+      setIsCustomersLoading(false);
     }
   };
 
   const addCustomer = async (custData: Omit<CrmCustomer, 'id' | 'slNo'>): Promise<CrmCustomer | void> => {
-    const user = authMockService.getCurrentUser();
-    if (user?.isServerVerified) {
-      try {
-        const created = await customerApiService.createCustomer(custData);
-        setCustomers((prev) => [created, ...prev]);
-        return created;
-      } catch (err: unknown) {
-        console.error('[EnterpriseCrmContext] createCustomer failed on backend:', err);
-        throw err;
-      }
-    } else {
-      const newCust: CrmCustomer = {
-        ...custData,
-        id: `cust-${Date.now()}`,
-        slNo: customers.length + 1,
-      };
-      const updated = [newCust, ...customers];
-      setCustomers(updated);
-      persist('crm_customers_data', updated);
-      return newCust;
+    try {
+      const created = await customerApiService.createCustomer(custData);
+      setCustomers((prev) => {
+        const withoutNew = prev.filter((c) => c.id !== created.id);
+        const updated = [created, ...withoutNew];
+        persist('crm_customers_data', updated);
+        return updated;
+      });
+      return created;
+    } catch (err: unknown) {
+      console.error('[EnterpriseCrmContext] createCustomer failed on backend:', err);
+      throw err;
     }
   };
 
@@ -1564,31 +1554,28 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     employeeName: string,
     managerName = 'Muhammed Shibil (Sales Manager)'
   ): Promise<void> => {
-    const user = authMockService.getCurrentUser();
-    if (user?.isServerVerified) {
-      try {
-        const updated = await customerApiService.updateCustomer(customerId, {
-          owner: employeeName,
-          lastActivity: `Assigned to ${employeeName}`,
-        });
-        setCustomers((prev) =>
-          prev.map((c) => (c.id === customerId || String(c.slNo) === customerId ? updated : c))
-        );
-      } catch (err: unknown) {
-        console.error('[EnterpriseCrmContext] assignCustomer failed on backend:', err);
-        throw err;
-      }
-    } else {
-      const list = customers.map((c) => {
-        if (c.id !== customerId && String(c.slNo) !== customerId) return c;
-        return {
-          ...c,
-          owner: employeeName,
-          lastActivity: `Assigned to ${employeeName}`,
-        };
+    const list = customers.map((c) => {
+      if (c.id !== customerId && String(c.slNo) !== customerId) return c;
+      return {
+        ...c,
+        owner: employeeName,
+        lastActivity: `Assigned to ${employeeName}`,
+      };
+    });
+    setCustomers(list);
+    persist('crm_customers_data', list);
+
+    try {
+      const updated = await customerApiService.updateCustomer(customerId, {
+        owner: employeeName,
+        lastActivity: `Assigned to ${employeeName}`,
       });
-      setCustomers(list);
-      persist('crm_customers_data', list);
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === customerId || String(c.slNo) === customerId ? updated : c))
+      );
+    } catch (err: unknown) {
+      console.error('[EnterpriseCrmContext] assignCustomer failed on backend:', err);
+      throw err;
     }
   };
 
@@ -1596,39 +1583,32 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     id: string,
     updatedData: Partial<CrmCustomer>
   ): Promise<CrmCustomer | void> => {
-    const user = authMockService.getCurrentUser();
-    if (user?.isServerVerified) {
-      try {
-        const saved = await customerApiService.updateCustomer(id, updatedData);
-        setCustomers((prev) =>
-          prev.map((c) => (c.id === id || String(c.slNo) === id ? saved : c))
-        );
-        return saved;
-      } catch (err: unknown) {
-        console.error('[EnterpriseCrmContext] updateCustomer failed on backend:', err);
-        throw err;
-      }
-    } else {
-      const list = customers.map((c) => (c.id === id ? { ...c, ...updatedData } : c));
-      setCustomers(list);
-      persist('crm_customers_data', list);
+    const list = customers.map((c) => (c.id === id || String(c.slNo) === id ? { ...c, ...updatedData } : c));
+    setCustomers(list);
+    persist('crm_customers_data', list);
+
+    try {
+      const saved = await customerApiService.updateCustomer(id, updatedData);
+      setCustomers((prev) =>
+        prev.map((c) => (c.id === id || String(c.slNo) === id ? saved : c))
+      );
+      return saved;
+    } catch (err: unknown) {
+      console.error('[EnterpriseCrmContext] updateCustomer failed on backend:', err);
+      throw err;
     }
   };
 
   const deleteCustomer = async (id: string): Promise<void> => {
-    const user = authMockService.getCurrentUser();
-    if (user?.isServerVerified) {
-      try {
-        await customerApiService.deleteCustomer(id);
-        setCustomers((prev) => prev.filter((c) => c.id !== id && String(c.slNo) !== id));
-      } catch (err: unknown) {
-        console.error('[EnterpriseCrmContext] deleteCustomer failed on backend:', err);
-        throw err;
-      }
-    } else {
-      const list = customers.filter((c) => c.id !== id && String(c.slNo) !== id);
-      setCustomers(list);
-      persist('crm_customers_data', list);
+    const list = customers.filter((c) => c.id !== id && String(c.slNo) !== id);
+    setCustomers(list);
+    persist('crm_customers_data', list);
+
+    try {
+      await customerApiService.deleteCustomer(id);
+    } catch (err: unknown) {
+      console.error('[EnterpriseCrmContext] deleteCustomer failed on backend:', err);
+      throw err;
     }
   };
 
