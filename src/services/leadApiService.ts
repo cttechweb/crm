@@ -147,10 +147,13 @@ export function mapBackendToCrmLead(
         content: n.content,
       }))
     : undefined;
+  const explicitLeadTag = parsedTags.find((t) => /^[A-Za-z0-9#-]+#\d+$/i.test(t) || /^CTL#\d+$/i.test(t));
+  const leadNumber = explicitLeadTag || `CTL#${1000 + (row.sl_no ?? 1)}`;
 
   return {
     id: row.id,
     slNo: row.sl_no ?? 1,
+    leadNumber,
     leadDate: row.lead_date || row.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
     assignedDate: row.assigned_date || undefined,
     leadAssigned: {
@@ -228,8 +231,12 @@ export function mapCrmLeadToBackendPayload(lead: Partial<CrmLead>): Record<strin
   if (lead.campaign !== undefined) payload.campaign = lead.campaign;
   if (lead.businessOpportunity !== undefined) payload.business_opportunity = lead.businessOpportunity;
   if (lead.location !== undefined) payload.location = lead.location;
-  if (lead.tags !== undefined) {
-    payload.tags = Array.isArray(lead.tags) ? lead.tags : lead.tags;
+  const rawTags = Array.isArray(lead.tags) ? [...lead.tags] : (typeof lead.tags === 'string' ? [lead.tags] : []);
+  if (lead.leadNumber && !rawTags.includes(lead.leadNumber)) {
+    rawTags.unshift(lead.leadNumber);
+  }
+  if (rawTags.length > 0 || lead.tags !== undefined) {
+    payload.tags = rawTags;
   }
   if (lead.comments !== undefined) payload.comments = lead.comments;
   if (lead.lastActivity !== undefined) payload.last_activity = lead.lastActivity;

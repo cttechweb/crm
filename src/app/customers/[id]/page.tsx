@@ -83,69 +83,23 @@ export default function CustomerDetailPage({ params }: PageProps) {
   const [customParentOptions, setCustomParentOptions] = useState<string[]>([]);
   const [assignUser, setAssignUser] = useState('Nafal');
 
-  // Existing Contacts List
-  const [existingContactsList, setExistingContactsList] = useState([
-    {
-      id: 'cnt-1',
-      salutation: 'Mr.',
-      name: 'Bishoy George',
-      designation: 'Procurement Manager',
-      personalMobile: '55 987 6543',
-      businessMobile: '50 123 4567',
-      email: 'bishoy@sobha.ae',
-      spokenLanguage: 'English, Arabic',
-      nationality: 'Egypt',
-      isPrimary: true,
-    },
-    {
-      id: 'cnt-2',
-      salutation: 'Mr.',
-      name: 'Mr. Puspak',
-      designation: 'Project Director',
-      personalMobile: '52 345 6789',
-      businessMobile: '50 281 0547',
-      email: 'puspak@sobha.ae',
-      spokenLanguage: 'English, Hindi',
-      nationality: 'India',
-      isPrimary: true,
-    },
-    {
-      id: 'cnt-3',
-      salutation: 'Mr.',
-      name: 'Mr. Farhan',
-      designation: 'Managing Director',
-      personalMobile: '50 456 7890',
-      businessMobile: '50 889 9001',
-      email: 'farhan@alhabtoor.ae',
-      spokenLanguage: 'English, Arabic, Urdu',
-      nationality: 'Pakistan',
-      isPrimary: true,
-    },
-    {
-      id: 'cnt-4',
-      salutation: 'Mr.',
-      name: 'NIKHIL',
-      designation: 'Site Operations Head',
-      personalMobile: '56 789 0123',
-      businessMobile: '50 334 4556',
-      email: 'nikhil@cooltechuae.com',
-      spokenLanguage: 'English, Malayalam, Hindi',
-      nationality: 'India',
-      isPrimary: true,
-    },
-    {
-      id: 'cnt-5',
-      salutation: 'Mr.',
-      name: 'Nafal',
-      designation: 'Sales & BD Director',
-      personalMobile: '50 112 2334',
-      businessMobile: '50 998 8776',
-      email: 'nafal@cooltechuae.com',
-      spokenLanguage: 'Malayalam, English, Arabic',
-      nationality: 'India',
-      isPrimary: true,
-    },
-  ]);
+  // Existing Contacts List (populated live from customer backend / contacts)
+  const [existingContactsList, setExistingContactsList] = useState<
+    Array<{
+      id: string;
+      salutation?: string;
+      name: string;
+      designation?: string;
+      personalMobile?: string;
+      businessMobile?: string;
+      email?: string;
+      spokenLanguage?: string;
+      nationality?: string;
+      address?: string;
+      comments?: string;
+      isPrimary?: boolean;
+    }>
+  >([]);
 
   const [isNewContactModalOpen, setIsNewContactModalOpen] = useState(false);
   const [newContactFormData, setNewContactFormData] = useState({

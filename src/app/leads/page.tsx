@@ -495,8 +495,64 @@ export function LeadsContent() {
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  // Helper to determine the next lead number (e.g. CTL#1025)
+  const getNextLeadNumberValue = (): string => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedPrefix = localStorage.getItem('cezcon_lead_number_prefix') || 'CTL#';
+        const savedNext = localStorage.getItem('cezcon_lead_next_number');
+        if (savedNext) {
+          return `${savedPrefix}${savedNext}`;
+        }
+      } catch {}
+    }
+    const count = (leads && leads.length) || 0;
+    return `CTL#${1001 + count}`;
+  };
+
+  // Lead Number Settings Modal State (Exact Cezcon CRM layout matching Opportunity Number)
+  const [isLeadNumModalOpen, setIsLeadNumModalOpen] = useState(false);
+  const [leadPrefix, setLeadPrefix] = useState('CTL#');
+  const [leadNextNumber, setLeadNextNumber] = useState('1001');
+
+  useEffect(() => {
+    if (!isLeadNumModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsLeadNumModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isLeadNumModalOpen]);
+
+  const openLeadNumModal = () => {
+    const currentVal = newLead.leadNumber || getNextLeadNumberValue();
+    const match = currentVal.match(/^(.*?)(\d+)$/);
+    if (match) {
+      setLeadPrefix(match[1]);
+      setLeadNextNumber(match[2]);
+    } else {
+      setLeadPrefix('CTL#');
+      setLeadNextNumber('1001');
+    }
+    setIsLeadNumModalOpen(true);
+  };
+
+  const handleSaveLeadNumSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newCode = `${leadPrefix}${leadNextNumber}`;
+    setNewLead((prev) => ({ ...prev, leadNumber: newCode }));
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('cezcon_lead_number_prefix', leadPrefix);
+        localStorage.setItem('cezcon_lead_next_number', leadNextNumber);
+      } catch {}
+    }
+    setIsLeadNumModalOpen(false);
+  };
+
   // New Lead Form State (Full Cezcon CRM Compatibility)
   const [newLead, setNewLead] = useState({
+    leadNumber: 'CTL#1001',
     owner: currentUser?.name || '',
     ownerId: currentUser?.id || '',
     assignedTo: currentUser?.name || '',
@@ -525,6 +581,15 @@ export function LeadsContent() {
     location: '',
     comments: '',
   });
+
+  useEffect(() => {
+    setNewLead((prev) => {
+      if (!prev.leadNumber || prev.leadNumber === 'CTL#1001') {
+        return { ...prev, leadNumber: getNextLeadNumberValue() };
+      }
+      return prev;
+    });
+  }, [leads]);
 
   useEffect(() => {
     if (assignableUsers.length > 0) {
@@ -607,11 +672,12 @@ export function LeadsContent() {
       // Search Box
       if (search.trim()) {
         const q = search.toLowerCase();
+        const matchesNumber = lead.leadNumber ? lead.leadNumber.toLowerCase().includes(q) : false;
         const matchesName = lead.contactDetails.name.toLowerCase().includes(q);
         const matchesCompany = lead.contactDetails.company.toLowerCase().includes(q);
         const matchesPhone = lead.contactDetails.phone.toLowerCase().includes(q);
         const matchesSpec = lead.leadSpecification.toLowerCase().includes(q);
-        if (!matchesName && !matchesCompany && !matchesPhone && !matchesSpec) return false;
+        if (!matchesNumber && !matchesName && !matchesCompany && !matchesPhone && !matchesSpec) return false;
       }
       return true;
     });
@@ -813,7 +879,10 @@ export function LeadsContent() {
     const mainPhone = cleanBiz ? `${newLead.businessMobileCode} ${cleanBiz}` : (cleanPersonal ? `${newLead.personalMobileCode} ${cleanPersonal}` : '+971 50 123 4567');
 
     try {
+      const effectiveLeadNumber = newLead.leadNumber || getNextLeadNumberValue();
+
       await addLead({
+        leadNumber: effectiveLeadNumber,
         leadDate: newLead.leadDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
         assignedDate: newLead.leadDate || new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
         leadAssigned: {
@@ -844,8 +913,27 @@ export function LeadsContent() {
         source: newLead.source || 'Website Inbound',
         campaign: newLead.campaign || 'SIMPLE LIFE - 2025',
         businessOpportunity: newLead.businessOpportunity || 'HVAC Installation',
-        tags: newLead.leadTags ? newLead.leadTags.split(',').map((t) => t.trim()) : ['New Lead'],
+        tags: [
+          effectiveLeadNumber,
+          ...(newLead.leadTags ? newLead.leadTags.split(',').map((t) => t.trim()) : ['New Lead']),
+        ].filter(Boolean),
       });
+
+      // Calculate next sequential number for subsequent lead creation
+      let nextLeadNo = 'CTL#1002';
+      const numMatch = effectiveLeadNumber.match(/^(.*?)(\d+)$/);
+      if (numMatch) {
+        const prefix = numMatch[1];
+        const num = parseInt(numMatch[2], 10);
+        const nextDigits = String(num + 1).padStart(numMatch[2].length, '0');
+        nextLeadNo = `${prefix}${nextDigits}`;
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('cezcon_lead_number_prefix', prefix);
+            localStorage.setItem('cezcon_lead_next_number', nextDigits);
+          } catch {}
+        }
+      }
 
       setFormErrors({});
       setCreateLeadError(null);
@@ -854,6 +942,7 @@ export function LeadsContent() {
         (u) => u.id === currentUser?.id || (u.email && currentUser?.email && u.email.toLowerCase() === currentUser.email.toLowerCase())
       ) || assignableUsers[0];
       setNewLead({
+        leadNumber: nextLeadNo,
         owner: currentUser?.name || defaultUser?.name || '',
         ownerId: currentUser?.id || defaultUser?.id || '',
         assignedTo: currentUser?.name || defaultUser?.name || '',
@@ -883,7 +972,7 @@ export function LeadsContent() {
         comments: '',
       });
 
-      setCreateLeadSuccessToast(`Lead "${contactDisplayName}" saved automatically to database!`);
+      setCreateLeadSuccessToast(`Lead ${effectiveLeadNumber} ("${contactDisplayName}") saved automatically to database!`);
       setTimeout(() => setCreateLeadSuccessToast(null), 4000);
     } catch (err: unknown) {
       console.error('[Leads] Automatic lead creation error:', err);
@@ -919,7 +1008,7 @@ export function LeadsContent() {
     const persRule = COUNTRY_DIAL_RULES[newLead.personalMobileCode] || { maxDigits: 15, placeholder: '50 123 4567' };
 
     return (
-      <div className="space-y-3 pb-8 text-[#212529] animate-in fade-in duration-150">
+      <div className="space-y-3 pb-8 text-[#212529]">
         <div className="bg-white border border-slate-200 rounded shadow-xs overflow-hidden">
           {/* Top Header Bar */}
           <div className="px-4 py-2 bg-[#FAFBFD] border-b border-slate-200 flex items-center justify-between">
@@ -931,6 +1020,7 @@ export function LeadsContent() {
               type="button"
               onClick={() => {
                 setFormErrors({});
+                setIsLeadNumModalOpen(false);
                 setIsAddModalOpen(false);
               }}
               className="w-5 h-5 rounded bg-[#E11D48] text-white flex items-center justify-center hover:bg-[#BE123C] transition-colors cursor-pointer font-black text-xs shadow-2xs"
@@ -1346,6 +1436,40 @@ export function LeadsContent() {
 
               {/* ── RIGHT COLUMN ── */}
               <div className="space-y-3.5">
+                {/* Lead Number */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
+                  <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
+                    Lead Number <span className="text-red-500">*</span>
+                  </label>
+                  <div className="sm:col-span-9 relative flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      required
+                      value={newLead.leadNumber}
+                      onChange={(e) => setNewLead({ ...newLead, leadNumber: e.target.value })}
+                      className="flex-1 bg-slate-50 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                    <button
+                      type="button"
+                      id="lead-number-settings-btn"
+                      title="Lead Number Settings"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openLeadNumModal();
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openLeadNumModal();
+                      }}
+                      className="p-1.5 bg-[#E6F9FB] border border-[#BCEBF2] text-[#0891B2] rounded hover:bg-[#D5F5F9] transition-colors cursor-pointer flex items-center justify-center shrink-0 shadow-2xs active:scale-95"
+                    >
+                      <Settings className="w-4 h-4 pointer-events-none" />
+                    </button>
+                  </div>
+                </div>
+
                 {/* 1. Lead Date */}
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:items-center">
                   <label className="sm:col-span-3 text-xs font-semibold text-slate-700">
@@ -2227,6 +2351,8 @@ export function LeadsContent() {
                     setUploadError(null);
                     setUploadSuccess(null);
                     setIsUploadModalOpen(false);
+                    setIsLeadNumModalOpen(false);
+                    setIsAddModalOpen(false);
                   }}
                   className="px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
                 >
@@ -2236,6 +2362,78 @@ export function LeadsContent() {
             </div>
           </form>
         </div>
+
+        {/* ── LEAD NUMBER SETTINGS MODAL (Exact Cezcon CRM Design matching Opportunity Number) ── */}
+        {isLeadNumModalOpen && (
+          <div
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIsLeadNumModalOpen(false);
+            }}
+          >
+            <div
+              className="bg-white rounded-md shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-white">
+                <h3 className="text-sm font-semibold text-slate-800">Lead Number</h3>
+                <button
+                  type="button"
+                  onClick={() => setIsLeadNumModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleSaveLeadNumSettings}>
+                <div className="p-6 space-y-4">
+                  <div className="flex items-center gap-4">
+                    <label className="w-28 text-xs font-normal text-slate-700">Prefix</label>
+                    <input
+                      type="text"
+                      value={leadPrefix}
+                      onChange={(e) => setLeadPrefix(e.target.value)}
+                      className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-sans"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <label className="w-28 text-xs font-normal text-slate-700">
+                      Next Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={leadNextNumber}
+                      onChange={(e) => setLeadNextNumber(e.target.value)}
+                      className="flex-1 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-sans"
+                    />
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-end gap-2 px-6 py-3 bg-[#F8FAFC] border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setIsLeadNumModalOpen(false)}
+                    className="px-4 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 text-xs font-medium text-white bg-[#0A2540] hover:bg-[#07192b] rounded shadow-2xs transition-colors cursor-pointer"
+                  >
+                    Save
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -2507,7 +2705,11 @@ export function LeadsContent() {
             {/* + LEAD */}
             <button
               type="button"
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={() => {
+                const freshCode = getNextLeadNumberValue();
+                setNewLead((prev) => ({ ...prev, leadNumber: freshCode }));
+                setIsAddModalOpen(true);
+              }}
               className="flex items-center gap-1 px-3 py-1 rounded bg-[#22C55E] hover:bg-[#16A34A] text-white text-xs font-bold uppercase tracking-wider cursor-pointer transition-colors shadow-2xs"
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
@@ -2842,7 +3044,7 @@ export function LeadsContent() {
 
                   return (
                     <tr key={lead.id} className={cn("hover:bg-slate-50/80 transition-colors", isSelected && "bg-blue-50/40")}>
-                      {/* Checkbox + SL.No */}
+                      {/* Checkbox + SL.No + Lead Number */}
                       <td className="py-3 px-3 text-center font-medium text-slate-600 border-r border-slate-200">
                         <div className="flex items-center justify-center gap-1.5">
                           <input
@@ -2855,7 +3057,12 @@ export function LeadsContent() {
                             }}
                             className="rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer w-3.5 h-3.5"
                           />
-                          <span>{slNo}</span>
+                          <div className="flex flex-col items-center leading-tight">
+                            <span className="text-slate-800 font-bold">{slNo}</span>
+                            <span className="text-[10px] font-bold text-[#0088CC] font-mono whitespace-nowrap">
+                              {lead.leadNumber || `CTL#${1000 + slNo}`}
+                            </span>
+                          </div>
                         </div>
                       </td>
 
@@ -3198,7 +3405,13 @@ export function LeadsContent() {
         >
           <div className="space-y-4 text-xs">
             {/* Metadata Summary Banner with Created By & Assigned To */}
-            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded grid grid-cols-2 sm:grid-cols-3 gap-3.5">
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+              <div className="bg-blue-50/70 p-2 rounded border border-blue-200">
+                <span className="text-[10px] text-blue-600 block uppercase font-bold mb-0.5">Lead Number</span>
+                <span className="text-blue-900 font-extrabold font-mono text-xs block">
+                  {viewingLead.leadNumber || `CTL#${1000 + (viewingLead.slNo || 1)}`}
+                </span>
+              </div>
               <div>
                 <span className="text-[10px] text-slate-400 block uppercase font-bold">Contact Name</span>
                 <span className="text-slate-800 font-bold">{viewingLead.contactDetails.name}</span>
@@ -3856,15 +4069,6 @@ export function LeadsContent() {
         lead={statusModifyingLead}
         onClose={() => setStatusModifyingLead(null)}
         onUpdate={handleUpdateStatusAndRating}
-      />
-
-      {/* Cloud Migration & Synchronization Status Modal */}
-      <LeadMigrationStatusModal
-        isOpen={isSyncModalOpen}
-        onClose={() => setIsSyncModalOpen(false)}
-        onMigrationComplete={() => {
-          if (refreshLeads) refreshLeads();
-        }}
       />
     </div>
   );

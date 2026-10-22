@@ -205,6 +205,7 @@ function CustomersContent() {
 
   const {
     customers,
+    leads,
     addCustomer,
     updateCustomer,
     deleteCustomer,
@@ -556,7 +557,8 @@ function CustomersContent() {
   const [businessMobileTouched, setBusinessMobileTouched] = useState(false);
   const [personalMobileTouched, setPersonalMobileTouched] = useState(false);
 
-  const [existingContactsList, setExistingContactsList] = useState<
+  // Live Contacts state & dynamic extraction from CRM database
+  const [customContacts, setCustomContacts] = useState<
     Array<{
       id: string;
       name: string;
@@ -569,70 +571,125 @@ function CustomersContent() {
       nationality?: string;
       address?: string;
       comments?: string;
+      company?: string;
       isPrimary?: boolean;
     }>
-  >([
-    {
-      id: 'cnt_1',
-      name: 'Bishoy George',
-      salutation: 'Mr.',
-      designation: 'Managing Director',
-      personalMobile: '55 987 6543',
-      businessMobile: '50 123 4567',
-      email: 'bishoy@alshafaronline.com',
-      spokenLanguage: 'Arabic, English',
-      nationality: 'Egypt',
-      isPrimary: true,
-    },
-    {
-      id: 'cnt_2',
-      name: 'Mr. Puspak',
-      salutation: 'Mr.',
-      designation: 'Procurement Manager',
-      personalMobile: '56 432 1098',
-      businessMobile: '50 987 6543',
-      email: 'puspak@arabbtec.ae',
-      spokenLanguage: 'Hindi, English',
-      nationality: 'India',
-      isPrimary: true,
-    },
-    {
-      id: 'cnt_3',
-      name: 'Mr. Farhan',
-      salutation: 'Mr.',
-      designation: 'General Manager',
-      personalMobile: '52 334 5566',
-      businessMobile: '50 223 3445',
-      email: 'farhan@damacgroup.com',
-      spokenLanguage: 'Urdu, English',
-      nationality: 'Pakistan',
-      isPrimary: true,
-    },
-    {
-      id: 'cnt_4',
-      name: 'NIKHIL',
-      salutation: 'Mr.',
-      designation: 'Project Manager',
-      personalMobile: '54 778 9900',
-      businessMobile: '50 889 9001',
-      email: 'nikhil@danube.com',
-      spokenLanguage: 'English',
-      nationality: 'India',
-      isPrimary: false,
-    },
-    {
-      id: 'cnt_5',
-      name: 'Nafal',
-      salutation: 'Mr.',
-      designation: 'Operations Head',
-      personalMobile: '50 112 2334',
-      businessMobile: '50 998 8776',
-      email: 'nafal@cooltechuae.com',
-      spokenLanguage: 'Malayalam, English, Arabic',
-      nationality: 'India',
-      isPrimary: true,
-    },
-  ]);
+  >(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cezcon_custom_contacts');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return [];
+  });
+
+  // Dynamically aggregate all live contacts across customers, leads, and custom entries
+  const existingContactsList = useMemo(() => {
+    const contactsMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        salutation?: string;
+        designation?: string;
+        personalMobile?: string;
+        businessMobile?: string;
+        email?: string;
+        spokenLanguage?: string;
+        nationality?: string;
+        address?: string;
+        comments?: string;
+        company?: string;
+        isPrimary?: boolean;
+      }
+    >();
+
+    // 1. Locally added custom contacts
+    customContacts.forEach((c) => {
+      if (c.name && c.name.trim()) {
+        contactsMap.set(c.name.trim().toLowerCase(), c);
+      }
+    });
+
+    // 2. Real contacts from all live customers in the CRM database
+    (customers || []).forEach((cust) => {
+      // Primary contact person on customer
+      if (cust.contactPerson && cust.contactPerson.trim()) {
+        const key = cust.contactPerson.trim().toLowerCase();
+        if (!contactsMap.has(key)) {
+          contactsMap.set(key, {
+            id: `cust-${cust.id}-primary`,
+            name: cust.contactPerson.trim(),
+            salutation: cust.salutation || 'Mr.',
+            designation: cust.category || 'Primary Contact',
+            personalMobile: cust.mobile || '',
+            businessMobile: cust.phone || '',
+            email: cust.email || '',
+            spokenLanguage: 'English',
+            nationality: cust.country || 'United Arab Emirates',
+            address: cust.address || cust.city || '',
+            comments: cust.comments || '',
+            company: cust.companyName || cust.customerName || '',
+            isPrimary: true,
+          });
+        }
+      }
+
+      // Any child contacts attached to customer
+      if (Array.isArray((cust as any).contacts)) {
+        (cust as any).contacts.forEach((cc: any) => {
+          if (cc.name && cc.name.trim()) {
+            const key = cc.name.trim().toLowerCase();
+            if (!contactsMap.has(key)) {
+              contactsMap.set(key, {
+                id: cc.id || `cust-cnt-${cust.id}-${cc.name}`,
+                name: cc.name.trim(),
+                salutation: cc.salutation || 'Mr.',
+                designation: cc.designation || '',
+                personalMobile: cc.personal_mobile || cc.personalMobile || '',
+                businessMobile: cc.business_mobile || cc.businessMobile || cust.phone || '',
+                email: cc.email || cust.email || '',
+                spokenLanguage: cc.spoken_language || cc.spokenLanguage || 'English',
+                nationality: cc.nationality || cust.country || 'United Arab Emirates',
+                address: cc.address || cust.address || '',
+                comments: cc.comments || '',
+                company: cust.companyName || cust.customerName || '',
+                isPrimary: Boolean(cc.is_primary ?? cc.isPrimary),
+              });
+            }
+          }
+        });
+      }
+    });
+
+    // 3. Real contacts from all live leads in the CRM database
+    (leads || []).forEach((lead) => {
+      const contactName = lead.contactDetails?.name?.trim();
+      if (contactName) {
+        const key = contactName.toLowerCase();
+        if (!contactsMap.has(key)) {
+          contactsMap.set(key, {
+            id: `lead-cnt-${lead.id}`,
+            name: contactName,
+            salutation: (lead as any).contactPrefix || lead.contactDetails?.salutation || 'Mr.',
+            designation: (lead as any).designation || lead.contactDetails?.designation || '',
+            personalMobile: (lead as any).personalMobile || lead.contactDetails?.personalMobile || '',
+            businessMobile: (lead as any).businessMobile || lead.contactDetails?.phone || '',
+            email: lead.contactDetails?.email || '',
+            spokenLanguage: (lead as any).spokenLanguage || 'English',
+            nationality: (lead as any).nationality || 'United Arab Emirates',
+            address: (lead as any).location || lead.contactDetails?.company || '',
+            comments: lead.leadSpecification || '',
+            company: lead.contactDetails?.company || '',
+            isPrimary: true,
+          });
+        }
+      }
+    });
+
+    return Array.from(contactsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [customers, leads, customContacts]);
 
   const [isNewContactModalOpen, setIsNewContactModalOpen] = useState(false);
   const [newContactFormData, setNewContactFormData] = useState({
@@ -1720,7 +1777,7 @@ function CustomersContent() {
                               <option value="">Select contact</option>
                               {existingContactsList.map((c) => (
                                 <option key={c.id || c.name} value={c.name}>
-                                  {c.name} {c.designation ? `(${c.designation})` : ''}
+                                  {c.name} {c.designation ? `(${c.designation})` : ''} {c.company ? `— ${c.company}` : ''}
                                 </option>
                               ))}
                             </select>
@@ -4080,7 +4137,15 @@ function CustomersContent() {
                   isPrimary: newContactFormData.isPrimary,
                 };
 
-                setExistingContactsList((prev) => [...prev, newContact]);
+                setCustomContacts((prev) => {
+                  const updated = [...prev, newContact];
+                  if (typeof window !== 'undefined') {
+                    try {
+                      localStorage.setItem('cezcon_custom_contacts', JSON.stringify(updated));
+                    } catch {}
+                  }
+                  return updated;
+                });
                 setFormData((prev) => ({
                   ...prev,
                   existingContact: trimmedName,

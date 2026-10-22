@@ -94,6 +94,7 @@ export interface CrmTask {
 export interface CrmLead {
   id: string;
   slNo: number;
+  leadNumber?: string;
   leadDate: string;
   assignedDate?: string;
   leadAssigned: {
