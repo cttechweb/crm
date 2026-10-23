@@ -529,8 +529,13 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           .getTasks({ limit: 100 })
           .then((res) => {
             if (res && Array.isArray(res.tasks) && res.tasks.length > 0) {
-              setTasks(res.tasks);
-              persist('crm_tasks_data', res.tasks, undefined, false);
+              setTasks((prev) => {
+                const remoteIds = new Set(res.tasks.map((t) => t.id));
+                const localOnly = prev.filter((t) => !remoteIds.has(t.id));
+                const merged = [...localOnly, ...res.tasks];
+                persist('crm_tasks_data', merged, undefined, false);
+                return merged;
+              });
             }
           })
           .catch(() => { });
@@ -901,17 +906,27 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           const res = await taskApiService.getTasks({ limit: 100 });
           if (res && Array.isArray(res.tasks)) {
             setTasks((prev) => {
+              // Never wipe out local tasks if remote returned empty array
+              if (res.tasks.length === 0 && prev.length > 0) {
+                return prev;
+              }
+
+              // Merge remote tasks with local tasks by ID (preserving any newly added local tasks)
+              const remoteIds = new Set(res.tasks.map((t) => t.id));
+              const localOnly = prev.filter((t) => !remoteIds.has(t.id));
+              const merged = [...localOnly, ...res.tasks];
+
               if (
-                prev.length === res.tasks.length &&
+                prev.length === merged.length &&
                 prev.every((t, idx) => {
-                  const r = res.tasks[idx];
-                  return r && t.id === r.id && t.status === r.status;
+                  const r = merged[idx];
+                  return r && t.id === r.id && t.status === r.status && t.taskDetails === r.taskDetails;
                 })
               ) {
                 return prev;
               }
-              persist('crm_tasks_data', res.tasks, undefined, false);
-              return res.tasks;
+              persist('crm_tasks_data', merged, undefined, false);
+              return merged;
             });
           }
         } catch {}
@@ -1032,6 +1047,8 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       ...taskData,
       id: uniqueId,
       slNo: currentTasks.length + 1,
+      createdAt: (taskData as any).createdAt || new Date().toISOString(),
+      progress: taskData.progress ?? 0,
     };
     const updated = [newTask, ...currentTasks.filter((t) => t.id !== uniqueId)];
     setTasks(updated);
