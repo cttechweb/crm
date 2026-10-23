@@ -921,6 +921,10 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           const res = await opportunityApiService.getOpportunities({ limit: 100 });
           if (res && Array.isArray(res.opportunities)) {
             setSalesOpportunities((prev) => {
+              // Never wipe out local opportunities if remote returned empty array
+              if (res.opportunities.length === 0 && prev.length > 0) {
+                return prev;
+              }
               if (
                 prev.length === res.opportunities.length &&
                 prev.every((o, idx) => {
@@ -930,8 +934,15 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               ) {
                 return prev;
               }
-              persist('crm_opportunities_data', res.opportunities, undefined, false);
-              return res.opportunities;
+              // Merge: preserve local opportunities that haven't synced to remote yet
+              const remoteIds = new Set(res.opportunities.map((o) => o.id));
+              const remoteCodes = new Set(res.opportunities.map((o) => o.opportunityCode).filter(Boolean));
+              const pendingLocal = prev.filter(
+                (o) => !remoteIds.has(o.id) && (!o.opportunityCode || !remoteCodes.has(o.opportunityCode))
+              );
+              const combined = [...pendingLocal, ...res.opportunities];
+              persist('crm_opportunities_data', combined, undefined, false);
+              return combined;
             });
           }
         } catch {}
@@ -1623,11 +1634,12 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     }
 
     const uniqueId = `opp-${Date.now()}`;
+    const code = oppData.opportunityCode || `CTEQ#${Math.floor(7100 + Math.random() * 800)}`;
     const newOpp: CrmSalesOpportunity = {
       ...oppData,
       id: uniqueId,
       createdAt: new Date().toISOString().split('T')[0],
-      opportunityCode: oppData.opportunityCode || `OPP-${Date.now().toString().slice(-4)}`,
+      opportunityCode: code,
     };
     const updated = [newOpp, ...salesOpportunities];
     setSalesOpportunities(updated);
@@ -1637,12 +1649,13 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     opportunityApiService.createOpportunity(newOpp).then((res) => {
       if (res?.opportunity) {
         setSalesOpportunities((prev) =>
-          prev.map((o) => (o.id === uniqueId ? res.opportunity : o))
+          prev.map((o) => (o.id === uniqueId ? { ...res.opportunity, opportunityCode: o.opportunityCode || res.opportunity.opportunityCode || code } : o))
         );
       }
     }).catch((err) => {
       console.warn('[EnterpriseCrmContext] Failed to persist opportunity to D1, keeping local state:', err);
     });
+    return newOpp;
   };
 
   const updateOpportunity = (id: string, updated: Partial<CrmSalesOpportunity>) => {

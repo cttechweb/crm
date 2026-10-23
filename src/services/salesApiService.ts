@@ -28,33 +28,46 @@ import type {
 // 1. OPPORTUNITIES SERVICE
 // ============================================================================
 export function mapBackendOpportunityToFrontend(row: any): CrmSalesOpportunity {
+  if (!row) return {} as CrmSalesOpportunity;
   return {
+    ...row,
     id: row.id,
-    slNo: row.sl_no || undefined,
-    opportunityCode: row.opportunity_code || undefined,
-    createdFromLeadId: row.created_from_lead_id || undefined,
+    slNo: row.sl_no || row.slNo || undefined,
+    opportunityCode: row.opportunity_code || row.opportunityCode || undefined,
+    createdFromLeadId: row.created_from_lead_id || row.createdFromLeadId || undefined,
     title: row.title || 'Untitled Opportunity',
     customer: row.customer || '',
-    contactPerson: row.contact_person || '',
+    contactPerson: row.contact_person || row.contactPerson || '',
     phone: row.phone || '',
     whatsapp: row.whatsapp || '',
     amount: Number(row.amount) || 0,
     stage: row.stage || 'Opportunity',
     probability: Number(row.probability) || 50,
-    expectedClose: row.expected_close || new Date().toISOString().split('T')[0],
+    expectedClose: row.expected_close || row.expectedClose || new Date().toISOString().split('T')[0],
     owner: row.owner || 'Unassigned',
     campaign: row.campaign || '',
     source: row.source || '',
-    vatType: row.vat_type || 'With VAT',
-    vatRate: Number(row.vat_rate) || 5,
+    vatType: row.vat_type || row.vatType || 'With VAT',
+    vatRate: Number(row.vat_rate ?? row.vatRate ?? 5),
     adjustment: Number(row.adjustment) || 0,
-    lpoNumber: row.lpo_number || '',
-    lpoDate: row.lpo_date || '',
+    lpoNumber: row.lpo_number || row.lpoNumber || '',
+    lpoDate: row.lpo_date || row.lpoDate || '',
     location: row.location || '',
     reference: row.reference || '',
     comments: row.comments || '',
     tags: row.tags ? (typeof row.tags === 'string' ? row.tags.split(',') : row.tags) : [],
-    createdAt: row.created_at || new Date().toISOString(),
+    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+    opportunityDate: row.opportunityDate || row.opportunity_date || (row.created_at ? row.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10)),
+    lastActivity: row.lastActivity || row.last_activity || `${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')} 12:00:00 PM`,
+    lastActivityRelative: row.lastActivityRelative || 'Today',
+    classification: row.classification || 'Corporate',
+    rating: row.rating || 'Cold',
+    businessOpportunity: row.businessOpportunity || row.subtitle || '',
+    subtitle: row.subtitle || row.businessOpportunity || '',
+    discount: Number(row.discount) || 0,
+    totalAmount: Number(row.totalAmount || row.total_amount || row.amount) || 0,
+    enquiryItems: row.enquiryItems || row.items || [],
+    items: row.items || row.enquiryItems || [],
   };
 }
 
@@ -87,6 +100,9 @@ export const opportunityApiService = {
       message?: string;
     }>('/api/opportunities', {
       body: {
+        id: data.id,
+        opportunityCode: data.opportunityCode,
+        opportunity_code: data.opportunityCode,
         title: data.title,
         customer: data.customer,
         contactPerson: data.contactPerson,

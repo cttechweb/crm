@@ -1903,13 +1903,31 @@ function SalesPipelineInner() {
     setEditingOpportunityId(null);
     setSelectedOpportunity(null);
     setDetailActiveTab('opportunity');
-    router.push(`/sales?tab=opportunities&view=${targetCode}`);
+    router.push(`/sales?tab=opportunities&view=${encodeURIComponent(targetCode)}`);
   };
 
   const isAddOpen = isAddModalOpen || searchParams.get('action') === 'add' || searchParams.get('action') === 'edit';
-  const viewOppId = searchParams.get('view');
+  const rawViewParam = searchParams.get('view');
+  const viewOppId = useMemo(() => {
+    if (!rawViewParam) return null;
+    let decoded = rawViewParam;
+    try {
+      decoded = decodeURIComponent(rawViewParam);
+    } catch { }
+    if (typeof window !== 'undefined' && window.location.hash && !decoded.includes('#')) {
+      const hash = window.location.hash.startsWith('#') ? window.location.hash : `#${window.location.hash}`;
+      return `${decoded}${hash}`;
+    }
+    return decoded;
+  }, [rawViewParam]);
+
   const viewOpp = viewOppId
-    ? salesOpportunities.find((o) => o.id === viewOppId || o.opportunityCode === viewOppId) || salesOpportunities[0]
+    ? salesOpportunities.find(
+        (o) =>
+          o.id === viewOppId ||
+          o.opportunityCode === viewOppId ||
+          (o.opportunityCode && viewOppId && o.opportunityCode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === viewOppId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase())
+      ) || (salesOpportunities.length > 0 ? salesOpportunities[0] : null)
     : null;
   const isDetailViewOpen = Boolean(viewOppId);
 
