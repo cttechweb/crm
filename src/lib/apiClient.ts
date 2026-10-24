@@ -14,7 +14,7 @@
 import { auth } from '@/firebase/config';
 
 const DEFAULT_FALLBACK_URL = 'https://cool-tech-crm-api.ctauhweb.workers.dev';
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 10000;
 
 /**
  * Validates and normalizes the API base URL.
@@ -95,9 +95,25 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
   requireAuth?: boolean;
   /**
    * Request timeout in milliseconds.
-   * Default: 15000 (15 seconds).
+   * Default: 35000 (35 seconds).
    */
   timeoutMs?: number;
+}
+
+/**
+ * Safely waits for Firebase auth state to stabilize with an upper limit to prevent stalling
+ */
+async function waitForAuthState(timeoutMs: number = 3000): Promise<void> {
+  if (typeof window === 'undefined' || !auth) return;
+  if (typeof auth.authStateReady !== 'function') return;
+  try {
+    await Promise.race([
+      auth.authStateReady(),
+      new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
+  } catch {
+    // Non-blocking fallback
+  }
 }
 
 /**
@@ -106,9 +122,7 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
 async function getFirebaseIdToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   try {
-    if (auth && typeof auth.authStateReady === 'function') {
-      await auth.authStateReady();
-    }
+    await waitForAuthState(3000);
     const currentUser = auth?.currentUser;
     if (currentUser) {
       return await currentUser.getIdToken();
@@ -190,9 +204,7 @@ export async function apiFetch<T = unknown>(
         );
       }
 
-      if (auth && typeof auth.authStateReady === 'function') {
-        await auth.authStateReady();
-      }
+      await waitForAuthState(3000);
 
       const currentUser = auth?.currentUser;
       if (!currentUser) {

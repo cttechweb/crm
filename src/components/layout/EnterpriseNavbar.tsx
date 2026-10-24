@@ -259,10 +259,38 @@ export function EnterpriseNavbar() {
     const pos = (user.position || '').toLowerCase();
     const name = (user.name || '').toLowerCase();
 
-    const isSales = dept === 'sales' || mgrType.includes('sales') || empType.includes('sales') || desig.includes('sales') || pos === 'cso' || name.includes('shibil') || name.includes('shaheer') || name.includes('adhil');
-    const isPurchase = dept === 'purchase' || mgrType.includes('purchase') || empType.includes('purchase') || desig.includes('purchase') || pos === 'cpo' || name.includes('rashid') || name.includes('faisal');
+    const isPurchase =
+      dept.includes('purchase') ||
+      dept.includes('procure') ||
+      mgrType.includes('purchase') ||
+      empType.includes('purchase') ||
+      desig.includes('purchase') ||
+      desig.includes('procure') ||
+      pos.includes('purchase') ||
+      pos.includes('procure') ||
+      pos === 'cpo' ||
+      name.includes('rashid') ||
+      name.includes('faisal') ||
+      name.includes('mustafa') ||
+      name.includes('musthafa');
+
+    const isSales =
+      !isPurchase &&
+      (dept.includes('sales') ||
+        mgrType.includes('sales') ||
+        empType.includes('sales') ||
+        desig.includes('sales') ||
+        pos === 'cso' ||
+        name.includes('shibil') ||
+        name.includes('shaheer') ||
+        name.includes('adhil'));
 
     return baseNavItems.filter((item) => {
+      // Purchase personnel MUST always see the Purchase module
+      if (isPurchase && item.id === 'purchase') {
+        return true;
+      }
+
       // Sales personnel do not have Purchase access
       if (isSales && item.id === 'purchase') return false;
 
@@ -271,7 +299,7 @@ export function EnterpriseNavbar() {
 
       // Check explicit modulePermissions if present
       if (user.modulePermissions) {
-        if (item.id === 'purchase' && user.modulePermissions.purchase === false) return false;
+        if (item.id === 'purchase' && !isPurchase && user.modulePermissions.purchase === false) return false;
         if (item.id === 'sales' && user.modulePermissions.sales === false) return false;
         if (item.id === 'leads' && user.modulePermissions.leads === false) return false;
         if (item.id === 'customers' && user.modulePermissions.customers === false) return false;

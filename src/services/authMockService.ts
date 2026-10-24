@@ -1439,10 +1439,19 @@ export function resolveCrmUserByEmail(
                 : isMgr
                   ? 'manager'
                   : 'employee';
+            const isPurchaseUser =
+              Boolean(userByIdentifier.designation && String(userByIdentifier.designation).toLowerCase().includes('purchase')) ||
+              Boolean(userByIdentifier.department && String(userByIdentifier.department).toLowerCase().includes('purchase')) ||
+              Boolean(userByIdentifier.managerType && String(userByIdentifier.managerType).toLowerCase().includes('purchase')) ||
+              Boolean(userByIdentifier.employeeType && String(userByIdentifier.employeeType).toLowerCase().includes('purchase')) ||
+              Boolean(userByIdentifier.name && String(userByIdentifier.name).toLowerCase().includes('mustafa'));
+
             const defaults = resolveDefaultPermissions(
-              userByIdentifier.profileType || 'Sales',
+              userByIdentifier.profileType || (isPurchaseUser ? 'Purchase' : 'Sales'),
               userRole,
-              userByIdentifier.managerType || userByIdentifier.employeeType
+              userByIdentifier.managerType ||
+                userByIdentifier.employeeType ||
+                (isPurchaseUser ? 'Purchase' : undefined)
             );
 
             const userIdStr = String(userByIdentifier.id || '');
@@ -1465,13 +1474,11 @@ export function resolveCrmUserByEmail(
                 userByIdentifier.designation ||
                 userByIdentifier.managerType ||
                 userByIdentifier.employeeType ||
-                userByIdentifier.profileType ||
-                'Team Member',
+                (isPurchaseUser ? 'Purchase Officer' : userByIdentifier.profileType || 'Team Member'),
               department:
                 userByIdentifier.department ||
-                userByIdentifier.profileType ||
-                'Sales',
-              profileType: userByIdentifier.profileType || 'Sales',
+                (isPurchaseUser ? 'Purchase Department' : userByIdentifier.profileType || 'Sales'),
+              profileType: userByIdentifier.profileType || (isPurchaseUser ? 'Purchase' : 'Sales'),
               managerType: userByIdentifier.managerType,
               employeeType: userByIdentifier.employeeType,
               managerId:

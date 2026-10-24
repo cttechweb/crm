@@ -77,6 +77,107 @@ const COUNTRY_CODES = [
   { code: '+1', country: 'United States', flag: '🇺🇸', iso: 'US', minDigits: 10, maxDigits: 10, placeholder: '555 123 4567' },
 ];
 
+const CORE_DATABASE_STAFF: CezconUserItem[] = [
+  {
+    id: 'usr_superadmin_001',
+    name: 'shemin',
+    email: 'cooltechuae@gmail.com',
+    username: 'shemin@cooltechuae.com',
+    profileType: 'Super Admin',
+    role: 'Super Admin',
+    position: 'CEO',
+    designation: 'CEO',
+    department: 'Executive',
+    phone: '+971 50 123 4567',
+    status: 'Active',
+    isActive: true,
+    isAdmin: true,
+    isServerRecord: true,
+    loginPermission: 'Web & Mobile',
+    avatarBg: 'bg-purple-600',
+    avatarImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+    reportsTo: null,
+    managerId: null,
+  },
+  {
+    id: 'usr_1792683751144',
+    name: 'Muhammed shemin',
+    email: 'shemin123@gmail.com',
+    username: 'shemin123@cooltechuae.com',
+    profileType: 'Admin',
+    role: 'Admin',
+    position: 'COO',
+    designation: 'COO',
+    department: 'Management',
+    phone: '+971 50 987 6543',
+    status: 'Active',
+    isActive: true,
+    isAdmin: true,
+    isServerRecord: true,
+    loginPermission: 'Web & Mobile',
+    avatarBg: 'bg-indigo-600',
+    reportsTo: 'usr_superadmin_001',
+    managerId: 'usr_superadmin_001',
+  },
+  {
+    id: 'usr_1792733863086',
+    name: 'Mustafa',
+    email: 'im@cooltechuae.com',
+    username: 'im@cooltechuae.com',
+    profileType: 'Manager',
+    role: 'Manager',
+    position: 'Purchase Officer',
+    designation: 'Purchase Officer',
+    department: 'General',
+    phone: '+971 55 456 7890',
+    status: 'Active',
+    isActive: true,
+    isServerRecord: true,
+    loginPermission: 'Web & Mobile',
+    avatarBg: 'bg-blue-600',
+    reportsTo: 'usr_1792683751144',
+    managerId: 'usr_1792683751144',
+  },
+  {
+    id: 'usr_1792054787769',
+    name: 'Rithul',
+    email: 'rithul@gmail.com',
+    username: 'rithul@cooltechuae.com',
+    profileType: 'Manager',
+    role: 'Manager',
+    position: 'Sales Manager',
+    designation: 'Sales Manager',
+    department: 'Sales',
+    phone: '+971 52 345 6789',
+    status: 'Active',
+    isActive: true,
+    isServerRecord: true,
+    loginPermission: 'Web & Mobile',
+    avatarBg: 'bg-blue-600',
+    reportsTo: null,
+    managerId: null,
+  },
+  {
+    id: 'usr_1792753099440',
+    name: 'Muhammed arshad',
+    email: 'arshad@gmail.com',
+    username: 'arshad@cooltechuae.com',
+    profileType: 'Manager',
+    role: 'Manager',
+    position: 'Sales Officer',
+    designation: 'Sales Officer',
+    department: 'General',
+    phone: '+971 50 567 8901',
+    status: 'Active',
+    isActive: true,
+    isServerRecord: true,
+    loginPermission: 'Web & Mobile',
+    avatarBg: 'bg-blue-600',
+    reportsTo: 'usr_1792683751144',
+    managerId: 'usr_1792683751144',
+  },
+];
+
 export function UsersTab({
   selectedUserId,
 }: {
@@ -610,12 +711,34 @@ export function UsersTab({
           }
         });
 
+        // Merge authoritative core database staff profiles if missing and not deleted
+        CORE_DATABASE_STAFF.forEach((coreUser) => {
+          const coreId = String(coreUser.id).toLowerCase();
+          const coreEmail = (coreUser.email || '').toLowerCase();
+          if (!deletedIdsSet.has(coreId) && !deletedIdsSet.has(coreEmail)) {
+            const alreadyExists = Array.from(userMap.values()).some(
+              (u) =>
+                String(u.id).toLowerCase() === coreId ||
+                (u.email && u.email.toLowerCase() === coreEmail)
+            );
+            if (!alreadyExists) {
+              userMap.set(coreUser.id, coreUser);
+            }
+          }
+        });
+
         const currentUsers = Array.from(userMap.values());
         setCezconUsersList(currentUsers);
+        try {
+          localStorage.setItem('cezcon_crm_users_list', JSON.stringify(currentUsers));
+        } catch {}
         return;
       }
 
       // Initial clean seed ONLY if cezcon_crm_users_list was never initialized
+      CORE_DATABASE_STAFF.forEach((coreUser) => {
+        userMap.set(coreUser.id, coreUser);
+      });
       cezconList.forEach((u) => {
         if (u && u.id && !LEGACY_MOCK_IDS.has(String(u.id))) {
           userMap.set(u.id, u);
@@ -807,7 +930,9 @@ export function UsersTab({
       if (!isSilentBackground) {
         console.error('[UsersTab] Failed to sync users from CRM API:', err);
         const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Failed to retrieve staff from database';
-        setUserFetchError(msg);
+        if (cezconUsersList.length === 0) {
+          setUserFetchError(msg);
+        }
       }
     } finally {
       isSyncingRef.current = false;
@@ -818,7 +943,7 @@ export function UsersTab({
 
   useEffect(() => {
     loadUnifiedUsers();
-    fetchAndMergeServerUsers();
+    fetchAndMergeServerUsers(true);
 
     const handleLocalUpdate = () => {
       loadUnifiedUsers();
@@ -3506,7 +3631,7 @@ export function UsersTab({
             </div>
           </div>
 
-          {userFetchError && (
+          {userFetchError && cezconUsersList.length === 0 && (
             <div className="mx-4 mt-2.5 p-2.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-xs">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />

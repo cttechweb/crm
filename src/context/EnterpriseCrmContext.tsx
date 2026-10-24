@@ -1049,6 +1049,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       slNo: currentTasks.length + 1,
       createdAt: (taskData as any).createdAt || new Date().toISOString(),
       progress: taskData.progress ?? 0,
+      assignedEmployee: taskData.assignedEmployee || taskData.assignee?.name,
     };
     const updated = [newTask, ...currentTasks.filter((t) => t.id !== uniqueId)];
     setTasks(updated);
@@ -1341,10 +1342,19 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     } catch (e) {
       console.error(e);
     }
-    const list = currentTasks.map((t) => (t.id === id ? { ...t, ...updated } : t));
+    const enriched: Partial<CrmTask> = {
+      ...updated,
+      ...(updated.assignee?.name && !updated.assignedEmployee
+        ? { assignedEmployee: updated.assignee.name }
+        : {}),
+      ...(updated.assignedEmployee && !updated.assignee
+        ? { assignee: { name: updated.assignedEmployee } }
+        : {}),
+    };
+    const list = currentTasks.map((t) => (t.id === id ? { ...t, ...enriched } : t));
     setTasks(list);
     persist('crm_tasks_data', list);
-    taskApiService.updateTask(id, updated).catch(() => { });
+    taskApiService.updateTask(id, enriched).catch(() => { });
   };
 
   const toggleTaskStatus = (id: string) => {

@@ -74,7 +74,7 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Commercial Offers', href: '/sales?tab=quotations', iconName: 'FileText' },
       { label: 'Sales Order', href: '/sales?tab=orders', iconName: 'ThumbsUp' },
       { label: 'Proforma Invoice', href: '/sales?tab=proforma', iconName: 'CreditCard' },
-      { label: 'Invoice', href: '/sales?tab=invoice', iconName: 'FileSpreadsheet' },
+      { label: 'Tax Invoice', href: '/sales?tab=invoice', iconName: 'FileSpreadsheet' },
       { label: 'Receipt', href: '/sales?tab=receipt', iconName: 'Receipt' },
       { label: 'Delivery Note', href: '/sales?tab=delivery', iconName: 'Table' },
     ],

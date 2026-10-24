@@ -373,10 +373,19 @@ export default function ManagerDashboardPage() {
     return BASELINE_TECHNICIANS;
   }, [currentManagerId, currentUser, usersVersion, tasks]);
 
-  // Dynamic Live Tasks List for Timeline
+  // Dynamic Live Tasks List for Timeline (Scoped to current user / department)
   const dynamicTodayTasks = useMemo(() => {
-    if (tasks && tasks.length > 0) {
-      return tasks.slice(0, 4).map((t) => {
+    let allCrmUsers: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('cezcon_crm_users_list');
+        if (raw) allCrmUsers = JSON.parse(raw);
+      } catch (e) {}
+    }
+    const scopedTasks = filterTasksByScope(tasks || [], currentUser, allCrmUsers);
+
+    if (scopedTasks && scopedTasks.length > 0) {
+      return scopedTasks.slice(0, 4).map((t) => {
         const isDone = t.status === 'Completed' || t.status === 'Reviewed';
         const isInProgress = t.status === 'In Progress';
         const isUrgent = t.priority === 'Urgent' || t.priority === 'High';
@@ -399,7 +408,7 @@ export default function ManagerDashboardPage() {
       });
     }
     return BASELINE_TASKS;
-  }, [tasks]);
+  }, [tasks, currentUser]);
 
   // Dynamic Live Pipeline Deals
   const dynamicDeals = useMemo(() => {
@@ -459,8 +468,17 @@ export default function ManagerDashboardPage() {
     }
 
     // Add recent task history if available
-    if (tasks && tasks.length > 0) {
-      tasks.forEach((t) => {
+    let allCrmUsers: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('cezcon_crm_users_list');
+        if (raw) allCrmUsers = JSON.parse(raw);
+      } catch (e) {}
+    }
+    const scopedTasks = filterTasksByScope(tasks || [], currentUser, allCrmUsers);
+
+    if (scopedTasks && scopedTasks.length > 0) {
+      scopedTasks.forEach((t) => {
         if (t.history && t.history.length > 0) {
           const latest = t.history[t.history.length - 1];
           list.push({
@@ -481,7 +499,7 @@ export default function ManagerDashboardPage() {
       return list.slice(0, 5);
     }
     return [];
-  }, [tasks, realtimeTrigger]);
+  }, [tasks, currentUser, realtimeTrigger]);
 
   // Dynamic KPI Metrics Calculations (100% Live from Context and Storage)
   const metrics = useMemo(() => {

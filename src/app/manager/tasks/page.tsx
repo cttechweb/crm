@@ -40,6 +40,7 @@ import { ManagerShell } from '@/components/layout/ManagerShell';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { CrmTask, TaskPriority, TaskStatus } from '@/types/enterprise-crm';
+import { canAccessTask } from '@/services/crmDataScopeService';
 
 const OFFICE_TERRITORIES = [
   'Dubai Corporate HQ (Main Sales Desk)',
@@ -923,10 +924,28 @@ function ManagerTasksContent() {
   }, [tasks, tasksVersion]);
 
   const filteredTasks = useMemo(() => {
+    let allCrmUsers: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('cezcon_crm_users_list');
+        if (stored) allCrmUsers = JSON.parse(stored);
+      } catch (e) {}
+    }
+
     return displayTasks.filter((t) => {
+      // 🛡️ Data Scope Enforcement: Non-admins strictly only see their assigned / team tasks
+      if (!isSuperAdminOrAdmin && !canAccessTask(t, currentUser, allCrmUsers)) {
+        return false;
+      }
+
+      const rep = t.assignedEmployee || t.assignee?.name || '';
+      // If task is assigned to Super Admin / CEO (e.g. Shemin) and current user is not Shemin, never show it
+      if (!isSuperAdminOrAdmin && rep && (rep.toLowerCase().includes('shemin') || rep.toLowerCase() === 'admin')) {
+        return false;
+      }
+
       const title = t.taskDetails || t.title || '';
       const cust = t.customer || t.taskUnder || '';
-      const rep = t.assignedEmployee || t.assignee?.name || '';
       const dept = t.department || '';
       const loc = t.location || t.description || '';
       const taskType = t.taskType || '';
@@ -934,7 +953,6 @@ function ManagerTasksContent() {
       const createdBy = t.createdBy || '';
 
       // Direct Creator / Assigner Ownership Guarantee:
-      // If task was assigned/created by this manager or matches current domain
       const isCreatedByMe =
         Boolean(
           currentUser?.name &&
@@ -943,11 +961,7 @@ function ManagerTasksContent() {
         ) ||
         (Boolean(currentUser?.id) &&
           (String(assignedBy) === String(currentUser?.id) ||
-            String(createdBy) === String(currentUser?.id))) ||
-        (isSalesManager && (assignedBy.toLowerCase().includes('sales') || createdBy.toLowerCase().includes('sales') || dept.toLowerCase().includes('sales'))) ||
-        (isMarketingManager && (assignedBy.toLowerCase().includes('marketing') || createdBy.toLowerCase().includes('marketing') || dept.toLowerCase().includes('marketing'))) ||
-        (isPurchaseManager && (assignedBy.toLowerCase().includes('purchase') || createdBy.toLowerCase().includes('purchase') || dept.toLowerCase().includes('purchase'))) ||
-        (isOperationsManager && (assignedBy.toLowerCase().includes('operation') || createdBy.toLowerCase().includes('operation') || dept.toLowerCase().includes('operation')));
+            String(createdBy) === String(currentUser?.id)));
 
       // Strict Domain Isolation for Manager Roles (when not created by / matching current manager)
       if (!isSuperAdminOrAdmin && !isCreatedByMe) {
@@ -995,6 +1009,49 @@ function ManagerTasksContent() {
       return matchSearch && matchStatus && matchDept;
     });
   }, [displayTasks, search, statusFilter, deptFilter, isSuperAdminOrAdmin, isSalesManager, isMarketingManager, isPurchaseManager, isOperationsManager, currentUser, nameStr]);
+
+  const getAssigneeTitle = (t: CrmTask) => {
+    const repName = t.assignedEmployee || t.assignee?.name || '';
+    if (!repName) return `${domainLabel} Employee`;
+
+    // 1. Current logged-in user match
+    if (currentUser?.name && currentUser.name.toLowerCase() === repName.toLowerCase()) {
+      if (currentUser.designation) return currentUser.designation;
+      if (currentUser.position) return currentUser.position;
+      if (currentUser.employeeType) return currentUser.employeeType;
+    }
+
+    // 2. Team member match
+    const inTeam = availableEmployees.find(
+      (e: any) => e.name?.toLowerCase() === repName.toLowerCase()
+    );
+    if (inTeam?.role) return inTeam.role;
+
+    // 3. User directory match from localStorage
+    let allUsersList: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('cezcon_crm_users_list');
+        if (stored) allUsersList = JSON.parse(stored);
+      } catch (err) {}
+    }
+    const found = allUsersList.find(
+      (u: any) =>
+        (u.name && u.name.toLowerCase() === repName.toLowerCase()) ||
+        (u.username && u.username.toLowerCase() === repName.toLowerCase())
+    );
+    if (found?.designation) return found.designation;
+    if (found?.position) return found.position;
+    if (found?.employeeType) return found.employeeType;
+    if (found?.profileType) return found.profileType;
+
+    // 4. Stored role on task if custom
+    if (t.assignee?.role && !t.assignee.role.toLowerCase().endsWith('employee')) {
+      return t.assignee.role;
+    }
+
+    return `${domainLabel} Officer`;
+  };
 
   return (
     <ManagerShell
@@ -2072,7 +2129,7 @@ function ManagerTasksContent() {
                           {t.assignedEmployee || t.assignee?.name || 'Unassigned'}
                         </p>
                         <p className="text-[10px] text-slate-400">
-                          {t.assignee?.role || `${domainLabel} Employee`}
+                          {getAssigneeTitle(t)}
                         </p>
                       </td>
                       <td className="py-3.5 px-3">

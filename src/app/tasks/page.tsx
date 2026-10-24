@@ -47,6 +47,7 @@ import { Input, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { formatDate, cn } from '@/lib/utils';
 import { TaskType, TaskPriority, TaskStatus, CrmTask } from '@/types/enterprise-crm';
+import { canAccessTask } from '@/services/crmDataScopeService';
 
 type TaskTab = 'all' | 'today' | 'pending' | 'progress' | 'overdue' | 'upcoming' | 'completed' | 'meeting';
 
@@ -60,11 +61,49 @@ function TasksContent() {
     salesOpportunities, addOpportunity, campaigns, addCampaign,
     invoices, addInvoice
   } = useEnterpriseCrm();
-  const currentUser = authMockService.getCurrentUser();
+
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    return authMockService.getCurrentUser();
+  });
+
+  useEffect(() => {
+    const syncUser = () => {
+      const u = authMockService.getCurrentUser();
+      if (u) setCurrentUser(u);
+    };
+    syncUser();
+    const unsub = authMockService.onAuthStateChanged((u) => {
+      if (u) setCurrentUser(u);
+    });
+    window.addEventListener('storage', syncUser);
+    window.addEventListener('crm_auth_updated', syncUser);
+    return () => {
+      unsub();
+      window.removeEventListener('storage', syncUser);
+      window.removeEventListener('crm_auth_updated', syncUser);
+    };
+  }, []);
+
   const activeUsers = useMemo(() => {
     return users.filter((u) => u.status === 'Active' || u.status === undefined);
   }, [users]);
   const defaultUser = currentUser?.name || activeUsers[0]?.name || '';
+
+  const isEmployee = useMemo(() => {
+    const role = (currentUser?.role || '').toLowerCase();
+    const profile = (currentUser?.profileType || '').toLowerCase();
+    if (role === 'admin' || role === 'super_admin' || role === 'super admin' || profile.includes('admin') || Boolean(currentUser?.isAdmin)) {
+      return false;
+    }
+    return role === 'employee' || role === 'worker';
+  }, [currentUser]);
+
+  const filterUsers = useMemo(() => {
+    if (isEmployee && currentUser?.name) {
+      return activeUsers.filter((u) => u.name?.toLowerCase().includes(currentUser.name.toLowerCase()));
+    }
+    return activeUsers;
+  }, [isEmployee, activeUsers, currentUser]);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<TaskTab>(initialView);
@@ -1030,21 +1069,36 @@ function TasksContent() {
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (sortBy !== 'All Task') count++;
-    if (assigneeFilter !== 'All Owners') count++;
+    if (assigneeFilter !== 'All Owners' && assigneeFilter !== 'My Tasks') count++;
     if (typeFilter !== 'All') count++;
     if (createdByFilter !== 'All') count++;
     return count;
   }, [sortBy, assigneeFilter, typeFilter, createdByFilter]);
 
-  // Retain all real tasks (do not aggressively purge user-created tasks)
+  // Retain all real tasks and enforce role-based data scoping (Employees only see their assigned/created tasks)
   const cleanTasks = useMemo(() => {
+    let allCrmUsers: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('cezcon_crm_users_list');
+        if (raw) allCrmUsers = JSON.parse(raw);
+      } catch (e) {}
+    }
+    const userToUse = currentUser || (typeof window !== 'undefined' ? authMockService.getCurrentUser() : null);
+
     return tasks.filter((t) => {
       const title = (t.taskDetails || t.title || '').trim().toLowerCase();
       const isGibberish =
         (t.assignedBy?.includes('Alex Rivera') && (title.includes('qewrty') || title.includes('efwregv')));
-      return !isGibberish;
+      if (isGibberish) return false;
+
+      // 🛡️ Role-based Scope Enforcement
+      if (!canAccessTask(t, userToUse, allCrmUsers)) {
+        return false;
+      }
+      return true;
     });
-  }, [tasks]);
+  }, [tasks, currentUser]);
 
   // Tab counts based on real tasks
   const counts = useMemo(() => {
@@ -1171,7 +1225,7 @@ function TasksContent() {
         }
 
         // Assignee Filter
-        if (assigneeFilter !== 'All Owners') {
+        if (assigneeFilter !== 'All Owners' && assigneeFilter !== 'My Tasks') {
           const repName = task.assignedEmployee || task.assignee?.name;
           if (repName !== assigneeFilter) return false;
         }
@@ -1674,7 +1728,10 @@ function TasksContent() {
     e.preventDefault();
     if (!assignForm.targetAssignee) return;
     assignForm.selectedTaskIds.forEach((id) => {
-      updateTask(id, { assignee: { name: assignForm.targetAssignee } });
+      updateTask(id, {
+        assignee: { name: assignForm.targetAssignee },
+        assignedEmployee: assignForm.targetAssignee,
+      });
     });
     setIsAssignModalOpen(false);
     setAssignForm({ targetAssignee: defaultUser, selectedTaskIds: [] });
@@ -2074,7 +2131,10 @@ function TasksContent() {
                       return;
                     }
                     assignSelectedIds.forEach((id) => {
-                      updateTask(id, { assignee: { name: assignTargetAssignee } });
+                      updateTask(id, {
+                        assignee: { name: assignTargetAssignee },
+                        assignedEmployee: assignTargetAssignee,
+                      });
                     });
                     alert(`${assignSelectedIds.length} tasks successfully reassigned to ${assignTargetAssignee}!`);
                     setAssignSelectedIds([]);
@@ -4431,8 +4491,8 @@ function TasksContent() {
                     onChange={(e) => setAssigneeFilter(e.target.value)}
                     className="w-full bg-slate-50/80 border border-slate-200 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
                   >
-                    <option value="All Owners">All Owners</option>
-                    {activeUsers.map((u) => (
+                    <option value="All Owners">{isEmployee ? 'My Tasks' : 'All Owners'}</option>
+                    {filterUsers.map((u) => (
                       <option key={u.id} value={u.name}>
                         {u.name}
                       </option>
@@ -4509,20 +4569,22 @@ function TasksContent() {
 
               <div className="flex items-center gap-1.5 text-xs flex-wrap sm:flex-nowrap relative">
                 {/* 1. Assign Task Button */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAssignForm({
-                      targetAssignee: defaultUser,
-                      selectedTaskIds: filteredTasks.map((t) => t.id),
-                    });
-                    setIsAssignModalOpen(true);
-                  }}
-                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded bg-[#0B2A4A] hover:bg-[#071D33] text-white font-semibold transition-colors cursor-pointer shadow-2xs text-xs whitespace-nowrap"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 text-white" />
-                  <span>Assign Task</span>
-                </button>
+                {(!isEmployee || currentUser?.actionPermissions?.canReassign) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAssignForm({
+                        targetAssignee: defaultUser,
+                        selectedTaskIds: filteredTasks.map((t) => t.id),
+                      });
+                      setIsAssignModalOpen(true);
+                    }}
+                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded bg-[#0B2A4A] hover:bg-[#071D33] text-white font-semibold transition-colors cursor-pointer shadow-2xs text-xs whitespace-nowrap"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-white" />
+                    <span>Assign Task</span>
+                  </button>
+                )}
 
                 {/* 2. ++ TASK Dropdown Button */}
                 <div className="relative">

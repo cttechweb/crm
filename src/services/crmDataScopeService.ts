@@ -438,36 +438,70 @@ export function canAccessTask(
   const uId = normalizeIdentifier(currentUser.id);
 
   const assigned = normalizeIdentifier(task.assignedEmployee || task.assignee?.name);
+  const assigneeEmail = normalizeIdentifier(task.assignee?.email);
   const createdBy = normalizeIdentifier(task.createdBy || task.assignedBy);
   const taskDept = normalizeIdentifier(task.department);
 
-  if (scope === 'OWN') {
+  const matchesUser = (fieldVal: string) => {
+    if (!fieldVal) return false;
     return (
-      (assigned.length > 0 && (assigned === uName || assigned === uEmail || assigned === uId)) ||
-      (createdBy.length > 0 && (createdBy === uName || createdBy === uEmail || createdBy === uId))
+      fieldVal === uName ||
+      fieldVal === uEmail ||
+      fieldVal === uId ||
+      (uName.length > 2 && fieldVal.includes(uName)) ||
+      (fieldVal.length > 2 && uName.includes(fieldVal)) ||
+      (uEmail.length > 4 && fieldVal.includes(uEmail.split('@')[0]))
     );
+  };
+
+  if (scope === 'OWN') {
+    return matchesUser(assigned) || matchesUser(assigneeEmail) || matchesUser(createdBy);
   }
 
   if (scope === 'TEAM') {
     const mgrDept = resolveUserDepartment(currentUser);
     const teamIdentifiers = resolveManagerTeamIdentifiers(currentUser, allUsers);
 
-    if (assigned.includes('arun') || createdBy.includes('arun')) {
-      return mgrDept === 'marketing';
-    }
-
-    const isSelf =
-      (assigned.length > 0 && (assigned === uName || assigned === uEmail)) ||
-      (createdBy.length > 0 && (createdBy === uName || createdBy === uEmail));
+    // 1. Direct match: task is assigned to this user, or created by this user
+    const isSelf = matchesUser(assigned) || matchesUser(assigneeEmail) || matchesUser(createdBy);
     if (isSelf) return true;
 
-    const isTeam = teamIdentifiers.has(assigned) || teamIdentifiers.has(createdBy);
+    // 2. If task is assigned to a Super Admin / Admin (like Shemin) and current user is not that person, block it
+    const isAssignedToAdmin =
+      assigned === 'shemin' ||
+      assigned.includes('shemin') ||
+      assigned === 'admin' ||
+      assigned.includes('super admin');
+    if (isAssignedToAdmin) return false;
+
+    // 3. Team member match: task is assigned to a reportee in this manager's team
+    const isTeam =
+      teamIdentifiers.has(assigned) ||
+      teamIdentifiers.has(assigneeEmail);
     if (isTeam) return true;
 
-    if (mgrDept === 'marketing' && taskDept.includes('market')) return true;
-    if (mgrDept === 'sales' && taskDept.includes('sale')) return true;
-    if (mgrDept === 'purchase' && taskDept.includes('purch')) return true;
-    if (mgrDept === 'operations' && (taskDept.includes('operat') || taskDept.includes('service'))) return true;
+    // 4. Check if assigned employee reports to this manager
+    if (assigned) {
+      const assigneeUser = allUsers.find((u) => {
+        const uname = normalizeIdentifier(u.name);
+        const uemail = normalizeIdentifier(u.email);
+        return uname === assigned || uemail === assigned;
+      });
+      if (assigneeUser) {
+        const aRole = normalizeIdentifier(assigneeUser.role);
+        if (aRole === 'admin' || aRole === 'super_admin' || aRole === 'super admin') {
+          return false;
+        }
+        const aMgr = normalizeIdentifier(assigneeUser.managerId || assigneeUser.reportingManagerId);
+        if (aMgr === uId || aMgr === uName) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // 5. Unassigned task in department
+    if (!assigned && taskDept && taskDept === mgrDept) return true;
 
     return false;
   }

@@ -122,7 +122,7 @@ export const userApiService = {
         limit: params.limit,
       },
       requireAuth: true,
-      timeoutMs: 15000,
+      timeoutMs: 8000,
     });
   },
 
@@ -132,7 +132,7 @@ export const userApiService = {
   async getUserById(id: string): Promise<CrmBackendUser> {
     const res = await apiClient.get<{ success: boolean; user: CrmBackendUser }>(`/api/users/${encodeURIComponent(id)}`, {
       requireAuth: true,
-      timeoutMs: 10000,
+      timeoutMs: 8000,
     });
     return res.user;
   },
@@ -143,7 +143,7 @@ export const userApiService = {
   async createUser(payload: CreateUserPayload): Promise<CrmBackendUser> {
     const res = await apiClient.post<{ success: boolean; user: CrmBackendUser }>('/api/users', payload, {
       requireAuth: true,
-      timeoutMs: 15000,
+      timeoutMs: 8000,
     });
     return res.user;
   },
@@ -154,7 +154,7 @@ export const userApiService = {
   async updateUser(id: string, payload: UpdateUserPayload): Promise<CrmBackendUser> {
     const res = await apiClient.put<{ success: boolean; user: CrmBackendUser }>(`/api/users/${encodeURIComponent(id)}`, payload, {
       requireAuth: true,
-      timeoutMs: 15000,
+      timeoutMs: 8000,
     });
     return res.user;
   },
@@ -167,7 +167,7 @@ export const userApiService = {
       is_active: isActive ? 1 : 0,
     }, {
       requireAuth: true,
-      timeoutMs: 10000,
+      timeoutMs: 8000,
     });
   },
 
@@ -179,7 +179,7 @@ export const userApiService = {
       `/api/users/${encodeURIComponent(id)}`,
       {
         requireAuth: true,
-        timeoutMs: 10000,
+        timeoutMs: 8000,
       }
     );
   },

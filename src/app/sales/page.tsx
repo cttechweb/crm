@@ -10111,9 +10111,9 @@ function SalesPipelineInner() {
                         </div>
                       </div>
 
-                      {/* Paid Amount */}
+                      {/* Advance Paid */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                        <label className="text-slate-700 font-medium">Paid Amount</label>
+                        <label className="text-slate-700 font-medium">Advance Paid</label>
                         <div className="sm:col-span-2">
                           <input
                             type="number"
@@ -11366,9 +11366,9 @@ function SalesPipelineInner() {
                         </div>
                       </div>
 
-                      {/* Paid Amount */}
+                      {/* Advance Paid */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                        <label className="text-slate-700 font-medium">Paid Amount</label>
+                        <label className="text-slate-700 font-medium">Advance Paid</label>
                         <div className="sm:col-span-2">
                           <input
                             type="number"
@@ -16487,11 +16487,11 @@ function SalesPipelineInner() {
                           <span>Payment Record</span>
                         </div>
                         <div className="space-y-0.5 text-[11px] text-slate-800">
-                          <div className="grid grid-cols-[80px_auto] gap-1">
-                            <span className="text-slate-600">Paid Amount</span>
+                          <div className="grid grid-cols-[85px_auto] gap-1">
+                            <span className="text-slate-600">Advance Paid</span>
                             <span className="font-medium text-slate-900">: {((inv.paidAmount || 0) * currencyMultiplier).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
-                          <div className="grid grid-cols-[80px_auto] gap-1">
+                          <div className="grid grid-cols-[85px_auto] gap-1">
                             <span className="text-slate-600">Due Amount</span>
                             <span className="font-bold text-slate-900">: {(inv.balanceAmount ? Number(inv.balanceAmount) * currencyMultiplier : pGrandTotal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
