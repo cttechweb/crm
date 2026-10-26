@@ -656,7 +656,7 @@ function SalesPipelineInner() {
         return prev;
       });
     }
-  }, [activeSalesUsers, currentUser]);
+  }, [activeSalesUsers, currentUser?.name]);
   const [deleteOppConfirm, setDeleteOppConfirm] = useState<CrmSalesOpportunity | null>(null);
   const [isChangeStageModalOpen, setIsChangeStageModalOpen] = useState(false);
   const [changeStageOpp, setChangeStageOpp] = useState<CrmSalesOpportunity | null>(null);
