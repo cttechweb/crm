@@ -99,7 +99,7 @@ import { ProductSettingItem } from '@/types/settings';
 function SalesPipelineInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const currentUser = authMockService.getCurrentUser();
+  const currentUser = useMemo(() => authMockService.getCurrentUser(), []);
 
   // Active Pipeline Tab
   const rawTab = searchParams.get('tab') || 'opportunities';
@@ -991,7 +991,7 @@ function SalesPipelineInner() {
         return prev;
       });
     }
-  }, [activeSalesUsers, currentUser]);
+  }, [activeSalesUsers, currentUser?.name]);
 
   const [isQuickAddOwnerOpen, setIsQuickAddOwnerOpen] = useState(false);
   const [newOwnerName, setNewOwnerName] = useState('');

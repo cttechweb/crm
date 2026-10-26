@@ -409,9 +409,11 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           localStorage.setItem('cezcon_crm_users_list', JSON.stringify(cezconItems));
         }
       }
-    } catch (err) {
-      // Retain valid data and report errors without repeatedly displaying alerts. Do not fall back to old mock users.
-      console.warn('[EnterpriseCrmContext] Authoritative users fetch failed, retaining existing state:', err);
+    } catch (err: any) {
+      // Retain valid data and suppress unauthenticated 401 or transient quota errors in local dev
+      if (err?.status !== 401 && err?.statusCode !== 401 && err?.name !== 'QuotaExceededError') {
+        console.warn('[EnterpriseCrmContext] Authoritative users fetch failed, retaining existing state:', err);
+      }
     } finally {
       isFetchingUsersRef.current = false;
     }
