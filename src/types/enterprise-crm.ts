@@ -197,6 +197,7 @@ export interface CrmSalesOpportunity {
   id: string;
   slNo?: number;
   opportunityCode?: string;
+  leadNumber?: string;
   createdFromLeadId?: string;
   title: string;
   subtitle?: string;
@@ -432,6 +433,7 @@ export interface CrmSalesOrder {
   quotationRef?: string;
   quotationId?: string;
   opportunityRef?: string;
+  leadNumber?: string;
   subject?: string;
   customer: string;
   contactPerson?: string;

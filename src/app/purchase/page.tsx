@@ -42,6 +42,7 @@ import {
   ArrowLeft,
   List,
   Printer,
+  Lightbulb,
 } from 'lucide-react';
 import { mockCezconStockItems, mockStockTransfers } from '@/data/mockEnterpriseData';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
@@ -133,64 +134,7 @@ const mockPurchaseOrders: any[] = [];
 const defaultPurchaseInvoicesList: any[] = [];
 const mockPurchasePayments: any[] = [];
 const mockStockInList: any[] = [];
-const defaultSuppliersList: any[] = [
-  {
-    id: 'sup_1',
-    slNo: 1,
-    name: 'LUTFI TRADING LLC',
-    companyName: 'Lutfi Trading Co LLC',
-    trn: '100234567800003',
-    contact: '+971 4 222 5335',
-    email: 'info@lutfigroup.com',
-    address: 'Deira, Dubai, UAE',
-    outstanding: 0,
-    owner: 'MUSTHAFA CHIRAMMAL',
-    ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
-    status: 'Active',
-  },
-  {
-    id: 'sup_2',
-    slNo: 2,
-    name: 'SUPER GENERAL COMPANY LLC',
-    companyName: 'Super General Co LLC',
-    trn: '100345678900003',
-    contact: '+971 4 883 1255',
-    email: 'sales@supergeneral.com',
-    address: 'Jebel Ali Free Zone, Dubai, UAE',
-    outstanding: 0,
-    owner: 'MUSTHAFA CHIRAMMAL',
-    ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
-    status: 'Active',
-  },
-  {
-    id: 'sup_3',
-    slNo: 3,
-    name: 'CENTRAL TRADING COMPANY LLC',
-    companyName: 'Central Trading Company LLC',
-    trn: '100456789000003',
-    contact: '+971 4 282 2222',
-    email: 'info@ctcuae.com',
-    address: 'Al Garhoud, Dubai, UAE',
-    outstanding: 0,
-    owner: 'Rashid Ali',
-    ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=faces',
-    status: 'Active',
-  },
-  {
-    id: 'sup_4',
-    slNo: 4,
-    name: 'Shajarath Al Thalj Trading LLC',
-    companyName: 'Shajarath Al Thalj For Freezer Manufacturing LLC',
-    trn: '100567890100003',
-    contact: '+971 6 534 1122',
-    email: 'sales@shajarathalthalj.ae',
-    address: 'Industrial Area 13, Sharjah, UAE',
-    outstanding: 0,
-    owner: 'MOHAMMED ISHAQ',
-    ownerAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=faces',
-    status: 'Active',
-  },
-];
+const defaultSuppliersList: any[] = [];
 
 const defaultStoresList: any[] = [
   {
@@ -268,13 +212,28 @@ function PurchasePageInner() {
   const [showTransferFiltersMobile, setShowTransferFiltersMobile] = useState(false);
 
   // Suppliers State & Add Modal
+  const isMockSupplier = (item: any) => {
+    if (!item) return false;
+    const mockIds = ['sup_1', 'sup_2', 'sup_3', 'sup_4'];
+    const mockNames = [
+      'LUTFI TRADING LLC',
+      'SUPER GENERAL COMPANY LLC',
+      'CENTRAL TRADING COMPANY LLC',
+      'Shajarath Al Thalj Trading LLC',
+    ];
+    return mockIds.includes(item.id) || mockNames.includes(item.name);
+  };
+
   const [suppliersList, setSuppliersList] = useState<any[]>(() => {
     if (typeof window !== 'undefined') {
       try {
         const stored = localStorage.getItem('crm_suppliers_list');
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter((s) => !isMockSupplier(s));
+            return cleaned;
+          }
         }
       } catch (e) {
         console.error(e);
@@ -284,10 +243,124 @@ function PurchasePageInner() {
   });
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('crm_suppliers_list');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter((s) => !isMockSupplier(s));
+            if (cleaned.length !== parsed.length) {
+              localStorage.setItem('crm_suppliers_list', JSON.stringify(cleaned));
+              setSuppliersList(cleaned);
+            }
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (contextSuppliers && contextSuppliers.length > 0) {
-      setSuppliersList(contextSuppliers);
+      const cleaned = contextSuppliers.filter((s) => !isMockSupplier(s));
+      setSuppliersList(cleaned);
     }
   }, [contextSuppliers]);
+
+  // Upload Supplier Screen State
+  const [isUploadSupplierView, setIsUploadSupplierView] = useState(false);
+  const [uploadSupplierOwner, setUploadSupplierOwner] = useState('Nafal');
+  const [selectedSupplierFile, setSelectedSupplierFile] = useState<File | null>(null);
+  const supplierFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleDownloadSupplierFormat = () => {
+    const csvContent =
+      'Supplier Name,Company Name,TRN,Phone,Email,Address,Payment Terms\n' +
+      'Example Trading LLC,Example Trading Co LLC,100987654300003,+971 4 123 4567,contact@example.com,"Business Bay, Dubai, UAE",30 Days\n';
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'supplier_upload_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleSupplierFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedSupplierFile(e.target.files[0]);
+    }
+  };
+
+  const handleUploadSupplierSubmit = () => {
+    if (!selectedSupplierFile) {
+      alert('Please choose an Excel or CSV file to upload.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+        if (lines.length <= 1) {
+          alert('The uploaded file does not contain any supplier data rows.');
+          return;
+        }
+
+        const newSuppliers: any[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const row = lines[i];
+          const cols = row.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || row.split(',');
+          const cleanCols = cols.map((c) => c.replace(/^"|"$/g, '').trim());
+          const name = cleanCols[0];
+          if (!name) continue;
+
+          newSuppliers.push({
+            id: `sup_${Date.now()}_${i}`,
+            slNo: suppliersList.length + newSuppliers.length + 1,
+            name: name,
+            companyName: cleanCols[1] || name,
+            trn: cleanCols[2] || '',
+            contact: cleanCols[3] || '',
+            email: cleanCols[4] || '',
+            address: cleanCols[5] || '',
+            paymentTerms: cleanCols[6] || '30 Days',
+            outstanding: 0,
+            owner: uploadSupplierOwner || 'Nafal',
+            ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+            status: 'Active',
+          });
+        }
+
+        if (newSuppliers.length === 0) {
+          alert('No valid supplier records found in file.');
+          return;
+        }
+
+        const updated = [...newSuppliers, ...suppliersList];
+        setSuppliersList(updated);
+        try {
+          localStorage.setItem('crm_suppliers_list', JSON.stringify(updated));
+        } catch (err) {}
+        newSuppliers.forEach((sup) => contextAddSupplier(sup));
+
+        alert(`Successfully imported ${newSuppliers.length} supplier(s).`);
+        setSelectedSupplierFile(null);
+        if (supplierFileInputRef.current) {
+          supplierFileInputRef.current.value = '';
+        }
+        setIsUploadSupplierView(false);
+      } catch (err) {
+        console.error(err);
+        alert('Failed to parse the uploaded file. Please make sure it is a valid CSV or Excel format.');
+      }
+    };
+    reader.readAsText(selectedSupplierFile);
+  };
 
   const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
   const [newSupplierForm, setNewSupplierForm] = useState({
@@ -8645,186 +8718,354 @@ function PurchasePageInner() {
         {/* ========================================================= */}
         {mainTab === 'supplier' && (
           <>
-            <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs">
-              {/* Card Header */}
-              <div className="px-4 py-2.5 bg-white border-b border-slate-200 flex items-center justify-between">
-                <div className="flex items-center gap-2 font-semibold text-slate-700 text-xs">
-                  <span className="text-sm">🗂️</span>
-                  <span>Supplier</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#0B1E2E] hover:bg-[#020617] text-white text-xs font-medium rounded-xs shadow-xs cursor-pointer transition"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
+            {isUploadSupplierView ? (
+              /* ========================================================= */
+              /* UPLOAD SUPPLIER VIEW (Exact Cezcon CRM Reference Layout)   */
+              /* ========================================================= */
+              <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs">
+                {/* Card Header matching Image 1 */}
+                <div className="px-4 py-2.5 bg-white border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-medium text-slate-700 text-xs">
+                    <FileText className="w-4 h-4 text-slate-500" />
                     <span>Upload Supplier</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsAddSupplierModalOpen(true)}
-                    className="inline-flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-semibold uppercase rounded-xs shadow-xs cursor-pointer transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ SUPPLIER</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Table Controls (Rows and Search) */}
-              <div className="p-3 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-slate-100">
-                <div className="flex items-center gap-2 text-xs text-slate-600">
-                  <span>Shows</span>
-                  <select
-                    value={supplierRowsPerPage}
-                    onChange={(e) => setSupplierRowsPerPage(Number(e.target.value))}
-                    className="px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-700 cursor-pointer focus:outline-none"
-                  >
-                    <option value={10}>10</option>
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
-                  </select>
-                  <span>Rows</span>
-                </div>
-
-                <div className="relative w-full sm:w-64">
-                  <input
-                    type="text"
-                    placeholder="Search Supplier"
-                    value={supplierSearch}
-                    onChange={(e) => setSupplierSearch(e.target.value)}
-                    className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
-                  />
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
-                </div>
-              </div>
-
-              {/* Native Mobile Supplier Cards */}
-              <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
-                {filteredSuppliers.map((sup) => (
-                  <div key={sup.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
-                    <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
-                      <div className="space-y-0.5">
-                        <span className="font-bold text-[#2563EB] text-xs">{sup.name}</span>
-                        {sup.trn && <div className="text-[10px] text-slate-500 font-mono">TRN: {sup.trn}</div>}
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-500 block">Outstanding</span>
-                        <span className={cn('font-bold text-xs', sup.outstanding > 0 ? 'text-[#DC2626]' : 'text-slate-800')}>
-                          {sup.outstanding.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1 text-slate-600">
-                      {sup.contact && (
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-4 h-4 rounded-xs bg-[#E11D48] text-white flex items-center justify-center text-[9px]">☎</span>
-                          <a href={`tel:${sup.contact}`} className="font-mono text-[#2563EB] font-medium">{sup.contact}</a>
-                        </div>
-                      )}
-                      {sup.email && (
-                        <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
-                          <span>✉</span>
-                          <span className="text-slate-700">{sup.email}</span>
-                        </div>
-                      )}
-                      {sup.address && (
-                        <div className="text-[11px] text-slate-500 pt-0.5">
-                          {sup.address}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
-                      <div className="flex items-center gap-1.5">
-                        <img src={sup.ownerAvatar} alt={sup.owner} className="w-5 h-5 rounded-full object-cover border border-slate-200" />
-                        <span className="text-[11px] text-slate-600 font-medium">{sup.owner}</span>
-                      </div>
-                      <button type="button" className="p-1 bg-[#0B1E2E] text-white rounded cursor-pointer">
-                        <Settings className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
                   </div>
-                ))}
-              </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadSupplierFormat}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#002B49] hover:bg-[#001D32] text-white text-xs font-semibold rounded-[2px] cursor-pointer shadow-xs transition"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download Format</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsUploadSupplierView(false);
+                        setSelectedSupplierFile(null);
+                      }}
+                      className="w-7 h-7 flex items-center justify-center bg-[#D9534F] hover:bg-[#C9302C] text-white rounded-[2px] cursor-pointer shadow-xs transition"
+                      title="Close"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
 
-              {/* Table Content (Desktop Viewports) */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse min-w-[1200px]">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
-                      <th className="p-2.5 w-14 text-center border-r border-slate-200">SL.No</th>
-                      <th className="p-2.5 border-r border-slate-200">Name</th>
-                      <th className="p-2.5 w-14 text-center border-r border-slate-200">Owner</th>
-                      <th className="p-2.5 w-44 border-r border-slate-200">Contact</th>
-                      <th className="p-2.5 w-48 border-r border-slate-200">Email</th>
-                      <th className="p-2.5 w-36 border-r border-slate-200">TRN</th>
-                      <th className="p-2.5 border-r border-slate-200">Address</th>
-                      <th className="p-2.5 text-right w-28 border-r border-slate-200">Outstanding</th>
-                      <th className="p-2.5 text-center w-20">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {filteredSuppliers.map((sup) => (
-                      <tr key={sup.id} className="hover:bg-blue-50/40 transition-colors">
-                        <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{sup.slNo}</td>
-                        <td className="p-2.5 border-r border-slate-100 font-medium text-[#2563EB] hover:underline cursor-pointer">
-                          {sup.name}
-                        </td>
-                        <td className="p-2.5 text-center border-r border-slate-100">
-                          <img src={sup.ownerAvatar} alt={sup.owner} className="w-6 h-6 rounded-full object-cover inline-block mx-auto border border-slate-200" />
-                        </td>
-                        <td className="p-2.5 border-r border-slate-100">
-                          {sup.contact ? (
-                            <div className="inline-flex items-center gap-1.5 text-slate-700 font-mono text-xs">
-                              <span className="w-3.5 h-3.5 rounded-xs bg-[#E11D48] text-white flex items-center justify-center text-[8px] font-bold">
-                                ☎
-                              </span>
-                              <span>{sup.contact}</span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400"></span>
-                          )}
-                        </td>
-                        <td className="p-2.5 border-r border-slate-100 text-slate-700">
-                          {sup.email ? (
-                            <span className="text-[#2563EB] hover:underline cursor-pointer font-medium">{sup.email}</span>
-                          ) : (
-                            ''
-                          )}
-                        </td>
-                        <td className="p-2.5 border-r border-slate-100 text-slate-700 font-mono text-[11px]">{sup.trn}</td>
-                        <td className="p-2.5 border-r border-slate-100 text-slate-700 whitespace-pre-line leading-relaxed">{sup.address}</td>
-                        <td className="p-2.5 text-right font-bold border-r border-slate-100">
-                          <span className={sup.outstanding > 0 ? 'text-[#DC2626]' : 'text-slate-800'}>
-                            {sup.outstanding.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </td>
-                        <td className="p-2.5 text-center">
+                {/* Card Body: 2 Columns Layout */}
+                <div className="p-6 bg-white grid grid-cols-1 lg:grid-cols-2 gap-8 items-start min-h-[340px]">
+                  {/* Left Column: Upload Tips */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
+                      <span className="text-base">💡</span>
+                      <span>Upload Tips</span>
+                    </div>
+                    <ul className="list-disc pl-5 space-y-1.5 text-xs text-slate-700 leading-relaxed marker:text-slate-500">
+                      <li>
+                        Download{' '}
+                        <button
+                          type="button"
+                          onClick={handleDownloadSupplierFormat}
+                          className="text-[#2563EB] hover:underline cursor-pointer font-medium p-0 inline bg-transparent border-none"
+                        >
+                          format
+                        </button>{' '}
+                        of excel file
+                      </li>
+                      <li>Duplicate entry checks are performed based on the Supplier Name and Phone Number.</li>
+                      <li>Update telephone with country code.</li>
+                      <li>Upload Excel file Using &apos;Choose file&apos; Button</li>
+                      <li>
+                        Please ensure that the data you&apos;ve uploaded is accurate, if it&apos;s not, please take a moment to edit it from the list.
+                      </li>
+                      <li>Finally, click the submit button to insert the Supplier data.</li>
+                      <li className="text-[#D9534F] font-normal leading-relaxed">
+                        Duplicate entries will be highlighted in red. Please review the supplier name and phone number. You can either
+                        update or delete them. If you do not need to add any information, simply close the form.
+                      </li>
+                    </ul>
+                  </div>
+
+                  {/* Right Column: Supplier Owner and Upload File */}
+                  <div className="space-y-6 lg:pl-6 lg:border-l lg:border-slate-100">
+                    {/* Supplier Owner */}
+                    <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] items-center gap-3">
+                      <label className="text-xs font-medium text-slate-700">Supplier Owner</label>
+                      <div className="relative">
+                        <select
+                          value={uploadSupplierOwner}
+                          onChange={(e) => setUploadSupplierOwner(e.target.value)}
+                          className="w-full pl-8 pr-8 py-1.5 bg-white border border-slate-300 rounded text-xs text-slate-800 appearance-none focus:outline-none focus:border-blue-500 cursor-pointer shadow-xs"
+                        >
+                          <option value="Nafal">Nafal</option>
+                          <option value="Musthafa Chirammal">Musthafa Chirammal</option>
+                          <option value="Rashid Ali">Rashid Ali</option>
+                          <option value="MOHAMMED ISHAQ">MOHAMMED ISHAQ</option>
+                          <option value="Shemin">Shemin</option>
+                        </select>
+                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[10px] font-bold pointer-events-none">
+                          👤
+                        </div>
+                        <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Upload File* */}
+                    <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] items-start gap-3">
+                      <label className="text-xs font-medium text-slate-700 pt-2">
+                        Upload File<span className="text-[#D9534F] font-bold">*</span>
+                      </label>
+                      <div className="space-y-2">
+                        <div className="p-4 bg-[#F8FAFC] border border-slate-200 rounded flex items-center gap-3">
+                          <input
+                            ref={supplierFileInputRef}
+                            type="file"
+                            accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                            onChange={handleSupplierFileChange}
+                            className="hidden"
+                            id="supplierFileInput"
+                          />
                           <button
                             type="button"
-                            className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#0B1E2E] hover:bg-[#020617] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition mx-auto"
-                            title="Actions"
+                            onClick={() => supplierFileInputRef.current?.click()}
+                            className="px-3.5 py-1.5 bg-[#D9534F] hover:bg-[#C9302C] text-white text-xs font-semibold rounded-[2px] cursor-pointer shadow-xs transition shrink-0"
                           >
-                            <Settings className="w-3.5 h-3.5" />
-                            <ChevronDown className="w-2.5 h-2.5 text-slate-300" />
+                            Choose file
                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                          <span className="text-xs text-slate-500 truncate">
+                            {selectedSupplierFile ? selectedSupplierFile.name : 'No file chosen'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          Maximum Records : 100 <span className="mx-1 text-slate-300">|</span> File Format: XLS, XLSX and CSV
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-              {/* Footer */}
-              <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
-                <div>
-                  Showing 1 to {filteredSuppliers.length} of {filteredSuppliers.length} entries
+                {/* Footer matching Image 1: Bottom Right Buttons */}
+                <div className="px-6 py-3.5 bg-white border-t border-slate-100 flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleUploadSupplierSubmit}
+                    className="px-5 py-1.5 bg-[#002B49] hover:bg-[#001D32] text-white text-xs font-semibold rounded-[2px] cursor-pointer shadow-xs transition"
+                  >
+                    Submit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUploadSupplierView(false);
+                      setSelectedSupplierFile(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-medium rounded-[2px] cursor-pointer shadow-xs transition"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Back</span>
+                  </button>
                 </div>
               </div>
-            </div>
+            ) : (
+              /* ========================================================= */
+              /* SUPPLIER LIST TABLE VIEW                                   */
+              /* ========================================================= */
+              <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs">
+                {/* Card Header */}
+                <div className="px-4 py-2.5 bg-white border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-semibold text-slate-700 text-xs">
+                    <span className="text-sm">🗂️</span>
+                    <span>Supplier</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsUploadSupplierView(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#0B1E2E] hover:bg-[#020617] text-white text-xs font-medium rounded-xs shadow-xs cursor-pointer transition"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload Supplier</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddSupplierModalOpen(true)}
+                      className="inline-flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-semibold uppercase rounded-xs shadow-xs cursor-pointer transition"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ SUPPLIER</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Table Controls (Rows and Search) */}
+                <div className="p-3 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2 text-xs text-slate-600">
+                    <span>Shows</span>
+                    <select
+                      value={supplierRowsPerPage}
+                      onChange={(e) => setSupplierRowsPerPage(Number(e.target.value))}
+                      className="px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-700 cursor-pointer focus:outline-none"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                    <span>Rows</span>
+                  </div>
+
+                  <div className="relative w-full sm:w-64">
+                    <input
+                      type="text"
+                      placeholder="Search Supplier"
+                      value={supplierSearch}
+                      onChange={(e) => setSupplierSearch(e.target.value)}
+                      className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
+                    />
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
+                  </div>
+                </div>
+
+                {/* Native Mobile Supplier Cards */}
+                <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
+                  {filteredSuppliers.length === 0 ? (
+                    <div className="bg-white border border-slate-200 rounded-lg p-8 text-center text-slate-500 text-xs">
+                      No records found
+                    </div>
+                  ) : (
+                    filteredSuppliers.map((sup) => (
+                      <div key={sup.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
+                        <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
+                          <div className="space-y-0.5">
+                            <span className="font-bold text-[#2563EB] text-xs">{sup.name}</span>
+                            {sup.trn && <div className="text-[10px] text-slate-500 font-mono">TRN: {sup.trn}</div>}
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] text-slate-500 block">Outstanding</span>
+                            <span className={cn('font-bold text-xs', sup.outstanding > 0 ? 'text-[#DC2626]' : 'text-slate-800')}>
+                              {sup.outstanding.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1 text-slate-600">
+                          {sup.contact && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-4 h-4 rounded-xs bg-[#E11D48] text-white flex items-center justify-center text-[9px]">☎</span>
+                              <a href={`tel:${sup.contact}`} className="font-mono text-[#2563EB] font-medium">{sup.contact}</a>
+                            </div>
+                          )}
+                          {sup.email && (
+                            <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
+                              <span>✉</span>
+                              <span className="text-slate-700">{sup.email}</span>
+                            </div>
+                          )}
+                          {sup.address && (
+                            <div className="text-[11px] text-slate-500 pt-0.5">
+                              {sup.address}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
+                          <div className="flex items-center gap-1.5">
+                            <img src={sup.ownerAvatar} alt={sup.owner} className="w-5 h-5 rounded-full object-cover border border-slate-200" />
+                            <span className="text-[11px] text-slate-600 font-medium">{sup.owner}</span>
+                          </div>
+                          <button type="button" className="p-1 bg-[#0B1E2E] text-white rounded cursor-pointer">
+                            <Settings className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Table Content (Desktop Viewports) */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse min-w-[1200px]">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
+                        <th className="p-2.5 w-14 text-center border-r border-slate-200">SL.No</th>
+                        <th className="p-2.5 border-r border-slate-200">Name</th>
+                        <th className="p-2.5 w-14 text-center border-r border-slate-200">Owner</th>
+                        <th className="p-2.5 w-44 border-r border-slate-200">Contact</th>
+                        <th className="p-2.5 w-48 border-r border-slate-200">Email</th>
+                        <th className="p-2.5 w-36 border-r border-slate-200">TRN</th>
+                        <th className="p-2.5 border-r border-slate-200">Address</th>
+                        <th className="p-2.5 text-right w-28 border-r border-slate-200">Outstanding</th>
+                        <th className="p-2.5 text-center w-20">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {filteredSuppliers.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="py-12 text-center text-slate-500 font-medium text-xs">
+                            No records found
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredSuppliers.map((sup) => (
+                          <tr key={sup.id} className="hover:bg-blue-50/40 transition-colors">
+                            <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{sup.slNo}</td>
+                            <td className="p-2.5 border-r border-slate-100 font-medium text-[#2563EB] hover:underline cursor-pointer">
+                              {sup.name}
+                            </td>
+                            <td className="p-2.5 text-center border-r border-slate-100">
+                              <img src={sup.ownerAvatar} alt={sup.owner} className="w-6 h-6 rounded-full object-cover inline-block mx-auto border border-slate-200" />
+                            </td>
+                            <td className="p-2.5 border-r border-slate-100">
+                              {sup.contact ? (
+                                <div className="inline-flex items-center gap-1.5 text-slate-700 font-mono text-xs">
+                                  <span className="w-3.5 h-3.5 rounded-xs bg-[#E11D48] text-white flex items-center justify-center text-[8px] font-bold">
+                                    ☎
+                                  </span>
+                                  <span>{sup.contact}</span>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400"></span>
+                              )}
+                            </td>
+                            <td className="p-2.5 border-r border-slate-100 text-slate-700">
+                              {sup.email ? (
+                                <span className="text-[#2563EB] hover:underline cursor-pointer font-medium">{sup.email}</span>
+                              ) : (
+                                ''
+                              )}
+                            </td>
+                            <td className="p-2.5 border-r border-slate-100 text-slate-700 font-mono text-[11px]">{sup.trn}</td>
+                            <td className="p-2.5 border-r border-slate-100 text-slate-700 whitespace-pre-line leading-relaxed">{sup.address}</td>
+                            <td className="p-2.5 text-right font-bold border-r border-slate-100">
+                              <span className={sup.outstanding > 0 ? 'text-[#DC2626]' : 'text-slate-800'}>
+                                {sup.outstanding.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </td>
+                            <td className="p-2.5 text-center">
+                              <button
+                                type="button"
+                                className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#0B1E2E] hover:bg-[#020617] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition mx-auto"
+                                title="Actions"
+                              >
+                                <Settings className="w-3.5 h-3.5" />
+                                <ChevronDown className="w-2.5 h-2.5 text-slate-300" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer */}
+                <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
+                  <div>
+                    Showing {filteredSuppliers.length === 0 ? 0 : 1} to {filteredSuppliers.length} of {filteredSuppliers.length} entries
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Modal: Add New Supplier */}
             {isAddSupplierModalOpen && (

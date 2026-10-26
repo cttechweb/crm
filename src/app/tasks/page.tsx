@@ -224,7 +224,7 @@ function TasksContent() {
       try {
         const saved = localStorage.getItem('cezcon_task_templates');
         if (saved) return JSON.parse(saved);
-      } catch (e) {}
+      } catch (e) { }
     }
     return [];
   });
@@ -282,7 +282,7 @@ function TasksContent() {
       setCustomTemplates(updated);
       try {
         localStorage.setItem('cezcon_task_templates', JSON.stringify(updated));
-      } catch (err) {}
+      } catch (err) { }
     }
 
     if (targetTemplateField === 'generic') setGenericTemplate(trimmed);
@@ -1082,7 +1082,7 @@ function TasksContent() {
       try {
         const raw = localStorage.getItem('cezcon_crm_users_list');
         if (raw) allCrmUsers = JSON.parse(raw);
-      } catch (e) {}
+      } catch (e) { }
     }
     const userToUse = currentUser || (typeof window !== 'undefined' ? authMockService.getCurrentUser() : null);
 
@@ -1553,19 +1553,18 @@ function TasksContent() {
                     st === 'Pending'
                       ? 'bg-[#F5A623] text-white shadow-2xs font-bold'
                       : st === 'Progress'
-                      ? 'bg-[#0284C7] text-white shadow-2xs font-bold'
-                      : 'bg-[#10B981] text-white shadow-2xs font-bold';
+                        ? 'bg-[#0284C7] text-white shadow-2xs font-bold'
+                        : 'bg-[#10B981] text-white shadow-2xs font-bold';
 
                   return (
                     <button
                       key={st}
                       type="button"
                       onClick={() => setChangeStatusForm({ ...changeStatusForm, status: st })}
-                      className={`px-3.5 py-1 text-xs font-medium rounded-xs cursor-pointer transition-colors ${
-                        isSelected
+                      className={`px-3.5 py-1 text-xs font-medium rounded-xs cursor-pointer transition-colors ${isSelected
                           ? activeColor
                           : 'bg-[#EAEFF5] text-slate-700 hover:bg-slate-200 border border-slate-200'
-                      }`}
+                        }`}
                     >
                       {st}
                     </button>
@@ -1640,19 +1639,18 @@ function TasksContent() {
                     pr === 'Low'
                       ? 'bg-[#0284C7] text-white shadow-2xs font-bold'
                       : pr === 'Mid'
-                      ? 'bg-[#F5A623] text-white shadow-2xs font-bold'
-                      : 'bg-[#DC2626] text-white shadow-2xs font-bold';
+                        ? 'bg-[#F5A623] text-white shadow-2xs font-bold'
+                        : 'bg-[#DC2626] text-white shadow-2xs font-bold';
 
                   return (
                     <button
                       key={pr}
                       type="button"
                       onClick={() => setChangeStatusForm({ ...changeStatusForm, priority: pr })}
-                      className={`px-3.5 py-1 text-xs font-medium rounded-xs cursor-pointer transition-colors ${
-                        isSelected
+                      className={`px-3.5 py-1 text-xs font-medium rounded-xs cursor-pointer transition-colors ${isSelected
                           ? activeColor
                           : 'bg-[#EAEFF5] text-slate-700 hover:bg-slate-200 border border-slate-200'
-                      }`}
+                        }`}
                     >
                       {pr}
                     </button>
@@ -1985,9 +1983,8 @@ function TasksContent() {
                       return (
                         <tr
                           key={task.id}
-                          className={`hover:bg-slate-50/80 transition-colors ${
-                            isSelected ? 'bg-blue-50/30' : ''
-                          }`}
+                          className={`hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-blue-50/30' : ''
+                            }`}
                         >
                           <td className="py-2.5 px-3 text-center font-semibold text-slate-600">{slNo}</td>
                           <td className="py-2.5 px-2 text-center">
@@ -2076,11 +2073,10 @@ function TasksContent() {
                     key={pg}
                     type="button"
                     onClick={() => setAssignCurrentPage(pg)}
-                    className={`px-2.5 py-1 border rounded text-xs font-semibold cursor-pointer shadow-2xs ${
-                      assignCurrentPage === pg
+                    className={`px-2.5 py-1 border rounded text-xs font-semibold cursor-pointer shadow-2xs ${assignCurrentPage === pg
                         ? 'bg-[#007EA7] border-[#007EA7] text-white'
                         : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
+                      }`}
                   >
                     {pg}
                   </button>
@@ -2584,13 +2580,12 @@ function TasksContent() {
                         <button
                           type="button"
                           onClick={() => handleOpenChangeStatus(viewingTaskInfo)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold text-white shadow-2xs transition-all cursor-pointer hover:shadow-xs ${
-                            (viewingTaskInfo.status || '').toLowerCase().includes('progress')
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-bold text-white shadow-2xs transition-all cursor-pointer hover:shadow-xs ${(viewingTaskInfo.status || '').toLowerCase().includes('progress')
                               ? 'bg-[#0284C7] hover:bg-[#0369a1]'
                               : (viewingTaskInfo.status || '').toLowerCase().includes('complete') || (viewingTaskInfo.status || '').toLowerCase().includes('reviewed')
-                              ? 'bg-[#10B981] hover:bg-[#059669]'
-                              : 'bg-[#F5A623] hover:bg-[#E09612]'
-                          }`}
+                                ? 'bg-[#10B981] hover:bg-[#059669]'
+                                : 'bg-[#F5A623] hover:bg-[#E09612]'
+                            }`}
                           title="Click to Change Task Status"
                         >
                           <Edit2 className="w-2.5 h-2.5" />
@@ -2657,13 +2652,12 @@ function TasksContent() {
                         <button
                           type="button"
                           onClick={() => handleOpenChangeStatus(viewingTaskInfo)}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-bold text-white shadow-2xs transition-all cursor-pointer hover:shadow-xs ${
-                            (viewingTaskInfo.priority || '').toLowerCase() === 'low'
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-bold text-white shadow-2xs transition-all cursor-pointer hover:shadow-xs ${(viewingTaskInfo.priority || '').toLowerCase() === 'low'
                               ? 'bg-[#0284C7] hover:bg-[#0369a1]'
                               : (viewingTaskInfo.priority || '').toLowerCase() === 'high' || (viewingTaskInfo.priority || '').toLowerCase() === 'urgent'
-                              ? 'bg-[#DC2626] hover:bg-[#B91C1C]'
-                              : 'bg-[#F5A623] hover:bg-[#E09612]'
-                          }`}
+                                ? 'bg-[#DC2626] hover:bg-[#B91C1C]'
+                                : 'bg-[#F5A623] hover:bg-[#E09612]'
+                            }`}
                           title="Click to Change Priority / Status"
                         >
                           <Edit2 className="w-2.5 h-2.5" />
@@ -4586,81 +4580,13 @@ function TasksContent() {
                   </button>
                 )}
 
-                {/* 2. ++ TASK Dropdown Button */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsTaskDropdownOpen((prev) => !prev);
-                      setIsPlusTaskDropdownOpen(false);
-                    }}
-                    className="flex items-center justify-center gap-1 px-3 py-1.5 rounded bg-[#22C55E] hover:bg-[#16A34A] text-white font-bold transition-colors cursor-pointer shadow-2xs text-xs whitespace-nowrap"
-                  >
-                    <span>++ TASK</span>
-                    <ChevronDown className={cn("w-3.5 h-3.5 ml-0.5 transition-transform duration-150", isTaskDropdownOpen && "rotate-180")} />
-                  </button>
-
-                  {/* Task Type Dropdown Menu (Exact Cezcon CRM Image 2) */}
-                  {isTaskDropdownOpen && (
-                    <div
-                      onClick={(e) => e.stopPropagation()}
-                      className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded border border-slate-200 shadow-xl py-1 z-50 text-slate-700 animate-in fade-in zoom-in-95 duration-100"
-                    >
-                      {[
-                        { label: 'Generic', icon: Wrench, type: 'Follow-up' },
-                        { label: 'Lead', icon: List, type: 'Lead' },
-                        { label: 'Customer', icon: Shield, type: 'Customer' },
-                        { label: 'Opportunity / Order', icon: Key, type: 'Opportunity' },
-                        { label: 'Contact', icon: User, type: 'Contact' },
-                        { label: 'Campaign', icon: DollarSign, type: 'Campaign' },
-                        { label: 'Invoice', icon: FileText, type: 'Invoice' },
-                      ].map((item) => {
-                        const Icon = item.icon;
-                        return (
-                          <button
-                            key={item.label}
-                            type="button"
-                            onClick={() => {
-                              setIsTaskDropdownOpen(false);
-                              if (item.label === 'Generic') {
-                                setIsAddGenericOpen(true);
-                              } else if (item.label === 'Lead') {
-                                setIsAddLeadTaskOpen(true);
-                              } else if (item.label === 'Customer') {
-                                setIsAddCustomerTaskOpen(true);
-                              } else if (item.label === 'Opportunity / Order') {
-                                setIsAddOppTaskOpen(true);
-                              } else if (item.label === 'Contact') {
-                                setIsAddContactTaskOpen(true);
-                              } else if (item.label === 'Campaign') {
-                                setIsAddCampaignTaskOpen(true);
-                              } else if (item.label === 'Invoice') {
-                                setIsAddInvoiceTaskOpen(true);
-                              } else {
-                                setFormData((prev) => ({ ...prev, taskType: item.type as any }));
-                                setIsAddModalOpen(true);
-                              }
-                            }}
-                            className="w-full text-left px-3.5 py-2 text-xs hover:bg-slate-50 flex items-center gap-2.5 text-slate-700 hover:text-slate-900 font-medium transition-colors cursor-pointer"
-                          >
-                            <Icon className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                            <span>{item.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. + TASK Dropdown Button */}
+                {/* + TASK Dropdown Button */}
                 <div className="relative">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setIsPlusTaskDropdownOpen((prev) => !prev);
-                      setIsTaskDropdownOpen(false);
                     }}
                     className="flex items-center justify-center gap-1 px-3 py-1.5 rounded bg-[#22C55E] hover:bg-[#16A34A] text-white font-bold transition-colors cursor-pointer shadow-2xs text-xs whitespace-nowrap"
                   >
@@ -5090,13 +5016,12 @@ function TasksContent() {
                             <button
                               type="button"
                               onClick={() => handleOpenChangeStatus(task)}
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold text-white shadow-2xs transition-all cursor-pointer hover:shadow-xs ${
-                                (task.priority || '').toLowerCase() === 'low'
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold text-white shadow-2xs transition-all cursor-pointer hover:shadow-xs ${(task.priority || '').toLowerCase() === 'low'
                                   ? 'bg-[#0284C7] hover:bg-[#0369a1]'
                                   : (task.priority || '').toLowerCase() === 'high' || (task.priority || '').toLowerCase() === 'urgent'
-                                  ? 'bg-[#DC2626] hover:bg-[#B91C1C]'
-                                  : 'bg-[#F5A623] hover:bg-[#E09612]'
-                              }`}
+                                    ? 'bg-[#DC2626] hover:bg-[#B91C1C]'
+                                    : 'bg-[#F5A623] hover:bg-[#E09612]'
+                                }`}
                               title="Click to Change Status / Priority"
                             >
                               <Edit2 className="w-2.5 h-2.5" />

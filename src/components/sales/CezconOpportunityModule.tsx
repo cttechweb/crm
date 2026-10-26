@@ -46,10 +46,13 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
     updateOpportunity,
     deleteOpportunity,
     customers,
+    leads,
     users,
   } = useEnterpriseCrm();
 
   const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
+
+  const [formLeadNumber, setFormLeadNumber] = useState('');
 
   // View state: Table list vs Creation Form vs Upload Form
   const [isCreating, setIsCreating] = useState(initialCreate);
@@ -183,6 +186,7 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
     if (target) {
       setFormTitle(target.title || '');
       setFormCode(target.opportunityCode || target.id);
+      setFormLeadNumber(target.leadNumber || (target.createdFromLeadId ? leads?.find(l => l.id === target.createdFromLeadId)?.leadNumber || '' : ''));
       setFormCustomer(target.customer || '');
       setFormContactPerson(target.contactPerson || '');
       setFormPhone(target.phone || '');
@@ -200,6 +204,7 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
     } else {
       const randNum = Math.floor(7120 + Math.random() * 100);
       setFormCode(`CTEQ#${randNum}`);
+      setFormLeadNumber('');
       setFormTitle('');
       setFormCustomer('');
       setFormContactPerson('');
@@ -285,6 +290,7 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
       title: formTitle.trim(),
       subtitle: formDescription.trim() || undefined,
       opportunityCode: formCode || `CTEQ#${Math.floor(7100 + Math.random() * 200)}`,
+      leadNumber: formLeadNumber.trim() || undefined,
       customer: formCustomer.trim(),
       contactPerson: formContactPerson.trim() || undefined,
       phone: formPhone.trim() || undefined,
@@ -583,6 +589,48 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
                     readOnly
                     className="w-full bg-slate-100 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-700 font-semibold focus:outline-none"
                   />
+                </div>
+
+                {/* Lead Number (Originating Lead CTL#) */}
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Lead Number</label>
+                  <input
+                    type="text"
+                    list="cezcon-leads-datalist"
+                    value={formLeadNumber}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const matched = leads?.find((l) => {
+                        const effectiveNo = l.leadNumber || `CTL#${1000 + (l.slNo || 1)}`;
+                        return (
+                          effectiveNo.toLowerCase() === val.toLowerCase() ||
+                          l.id === val ||
+                          (l.contactDetails?.company && `${effectiveNo} - ${l.contactDetails.company}`.toLowerCase() === val.toLowerCase())
+                        );
+                      });
+                      if (matched) {
+                        const effectiveNo = matched.leadNumber || `CTL#${1000 + (matched.slNo || 1)}`;
+                        setFormLeadNumber(effectiveNo);
+                        if (!formCustomer && matched.contactDetails?.company) setFormCustomer(matched.contactDetails.company);
+                        if (!formContactPerson && matched.contactDetails?.name) setFormContactPerson(matched.contactDetails.name);
+                        if (!formPhone && matched.contactDetails?.phone) setFormPhone(matched.contactDetails.phone);
+                      } else {
+                        setFormLeadNumber(val);
+                      }
+                    }}
+                    placeholder="e.g. CTL#1009 or select lead"
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
+                  />
+                  <datalist id="cezcon-leads-datalist">
+                    {leads?.map((l) => {
+                      const lNo = l.leadNumber || `CTL#${1000 + (l.slNo || 1)}`;
+                      return (
+                        <option key={l.id} value={lNo}>
+                          {lNo} - {l.contactDetails?.company || l.contactDetails?.name || 'Lead'}
+                        </option>
+                      );
+                    })}
+                  </datalist>
                 </div>
 
                 {/* Rating */}
@@ -1183,10 +1231,21 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
                                 />
                               </button>
                               <div>
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1 flex-wrap">
                                   <span className="font-bold text-[#0284C7] text-xs hover:underline cursor-pointer">
                                     {opp.opportunityCode || opp.id}
                                   </span>
+                                  {(() => {
+                                    const linkedNo = opp.leadNumber || (opp.createdFromLeadId && leads?.find((l) => l.id === opp.createdFromLeadId)?.leadNumber);
+                                    return linkedNo ? (
+                                      <span
+                                        className="px-1.5 py-0.5 bg-[#E6F9FB] border border-[#BCEBF2] text-[#0891B2] rounded text-[10px] font-bold"
+                                        title={`Originating Lead: ${linkedNo}`}
+                                      >
+                                        {linkedNo}
+                                      </span>
+                                    ) : null;
+                                  })()}
                                   <Info className="w-3 h-3 text-[#0284C7] shrink-0" />
                                 </div>
                                 <p className="text-[11px] font-bold text-slate-800 uppercase tracking-tight mt-0.5">

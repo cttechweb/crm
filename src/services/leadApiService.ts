@@ -140,12 +140,12 @@ export function mapBackendToCrmLead(
 
   const mappedNotes = notes
     ? notes.map((n) => ({
-        id: n.id,
-        author: n.author_name,
-        avatar: n.author_avatar || undefined,
-        date: n.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
-        content: n.content,
-      }))
+      id: n.id,
+      author: n.author_name,
+      avatar: n.author_avatar || undefined,
+      date: n.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+      content: n.content,
+    }))
     : undefined;
   const explicitLeadTag = parsedTags.find((t) => /^[A-Za-z0-9#-]+#\d+$/i.test(t) || /^CTL#\d+$/i.test(t));
   const leadNumber = explicitLeadTag || `CTL#${1000 + (row.sl_no ?? 1)}`;
@@ -173,7 +173,9 @@ export function mapBackendToCrmLead(
       telephone: row.contact_telephone || undefined,
       website: row.contact_website || undefined,
     },
-    leadSpecification: row.lead_specification,
+    leadSpecification: (row.lead_specification && row.lead_specification !== 'Commercial client HVAC specification')
+      ? row.lead_specification
+      : (row.comments || row.business_opportunity || 'Enquiry'),
     createdBy: row.created_by_name || 'System',
     owner: row.owner_name || row.assigned_employee || 'Unassigned',
     ownerId: row.owner_id || undefined,
@@ -206,7 +208,11 @@ export function mapCrmLeadToBackendPayload(lead: Partial<CrmLead>): Record<strin
   if (lead.id !== undefined) payload.id = lead.id;
   if (lead.leadDate !== undefined) payload.lead_date = lead.leadDate;
   if (lead.assignedDate !== undefined) payload.assigned_date = lead.assignedDate;
-  const spec = (lead.leadSpecification || lead.comments || lead.businessOpportunity || 'Commercial client HVAC specification').trim();
+  const spec = (
+    (lead.leadSpecification && lead.leadSpecification !== 'Commercial client HVAC specification')
+      ? lead.leadSpecification
+      : (lead.comments || lead.businessOpportunity || 'Enquiry')
+  ).trim();
   payload.lead_specification = spec;
 
   if (lead.contactDetails) {

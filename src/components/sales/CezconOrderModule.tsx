@@ -78,6 +78,7 @@ export function CezconOrderModule() {
     salesOpportunities,
     addOpportunity,
     users,
+    leads,
   } = useEnterpriseCrm();
 
   const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
@@ -337,7 +338,8 @@ export function CezconOrderModule() {
   const [pointOfContact, setPointOfContact] = useState('Select Customer First');
   const [sourceName, setSourceName] = useState('');
   const [orderNumber, setOrderNumber] = useState(`CTSO#${Math.floor(3900 + Math.random() * 100)}`);
-  const [opportunityNumber, setOpportunityNumber] = useState(`CTEQ#${Math.floor(7200 + Math.random() * 100)}`);
+  const [opportunityNumber, setOpportunityNumber] = useState('');
+  const [leadNumber, setLeadNumber] = useState('');
   const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [manualDiscountAmount, setManualDiscountAmount] = useState<number>(0);
   const [vatRate, setVatRate] = useState<number>(5);
@@ -561,7 +563,8 @@ export function CezconOrderModule() {
     setPointOfContact('Select Customer First');
     setSourceName('');
     setOrderNumber(`CTSO#${Math.floor(3900 + Math.random() * 100)}`);
-    setOpportunityNumber(`CTEQ#${Math.floor(7200 + Math.random() * 100)}`);
+    setOpportunityNumber('');
+    setLeadNumber('');
     setDiscountPercent(0);
     setManualDiscountAmount(0);
     setVatRate(5);
@@ -599,7 +602,8 @@ export function CezconOrderModule() {
     setCustomerName(order.customer || '');
     setOrderTitle(order.subject || '');
     setOrderNumber(order.orderNumber || '');
-    setOpportunityNumber(order.opportunityRef || `CTEQ#${Math.floor(7200 + Math.random() * 100)}`);
+    setOpportunityNumber(order.opportunityRef || '');
+    setLeadNumber(order.leadNumber || '');
     setOrderDate(order.orderDate || '14-10-2026');
     setOrderOwner(order.owner || currentUser?.name || '');
     setContactPerson(order.contactPerson || '');
@@ -738,6 +742,159 @@ export function CezconOrderModule() {
     setLineItems(lineItems.filter((_, i) => i !== index));
   };
 
+  // Opportunity selection and auto-fill engine
+  const handleOpportunitySelect = (oppVal: string) => {
+    setOpportunityNumber(oppVal);
+    if (!oppVal || oppVal === 'Select Opportunity') return;
+
+    const foundOpp = salesOpportunities?.find(
+      (o) => o.opportunityCode === oppVal || o.id === oppVal || o.title === oppVal
+    );
+
+    if (foundOpp) {
+      // 1. Auto-fill Lead Number
+      let matchedLead = foundOpp.leadNumber || '';
+      if (!matchedLead && foundOpp.createdFromLeadId) {
+        const l = leads?.find((item) => item.id === foundOpp.createdFromLeadId);
+        if (l?.leadNumber) matchedLead = l.leadNumber;
+      }
+      if (!matchedLead && foundOpp.customer) {
+        const l = leads?.find(
+          (item) => (item.contactDetails?.company && item.contactDetails.company.toLowerCase() === foundOpp.customer.toLowerCase()) ||
+                    (item.contactDetails?.name && item.contactDetails.name.toLowerCase() === foundOpp.customer.toLowerCase()) ||
+                    ((item as any).companyName && (item as any).companyName.toLowerCase() === foundOpp.customer.toLowerCase())
+        );
+        if (l?.leadNumber) matchedLead = l.leadNumber;
+      }
+      if (matchedLead) {
+        setLeadNumber(matchedLead);
+      }
+
+      // 2. Auto-fill Customer and Contact Person
+      if (foundOpp.customer) {
+        setCustomerName(foundOpp.customer);
+        const contactVal = foundOpp.contactPerson || foundOpp.customer;
+        setPointOfContact(contactVal);
+        setContactPerson(foundOpp.contactPerson || '');
+        if (contactVal && !customContacts.includes(contactVal)) {
+          setCustomContacts((prev) => [...prev, contactVal]);
+        }
+      }
+
+      // 3. Auto-fill Order Title
+      if (foundOpp.title) {
+        setOrderTitle(foundOpp.title);
+      }
+
+      // 4. Financials (Amount, VAT, Discount)
+      if (foundOpp.amount && foundOpp.amount > 0) {
+        setManualAmount(foundOpp.amount);
+      }
+      if (foundOpp.discount) {
+        setManualDiscountAmount(Number(foundOpp.discount) || 0);
+      }
+      if (foundOpp.vatRate) {
+        setVatRate(Number(foundOpp.vatRate) || 5);
+      }
+      if (foundOpp.vatType) {
+        setVatType(foundOpp.vatType as any);
+      }
+      if (foundOpp.adjustment) {
+        setAdjustment(Number(foundOpp.adjustment) || 0);
+      }
+
+      // 5. Source & Campaign
+      if (foundOpp.source && foundOpp.source !== 'Select Source') {
+        if (!customSources.includes(foundOpp.source)) {
+          setCustomSources((prev) => [...prev, foundOpp.source!]);
+        }
+        setSource(foundOpp.source);
+      }
+      if (foundOpp.sourceName) {
+        setSourceName(foundOpp.sourceName);
+      }
+      if (foundOpp.campaign && foundOpp.campaign !== 'Select Campaign') {
+        setCampaign(foundOpp.campaign);
+      }
+
+      // 6. Location, Owner & Type
+      if (foundOpp.location) {
+        setLocation(foundOpp.location);
+      }
+      if (foundOpp.owner) {
+        setOrderOwner(foundOpp.owner);
+      }
+      if (foundOpp.type && foundOpp.type !== 'Select Type') {
+        setOrderType(foundOpp.type);
+      }
+      if (foundOpp.deliveryMethod) {
+        setDeliveryMethod(foundOpp.deliveryMethod);
+      }
+      if (foundOpp.lpoNumber) {
+        setLpoNumber(foundOpp.lpoNumber);
+      }
+
+      // 7. Business Opportunity sync
+      setBusinessOpportunity(`${foundOpp.opportunityCode} - ${foundOpp.title}`);
+    }
+  };
+
+  const handleLeadSelect = (leadVal: string) => {
+    setLeadNumber(leadVal);
+    if (!leadVal || leadVal === 'Select Lead Number') return;
+
+    const foundLead = leads?.find((l) => l.leadNumber === leadVal || l.id === leadVal);
+    if (foundLead) {
+      const compName = foundLead.contactDetails?.company || (foundLead as any).companyName || foundLead.contactDetails?.name || '';
+      if (compName) {
+        setCustomerName(compName);
+      }
+      const cp = foundLead.contactDetails?.name || (foundLead as any).contactPerson || '';
+      if (cp) {
+        setPointOfContact(cp);
+        setContactPerson(cp);
+        if (!customContacts.includes(cp)) {
+          setCustomContacts((prev) => [...prev, cp]);
+        }
+      }
+      if (foundLead.value && foundLead.value > 0 && !manualAmount) {
+        setManualAmount(foundLead.value);
+      }
+      if (foundLead.source && foundLead.source !== 'Select Source') {
+        if (!customSources.includes(foundLead.source)) {
+          setCustomSources((prev) => [...prev, foundLead.source]);
+        }
+        setSource(foundLead.source);
+      }
+      if (foundLead.sourceName) {
+        setSourceName(foundLead.sourceName);
+      }
+      if (foundLead.campaign && foundLead.campaign !== 'Select Campaign') {
+        setCampaign(foundLead.campaign);
+      }
+      if (foundLead.location) {
+        setLocation(foundLead.location);
+      }
+    }
+  };
+
+  // URL Query param auto-fill when navigating from opportunity or lead
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const oppParam = params.get('oppId') || params.get('opportunityId') || params.get('oppCode');
+      const leadParam = params.get('leadNumber') || params.get('leadId');
+
+      if (oppParam && salesOpportunities && salesOpportunities.length > 0) {
+        handleOpportunitySelect(oppParam);
+        setViewMode('create');
+      } else if (leadParam && leads && leads.length > 0) {
+        handleLeadSelect(leadParam);
+        setViewMode('create');
+      }
+    }
+  }, [salesOpportunities, leads]);
+
   // Submit Order Form (Image 1)
   const handleSubmitOrder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -754,6 +911,7 @@ export function CezconOrderModule() {
     const orderData: Partial<CrmSalesOrder> = {
       orderNumber,
       opportunityRef: opportunityNumber,
+      leadNumber,
       subject: orderTitle.trim(),
       customer: customerName,
       contactPerson,
@@ -1014,20 +1172,34 @@ export function CezconOrderModule() {
                 <label className="sm:w-36 font-semibold text-slate-700 shrink-0">
                   Customer Name <span className="text-red-500">*</span>
                 </label>
-                <div className="flex-1">
-                  <select
-                    value={customerName}
-                    onChange={(e) => handleCustomerSelect(e.target.value)}
-                    required
-                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                <div className="flex-1 flex items-center gap-1.5">
+                  <div className="flex-1">
+                    <select
+                      value={customerName}
+                      onChange={(e) => handleCustomerSelect(e.target.value)}
+                      required
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="">Select Customer</option>
+                      {customers?.map((c) => (
+                        <option key={c.id} value={c.customerName || c.companyName}>
+                          {c.customerName || c.companyName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickCustomerName('');
+                      setQuickCustomerPhone('');
+                      setIsQuickCustomerModalOpen(true);
+                    }}
+                    className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer flex items-center gap-0.5 transition-colors px-1"
+                    title="Add New Customer"
                   >
-                    <option value="">Select Customer</option>
-                    {customers?.map((c) => (
-                      <option key={c.id} value={c.customerName || c.companyName}>
-                        {c.customerName || c.companyName}
-                      </option>
-                    ))}
-                  </select>
+                    <span>+ New</span>
+                  </button>
                 </div>
               </div>
 
@@ -1165,7 +1337,7 @@ export function CezconOrderModule() {
                         const val = e.target.value;
                         setBusinessOpportunity(val);
                         if (val !== 'Select Business Opportunity') {
-                          setOpportunityNumber(val.split(' - ')[0] || val);
+                          handleOpportunitySelect(val.split(' - ')[0] || val);
                         }
                       }}
                       className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
@@ -1398,7 +1570,7 @@ export function CezconOrderModule() {
                     <button
                       type="button"
                       onClick={() => setOrderNumber(`CTSO#${Math.floor(3900 + Math.random() * 100)}`)}
-                      className="absolute right-1 text-cyan-600 hover:text-cyan-700 p-0.5"
+                      className="absolute right-1 text-cyan-600 hover:text-cyan-700 p-0.5 cursor-pointer"
                       title="Regenerate Order Number"
                     >
                       <Settings className="w-3.5 h-3.5" />
@@ -1411,23 +1583,64 @@ export function CezconOrderModule() {
                   <label className="w-28 font-semibold text-slate-700 shrink-0">
                     Opportunity Number <span className="text-red-500">*</span>
                   </label>
-                  <div className="flex-1 relative flex items-center">
-                    <input
-                      type="text"
+                  <div className="flex-1 flex items-center gap-1.5">
+                    <select
                       required
                       value={opportunityNumber}
-                      onChange={(e) => setOpportunityNumber(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 pr-7 text-xs text-slate-800 focus:outline-none font-medium"
-                    />
+                      onChange={(e) => handleOpportunitySelect(e.target.value)}
+                      className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
+                    >
+                      <option value="">Select Opportunity</option>
+                      {opportunityNumber && !salesOpportunities?.some((o) => o.opportunityCode === opportunityNumber || o.id === opportunityNumber) && (
+                        <option value={opportunityNumber}>{opportunityNumber}</option>
+                      )}
+                      {salesOpportunities?.map((opp) => (
+                        <option key={opp.id} value={opp.opportunityCode || opp.id}>
+                          {opp.opportunityCode} - {opp.title} ({opp.customer})
+                        </option>
+                      ))}
+                    </select>
                     <button
                       type="button"
-                      onClick={() => setOpportunityNumber(`CTEQ#${Math.floor(7200 + Math.random() * 100)}`)}
-                      className="absolute right-1 text-cyan-600 hover:text-cyan-700 p-0.5"
-                      title="Regenerate Opportunity Number"
+                      onClick={() => {
+                        setNewBizOppTitle('');
+                        setNewBizOppCustomer(customerName || '');
+                        setNewBizOppAmount('');
+                        setIsQuickAddBizOppOpen(true);
+                      }}
+                      className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer flex items-center gap-0.5 transition-colors px-1 whitespace-nowrap"
+                      title="Add New Opportunity"
                     >
-                      <Settings className="w-3.5 h-3.5" />
+                      <span>+ New</span>
                     </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Lead Number */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <label className="sm:w-36 font-semibold text-slate-700 shrink-0">
+                  Lead Number
+                </label>
+                <div className="flex-1 flex items-center gap-1.5">
+                  <select
+                    value={leadNumber}
+                    onChange={(e) => handleLeadSelect(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
+                  >
+                    <option value="">Select Lead</option>
+                    {leadNumber && !leads?.some((l) => l.leadNumber === leadNumber) && (
+                      <option value={leadNumber}>{leadNumber}</option>
+                    )}
+                    {leads?.map((l) => {
+                      const displayTitle = l.contactDetails?.company || l.contactDetails?.name || (l as any).companyName || 'Lead';
+                      return (
+                        <option key={l.id} value={l.leadNumber || l.id}>
+                          {l.leadNumber} - {displayTitle}
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
               </div>
 
@@ -2887,6 +3100,11 @@ export function CezconOrderModule() {
                                   {o.opportunityRef}
                                 </span>
                               </>
+                            )}
+                            {o.leadNumber && (
+                              <span className="text-slate-500 font-medium text-[11px]">
+                                ({o.leadNumber})
+                              </span>
                             )}
                           </div>
                           <div className="flex items-center gap-1">

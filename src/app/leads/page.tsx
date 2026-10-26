@@ -149,7 +149,7 @@ export function LeadsContent() {
             return parsed.map((item: any) => (typeof item === 'string' ? item : item.title)).filter(Boolean);
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     return [
       'Chiller Overhaul',
@@ -327,7 +327,7 @@ export function LeadsContent() {
       try {
         const raw = localStorage.getItem('cezcon_crm_users_list');
         if (raw) allCrmUsers = JSON.parse(raw);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const team = allCrmUsers.filter((u) => {
@@ -386,7 +386,7 @@ export function LeadsContent() {
       try {
         const delRaw = localStorage.getItem('cezcon_crm_deleted_user_ids');
         if (delRaw) deletedIds = JSON.parse(delRaw);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const LEGACY_MOCK_IDS = new Set([
@@ -458,7 +458,7 @@ export function LeadsContent() {
             });
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // 3. Users from EnterpriseCrmContext
@@ -504,7 +504,7 @@ export function LeadsContent() {
         if (savedNext) {
           return `${savedPrefix}${savedNext}`;
         }
-      } catch {}
+      } catch { }
     }
     const count = (leads && leads.length) || 0;
     return `CTL#${1001 + count}`;
@@ -545,7 +545,7 @@ export function LeadsContent() {
       try {
         localStorage.setItem('cezcon_lead_number_prefix', leadPrefix);
         localStorage.setItem('cezcon_lead_next_number', leadNextNumber);
-      } catch {}
+      } catch { }
     }
     setIsLeadNumModalOpen(false);
   };
@@ -638,7 +638,7 @@ export function LeadsContent() {
       try {
         const raw = localStorage.getItem('cezcon_crm_users_list');
         if (raw) allCrmUsers = JSON.parse(raw);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return leads.filter((lead) => {
@@ -896,7 +896,7 @@ export function LeadsContent() {
           email: newLead.email.trim(),
           whatsapp: cleanPersonal ? `${newLead.personalMobileCode} ${cleanPersonal}` : mainPhone,
         },
-        leadSpecification: newLead.comments || newLead.businessOpportunity || 'Commercial client HVAC specification',
+        leadSpecification: newLead.comments || newLead.businessOpportunity || 'Enquiry',
         createdBy: effectiveCreatedBy,
         createdByAvatar: createdByAvatarImg,
         owner: enteredOwner,
@@ -931,7 +931,7 @@ export function LeadsContent() {
           try {
             localStorage.setItem('cezcon_lead_number_prefix', prefix);
             localStorage.setItem('cezcon_lead_next_number', nextDigits);
-          } catch {}
+          } catch { }
         }
       }
 
@@ -1883,7 +1883,7 @@ export function LeadsContent() {
                           JSON.stringify([newItem, ...currentSaved])
                         );
                       }
-                    } catch (err) {}
+                    } catch (err) { }
                   }
 
                   setNewLead((prev) => ({ ...prev, businessOpportunity: trimmed }));
@@ -3143,7 +3143,9 @@ export function LeadsContent() {
                       {/* Lead Spec */}
                       <td className="py-3 px-3 text-slate-600 border-r border-slate-200">
                         <span className="line-clamp-2 text-[11px]">
-                          {lead.leadSpecification || '—'}
+                          {(lead.leadSpecification && lead.leadSpecification !== 'Commercial client HVAC specification')
+                            ? lead.leadSpecification
+                            : (lead.comments || lead.businessOpportunity || 'Enquiry')}
                         </span>
                       </td>
 
@@ -3424,7 +3426,7 @@ export function LeadsContent() {
                 <span className="text-[10px] text-slate-400 block uppercase font-bold">Phone Number</span>
                 <span className="text-blue-600 font-mono font-medium">{viewingLead.contactDetails.phone}</span>
               </div>
-              
+
               {/* Created By */}
               <div className="bg-white p-2 rounded border border-slate-200">
                 <span className="text-[10px] text-slate-400 block uppercase font-bold mb-1">Created By</span>
@@ -3487,7 +3489,9 @@ export function LeadsContent() {
                 Lead Technical Specification
               </span>
               <p className="p-3 bg-white border border-slate-200 rounded text-slate-700 leading-relaxed">
-                {viewingLead.leadSpecification || 'No technical specification recorded.'}
+                {(viewingLead.leadSpecification && viewingLead.leadSpecification !== 'Commercial client HVAC specification')
+                  ? viewingLead.leadSpecification
+                  : (viewingLead.comments || viewingLead.businessOpportunity || 'Enquiry')}
               </p>
             </div>
 
@@ -4032,6 +4036,7 @@ export function LeadsContent() {
                     totalSpend: convertingLead.value,
                     createdFromLeadId: convertingLead.id,
                   });
+                  const effectiveLeadNo = convertingLead.leadNumber || `CTL#${1000 + (convertingLead.slNo || 1)}`;
                   addOpportunity({
                     title: `CTEQ#${Math.floor(1000 + Math.random() * 9000)} ${convertingLead.leadSpecification.toUpperCase()} / ${convertingLead.contactDetails.company.toUpperCase()}`,
                     customer: convertingLead.contactDetails.company,
@@ -4041,6 +4046,7 @@ export function LeadsContent() {
                     probability: 75,
                     expectedClose: '2026-10-15',
                     createdFromLeadId: convertingLead.id,
+                    leadNumber: effectiveLeadNo,
                     campaign: convertingLead.campaign,
                     source: convertingLead.source,
                   });

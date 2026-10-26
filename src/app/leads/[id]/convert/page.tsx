@@ -349,6 +349,7 @@ export default function ConvertLeadPage({ params }: PageProps) {
 
     // 3. Add Opportunity if checked
     if (includeOpportunity) {
+      const effectiveLeadNo = lead.leadNumber || `CTL#${1000 + (lead.slNo || 1)}`;
       addOpportunity({
         opportunityCode: oppNumber,
         title: `${oppNumber} ${oppTitle.toUpperCase()} / ${customerName.toUpperCase()}`,
@@ -361,6 +362,7 @@ export default function ConvertLeadPage({ params }: PageProps) {
         probability: winProbability,
         expectedClose: oppCloseDate,
         createdFromLeadId: lead.id,
+        leadNumber: effectiveLeadNo,
         campaign: custCampaign || lead.campaign,
         source: oppSource || lead.source,
       });
@@ -1271,6 +1273,25 @@ export default function ConvertLeadPage({ params }: PageProps) {
                           value={oppNumber}
                           className="w-full border border-slate-200 rounded-[3px] bg-slate-100/70 px-3 py-1.5 text-slate-600 text-xs sm:text-[13px] font-mono shadow-2xs cursor-not-allowed"
                         />
+                      </div>
+                    </div>
+
+                    {/* Originating Lead Number */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-1.5 sm:gap-3">
+                      <label className="sm:col-span-4 text-slate-700 font-normal flex items-center gap-1">
+                        Lead Number
+                        <span className="text-[10px] text-slate-400 font-medium">(Origin)</span>
+                      </label>
+                      <div className="sm:col-span-8 flex items-center gap-2">
+                        <input
+                          type="text"
+                          disabled
+                          value={lead.leadNumber || `CTL#${1000 + (lead.slNo || 1)}`}
+                          className="w-full border border-sky-200 rounded-[3px] bg-sky-50/60 px-3 py-1.5 text-sky-800 text-xs sm:text-[13px] font-semibold font-mono shadow-2xs cursor-not-allowed"
+                        />
+                        <span className="shrink-0 text-[10px] font-bold text-sky-700 bg-sky-100 px-2 py-1 rounded">
+                          Linked
+                        </span>
                       </div>
                     </div>
 

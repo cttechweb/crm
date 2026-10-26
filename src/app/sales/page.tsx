@@ -127,6 +127,7 @@ function SalesPipelineInner() {
     updateOpportunity,
     customers,
     addCustomer,
+    leads,
     campaigns,
     users,
     quotations: contextQuotations,
@@ -561,17 +562,22 @@ function SalesPipelineInner() {
   const [filterReceiptType, setFilterReceiptType] = useState<string>('All');
   const [filterReceiptCustomer, setFilterReceiptCustomer] = useState<string>('');
   const [filterReceiptTags, setFilterReceiptTags] = useState<string>('');
+  const [showSelectCustomerAlert, setShowSelectCustomerAlert] = useState(true);
   const [receiptFormData, setReceiptFormData] = useState({
-    receiptNumber: 'REC-2026-' + Math.floor(800 + Math.random() * 99),
+    receiptNumber: 'CTRV#1044',
     invoiceRef: 'CTINV#1630',
-    customer: 'OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN',
+    customer: '',
     contactPerson: '',
     phone: '+971 0506693043',
-    receiptType: 'Against Invoice',
-    paymentMethod: 'Bank Transfer',
-    receiptDate: '23-09-2026',
-    amount: 12432.0,
-    tags: 'Direct Transfer',
+    receiptType: 'Cash',
+    paymentMethod: 'Cash',
+    receiptDate: '24-10-2026',
+    amount: '' as string | number,
+    tags: '',
+    description: '',
+    termsAndConditions: 'Select Terms & Conditions',
+    termsText: '',
+    documentName: '',
     status: 'Cleared',
   });
 
@@ -586,16 +592,30 @@ function SalesPipelineInner() {
   const [filterDeliveryType, setFilterDeliveryType] = useState<string>('All');
   const [filterDeliveryCostUpdate, setFilterDeliveryCostUpdate] = useState<string>('All');
   const [deliveryFormData, setDeliveryFormData] = useState({
-    deliveryNoteNumber: 'CTDN#' + Math.floor(1000 + Math.random() * 50),
-    orderRef: 'CTSO#2653',
+    owner: 'Nafal',
+    dnType: 'Customer Delivery Note',
+    deliveryNoteNumber: 'CTDN#1038',
+    deliveryDate: '24-10-2026',
+    orderRef: '',
+    orderName: '',
+    orderNumber: '',
+    store: '',
+    invoiceRef: '',
+    lpoNumber: '',
+    lpoDate: '',
+    approvedBy: '',
+    approvedContact: '',
+    receivedBy: '',
+    location: '',
+    stateRegion: '',
+    contactNumber: '',
+    reference: '',
+    remarks: '',
+    updateMaterialCost: true,
+    customer: 'KOHINOOR AIR CONDITIONER AND REFRIGERATION PARTS',
     orderDescription: 'AIR COOLER NOBEL 100LTR - 4134',
-    customer: 'SECURA SAFETY WEAR - SOLEPROPRIETORSHIP L.L.C.',
-    invoiceRef: '—',
-    dnType: 'Customer DN',
-    location: 'MUSSAFAH Abu Dhabi',
-    receivedBy: 'SECURA SAFETY WEAR - SOLEPROPRIETORSHIP L.L.C.',
     receivedPhone: '+971563036405',
-    dispatchDate: '28-07-2025',
+    dispatchDate: '24-10-2026',
     costUpdated: true,
     status: 'Delivered',
   });
@@ -716,6 +736,8 @@ function SalesPipelineInner() {
   // Form State for Add Opportunity (Matching Cezcon CRM spec)
   const [oppFormData, setOppFormData] = useState({
     opportunityCode: 'CTEQ#' + Math.floor(7100 + Math.random() * 800),
+    leadNumber: 'CTL#1009',
+    createdFromLeadId: '',
     opportunityDate: new Date().toISOString().slice(0, 10),
     customer: '',
     contactPerson: '',
@@ -945,7 +967,7 @@ function SalesPipelineInner() {
             try {
               localStorage.setItem('cezcon_opportunity_owners', JSON.stringify(sanitized));
               localStorage.setItem('crm_opportunity_owners', JSON.stringify(sanitized));
-            } catch (err) {}
+            } catch (err) { }
             return sanitized;
           }
         }
@@ -1077,6 +1099,33 @@ function SalesPipelineInner() {
     setOppFormData((prev) => ({ ...prev, opportunityCode: newCode }));
     setIsOppNumModalOpen(false);
   };
+
+  // Auto-populate opportunity from URL lead parameters (e.g. ?action=add&leadNumber=CTL#1009)
+  useEffect(() => {
+    const pLeadNo = searchParams.get('leadNumber') || searchParams.get('leadNo') || searchParams.get('lead');
+    const pLeadId = searchParams.get('leadId') || searchParams.get('createdFromLeadId');
+    if (pLeadNo || pLeadId) {
+      const matched = leads.find(
+        (l) =>
+          (pLeadId && l.id === pLeadId) ||
+          (pLeadNo && (
+            (l.leadNumber && l.leadNumber.toLowerCase() === pLeadNo.toLowerCase()) ||
+            `ctl#${1000 + (l.slNo || 1)}` === pLeadNo.toLowerCase()
+          ))
+      );
+      const effectiveNo = pLeadNo || matched?.leadNumber || (matched ? `CTL#${1000 + (matched.slNo || 1)}` : '');
+      setOppFormData((prev) => ({
+        ...prev,
+        leadNumber: effectiveNo,
+        createdFromLeadId: pLeadId || matched?.id || '',
+        customer: prev.customer || matched?.contactDetails?.company || '',
+        contactPerson: prev.contactPerson || matched?.contactDetails?.name || '',
+        phone: prev.phone || matched?.contactDetails?.phone || '',
+        source: prev.source || matched?.source || '',
+        campaign: prev.campaign || matched?.campaign || '',
+      }));
+    }
+  }, [searchParams, leads]);
 
   // Convert to Multiple Opportunities State (Matching Exact Cezcon CRM Image 1)
   const [isConvertToMultipleOpen, setIsConvertToMultipleOpen] = useState(false);
@@ -1691,6 +1740,8 @@ function SalesPipelineInner() {
 
     setOppFormData({
       opportunityCode: opp.opportunityCode || 'CTEQ#7016',
+      leadNumber: opp.leadNumber || (opp.createdFromLeadId ? leads.find((l) => l.id === opp.createdFromLeadId)?.leadNumber || '' : ''),
+      createdFromLeadId: opp.createdFromLeadId || '',
       opportunityDate: toDateInputFormat(opp.opportunityDate) || new Date().toISOString().slice(0, 10),
       customer: opp.customer || '',
       contactPerson: opp.contactPerson || '',
@@ -1742,15 +1793,18 @@ function SalesPipelineInner() {
         priceTotal: opp.amount || 0,
       },
     ]);
-
     setIsAddModalOpen(true);
   };
 
   const handleOpenAddOpportunity = () => {
     setEditingOpportunityId(null);
     setSelectedOpportunity(null);
+    const defaultLead = leads && leads.length > 0 ? (leads.find((l) => l.leadNumber) || leads[0]) : null;
+    const defaultLeadNo = defaultLead ? (defaultLead.leadNumber || `CTL#${1000 + (defaultLead.slNo || 1)}`) : 'CTL#1009';
     setOppFormData({
       opportunityCode: 'CTEQ#' + Math.floor(7100 + Math.random() * 800),
+      leadNumber: defaultLeadNo,
+      createdFromLeadId: defaultLead?.id || '',
       opportunityDate: new Date().toISOString().slice(0, 10),
       customer: '',
       contactPerson: '',
@@ -1845,6 +1899,8 @@ function SalesPipelineInner() {
 
     const oppPayload = {
       opportunityCode: oppFormData.opportunityCode,
+      leadNumber: oppFormData.leadNumber || '',
+      createdFromLeadId: oppFormData.createdFromLeadId || '',
       title: oppFormData.title,
       subtitle: oppFormData.businessOpportunity || oppFormData.type || oppFormData.subtitle || '',
       customer: oppFormData.customer,
@@ -1923,11 +1979,11 @@ function SalesPipelineInner() {
 
   const viewOpp = viewOppId
     ? salesOpportunities.find(
-        (o) =>
-          o.id === viewOppId ||
-          o.opportunityCode === viewOppId ||
-          (o.opportunityCode && viewOppId && o.opportunityCode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === viewOppId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase())
-      ) || (salesOpportunities.length > 0 ? salesOpportunities[0] : null)
+      (o) =>
+        o.id === viewOppId ||
+        o.opportunityCode === viewOppId ||
+        (o.opportunityCode && viewOppId && o.opportunityCode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === viewOppId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase())
+    ) || (salesOpportunities.length > 0 ? salesOpportunities[0] : null)
     : null;
   const isDetailViewOpen = Boolean(viewOppId);
 
@@ -3600,6 +3656,66 @@ function SalesPipelineInner() {
                           >
                             <Settings className="w-4 h-4" />
                           </button>
+                        </div>
+                      </div>
+
+                      {/* Lead Number */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label className="sm:w-36 font-semibold text-slate-700 shrink-0">
+                          Lead Number <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex-1 flex items-center gap-1.5">
+                          <select
+                            required
+                            value={oppFormData.leadNumber}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const matched = leads.find((l) => {
+                                const effectiveNo = l.leadNumber || `CTL#${1000 + (l.slNo || 1)}`;
+                                return effectiveNo === val || l.id === val;
+                              });
+                              if (matched) {
+                                const effectiveNo = matched.leadNumber || `CTL#${1000 + (matched.slNo || 1)}`;
+                                setOppFormData({
+                                  ...oppFormData,
+                                  leadNumber: effectiveNo,
+                                  createdFromLeadId: matched.id,
+                                  customer: oppFormData.customer || matched.contactDetails?.company || '',
+                                  contactPerson: oppFormData.contactPerson || matched.contactDetails?.name || '',
+                                  phone: oppFormData.phone || matched.contactDetails?.phone || '',
+                                  source: oppFormData.source || matched.source || '',
+                                  campaign: oppFormData.campaign || matched.campaign || '',
+                                });
+                              } else {
+                                setOppFormData({ ...oppFormData, leadNumber: val });
+                              }
+                            }}
+                            className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:border-blue-500 cursor-pointer"
+                          >
+                            <option value="">Select Lead Number</option>
+                            {oppFormData.leadNumber && !leads.some((l) => (l.leadNumber || `CTL#${1000 + (l.slNo || 1)}`) === oppFormData.leadNumber) && (
+                              <option value={oppFormData.leadNumber}>{oppFormData.leadNumber}</option>
+                            )}
+                            {leads.map((l) => {
+                              const lNo = l.leadNumber || `CTL#${1000 + (l.slNo || 1)}`;
+                              const company = l.contactDetails?.company || l.contactDetails?.name || 'Lead';
+                              return (
+                                <option key={l.id} value={lNo}>
+                                  {lNo} — {company}
+                                </option>
+                              );
+                            })}
+                            {!leads.some((l) => (l.leadNumber || '').includes('1009')) && (
+                              <option value="CTL#1009">CTL#1009 — MUSTAFA (MANAGER)</option>
+                            )}
+                          </select>
+                          <Link
+                            href="/leads"
+                            className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer flex items-center gap-0.5 transition-colors px-1"
+                            title="Manage / Add Leads"
+                          >
+                            <span>+ New</span>
+                          </Link>
                         </div>
                       </div>
 
@@ -5955,6 +6071,26 @@ function SalesPipelineInner() {
                                 </div>
 
                                 <div className="flex items-center justify-between py-1 gap-2">
+                                  <span className="text-slate-600 font-medium">Lead Number</span>
+                                  {(() => {
+                                    const linkedLeadNum = viewOpp.leadNumber || (viewOpp.createdFromLeadId && leads.find((l) => l.id === viewOpp.createdFromLeadId)?.leadNumber);
+                                    const linkedLead = leads.find((l) => (viewOpp.createdFromLeadId && l.id === viewOpp.createdFromLeadId) || (linkedLeadNum && l.leadNumber === linkedLeadNum));
+                                    return linkedLeadNum ? (
+                                      <Link
+                                        href={linkedLead ? `/leads/${linkedLead.id}` : `/leads?search=${encodeURIComponent(linkedLeadNum)}`}
+                                        className="font-bold text-[#0891B2] hover:underline flex items-center gap-1 bg-[#E6F9FB] px-2 py-0.5 rounded border border-[#BCEBF2] shadow-2xs"
+                                        title="Click to view original Lead"
+                                      >
+                                        <span>{linkedLeadNum}</span>
+                                        <ExternalLink className="w-3 h-3 stroke-[2.5]" />
+                                      </Link>
+                                    ) : (
+                                      <span className="text-slate-400 font-normal">—</span>
+                                    );
+                                  })()}
+                                </div>
+
+                                <div className="flex items-center justify-between py-1 gap-2">
                                   <span className="text-slate-600 font-medium">Quotation Number</span>
                                   <span className="font-bold text-[#2563EB] cursor-pointer hover:underline">
                                     {(viewOpp as any).quotationNumber || '—'}
@@ -6615,6 +6751,17 @@ function SalesPipelineInner() {
                                 >
                                   {opp.opportunityCode || 'CTEQ#7016'}
                                 </button>
+                                {(() => {
+                                  const linkedNo = opp.leadNumber || (opp.createdFromLeadId && leads.find((l) => l.id === opp.createdFromLeadId)?.leadNumber);
+                                  return linkedNo ? (
+                                    <span
+                                      className="px-1.5 py-0.5 bg-[#E6F9FB] border border-[#BCEBF2] text-[#0891B2] rounded text-[10px] font-bold"
+                                      title={`Originating Lead: ${linkedNo}`}
+                                    >
+                                      {linkedNo}
+                                    </span>
+                                  ) : null;
+                                })()}
                               </div>
                               <button
                                 type="button"
@@ -6806,6 +6953,17 @@ function SalesPipelineInner() {
                                     >
                                       {opp.opportunityCode || 'CTEQ#7016'}
                                     </button>
+                                    {(() => {
+                                      const linkedNo = opp.leadNumber || (opp.createdFromLeadId && leads.find((l) => l.id === opp.createdFromLeadId)?.leadNumber);
+                                      return linkedNo ? (
+                                        <span
+                                          className="px-1.5 py-0.5 bg-[#E6F9FB] border border-[#BCEBF2] text-[#0891B2] rounded text-[10px] font-bold"
+                                          title={`Originating Lead: ${linkedNo}`}
+                                        >
+                                          {linkedNo}
+                                        </span>
+                                      ) : null;
+                                    })()}
                                     <span className="font-bold text-slate-800 uppercase text-[11px]">{opp.title}</span>
                                     <Info
                                       className="w-3.5 h-3.5 text-blue-500 cursor-pointer"
@@ -12874,289 +13032,569 @@ function SalesPipelineInner() {
       {/* ========================================================================= */}
       {activeTab === 'receipt' && (
         <div className="flex-1 p-3 sm:p-4 space-y-3 w-full font-sans">
-          {/* TOP FILTER CRITERIA CARD */}
-          <div className="bg-white border border-[#E2E8F0] rounded-sm p-3 sm:p-4 shadow-xs space-y-3 text-xs">
-            {/* Mobile Filter Header Toggle Button */}
-            <div className="flex md:hidden items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setShowReceiptFiltersMobile(!showReceiptFiltersMobile)}
-                className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer w-full justify-between"
-              >
-                <div className="flex items-center gap-1.5 text-blue-600">
-                  <Filter className="w-3.5 h-3.5" />
-                  <span>Filter Receipts</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 font-medium">
-                    {showReceiptFiltersMobile ? 'Hide Filters' : 'Tap to filter'}
-                  </span>
-                </div>
-                <ChevronDown className={cn('w-4 h-4 text-slate-500 transition-transform', showReceiptFiltersMobile ? 'rotate-180' : '')} />
-              </button>
-            </div>
-
-            <div className={cn('space-y-3', showReceiptFiltersMobile ? 'block' : 'hidden md:block')}>
-              {/* Row 1 */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Created By</label>
-                  <select
-                    value={filterReceiptCreatedBy}
-                    onChange={(e) => setFilterReceiptCreatedBy(e.target.value)}
-                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                  >
-                    <option value="All">All</option>
-                    {activeSalesUsers.map((u) => (
-                      <option key={u.id} value={u.name}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Receipt Type</label>
-                  <select
-                    value={filterReceiptType}
-                    onChange={(e) => setFilterReceiptType(e.target.value)}
-                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                  >
-                    <option value="All">All</option>
-                    <option value="Against Invoice">Against Invoice</option>
-                    <option value="Advance">Advance</option>
-                    <option value="PDC Clearance">PDC Clearance</option>
-                    <option value="Settlement">Settlement</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Receipt Date</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      defaultValue="01-09-2026 - 30-09-2026"
-                      className="w-full pl-8 pr-7 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 font-medium"
-                    />
-                    <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
-                    <RotateCcw className="w-3.5 h-3.5 text-slate-400 hover:text-slate-600 cursor-pointer absolute right-2.5 top-2" />
+          {isCreateReceiptModalOpen ? (
+            /* ========================================================================= */
+            /* VIEW: ADD RECEIPT FORM (Matching Exact Cezcon CRM Reference UI - Image 1) */
+            /* ========================================================================= */
+            <div className="space-y-4">
+              <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden font-sans">
+                {/* Header with Title and Red Close Button */}
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-[#FAFAFA] border-b border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-slate-500" />
+                    <h2 className="text-xs font-bold text-slate-800">Add Receipt</h2>
                   </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Customer</label>
-                  <select
-                    value={filterReceiptCustomer}
-                    onChange={(e) => setFilterReceiptCustomer(e.target.value)}
-                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateReceiptModalOpen(false)}
+                    className="w-5 h-5 bg-[#D9534F] hover:bg-[#C9302C] text-white flex items-center justify-center rounded-xs transition cursor-pointer shadow-2xs"
+                    title="Close"
                   >
-                    <option value="">Select Customer</option>
-                    <option value="OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN">OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN</option>
-                    <option value="BURJEEL HOLDINGS">BURJEEL HOLDINGS</option>
-                    <option value="EMAAR HOSPITALITY GROUP">EMAAR HOSPITALITY GROUP</option>
-                    <option value="NATIONAL INNOVATIVE GENERAL MAINTENANCE L.L.C.">NATIONAL INNOVATIVE GENERAL MAINTENANCE L.L.C.</option>
-                  </select>
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-              </div>
 
-              {/* Row 2 */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <label className="text-slate-600 font-medium block">Receipt Tags</label>
-                  <input
-                    type="text"
-                    placeholder="Select tags"
-                    value={filterReceiptTags}
-                    onChange={(e) => setFilterReceiptTags(e.target.value)}
-                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* MAIN RECEIPT TABLE SECTION */}
-          <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden">
-            {/* Header with Title and + RECEIPT Button */}
-            <div className="p-3 border-b border-slate-200 flex items-center justify-between bg-white">
-              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-                <ReceiptIcon className="w-4 h-4 text-slate-500" /> Receipt
-              </h2>
-
-              <button
-                type="button"
-                onClick={() => setIsCreateReceiptModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition uppercase"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>RECEIPT</span>
-              </button>
-            </div>
-
-            {/* Table Controls */}
-            <div className="p-2.5 bg-slate-50/50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
-              <div className="flex items-center gap-1.5">
-                <span>Shows</span>
-                <select
-                  value={rowsPerPage}
-                  onChange={(e) => {
-                    setRowsPerPage(Number(e.target.value));
-                    setCurrentPage(1);
+                {/* Form Body */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!receiptFormData.customer) {
+                      setShowSelectCustomerAlert(true);
+                      return;
+                    }
+                    const parsedAmount = parseFloat(String(receiptFormData.amount)) || 0;
+                    const newRec: CrmReceipt = {
+                      id: 'rec-' + Date.now(),
+                      slNo: receipts.length + 1,
+                      receiptNumber: receiptFormData.receiptNumber || 'CTRV#1044',
+                      invoiceRef: receiptFormData.invoiceRef || 'N/A',
+                      customer: receiptFormData.customer,
+                      contactPerson: receiptFormData.contactPerson || '',
+                      phone: receiptFormData.phone || '+971 0506693043',
+                      createdBy: currentUser?.name || 'shemin',
+                      createdByAvatar: currentUser?.avatar,
+                      receiptType: receiptFormData.receiptType || 'Cash',
+                      tags: receiptFormData.tags ? [receiptFormData.tags] : ['Direct'],
+                      paymentMethod: receiptFormData.paymentMethod || 'Cash',
+                      receiptDate: receiptFormData.receiptDate || '24-10-2026',
+                      amount: parsedAmount,
+                      referenceNumber: 'REF-' + Math.floor(100000 + Math.random() * 900000),
+                      status: receiptFormData.status || 'Cleared',
+                    };
+                    setReceipts([newRec, ...receipts]);
+                    contextAddReceipt(newRec);
+                    setIsCreateReceiptModalOpen(false);
                   }}
-                  className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 font-medium focus:outline-none focus:border-blue-500"
+                  className="p-4 sm:p-6 text-xs space-y-4"
                 >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                </select>
-                <span>Rows</span>
-              </div>
-
-              <div className="relative w-64">
-                <input
-                  type="text"
-                  placeholder="Search Receipt"
-                  value={receiptSearch}
-                  onChange={(e) => setReceiptSearch(e.target.value)}
-                  className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
-                />
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
-              </div>
-            </div>
-
-            {/* Native Mobile Receipts Cards (Phone Viewports) */}
-            <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
-              {receipts
-                .filter((r) => {
-                  if (filterReceiptCreatedBy !== 'All' && r.createdBy !== filterReceiptCreatedBy) {
-                    return false;
-                  }
-                  if (filterReceiptType !== 'All' && r.receiptType !== filterReceiptType) {
-                    return false;
-                  }
-                  if (filterReceiptCustomer && !r.customer.toLowerCase().includes(filterReceiptCustomer.toLowerCase())) {
-                    return false;
-                  }
-                  if (filterReceiptTags && !r.tags?.some((t) => t.toLowerCase().includes(filterReceiptTags.toLowerCase()))) {
-                    return false;
-                  }
-                  if (receiptSearch) {
-                    const s = receiptSearch.toLowerCase();
-                    return (
-                      r.receiptNumber.toLowerCase().includes(s) ||
-                      r.customer.toLowerCase().includes(s) ||
-                      (r.invoiceRef || '').toLowerCase().includes(s) ||
-                      (r.contactPerson || '').toLowerCase().includes(s)
-                    );
-                  }
-                  return true;
-                })
-                .map((r) => (
-                  <div key={r.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
-                    <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center text-red-600 text-[10px] font-bold shrink-0">
-                            📄
-                          </span>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-3.5">
+                    {/* Left Column */}
+                    <div className="space-y-3.5">
+                      {/* Receipt Number */}
+                      <div className="flex items-center gap-2">
+                        <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                          Receipt Number <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex-1 relative flex items-center">
+                          <input
+                            type="text"
+                            required
+                            value={receiptFormData.receiptNumber}
+                            onChange={(e) => setReceiptFormData({ ...receiptFormData, receiptNumber: e.target.value })}
+                            className="w-full px-2.5 py-1.5 pr-8 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 font-normal focus:outline-none focus:border-blue-400"
+                          />
                           <button
                             type="button"
-                            onClick={() => setSelectedReceipt(r)}
-                            className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer text-left"
+                            onClick={() => {
+                              const randomNum = Math.floor(1040 + Math.random() * 900);
+                              setReceiptFormData({ ...receiptFormData, receiptNumber: `CTRV#${randomNum}` });
+                            }}
+                            className="absolute right-2 text-cyan-600 hover:text-cyan-700 cursor-pointer"
+                            title="Generate Receipt Number"
                           >
-                            {r.receiptNumber}
+                            <Settings className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                        <div className="text-[10px] text-slate-500">Date: {r.receiptDate}</div>
                       </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
-                        {r.receiptType || 'Against Invoice'}
-                      </span>
-                    </div>
 
-                    <div className="bg-slate-50 rounded p-2 border border-slate-100 space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <Shield className="w-3.5 h-3.5 text-red-500 fill-red-100 shrink-0" />
-                        <span className="text-[#2563EB] font-bold text-xs">{r.customer}</span>
-                      </div>
-                      {r.contactPerson && (
-                        <div className="text-[11px] text-slate-600 flex items-center gap-1">
-                          <User className="w-3 h-3 text-slate-400 shrink-0" />
-                          <span>{r.contactPerson}</span>
+                      {/* Customer */}
+                      <div className="flex items-center gap-2">
+                        <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                          Customer <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex-1">
+                          <select
+                            required
+                            value={receiptFormData.customer}
+                            onChange={(e) => {
+                              setReceiptFormData({ ...receiptFormData, customer: e.target.value });
+                              if (e.target.value) setShowSelectCustomerAlert(false);
+                            }}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400"
+                          >
+                            <option value="">Select Customer</option>
+                            {customers && customers.length > 0 ? (
+                              customers.map((c) => (
+                                <option key={c.id} value={c.customerName || c.companyName || ''}>
+                                  {c.customerName || c.companyName}
+                                </option>
+                              ))
+                            ) : (
+                              <>
+                                <option value="OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN">OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN</option>
+                                <option value="BURJEEL HOLDINGS">BURJEEL HOLDINGS</option>
+                                <option value="EMAAR HOSPITALITY GROUP">EMAAR HOSPITALITY GROUP</option>
+                                <option value="NATIONAL INNOVATIVE GENERAL MAINTENANCE L.L.C.">NATIONAL INNOVATIVE GENERAL MAINTENANCE L.L.C.</option>
+                              </>
+                            )}
+                          </select>
                         </div>
-                      )}
-                      {r.phone && (
-                        <div className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                          <span>{r.phone}</span>
+                      </div>
+
+                      {/* Document */}
+                      <div className="flex items-center gap-2">
+                        <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                          Document
+                        </label>
+                        <div className="flex-1">
+                          <input
+                            type="file"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setReceiptFormData({ ...receiptFormData, documentName: file.name });
+                              }
+                            }}
+                            className="w-full text-xs text-slate-600 file:mr-2.5 file:py-1 file:px-2.5 file:rounded-xs file:border file:border-slate-300 file:text-xs file:font-normal file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
+                          />
                         </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between py-1 border-t border-b border-slate-100">
-                      <div>
-                        <span className="text-[10px] text-slate-500 block">Payment Method</span>
-                        <span className="font-medium text-slate-700">{r.paymentMethod || 'Bank Transfer'}</span>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-500 block">Amount</span>
-                        <span className="font-bold text-slate-900 text-sm">
-                          {r.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center justify-between pt-1">
-                      <div className="flex items-center gap-1.5">
-                        {(() => {
-                          const av = (r.createdByAvatar && !r.createdByAvatar.includes('unsplash') && !r.createdByAvatar.includes('photo-')) ? r.createdByAvatar : getEmployeePhoto(r.createdBy);
-                          const name = r.createdBy || currentUser?.name || 'S';
-                          if (av) {
-                            return (
-                              <div className="w-5 h-5 rounded-full overflow-hidden bg-slate-200 shrink-0">
-                                <img src={av} alt={name} className="w-full h-full object-cover" />
-                              </div>
-                            );
-                          }
-                          return (
-                            <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-[#1E293B] to-[#334155] text-white flex items-center justify-center font-bold text-[9px] uppercase shadow-2xs shrink-0">
-                              {name[0]}
+                      {/* Receipt Tags */}
+                      <div className="flex items-center gap-2">
+                        <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                          Receipt Tags
+                        </label>
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            placeholder="Keywords attached to the receipt"
+                            value={receiptFormData.tags}
+                            onChange={(e) => setReceiptFormData({ ...receiptFormData, tags: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white placeholder:text-slate-400 focus:outline-none focus:border-blue-400"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      <div className="flex items-start gap-2">
+                        <label className="w-32 text-slate-700 text-xs font-normal shrink-0 pt-1.5">
+                          Description
+                        </label>
+                        <div className="flex-1">
+                          <textarea
+                            rows={2}
+                            value={receiptFormData.description}
+                            onChange={(e) => setReceiptFormData({ ...receiptFormData, description: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400 resize-y"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Terms & Conditions Dropdown */}
+                      <div className="flex items-center gap-2">
+                        <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                          Terms & Conditions
+                        </label>
+                        <div className="flex-1">
+                          <select
+                            value={receiptFormData.termsAndConditions}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setReceiptFormData({
+                                ...receiptFormData,
+                                termsAndConditions: val,
+                                termsText: val === 'Standard 30-Day Payment Terms'
+                                  ? '1. Payment received against authorized invoices.\n2. Subject to realization of cheque / funds.\n3. VAT accounted for under UAE FTA regulations.'
+                                  : receiptFormData.termsText,
+                              });
+                            }}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400"
+                          >
+                            <option value="Select Terms & Conditions">Select Terms & Conditions</option>
+                            <option value="Standard 30-Day Payment Terms">Standard 30-Day Payment Terms</option>
+                            <option value="Payment Upon Delivery">Payment Upon Delivery</option>
+                            <option value="Advance Payment Terms">Advance Payment Terms</option>
+                            <option value="Custom Terms">Custom Terms</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Rich Text Editor Box (Exact CKEditor Appearance from Image 1) */}
+                      <div className="flex items-start gap-2">
+                        <div className="w-32 shrink-0 hidden sm:block" />
+                        <div className="flex-1 border border-slate-300 rounded-xs overflow-hidden">
+                          {/* Toolbar Row 1 */}
+                          <div className="bg-[#F1F3F5] border-b border-slate-300 p-1 flex flex-wrap gap-1 items-center select-none">
+                            <div className="flex items-center border-r border-slate-300 pr-1 mr-0.5 gap-0.5 text-slate-700">
+                              <button type="button" className="p-0.5 hover:bg-slate-200 rounded-xs cursor-pointer" title="Cut">
+                                <Scissors className="w-3 h-3" />
+                              </button>
+                              <button type="button" className="p-0.5 hover:bg-slate-200 rounded-xs cursor-pointer" title="Copy">
+                                <Copy className="w-3 h-3" />
+                              </button>
+                              <button type="button" className="p-0.5 hover:bg-slate-200 rounded-xs cursor-pointer" title="Paste">
+                                <FileText className="w-3 h-3" />
+                              </button>
+                              <button type="button" className="p-0.5 hover:bg-slate-200 rounded-xs cursor-pointer" title="Undo">
+                                <RotateCcw className="w-3 h-3" />
+                              </button>
+                              <button type="button" className="p-0.5 hover:bg-slate-200 rounded-xs cursor-pointer" title="Redo">
+                                <RotateCw className="w-3 h-3" />
+                              </button>
                             </div>
-                          );
-                        })()}
-                        <span className="text-[11px] text-slate-600 font-medium">{r.createdBy || currentUser?.name || 'Staff'}</span>
+
+                            <div className="flex items-center border-r border-slate-300 pr-1 mr-0.5 gap-0.5 text-slate-700">
+                              <button type="button" className="p-0.5 hover:bg-slate-200 rounded-xs cursor-pointer" title="Link">
+                                <ExternalLink className="w-3 h-3" />
+                              </button>
+                              <button type="button" className="p-0.5 hover:bg-slate-200 rounded-xs cursor-pointer text-[10px] font-bold" title="Table">
+                                ⊞
+                              </button>
+                              <button type="button" className="p-0.5 hover:bg-slate-200 rounded-xs cursor-pointer text-[10px] font-serif font-bold" title="Special Character">
+                                Ω
+                              </button>
+                            </div>
+
+                            {/* Toolbar Row 2 */}
+                            <div className="w-full flex flex-wrap gap-1 items-center pt-1 border-t border-slate-200 text-slate-700">
+                              <button type="button" className="px-1 py-0.2 hover:bg-slate-200 rounded-xs font-bold text-xs" title="Bold">
+                                B
+                              </button>
+                              <button type="button" className="px-1 py-0.2 hover:bg-slate-200 rounded-xs italic text-xs font-serif" title="Italic">
+                                I
+                              </button>
+                              <button type="button" className="px-1 py-0.2 hover:bg-slate-200 rounded-xs line-through text-xs" title="Strike">
+                                S
+                              </button>
+                              <button type="button" className="px-1 py-0.2 hover:bg-slate-200 rounded-xs text-xs" title="Remove Format">
+                                T<sub className="text-[9px]">x</sub>
+                              </button>
+                              <div className="h-3 w-px bg-slate-300 mx-0.5" />
+                              <button type="button" className="px-1 py-0.2 hover:bg-slate-200 rounded-xs text-xs font-semibold" title="Numbered List">
+                                1.
+                              </button>
+                              <button type="button" className="px-1 py-0.2 hover:bg-slate-200 rounded-xs text-xs font-bold" title="Bulleted List">
+                                •
+                              </button>
+                              <button type="button" className="px-1 py-0.2 hover:bg-slate-200 rounded-xs text-xs" title="Blockquote">
+                                “
+                              </button>
+                              <div className="h-3 w-px bg-slate-300 mx-0.5" />
+                              <select className="bg-white border border-slate-300 rounded-xs px-1 py-0.5 text-[10px] text-slate-700 focus:outline-none">
+                                <option>Styles</option>
+                              </select>
+                              <select className="bg-white border border-slate-300 rounded-xs px-1 py-0.5 text-[10px] text-slate-700 focus:outline-none">
+                                <option>Format</option>
+                              </select>
+                              <button type="button" className="px-1 py-0.2 hover:bg-slate-200 rounded-xs text-xs text-slate-600 font-bold" title="Help">
+                                ?
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Editor Body */}
+                          <textarea
+                            rows={6}
+                            value={receiptFormData.termsText}
+                            onChange={(e) => setReceiptFormData({ ...receiptFormData, termsText: e.target.value })}
+                            className="w-full p-2.5 text-xs text-slate-800 bg-white focus:outline-none resize-y font-sans min-h-[140px]"
+                            placeholder=""
+                          />
+
+                          {/* Status Bar */}
+                          <div className="px-2 py-0.5 bg-[#F8FAFC] border-t border-slate-200 text-[10px] text-slate-400 font-mono">
+                            body p
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="space-y-3.5">
+                      {/* Receipt Date */}
+                      <div className="flex items-center gap-2">
+                        <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                          Receipt Date
+                        </label>
+                        <div className="flex-1 relative flex items-center">
+                          <input
+                            type="text"
+                            value={receiptFormData.receiptDate}
+                            onChange={(e) => setReceiptFormData({ ...receiptFormData, receiptDate: e.target.value })}
+                            className="w-full px-2.5 py-1.5 pr-8 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400 font-normal"
+                          />
+                          <div className="absolute right-0 top-0 bottom-0 px-2.5 bg-slate-100 border-l border-slate-300 rounded-r-xs flex items-center justify-center text-slate-500 pointer-events-none">
+                            <Calendar className="w-3.5 h-3.5" />
+                          </div>
+                        </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setSelectedReceipt(r)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
-                      >
-                        <Eye className="w-3 h-3" />
-                        <span>View</span>
-                      </button>
+                      {/* Received Amount */}
+                      <div className="flex items-center gap-2">
+                        <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                          Received Amount <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex-1">
+                          <input
+                            type="number"
+                            step="0.01"
+                            required
+                            placeholder=""
+                            value={receiptFormData.amount}
+                            onChange={(e) => setReceiptFormData({ ...receiptFormData, amount: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-[#66afe9] rounded-xs text-xs bg-white text-slate-800 font-normal focus:outline-none ring-2 ring-blue-100 shadow-[0_0_8px_rgba(102,175,233,0.6)]"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Type */}
+                      <div className="flex items-center gap-2">
+                        <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                          Type <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex-1 relative">
+                          <select
+                            value={receiptFormData.receiptType}
+                            onChange={(e) => setReceiptFormData({
+                              ...receiptFormData,
+                              receiptType: e.target.value,
+                              paymentMethod: e.target.value,
+                            })}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400 pr-8"
+                          >
+                            <option value="Cash">Cash</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Credit Card">Credit Card</option>
+                            <option value="PDC">PDC</option>
+                            <option value="Online Payment">Online Payment</option>
+                          </select>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                ))}
-            </div>
 
-            {/* Table (Desktop Viewports) */}
-            <div className="hidden md:block overflow-x-auto w-full">
-              <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
-                <thead>
-                  <tr className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-semibold select-none">
-                    <th className="p-2.5 w-12 text-center text-slate-600">Sl No.</th>
-                    <th className="p-2.5 w-28 text-slate-600">Date</th>
-                    <th className="p-2.5 min-w-[140px] text-slate-600">Created By</th>
-                    <th className="p-2.5 min-w-[140px] text-slate-600">Receipt No.</th>
-                    <th className="p-2.5 min-w-[260px] text-slate-600">Customer</th>
-                    <th className="p-2.5 w-28 text-slate-600">Type</th>
-                    <th className="p-2.5 w-28 text-slate-600">Tags</th>
-                    <th className="p-2.5 w-28 text-right text-slate-600">Amount</th>
-                    <th className="p-2.5 w-20 text-center text-slate-600">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 bg-white">
-                  {(() => {
-                    const filtered = receipts.filter((r) => {
+                  {/* Amber Alert Banner (Matches Image 1) */}
+                  {showSelectCustomerAlert && !receiptFormData.customer && (
+                    <div className="mt-8 mb-2 max-w-lg mx-auto p-2.5 bg-[#f0ad4e] border border-[#eea236] text-white text-xs font-normal rounded-xs flex items-center justify-between shadow-md">
+                      <div className="flex-1 text-center font-normal">
+                        Select Customer First.
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowSelectCustomerAlert(false)}
+                        className="text-white hover:text-amber-100 cursor-pointer text-xs font-bold px-1.5"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Footer Action Buttons */}
+                  <div className="flex items-center justify-end gap-2 pt-6 border-t border-slate-200 mt-6">
+                    <button
+                      type="submit"
+                      className="px-6 py-2 rounded-xs bg-[#002B49] hover:bg-[#001D33] text-white text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                    >
+                      Submit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsCreateReceiptModalOpen(false)}
+                      className="px-5 py-2 rounded-xs bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" /> Back
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Bottom Footer Bar (Matching Image 1) */}
+              <div className="pt-2 text-[11px] text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-slate-200">
+                <div className="flex items-center gap-3">
+                  <span>2026 © <strong className="text-slate-700 font-semibold">Cool Technologies</strong></span>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#17a2b8] hover:bg-[#138496] text-white rounded-xs text-[11px] font-medium transition cursor-pointer shadow-2xs"
+                  >
+                    <span className="text-xs">💬</span>
+                    <span>You have 145 SMS credits remaining.</span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 text-slate-500">
+                  <div className="w-32 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: '2%' }} />
+                  </div>
+                  <span>155.3MB of 10GB (2%) used</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* TOP FILTER CRITERIA CARD */}
+              <div className="bg-white border border-[#E2E8F0] rounded-sm p-3 sm:p-4 shadow-xs space-y-3 text-xs">
+                {/* Mobile Filter Header Toggle Button */}
+                <div className="flex md:hidden items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setShowReceiptFiltersMobile(!showReceiptFiltersMobile)}
+                    className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer w-full justify-between"
+                  >
+                    <div className="flex items-center gap-1.5 text-blue-600">
+                      <Filter className="w-3.5 h-3.5" />
+                      <span>Filter Receipts</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 font-medium">
+                        {showReceiptFiltersMobile ? 'Hide Filters' : 'Tap to filter'}
+                      </span>
+                    </div>
+                    <ChevronDown className={cn('w-4 h-4 text-slate-500 transition-transform', showReceiptFiltersMobile ? 'rotate-180' : '')} />
+                  </button>
+                </div>
+
+                <div className={cn('space-y-3', showReceiptFiltersMobile ? 'block' : 'hidden md:block')}>
+                  {/* Row 1 */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Created By</label>
+                      <select
+                        value={filterReceiptCreatedBy}
+                        onChange={(e) => setFilterReceiptCreatedBy(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                      >
+                        <option value="All">All</option>
+                        {activeSalesUsers.map((u) => (
+                          <option key={u.id} value={u.name}>
+                            {u.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Receipt Type</label>
+                      <select
+                        value={filterReceiptType}
+                        onChange={(e) => setFilterReceiptType(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                      >
+                        <option value="All">All</option>
+                        <option value="Against Invoice">Against Invoice</option>
+                        <option value="Advance">Advance</option>
+                        <option value="PDC Clearance">PDC Clearance</option>
+                        <option value="Settlement">Settlement</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Receipt Date</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          defaultValue="01-09-2026 - 30-09-2026"
+                          className="w-full pl-8 pr-7 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 font-medium"
+                        />
+                        <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+                        <RotateCcw className="w-3.5 h-3.5 text-slate-400 hover:text-slate-600 cursor-pointer absolute right-2.5 top-2" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Customer</label>
+                      <select
+                        value={filterReceiptCustomer}
+                        onChange={(e) => setFilterReceiptCustomer(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                      >
+                        <option value="">Select Customer</option>
+                        <option value="OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN">OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN</option>
+                        <option value="BURJEEL HOLDINGS">BURJEEL HOLDINGS</option>
+                        <option value="EMAAR HOSPITALITY GROUP">EMAAR HOSPITALITY GROUP</option>
+                        <option value="NATIONAL INNOVATIVE GENERAL MAINTENANCE L.L.C.">NATIONAL INNOVATIVE GENERAL MAINTENANCE L.L.C.</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Row 2 */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-slate-600 font-medium block">Receipt Tags</label>
+                      <input
+                        type="text"
+                        placeholder="Select tags"
+                        value={filterReceiptTags}
+                        onChange={(e) => setFilterReceiptTags(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* MAIN RECEIPT TABLE SECTION */}
+              <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden">
+                {/* Header with Title and + RECEIPT Button */}
+                <div className="p-3 border-b border-slate-200 flex items-center justify-between bg-white">
+                  <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                    <ReceiptIcon className="w-4 h-4 text-slate-500" /> Receipt
+                  </h2>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateReceiptModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition uppercase"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>RECEIPT</span>
+                  </button>
+                </div>
+
+                {/* Table Controls */}
+                <div className="p-2.5 bg-slate-50/50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                  <div className="flex items-center gap-1.5">
+                    <span>Shows</span>
+                    <select
+                      value={rowsPerPage}
+                      onChange={(e) => {
+                        setRowsPerPage(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 font-medium focus:outline-none focus:border-blue-500"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
+                    <span>Rows</span>
+                  </div>
+
+                  <div className="relative w-64">
+                    <input
+                      type="text"
+                      placeholder="Search Receipt"
+                      value={receiptSearch}
+                      onChange={(e) => setReceiptSearch(e.target.value)}
+                      className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
+                    />
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
+                  </div>
+                </div>
+
+                {/* Native Mobile Receipts Cards (Phone Viewports) */}
+                <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
+                  {receipts
+                    .filter((r) => {
                       if (filterReceiptCreatedBy !== 'All' && r.createdBy !== filterReceiptCreatedBy) {
                         return false;
                       }
@@ -13179,174 +13617,307 @@ function SalesPipelineInner() {
                         );
                       }
                       return true;
-                    });
+                    })
+                    .map((r) => (
+                      <div key={r.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
+                        <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center text-red-600 text-[10px] font-bold shrink-0">
+                                📄
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedReceipt(r)}
+                                className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer text-left"
+                              >
+                                {r.receiptNumber}
+                              </button>
+                            </div>
+                            <div className="text-[10px] text-slate-500">Date: {r.receiptDate}</div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
+                            {r.receiptType || 'Against Invoice'}
+                          </span>
+                        </div>
 
-                    if (filtered.length === 0) {
-                      return (
-                        <tr>
-                          <td colSpan={9} className="p-6 text-center text-slate-500 text-xs">
-                            No records found.
-                          </td>
-                        </tr>
-                      );
-                    }
+                        <div className="bg-slate-50 rounded p-2 border border-slate-100 space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <Shield className="w-3.5 h-3.5 text-red-500 fill-red-100 shrink-0" />
+                            <span className="text-[#2563EB] font-bold text-xs">{r.customer}</span>
+                          </div>
+                          {r.contactPerson && (
+                            <div className="text-[11px] text-slate-600 flex items-center gap-1">
+                              <User className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span>{r.contactPerson}</span>
+                            </div>
+                          )}
+                          {r.phone && (
+                            <div className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                              <span>{r.phone}</span>
+                            </div>
+                          )}
+                        </div>
 
-                    return filtered.map((r) => (
-                      <tr key={r.id} className="hover:bg-[#F0FDF4]/40 transition-colors">
-                        {/* Sl No. */}
-                        <td className="p-2.5 text-center text-slate-600 font-medium">
-                          {r.slNo}
-                        </td>
+                        <div className="flex items-center justify-between py-1 border-t border-b border-slate-100">
+                          <div>
+                            <span className="text-[10px] text-slate-500 block">Payment Method</span>
+                            <span className="font-medium text-slate-700">{r.paymentMethod || 'Bank Transfer'}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] text-slate-500 block">Amount</span>
+                            <span className="font-bold text-slate-900 text-sm">
+                              {r.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
 
-                        {/* Date */}
-                        <td className="p-2.5 whitespace-nowrap text-slate-800 font-medium">
-                          {r.receiptDate}
-                        </td>
-
-                        {/* Created By */}
-                        <td className="p-2.5">
-                          <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between pt-1">
+                          <div className="flex items-center gap-1.5">
                             {(() => {
                               const av = (r.createdByAvatar && !r.createdByAvatar.includes('unsplash') && !r.createdByAvatar.includes('photo-')) ? r.createdByAvatar : getEmployeePhoto(r.createdBy);
                               const name = r.createdBy || currentUser?.name || 'S';
                               if (av) {
                                 return (
-                                  <div className="w-6 h-6 rounded-full overflow-hidden bg-slate-200 shrink-0">
+                                  <div className="w-5 h-5 rounded-full overflow-hidden bg-slate-200 shrink-0">
                                     <img src={av} alt={name} className="w-full h-full object-cover" />
                                   </div>
                                 );
                               }
                               return (
-                                <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-[#1E293B] to-[#334155] text-white flex items-center justify-center font-bold text-[10px] uppercase shadow-2xs">
+                                <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-[#1E293B] to-[#334155] text-white flex items-center justify-center font-bold text-[9px] uppercase shadow-2xs shrink-0">
                                   {name[0]}
                                 </div>
                               );
                             })()}
-                            <span className="text-slate-800 font-medium text-xs">
-                              {r.createdBy || currentUser?.name || 'Staff'}
-                            </span>
+                            <span className="text-[11px] text-slate-600 font-medium">{r.createdBy || currentUser?.name || 'Staff'}</span>
                           </div>
-                        </td>
 
-                        {/* Receipt No. */}
-                        <td className="p-2.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center text-red-600 text-[10px] font-bold shrink-0">
-                              📄
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedReceipt(r)}
-                              className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer"
-                            >
-                              {r.receiptNumber}
-                            </button>
-                            <Info
-                              className="w-3.5 h-3.5 text-blue-500 cursor-pointer shrink-0"
-                              onClick={() => setSelectedReceipt(r)}
-                            />
-                          </div>
-                        </td>
-
-                        {/* Customer */}
-                        <td className="p-2.5">
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-1.5">
-                              <Shield className="w-3.5 h-3.5 text-red-500 fill-red-100 shrink-0" />
-                              <span className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer">
-                                {r.customer}
-                              </span>
-                              <Info className="w-3.5 h-3.5 text-blue-500 cursor-pointer shrink-0" />
-                            </div>
-
-                            {r.contactPerson && (
-                              <div className="text-[11px] text-slate-600 flex items-center gap-1">
-                                <User className="w-3 h-3 text-slate-400 shrink-0" />
-                                <span>{r.contactPerson}</span>
-                                <Info className="w-2.5 h-2.5 text-blue-400 cursor-pointer shrink-0" />
-                              </div>
-                            )}
-
-                            {r.phone && (
-                              <div className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                                <span>{r.phone}</span>
-                              </div>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Type */}
-                        <td className="p-2.5 text-slate-700 font-medium">
-                          {r.receiptType || 'Against Invoice'}
-                        </td>
-
-                        {/* Tags */}
-                        <td className="p-2.5">
-                          <div className="flex flex-wrap gap-1">
-                            {r.tags?.map((t, idx) => (
-                              <span
-                                key={idx}
-                                className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px]"
-                              >
-                                {t}
-                              </span>
-                            )) || <span className="text-slate-400">—</span>}
-                          </div>
-                        </td>
-
-                        {/* Amount */}
-                        <td className="p-2.5 text-right font-bold text-slate-900 whitespace-nowrap">
-                          {r.amount.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-
-                        {/* Action */}
-                        <td className="p-2.5 text-center">
                           <button
                             type="button"
                             onClick={() => setSelectedReceipt(r)}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
-                            title="Action"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
                           >
-                            <SlidersHorizontal className="w-3 h-3" />
-                            <ChevronDown className="w-2.5 h-2.5" />
+                            <Eye className="w-3 h-3" />
+                            <span>View</span>
                           </button>
-                        </td>
-                      </tr>
-                    ));
-                  })()}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
 
-            {/* Table Footer / Pagination */}
-            <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
-              <div>Showing 1 to {receipts.length} of {receipts.length} entries</div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="px-2 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
-                >
-                  &laquo;
-                </button>
-                <button
-                  type="button"
-                  className="px-2.5 py-1 rounded font-semibold bg-[#008080] text-white cursor-pointer"
-                >
-                  1
-                </button>
-                <button
-                  type="button"
-                  className="px-2 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
-                >
-                  &raquo;
-                </button>
+                {/* Table (Desktop Viewports) */}
+                <div className="hidden md:block overflow-x-auto w-full">
+                  <table className="w-full text-left text-xs border-collapse min-w-[1100px]">
+                    <thead>
+                      <tr className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-semibold select-none">
+                        <th className="p-2.5 w-12 text-center text-slate-600">Sl No.</th>
+                        <th className="p-2.5 w-28 text-slate-600">Date</th>
+                        <th className="p-2.5 min-w-[140px] text-slate-600">Created By</th>
+                        <th className="p-2.5 min-w-[140px] text-slate-600">Receipt No.</th>
+                        <th className="p-2.5 min-w-[260px] text-slate-600">Customer</th>
+                        <th className="p-2.5 w-28 text-slate-600">Type</th>
+                        <th className="p-2.5 w-28 text-slate-600">Tags</th>
+                        <th className="p-2.5 w-28 text-right text-slate-600">Amount</th>
+                        <th className="p-2.5 w-20 text-center text-slate-600">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white">
+                      {(() => {
+                        const filtered = receipts.filter((r) => {
+                          if (filterReceiptCreatedBy !== 'All' && r.createdBy !== filterReceiptCreatedBy) {
+                            return false;
+                          }
+                          if (filterReceiptType !== 'All' && r.receiptType !== filterReceiptType) {
+                            return false;
+                          }
+                          if (filterReceiptCustomer && !r.customer.toLowerCase().includes(filterReceiptCustomer.toLowerCase())) {
+                            return false;
+                          }
+                          if (filterReceiptTags && !r.tags?.some((t) => t.toLowerCase().includes(filterReceiptTags.toLowerCase()))) {
+                            return false;
+                          }
+                          if (receiptSearch) {
+                            const s = receiptSearch.toLowerCase();
+                            return (
+                              r.receiptNumber.toLowerCase().includes(s) ||
+                              r.customer.toLowerCase().includes(s) ||
+                              (r.invoiceRef || '').toLowerCase().includes(s) ||
+                              (r.contactPerson || '').toLowerCase().includes(s)
+                            );
+                          }
+                          return true;
+                        });
+
+                        if (filtered.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={9} className="p-6 text-center text-slate-500 text-xs">
+                                No records found.
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return filtered.map((r) => (
+                          <tr key={r.id} className="hover:bg-[#F0FDF4]/40 transition-colors">
+                            {/* Sl No. */}
+                            <td className="p-2.5 text-center text-slate-600 font-medium">
+                              {r.slNo}
+                            </td>
+
+                            {/* Date */}
+                            <td className="p-2.5 whitespace-nowrap text-slate-800 font-medium">
+                              {r.receiptDate}
+                            </td>
+
+                            {/* Created By */}
+                            <td className="p-2.5">
+                              <div className="flex items-center gap-2">
+                                {(() => {
+                                  const av = (r.createdByAvatar && !r.createdByAvatar.includes('unsplash') && !r.createdByAvatar.includes('photo-')) ? r.createdByAvatar : getEmployeePhoto(r.createdBy);
+                                  const name = r.createdBy || currentUser?.name || 'S';
+                                  if (av) {
+                                    return (
+                                      <div className="w-6 h-6 rounded-full overflow-hidden bg-slate-200 shrink-0">
+                                        <img src={av} alt={name} className="w-full h-full object-cover" />
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-[#1E293B] to-[#334155] text-white flex items-center justify-center font-bold text-[10px] uppercase shadow-2xs">
+                                      {name[0]}
+                                    </div>
+                                  );
+                                })()}
+                                <span className="text-slate-800 font-medium text-xs">
+                                  {r.createdBy || currentUser?.name || 'Staff'}
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* Receipt No. */}
+                            <td className="p-2.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded bg-red-100 flex items-center justify-center text-red-600 text-[10px] font-bold shrink-0">
+                                  📄
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedReceipt(r)}
+                                  className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer"
+                                >
+                                  {r.receiptNumber}
+                                </button>
+                                <Info
+                                  className="w-3.5 h-3.5 text-blue-500 cursor-pointer shrink-0"
+                                  onClick={() => setSelectedReceipt(r)}
+                                />
+                              </div>
+                            </td>
+
+                            {/* Customer */}
+                            <td className="p-2.5">
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Shield className="w-3.5 h-3.5 text-red-500 fill-red-100 shrink-0" />
+                                  <span className="text-[#2563EB] font-bold text-xs hover:underline cursor-pointer">
+                                    {r.customer}
+                                  </span>
+                                  <Info className="w-3.5 h-3.5 text-blue-500 cursor-pointer shrink-0" />
+                                </div>
+
+                                {r.contactPerson && (
+                                  <div className="text-[11px] text-slate-600 flex items-center gap-1">
+                                    <User className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <span>{r.contactPerson}</span>
+                                    <Info className="w-2.5 h-2.5 text-blue-400 cursor-pointer shrink-0" />
+                                  </div>
+                                )}
+
+                                {r.phone && (
+                                  <div className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                                    <span>{r.phone}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Type */}
+                            <td className="p-2.5 text-slate-700 font-medium">
+                              {r.receiptType || 'Against Invoice'}
+                            </td>
+
+                            {/* Tags */}
+                            <td className="p-2.5">
+                              <div className="flex flex-wrap gap-1">
+                                {r.tags?.map((t, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px]"
+                                  >
+                                    {t}
+                                  </span>
+                                )) || <span className="text-slate-400">—</span>}
+                              </div>
+                            </td>
+
+                            {/* Amount */}
+                            <td className="p-2.5 text-right font-bold text-slate-900 whitespace-nowrap">
+                              {r.amount.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+
+                            {/* Action */}
+                            <td className="p-2.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedReceipt(r)}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
+                                title="Action"
+                              >
+                                <SlidersHorizontal className="w-3 h-3" />
+                                <ChevronDown className="w-2.5 h-2.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ));
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Table Footer / Pagination */}
+                <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
+                  <div>Showing 1 to {receipts.length} of {receipts.length} entries</div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
+                    >
+                      &laquo;
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2.5 py-1 rounded font-semibold bg-[#008080] text-white cursor-pointer"
+                    >
+                      1
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
+                    >
+                      &raquo;
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       )}
 
@@ -14035,141 +14606,7 @@ function SalesPipelineInner() {
 
 
 
-      {/* MODAL: CREATE RECEIPT */}
-      <Modal
-        isOpen={isCreateReceiptModalOpen}
-        onClose={() => setIsCreateReceiptModalOpen(false)}
-        title="Record Payment Receipt Voucher"
-        maxWidth="lg"
-      >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const newRec: CrmReceipt = {
-              id: 'rec-' + Date.now(),
-              slNo: receipts.length + 1,
-              receiptNumber: receiptFormData.receiptNumber,
-              invoiceRef: receiptFormData.invoiceRef,
-              customer: receiptFormData.customer,
-              contactPerson: receiptFormData.contactPerson,
-              phone: receiptFormData.phone,
-              createdBy: currentUser?.name || 'Staff',
-              createdByAvatar: currentUser?.avatar || getEmployeePhoto(currentUser?.name || 'Staff'),
-              receiptType: receiptFormData.receiptType,
-              tags: receiptFormData.tags ? [receiptFormData.tags] : ['Direct Transfer'],
-              paymentMethod: receiptFormData.paymentMethod,
-              receiptDate: receiptFormData.receiptDate,
-              amount: receiptFormData.amount,
-              referenceNumber: 'REF-' + Math.floor(100000 + Math.random() * 900000),
-              status: receiptFormData.status,
-            };
-            setReceipts([newRec, ...receipts]);
-            contextAddReceipt(newRec);
-            setIsCreateReceiptModalOpen(false);
-          }}
-          className="space-y-4 text-xs"
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Receipt Number *</label>
-              <input
-                type="text"
-                required
-                value={receiptFormData.receiptNumber}
-                onChange={(e) => setReceiptFormData({ ...receiptFormData, receiptNumber: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded font-bold text-blue-600 focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Invoice / Reference *</label>
-              <input
-                type="text"
-                required
-                value={receiptFormData.invoiceRef}
-                onChange={(e) => setReceiptFormData({ ...receiptFormData, invoiceRef: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Customer Name *</label>
-              <input
-                type="text"
-                required
-                value={receiptFormData.customer}
-                onChange={(e) => setReceiptFormData({ ...receiptFormData, customer: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Contact Person</label>
-              <input
-                type="text"
-                value={receiptFormData.contactPerson}
-                onChange={(e) => setReceiptFormData({ ...receiptFormData, contactPerson: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Receipt Type</label>
-              <select
-                value={receiptFormData.receiptType}
-                onChange={(e) => setReceiptFormData({ ...receiptFormData, receiptType: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none bg-white"
-              >
-                <option value="Against Invoice">Against Invoice</option>
-                <option value="Advance">Advance</option>
-                <option value="PDC Clearance">PDC Clearance</option>
-                <option value="Settlement">Settlement</option>
-              </select>
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Payment Method</label>
-              <select
-                value={receiptFormData.paymentMethod}
-                onChange={(e) => setReceiptFormData({ ...receiptFormData, paymentMethod: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none bg-white"
-              >
-                <option value="Bank Transfer">Bank Transfer</option>
-                <option value="Cheque">Cheque</option>
-                <option value="Credit Card">Credit Card</option>
-                <option value="Cash">Cash</option>
-              </select>
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Amount (AED) *</label>
-              <input
-                type="number"
-                required
-                value={receiptFormData.amount}
-                onChange={(e) => setReceiptFormData({ ...receiptFormData, amount: Number(e.target.value) })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none font-bold text-slate-800"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-            <button
-              type="button"
-              onClick={() => setIsCreateReceiptModalOpen(false)}
-              className="px-4 py-2 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded font-bold cursor-pointer shadow-xs"
-            >
-              Save Receipt
-            </button>
-          </div>
-        </form>
-      </Modal>
+      {/* MODAL: CREATE RECEIPT (Rendered in-page as Cezcon CRM Reference UI) */}
 
       {/* MODAL: VIEW RECEIPT DETAILS */}
       {selectedReceipt && (
@@ -14227,132 +14664,436 @@ function SalesPipelineInner() {
         </Modal>
       )}
 
-      {/* MODAL: CREATE DELIVERY NOTE */}
-      <Modal
-        isOpen={isCreateDeliveryModalOpen}
-        onClose={() => setIsCreateDeliveryModalOpen(false)}
-        title="Create Delivery Note Voucher"
-        maxWidth="lg"
-      >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const newDn: CrmDeliveryNote = {
-              id: 'dn-' + Date.now(),
-              slNo: deliveryNotes.length + 1,
-              deliveryNoteNumber: deliveryFormData.deliveryNoteNumber,
-              orderRef: deliveryFormData.orderRef,
-              orderDescription: deliveryFormData.orderDescription,
-              customer: deliveryFormData.customer,
-              invoiceRef: deliveryFormData.invoiceRef,
-              dnType: deliveryFormData.dnType,
-              location: deliveryFormData.location,
-              receivedBy: deliveryFormData.receivedBy,
-              receivedPhone: deliveryFormData.receivedPhone,
-              owner: currentUser?.name || 'Staff',
-              ownerAvatar: currentUser?.avatar || getEmployeePhoto(currentUser?.name || 'Staff'),
-              dispatchDate: deliveryFormData.dispatchDate,
-              costUpdated: deliveryFormData.costUpdated,
-              status: 'Delivered',
-            };
-            setDeliveryNotes([newDn, ...deliveryNotes]);
-            contextAddDeliveryNote(newDn);
-            setIsCreateDeliveryModalOpen(false);
-          }}
-          className="space-y-4 text-xs"
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">DN Number *</label>
-              <input
-                type="text"
-                required
-                value={deliveryFormData.deliveryNoteNumber}
-                onChange={(e) => setDeliveryFormData({ ...deliveryFormData, deliveryNoteNumber: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded font-bold text-blue-600 focus:border-blue-500 focus:outline-none"
-              />
+      {/* MODAL: CREATE DELIVERY NOTE (Exact Cezcon CRM Reference UI - Image 2) */}
+      {isCreateDeliveryModalOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto bg-black/60 backdrop-blur-2xs animate-in fade-in duration-150">
+          <div
+            className="fixed inset-0"
+            onClick={() => setIsCreateDeliveryModalOpen(false)}
+          />
+          <div className="relative w-full max-w-4xl bg-white rounded-xs shadow-2xl border border-slate-300 z-10 overflow-hidden flex flex-col max-h-[92vh] font-sans">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white">
+              <h2 className="text-sm font-semibold text-slate-800">Add Delivery Note</h2>
+              <button
+                type="button"
+                onClick={() => setIsCreateDeliveryModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer text-xl font-normal leading-none px-1"
+                title="Close"
+              >
+                ×
+              </button>
             </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Order Ref & Description *</label>
-              <input
-                type="text"
-                required
-                value={deliveryFormData.orderDescription}
-                onChange={(e) => setDeliveryFormData({ ...deliveryFormData, orderDescription: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Customer / Consignee *</label>
-              <input
-                type="text"
-                required
-                value={deliveryFormData.customer}
-                onChange={(e) => setDeliveryFormData({ ...deliveryFormData, customer: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Delivery Location</label>
-              <input
-                type="text"
-                value={deliveryFormData.location}
-                onChange={(e) => setDeliveryFormData({ ...deliveryFormData, location: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Received By</label>
-              <input
-                type="text"
-                value={deliveryFormData.receivedBy}
-                onChange={(e) => setDeliveryFormData({ ...deliveryFormData, receivedBy: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Phone</label>
-              <input
-                type="text"
-                value={deliveryFormData.receivedPhone}
-                onChange={(e) => setDeliveryFormData({ ...deliveryFormData, receivedPhone: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700 block mb-1">Dispatch Date</label>
-              <input
-                type="text"
-                value={deliveryFormData.dispatchDate}
-                onChange={(e) => setDeliveryFormData({ ...deliveryFormData, dispatchDate: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-            <button
-              type="button"
-              onClick={() => setIsCreateDeliveryModalOpen(false)}
-              className="px-4 py-2 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
+            {/* Modal Body */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const newDn: CrmDeliveryNote = {
+                  id: 'dn-' + Date.now(),
+                  slNo: deliveryNotes.length + 1,
+                  deliveryNoteNumber: deliveryFormData.deliveryNoteNumber || 'CTDN#1038',
+                  orderRef: deliveryFormData.orderRef || deliveryFormData.orderNumber || 'CTSO#2698',
+                  orderDescription: deliveryFormData.orderName || deliveryFormData.orderDescription || 'Customer Order Items',
+                  customer: deliveryFormData.customer || 'KOHINOOR AIR CONDITIONER AND REFRIGERATION PARTS',
+                  invoiceRef: deliveryFormData.invoiceRef || '—',
+                  dnType: deliveryFormData.dnType || 'Customer Delivery Note',
+                  location: deliveryFormData.location || 'Mussafah, Abu Dhabi',
+                  receivedBy: deliveryFormData.receivedBy || 'Staff Consignee',
+                  receivedPhone: deliveryFormData.contactNumber || deliveryFormData.receivedPhone || '+971501234567',
+                  owner: deliveryFormData.owner || currentUser?.name || 'Nafal',
+                  ownerAvatar: currentUser?.avatar || getEmployeePhoto(deliveryFormData.owner || 'Nafal'),
+                  dispatchDate: deliveryFormData.deliveryDate || '24-10-2026',
+                  costUpdated: deliveryFormData.updateMaterialCost,
+                  status: 'Delivered',
+                };
+                setDeliveryNotes([newDn, ...deliveryNotes]);
+                contextAddDeliveryNote(newDn);
+                setIsCreateDeliveryModalOpen(false);
+              }}
+              className="flex-1 overflow-y-auto flex flex-col justify-between"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-[#16A34A] hover:bg-[#15803D] text-white rounded font-bold cursor-pointer shadow-xs"
-            >
-              Save Delivery Note
-            </button>
+              <div className="p-5 sm:p-6 text-xs space-y-3.5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-3.5">
+                  {/* Left Column */}
+                  <div className="space-y-3.5">
+                    {/* Owner */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                        Owner
+                      </label>
+                      <div className="flex-1 relative flex items-center">
+                        <select
+                          value={deliveryFormData.owner}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, owner: e.target.value })}
+                          className="w-full pl-8 pr-7 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400"
+                        >
+                          <option value="Nafal">Nafal</option>
+                          <option value="shemin">shemin</option>
+                          <option value="Muhammed shemin">Muhammed shemin</option>
+                          <option value="Mustafa">Mustafa</option>
+                          <option value="Rithul">Rithul</option>
+                          <option value="Muhammed arshad">Muhammed arshad</option>
+                        </select>
+                        <User className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Type */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                        Type <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex-1">
+                        <select
+                          value={deliveryFormData.dnType}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, dnType: e.target.value })}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400"
+                        >
+                          <option value="Customer Delivery Note">Customer Delivery Note</option>
+                          <option value="Internal Transfer">Internal Transfer</option>
+                          <option value="Return Delivery Note">Return Delivery Note</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Delivery# */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                        Delivery# <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex-1 relative flex items-center">
+                        <input
+                          type="text"
+                          required
+                          value={deliveryFormData.deliveryNoteNumber}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, deliveryNoteNumber: e.target.value })}
+                          className="w-full px-2.5 py-1.5 pr-8 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const r = Math.floor(1030 + Math.random() * 900);
+                            setDeliveryFormData({ ...deliveryFormData, deliveryNoteNumber: 'CTDN#' + r });
+                          }}
+                          className="absolute right-2 text-cyan-600 hover:text-cyan-700 cursor-pointer"
+                          title="Generate Delivery Note Number"
+                        >
+                          <Settings className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Date */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                        Date
+                      </label>
+                      <div className="flex-1 relative flex items-center">
+                        <input
+                          type="text"
+                          value={deliveryFormData.deliveryDate}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, deliveryDate: e.target.value })}
+                          className="w-full px-2.5 py-1.5 pr-8 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400"
+                        />
+                        <div className="absolute right-0 top-0 bottom-0 px-2.5 bg-slate-100 border-l border-slate-300 rounded-r-xs flex items-center justify-center text-slate-500 pointer-events-none">
+                          <Calendar className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Order */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                        Order <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex-1">
+                        <select
+                          required
+                          value={deliveryFormData.orderRef}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setDeliveryFormData({
+                              ...deliveryFormData,
+                              orderRef: val,
+                              orderNumber: val ? val.split(' ')[0] : '',
+                              orderName: val ? val.split(' / ')[1] || val : '',
+                            });
+                          }}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400"
+                        >
+                          <option value="">Select Order</option>
+                          <option value="CTSO#3854 / SUPER GENERAL AC UNITS WITH INST">CTSO#3854 / SUPER GENERAL AC UNITS WITH INST</option>
+                          <option value="CTSO#2698 | POD">CTSO#2698 | POD</option>
+                          <option value="CTSO#2653 / AIR COOLER NOBEL 100LTR - 4134">CTSO#2653 / AIR COOLER NOBEL 100LTR - 4134</option>
+                          <option value="CTSO#1982 / CENTRAL AC REPAIR & SERVICE">CTSO#1982 / CENTRAL AC REPAIR & SERVICE</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Order Name & No. */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                        Order Name & No.
+                      </label>
+                      <div className="flex-1 flex items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="Order Name"
+                          value={deliveryFormData.orderName}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, orderName: e.target.value })}
+                          className="flex-[2] px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-400"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Order Number"
+                          value={deliveryFormData.orderNumber}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, orderNumber: e.target.value })}
+                          className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Store */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                        Store <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex-1">
+                        <select
+                          required
+                          value={deliveryFormData.store}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, store: e.target.value })}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400"
+                        >
+                          <option value="">Select</option>
+                          <option value="Main Warehouse - Mussafah">Main Warehouse - Mussafah</option>
+                          <option value="Abu Dhabi Central Store">Abu Dhabi Central Store</option>
+                          <option value="Dubai Central Depot">Dubai Central Depot</option>
+                          <option value="Al Ain Facility">Al Ain Facility</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Invoice */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                        Invoice
+                      </label>
+                      <div className="flex-1">
+                        <select
+                          value={deliveryFormData.invoiceRef}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, invoiceRef: e.target.value })}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400"
+                        >
+                          <option value="">Select Invoice</option>
+                          <option value="CTINV#1630">CTINV#1630</option>
+                          <option value="CTINV#15002">CTINV#15002</option>
+                          <option value="CTINV#14890">CTINV#14890</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* LPO */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                        LPO
+                      </label>
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={deliveryFormData.lpoNumber}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, lpoNumber: e.target.value })}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* LPO Date */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-32 text-slate-700 text-xs font-normal shrink-0">
+                        LPO Date
+                      </label>
+                      <div className="flex-1 relative flex items-center">
+                        <input
+                          type="text"
+                          value={deliveryFormData.lpoDate}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, lpoDate: e.target.value })}
+                          className="w-full px-2.5 py-1.5 pr-8 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400"
+                        />
+                        <div className="absolute right-0 top-0 bottom-0 px-2.5 bg-slate-100 border-l border-slate-300 rounded-r-xs flex items-center justify-center text-slate-500 pointer-events-none">
+                          <Calendar className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column */}
+                  <div className="space-y-3.5">
+                    {/* Approved By */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-36 text-slate-700 text-xs font-normal shrink-0">
+                        Approved By
+                      </label>
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={deliveryFormData.approvedBy}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, approvedBy: e.target.value })}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Approved Contact Number */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-36 text-slate-700 text-xs font-normal shrink-0">
+                        Approved Contact Number
+                      </label>
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={deliveryFormData.approvedContact}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, approvedContact: e.target.value })}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Received By */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-36 text-slate-700 text-xs font-normal shrink-0">
+                        Received By
+                      </label>
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={deliveryFormData.receivedBy}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, receivedBy: e.target.value })}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Location */}
+                    <div className="flex items-start gap-2">
+                      <label className="w-36 text-slate-700 text-xs font-normal shrink-0 pt-1.5">
+                        Location
+                      </label>
+                      <div className="flex-1">
+                        <textarea
+                          rows={2}
+                          value={deliveryFormData.location}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, location: e.target.value })}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400 resize-y"
+                        />
+                      </div>
+                    </div>
+
+                    {/* State/Region */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-36 text-slate-700 text-xs font-normal shrink-0">
+                        State/Region
+                      </label>
+                      <div className="flex-1">
+                        <select
+                          value={deliveryFormData.stateRegion}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, stateRegion: e.target.value })}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400"
+                        >
+                          <option value="">Select</option>
+                          <option value="Abu Dhabi">Abu Dhabi</option>
+                          <option value="Dubai">Dubai</option>
+                          <option value="Sharjah">Sharjah</option>
+                          <option value="Ajman">Ajman</option>
+                          <option value="Ras Al Khaimah">Ras Al Khaimah</option>
+                          <option value="Fujairah">Fujairah</option>
+                          <option value="Umm Al Quwain">Umm Al Quwain</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Contact Number */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-36 text-slate-700 text-xs font-normal shrink-0">
+                        Contact Number
+                      </label>
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={deliveryFormData.contactNumber}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, contactNumber: e.target.value })}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Reference */}
+                    <div className="flex items-center gap-2">
+                      <label className="w-36 text-slate-700 text-xs font-normal shrink-0">
+                        Reference
+                      </label>
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={deliveryFormData.reference}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, reference: e.target.value })}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Remarks */}
+                    <div className="flex items-start gap-2">
+                      <label className="w-36 text-slate-700 text-xs font-normal shrink-0 pt-1.5">
+                        Remarks
+                      </label>
+                      <div className="flex-1">
+                        <textarea
+                          rows={4}
+                          value={deliveryFormData.remarks}
+                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, remarks: e.target.value })}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400 resize-y"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-6 py-3 bg-[#F5F5F5] border-t border-slate-200 flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={deliveryFormData.updateMaterialCost}
+                    onChange={(e) => setDeliveryFormData({ ...deliveryFormData, updateMaterialCost: e.target.checked })}
+                    className="w-3.5 h-3.5 accent-red-600 rounded-xs cursor-pointer"
+                  />
+                  <span className="text-red-600 font-medium text-xs">
+                    Update material cost to order
+                  </span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateDeliveryModalOpen(false)}
+                    className="px-4 py-1.5 rounded-xs bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-medium cursor-pointer transition shadow-2xs"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-1.5 rounded-xs bg-[#36A2B9] hover:bg-[#2B8E9F] text-white text-xs font-semibold cursor-pointer transition shadow-xs"
+                  >
+                    Submit
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
-        </form>
-      </Modal>
+        </div>
+      )}
 
       {/* MODAL: VIEW DELIVERY NOTE DETAILS */}
       {selectedDeliveryNote && !Array.isArray(selectedDeliveryNote) && (

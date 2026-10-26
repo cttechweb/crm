@@ -209,7 +209,12 @@ opportunitiesApp.post('/', async (c) => {
   const location = body.location || '';
   const reference = body.reference || '';
   const comments = body.comments || '';
-  const tags = Array.isArray(body.tags) ? body.tags.join(',') : (body.tags || '');
+  const leadNum = body.leadNumber || body.lead_number || '';
+  const rawTags = Array.isArray(body.tags) ? [...body.tags] : (body.tags ? String(body.tags).split(',') : []);
+  if (leadNum && !rawTags.includes(leadNum)) {
+    rawTags.unshift(leadNum);
+  }
+  const tags = rawTags.join(',');
 
   try {
     await c.env.DB.prepare(`

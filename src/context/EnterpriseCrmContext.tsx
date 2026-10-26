@@ -725,7 +725,17 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         if (storedSuppliers) {
           try {
             const parsed = JSON.parse(storedSuppliers);
-            setSuppliers(Array.isArray(parsed) ? parsed : []);
+            const filtered = Array.isArray(parsed)
+              ? parsed.filter(
+                  (s: any) =>
+                    !['sup_1', 'sup_2', 'sup_3', 'sup_4'].includes(s.id) &&
+                    !['LUTFI TRADING LLC', 'SUPER GENERAL COMPANY LLC', 'CENTRAL TRADING COMPANY LLC', 'Shajarath Al Thalj Trading LLC'].includes(s.name)
+                )
+              : [];
+            setSuppliers(filtered);
+            if (Array.isArray(parsed) && filtered.length !== parsed.length) {
+              localStorage.setItem('crm_suppliers_list', JSON.stringify(filtered));
+            }
           } catch {
             setSuppliers([]);
           }

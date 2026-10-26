@@ -1115,6 +1115,7 @@ export default function LeadDetailPage({ params }: PageProps) {
                     totalDeals: 1,
                     totalSpend: lead.value || 45000,
                   });
+                  const effectiveLeadNo = lead.leadNumber || `CTL#${1000 + (lead.slNo || 1)}`;
                   addOpportunity({
                     title: `CTEQ#${Math.floor(1000 + Math.random() * 9000)} ${lead.leadSpecification || 'INDUSTRIAL FITTINGS'} / ${lead.contactDetails.company.toUpperCase()}`,
                     customer: lead.contactDetails.company,
@@ -1123,6 +1124,8 @@ export default function LeadDetailPage({ params }: PageProps) {
                     owner: lead.owner || authMockService.getCurrentUser()?.name || 'Staff',
                     probability: 75,
                     expectedClose: '2026-10-15',
+                    createdFromLeadId: lead.id,
+                    leadNumber: effectiveLeadNo,
                   });
                   alert(`Lead "${lead.contactDetails.name}" converted successfully into Customer & Sales Opportunity!`);
                   setIsConvertModalOpen(false);

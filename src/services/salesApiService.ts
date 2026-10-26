@@ -29,11 +29,18 @@ import type {
 // ============================================================================
 export function mapBackendOpportunityToFrontend(row: any): CrmSalesOpportunity {
   if (!row) return {} as CrmSalesOpportunity;
+  const parsedTags: string[] = row.tags
+    ? (typeof row.tags === 'string' ? row.tags.split(',') : row.tags)
+    : [];
+  const explicitLeadTag = parsedTags.find((t) => /^[A-Za-z0-9#-]+#\d+$/i.test(t) || /^CTL#\d+$/i.test(t));
+  const leadNumber = row.lead_number || row.leadNumber || explicitLeadTag || undefined;
+
   return {
     ...row,
     id: row.id,
     slNo: row.sl_no || row.slNo || undefined,
     opportunityCode: row.opportunity_code || row.opportunityCode || undefined,
+    leadNumber,
     createdFromLeadId: row.created_from_lead_id || row.createdFromLeadId || undefined,
     title: row.title || 'Untitled Opportunity',
     customer: row.customer || '',
@@ -114,6 +121,7 @@ export const opportunityApiService = {
         expectedClose: data.expectedClose,
         owner: data.owner,
         createdFromLeadId: data.createdFromLeadId,
+        leadNumber: data.leadNumber,
         campaign: data.campaign,
         source: data.source,
         vatType: data.vatType,
@@ -124,7 +132,13 @@ export const opportunityApiService = {
         location: data.location,
         reference: data.reference,
         comments: data.comments,
-        tags: data.tags,
+        tags: (() => {
+          const raw = Array.isArray(data.tags) ? [...data.tags] : (data.tags ? [data.tags] : []);
+          if (data.leadNumber && !raw.includes(data.leadNumber)) {
+            raw.unshift(data.leadNumber);
+          }
+          return raw;
+        })(),
       },
     });
 
@@ -288,6 +302,7 @@ export function mapBackendSalesOrderToFrontend(row: any): CrmSalesOrder {
     orderNumber: row.order_number,
     quotationRef: row.quotation_ref || undefined,
     opportunityRef: row.opportunity_ref || undefined,
+    leadNumber: row.lead_number || row.leadNumber || undefined,
     customer: row.customer,
     contactPerson: row.contact_person || '',
     phone: row.phone || '',
