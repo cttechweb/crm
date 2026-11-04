@@ -209,8 +209,8 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
       }
     }
 
-    // In local dev, auto-link or bootstrap CEO / Super Admin profile for Shemin if not found in D1
-    if (!userProfile && isLocalRequest && !isTestEnvironment) {
+    // Auto-link or bootstrap CRM profile for authenticated staff if not found in D1
+    if (!userProfile && !isTestEnvironment) {
       const isSheminAdmin = Boolean(
         verifiedEmail && (
           verifiedEmail === 'shemin123@gmail.com' ||
