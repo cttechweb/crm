@@ -7,7 +7,18 @@ import { SuperAdminProvider } from '@/context/SuperAdminContext';
 import { EnterpriseTopHeader } from '@/components/layout/EnterpriseTopHeader';
 import { SuperAdminSidebar } from '@/components/layout/SuperAdminSidebar';
 import { SuperAdminHeader } from '@/components/layout/SuperAdminHeader';
+import dynamic from 'next/dynamic';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
+
+const FloatingChatWidget = dynamic(
+  () => import('@/components/chat/FloatingChatWidget').then((mod) => mod.FloatingChatWidget),
+  { ssr: false }
+);
+
+const ChatNotificationToast = dynamic(
+  () => import('@/components/chat/ChatNotificationToast').then((mod) => mod.ChatNotificationToast),
+  { ssr: false }
+);
 
 export function EnterpriseShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -85,6 +96,12 @@ export function EnterpriseShell({ children }: { children: React.ReactNode }) {
                 {children}
               </React.Suspense>
             </main>
+
+            {/* Persistent Floating Chat Trigger pinned at bottom-left corner */}
+            {pathname !== '/chat' && <FloatingChatWidget />}
+
+            {/* Real-Time WhatsApp-Style In-App Chat Notification Toast */}
+            <ChatNotificationToast />
           </div>
         )}
       </SuperAdminProvider>

@@ -622,9 +622,11 @@ export interface CrmSupplier {
   id: string;
   slNo: number;
   supplierName: string;
+  name?: string;
   companyName?: string;
   trn?: string;
   contactPerson?: string;
+  contact?: string;
   email?: string;
   phone: string;
   mobile?: string;
@@ -636,6 +638,8 @@ export interface CrmSupplier {
   status: 'Active' | 'Inactive' | 'Blocked' | string;
   customerId?: string;
   owner?: string;
+  ownerAvatar?: string;
+  outstanding?: number;
   createdBy?: string;
   remarks?: string;
 }
@@ -699,6 +703,15 @@ export interface CrmPurchaseOrder {
   owner?: string;
   ownerAvatar?: string;
   items?: CrmPurchaseOrderItem[];
+  evaluatedTotalValue?: number;
+  requiredApprovalTier?: 'FINANCE_CONTROLLER' | 'CHIEF_OPERATING_OFFICER' | string;
+  approvedByName?: string;
+  approvedAt?: string;
+  isAdhoc?: boolean;
+  deliveryMode?: 'Warehouse_Receipt' | 'Direct_Site_Delivery' | string;
+  msrfId?: string;
+  salesOrderId?: string;
+  approvals?: CrmPurchaseApproval[];
 }
 
 export interface CrmStockInItem {
@@ -732,4 +745,482 @@ export interface CrmStockInRecord {
   items?: CrmStockInItem[];
 }
 
+// ============================================================================
+// PHASE 3 PROCUREMENT GOVERNANCE TYPES
+// ============================================================================
+
+export type MsrfPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
+export type MsrfReportingStatus = 'Pending' | 'Approved' | 'Rejected' | 'More_Info_Required';
+export type MsrfProcurementStatus =
+  | 'Awaiting_Intake'
+  | 'Intake_Accepted'
+  | 'Stock_Verified'
+  | 'Sourcing'
+  | 'Recommendation_Prepared'
+  | 'Closed'
+  | 'Cancelled';
+export type MsrfStockVerificationStatus =
+  | 'Unverified'
+  | 'Full_Stock_Available'
+  | 'Partial_Stock_Available'
+  | 'No_Stock_Available';
+
+export interface CrmMsrfItem {
+  id: string;
+  msrfId?: string;
+  itemCode?: string;
+  description: string;
+  unit?: string;
+  brandPreference?: string;
+  requestedQty: number;
+  availableStockQty?: number;
+  procureQty?: number;
+  estimatedUnitRate: number;
+  estimatedTotalAmount: number;
+  sortOrder?: number;
+}
+
+export interface CrmMsrf {
+  id: string;
+  slNo?: number;
+  msrfNumber: string;
+  date: string;
+  requestorId: string;
+  requestorName: string;
+  department: string;
+  priority: MsrfPriority;
+  purpose: string;
+  requiredByDate: string;
+  salesOrderId?: string;
+  salesOrderNumber?: string;
+  projectName?: string;
+  estimatedTotalValue: number;
+  reportingHeadId?: string;
+  reportingHeadName?: string;
+  reportingHeadStatus: MsrfReportingStatus;
+  reportingHeadDecisionAt?: string;
+  reportingHeadRemarks?: string;
+  procurementStatus: MsrfProcurementStatus;
+  assignedBuyerId?: string;
+  assignedBuyerName?: string;
+  stockVerificationStatus?: MsrfStockVerificationStatus;
+  purchaseInstructions?: string;
+  requestorConfirmedAt?: string;
+  requestorFeedback?: string;
+  isClosed?: boolean;
+  closedAt?: string;
+  closedById?: string;
+  items?: CrmMsrfItem[];
+  auditLogs?: CrmProcurementAuditLog[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CrmProcurementAuditLog {
+  id: string;
+  entityType?: string;
+  entityId?: string;
+  action: string;
+  actorId?: string;
+  actorName?: string;
+  previousState?: string;
+  newState?: string;
+  metadata?: string | Record<string, any>;
+  createdAt?: string;
+}
+
+export interface CrmSupplierQuotation {
+  id: string;
+  msrfId?: string;
+  quotationRef: string;
+  quotationDate: string;
+  supplierId: string;
+  supplierName: string;
+  currency?: string;
+  subtotal: number;
+  taxAmount: number;
+  shippingDeliveryCost: number;
+  installationCost: number;
+  otherAssociatedCosts: number;
+  landedTotalValue: number;
+  deliveryLeadTimeDays: number;
+  paymentTerms?: string;
+  validityDate?: string;
+  isRecommended: boolean;
+  recommendationReason?: string;
+  quoteDocumentUrl?: string;
+  createdById?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CrmPurchaseApproval {
+  id: string;
+  purchaseOrderId: string;
+  approvalTier: 'FINANCE_CONTROLLER' | 'CHIEF_OPERATING_OFFICER' | string;
+  approverId: string;
+  approverName: string;
+  approverDesignation?: string;
+  isDelegated: boolean;
+  delegationId?: string;
+  delegatorName?: string;
+  decision: 'Approved' | 'Rejected';
+  decisionAt: string;
+  evaluatedAmount: number;
+  remarks?: string;
+  createdAt?: string;
+}
+
+export interface CrmApproverDelegation {
+  id: string;
+  delegatorId: string;
+  delegatorName: string;
+  delegatorDesignation: string;
+  delegateId: string;
+  delegateName: string;
+  delegateDesignation?: string;
+  approvalTier: 'FINANCE_CONTROLLER' | 'CHIEF_OPERATING_OFFICER';
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+  reason?: string;
+  createdById?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type CrmMatchingStatus =
+  | 'Pending_Audit'
+  | 'Verified_Matching'
+  | 'Price_Discrepancy'
+  | 'Quantity_Discrepancy'
+  | 'Approved';
+
+export interface CrmSupplierInvoiceItem {
+  id?: string;
+  invoiceId?: string;
+  purchaseOrderItemId?: string;
+  code?: string;
+  description: string;
+  unit: string;
+  invoicedQty: number;
+  unitPrice: number;
+  taxRate: number;
+  taxAmount: number;
+  discountAmount?: number;
+  totalAmount: number;
+  sortOrder?: number;
+}
+
+export interface CrmMatchItemVariance {
+  code?: string;
+  description: string;
+  poQty: number;
+  grnQty: number;
+  invoicedQty: number;
+  poUnitPrice: number;
+  invoicedUnitPrice: number;
+  qtyDiscrepancy: boolean;
+  priceDiscrepancy: boolean;
+  notes?: string;
+}
+
+export interface CrmThreeWayMatchResult {
+  overallStatus: CrmMatchingStatus;
+  poId: string;
+  poNumber: string;
+  poStatus: string;
+  grnId?: string | null;
+  grnNumber?: string | null;
+  isPoApproved: boolean;
+  hasGrn: boolean;
+  itemVariances: CrmMatchItemVariance[];
+  subtotalVariance: number;
+  taxVariance: number;
+  totalVariance: number;
+  reasons: string[];
+}
+
+export interface CrmSupplierInvoice {
+  id: string;
+  slNo?: number;
+  invoiceNumber: string;
+  invoiceDate: string;
+  dueDate?: string;
+  supplierId: string;
+  supplierName: string;
+  purchaseOrderId?: string;
+  purchaseOrderNumber?: string;
+  grnId?: string;
+  grnNumber?: string;
+  subtotal: number;
+  vatAmount: number;
+  discountAmount?: number;
+  adjustmentAmount?: number;
+  totalAmount: number;
+  amountPaid: number;
+  balanceDue: number;
+  paymentStatus: 'Due' | 'Partially_Paid' | 'Paid';
+  matchingStatus: CrmMatchingStatus;
+  matchDetails?: CrmThreeWayMatchResult | string;
+  discrepancyReason?: string;
+  resolutionAction?: 'Accept_Difference' | 'Request_Credit_Note' | 'Adjust_Invoice' | string;
+  resolutionNotes?: string;
+  resolvedByName?: string;
+  resolvedAt?: string;
+  paymentApprovedByName?: string;
+  paymentApprovedAt?: string;
+  notes?: string;
+  invoiceFileUrl?: string;
+  items?: CrmSupplierInvoiceItem[];
+  allocations?: CrmSupplierPaymentAllocation[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CrmSupplierPaymentAllocation {
+  id: string;
+  paymentId: string;
+  invoiceId: string;
+  invoiceNumber?: string;
+  allocatedAmount: number;
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface CrmSupplierPayment {
+  id: string;
+  slNo?: number;
+  voucherNumber: string;
+  paymentDate: string;
+  supplierId: string;
+  supplierName: string;
+  paymentMode: 'Bank_Transfer' | 'Cheque' | 'Cash' | 'Credit_Card';
+  bankName?: string;
+  referenceNo?: string;
+  chequeNumber?: string;
+  chequeDate?: string;
+  amount: number;
+  allocatedAmount?: number;
+  unallocatedAmount?: number;
+  notes?: string;
+  status: 'Pending' | 'Completed' | 'Bounced' | 'Void';
+  allocations?: CrmSupplierPaymentAllocation[];
+  createdAt?: string;
+  updatedAt?: string;
+}export interface ProcurementDashboardSummary {
+  spendBySupplier: Array<{
+    supplier: string;
+    po_count: number;
+    total_spend: number;
+    net_amount: number;
+    total_vat: number;
+  }>;
+  openCommitments: {
+    openOrdersCount: number;
+    totalCommittedValue: number;
+  };
+  payables: {
+    unpaidInvoiceCount: number;
+    totalOutstandingBalance: number;
+    totalPaidToDate: number;
+    totalInvoicedValue: number;
+    statusBreakdown: Array<{
+      payment_status: string;
+      count: number;
+      total_amount: number;
+      balance_due: number;
+    }>;
+  };
+  matchingHealth: {
+    totalInvoices: number;
+    discrepanciesCount: number;
+    discrepancyRate: number;
+    breakdown: Array<{
+      matching_status: string;
+      count: number;
+      total_amount: number;
+    }>;
+  };
+  sourcing: {
+    statusBreakdown: Array<{
+      procurement_status: string;
+      count: number;
+      total_value: number;
+    }>;
+    largeRequisitionsCount: number;
+    compliantQuoteCount: number;
+    sourcingComplianceRate: number;
+  };
+  departmentalSpend: Array<{
+    department: string;
+    request_count: number;
+    requested_value: number;
+  }>;
+  operationalQueues?: {
+    msrfPendingApproval: { count: number; totalValue: number; items: any[] };
+    procurementIntake: { count: number; totalValue: number; items: any[] };
+    stockShortages: { inventoryShortageCount: number; msrfShortageCount: number; items: any[] };
+    quotationsAwaitingReview: { count: number; totalValue: number; items: any[] };
+    posAwaitingApproval: { count: number; totalValue: number; items: any[] };
+    posAwaitingDelivery: { count: number; totalValue: number; items: any[] };
+    goodsReceiptsAwaitingProcessing: { count: number; items: any[] };
+    invoicesAwaitingMatching: { count: number; totalValue: number; items: any[] };
+    outstandingPayments: { count: number; totalBalanceDue: number; items: any[] };
+    requestsAwaitingConfirmation: { count: number; items: any[] };
+    requestsAwaitingClosure: { count: number; items: any[] };
+  };
+}
+
+export interface ApAgingBucket {
+  label: string;
+  count: number;
+  totalAmount: number;
+  invoices: Array<{
+    id: string;
+    invoice_number: string;
+    invoice_date: string;
+    due_date?: string;
+    supplier_id: string;
+    supplier_name: string;
+    total_amount: number;
+    amount_paid: number;
+    balance_due: number;
+    payment_status: string;
+    matching_status: string;
+    daysOverdue: number;
+    isDueDateEstimated: boolean;
+  }>;
+}
+
+export interface ApAgingReport {
+  asOfDate: string;
+  grandTotal: number;
+  totalUnpaidInvoices: number;
+  buckets: {
+    current: ApAgingBucket;
+    days31_60: ApAgingBucket;
+    days61_90: ApAgingBucket;
+    days90_plus: ApAgingBucket;
+  };
+  supplierSummary: Array<{
+    supplierId: string;
+    supplierName: string;
+    totalBalance: number;
+    count: number;
+    current: number;
+    days31_60: number;
+    days61_90: number;
+    days90_plus: number;
+  }>;
+}
+
+export interface SupplierStatementEntry {
+  statementInvoiceNo: string;
+  date?: string;
+  amount: number;
+}
+
+export interface SupplierStatementReconciliation {
+  supplierId: string;
+  supplierName: string;
+  statementDate: string;
+  statementClosingBalance: number;
+  internalLedgerBalance: number;
+  netVariance: number;
+  isReconciled: boolean;
+  summary: {
+    totalStatementEntries: number;
+    matchedCount: number;
+    varianceCount: number;
+    missingInCrmCount: number;
+    missingInStatementCount: number;
+    duplicateCount?: number;
+    paymentCount?: number;
+  };
+  matchedEntries: Array<{
+    statementInvoiceNo: string;
+    date: string;
+    statementAmount: number;
+    crmAmount: number;
+    amountPaid?: number;
+    balanceDue: number;
+    status: 'MATCHED';
+    notes?: string;
+  }>;
+  varianceEntries: Array<{
+    statementInvoiceNo: string;
+    date: string;
+    statementAmount: number;
+    crmAmount: number;
+    amountPaid?: number;
+    balanceDue?: number;
+    variance: number;
+    status: 'PRICE_VARIANCE';
+    notes: string;
+  }>;
+  missingInCrmEntries: Array<{
+    statementInvoiceNo: string;
+    date?: string;
+    statementAmount: number;
+    status: 'MISSING_IN_CRM';
+    notes: string;
+  }>;
+  missingInStatementEntries: Array<{
+    invoiceNumber: string;
+    invoiceDate: string;
+    balanceDue: number;
+    totalAmount: number;
+    amountPaid?: number;
+    status: 'MISSING_IN_STATEMENT';
+    notes: string;
+  }>;
+  duplicateEntries?: Array<{
+    statementInvoiceNo: string;
+    date?: string;
+    statementAmount: number;
+    status: 'DUPLICATE_ON_STATEMENT';
+    notes: string;
+  }>;
+  paymentEntries?: Array<{
+    statementRef: string;
+    date?: string;
+    statementAmount: number;
+    crmPaymentVoucher?: string;
+    crmAmount?: number;
+    status: 'PAYMENT_MATCHED' | 'PAYMENT_MISSING_IN_CRM';
+    notes: string;
+  }>;
+}
+
+export interface LegacyValidationRecord {
+  index: number;
+  type: string;
+  poNumber: string;
+  supplier: string;
+  amount: number;
+  date: string;
+  deliveryMode: string;
+  status: 'VALID' | 'DUPLICATE' | 'AMBIGUOUS';
+  issues: string[];
+  raw: any;
+}
+
+export interface LegacyValidationSummary {
+  totalRecords: number;
+  validCount: number;
+  duplicateCount: number;
+  ambiguousCount: number;
+  canImport: boolean;
+}
+
+export interface LegacyMigrationReport {
+  id: string;
+  batchId: string;
+  importedCount: number;
+  skippedCount: number;
+  executedBy: string;
+  createdAt: string;
+  details?: any;
+}
 

@@ -35,14 +35,45 @@ function createMockD1Database(users = []) {
         },
         async all() {
           if (sql.includes('FROM users')) {
-            const uid = boundParams[0];
-            const found = users.filter((u) => u.firebase_uid === uid);
-            return { results: found };
+            const param = boundParams[0];
+            if (sql.includes('firebase_uid =')) {
+              const found = users.filter((u) => u.firebase_uid === param);
+              return { results: found };
+            }
+            if (sql.includes('email') || sql.includes('LOWER(')) {
+              const cleanParam = String(param || '').trim().toLowerCase();
+              const found = users.filter((u) => (u.email || '').trim().toLowerCase() === cleanParam);
+              return { results: found };
+            }
+            if (sql.includes('id =')) {
+              const found = users.filter((u) => u.id === param);
+              return { results: found };
+            }
+            return { results: users };
           }
           if (sql.includes('FROM products')) {
             return { results: [{ id: 'prod_1', name: 'Chiller Unit', price: 5000 }] };
           }
           return { results: [] };
+        },
+        async first(col) {
+          const res = await this.all();
+          const row = res.results?.[0];
+          if (!row) return null;
+          if (col && typeof col === 'string') return row[col];
+          return row;
+        },
+        async run() {
+          if (sql.includes('UPDATE users SET firebase_uid =')) {
+            const newUid = boundParams[0];
+            const userId = boundParams[1];
+            const target = users.find((u) => u.id === userId);
+            if (target) {
+              target.firebase_uid = newUid;
+            }
+            return { success: true, meta: { changes: 1 } };
+          }
+          return { success: true, meta: { changes: 0 } };
         },
       };
     },
@@ -291,5 +322,156 @@ describe('cool-tech-crm-api Authentication Test Suite', () => {
     );
     assert.equal(res.status, 204);
     assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://crm-g5ad.vercel.app');
+  });
+
+  // 12. JIT Account-Linking: Links new Firebase UID to existing registered staff record by email
+  it('12. JIT Account-Linking: Valid token with new Firebase UID links to existing staff record by email without duplicates', async () => {
+    const newUid = 'firebase_new_uid_555';
+    const staffEmail = 'shemin123@gmail.com';
+    let tokenBuilder = new SignJWT({ email: staffEmail })
+      .setProtectedHeader({ alg: 'RS256', kid: validKeyId })
+      .setSubject(newUid)
+      .setAudience(PROJECT_ID)
+      .setIssuer(ISSUER)
+      .setIssuedAt()
+      .setExpirationTime('1h');
+    const token = await tokenBuilder.sign(validKeyPair.privateKey);
+
+    const initialUsers = [
+      {
+        id: 'usr_admin_shemin',
+        firebase_uid: 'old_unlinked_uid_999',
+        email: staffEmail,
+        full_name: 'Muhammed Shemin',
+        role: 'ADMIN',
+        is_active: 1,
+      },
+    ];
+
+    const mockDb = createMockD1Database(initialUsers);
+
+    const res = await app.request(
+      '/api/auth/me',
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      },
+      { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID }
+    );
+
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.success, true);
+    assert.equal(body.user.id, 'usr_admin_shemin');
+    assert.equal(body.user.firebase_uid, newUid);
+    // Verified user in database was linked, no duplicate user was created
+    assert.equal(initialUsers.length, 1);
+    assert.equal(initialUsers[0].firebase_uid, newUid);
+  });
+
+  // 13. Profile Isolation: Incorrect Firebase UID cannot access another employee's profile
+  it('13. Profile Isolation: Attacker UID cannot hijack another staff profile with different email', async () => {
+    const attackerUid = 'attacker_uid_007';
+    let tokenBuilder = new SignJWT({ email: 'attacker@evil.com' })
+      .setProtectedHeader({ alg: 'RS256', kid: validKeyId })
+      .setSubject(attackerUid)
+      .setAudience(PROJECT_ID)
+      .setIssuer(ISSUER)
+      .setIssuedAt()
+      .setExpirationTime('1h');
+    const attackerToken = await tokenBuilder.sign(validKeyPair.privateKey);
+
+    const existingUsers = [
+      {
+        id: 'usr_victim',
+        firebase_uid: 'legit_victim_uid',
+        email: 'victim@cooltechuae.com',
+        full_name: 'Victim Employee',
+        role: 'EMPLOYEE',
+        is_active: 1,
+      },
+    ];
+
+    const mockDb = createMockD1Database(existingUsers);
+
+    const res = await app.request(
+      '/api/auth/me',
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${attackerToken}` },
+      },
+      { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID }
+    );
+
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.equal(body.code, 'PROFILE_NOT_FOUND');
+    // Victim's UID was not modified
+    assert.equal(existingUsers[0].firebase_uid, 'legit_victim_uid');
+  });
+
+  // 14. MSRF Auth Enforcement: Unregistered user receives 403 PROFILE_NOT_FOUND on POST /api/msrf
+  it('14. MSRF Auth Enforcement: Authenticated user without CRM profile is blocked with 403 PROFILE_NOT_FOUND', async () => {
+    const unregToken = await createTestJwt({ sub: 'unregistered_staff_uid_777' });
+    const mockDb = createMockD1Database([]);
+
+    const res = await app.request(
+      '/api/msrf',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${unregToken}`,
+        },
+        body: JSON.stringify({
+          purpose: 'Emergency requisition',
+          requiredByDate: '2026-11-20',
+          items: [{ description: 'Test', requestedQty: 1, estimatedUnitRate: 10 }],
+        }),
+      },
+      { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID }
+    );
+
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.equal(body.code, 'PROFILE_NOT_FOUND');
+    assert.equal(body.message, 'Authenticated user does not have a registered CRM staff profile.');
+  });
+
+  // 15. Inactive Account Enforcement: Inactive user receives 403 ACCOUNT_INACTIVE on POST /api/msrf
+  it('15. Inactive Account Enforcement: Inactive staff account is blocked with 403 ACCOUNT_INACTIVE on POST /api/msrf', async () => {
+    const inactiveUid = 'inactive_staff_uid_888';
+    const inactiveToken = await createTestJwt({ sub: inactiveUid });
+    const mockDb = createMockD1Database([
+      {
+        id: 'usr_inactive_staff',
+        firebase_uid: inactiveUid,
+        email: 'staff@cooltechuae.com',
+        full_name: 'Deactivated Tech',
+        role: 'EMPLOYEE',
+        is_active: 0,
+      },
+    ]);
+
+    const res = await app.request(
+      '/api/msrf',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${inactiveToken}`,
+        },
+        body: JSON.stringify({
+          purpose: 'Blocked requisition',
+          requiredByDate: '2026-11-20',
+          items: [{ description: 'Test', requestedQty: 1, estimatedUnitRate: 10 }],
+        }),
+      },
+      { DB: mockDb, FIREBASE_PROJECT_ID: PROJECT_ID }
+    );
+
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.equal(body.code, 'ACCOUNT_INACTIVE');
   });
 });

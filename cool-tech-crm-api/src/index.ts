@@ -22,6 +22,14 @@ import {
   purchaseOrdersApp,
   stockInApp,
   stockTransfersApp,
+  msrfApp,
+  purchaseQuotationsApp,
+  delegationsApp,
+  supplierInvoicesApp,
+  supplierPaymentsApp,
+  procurementDashboardApp,
+  procurementLegacyApp,
+  supplierReconciliationApp,
 } from './procurement.ts';
 import {
   settingsApp,
@@ -29,6 +37,9 @@ import {
   opportunityStagesApp,
   opportunityLostReasonsApp,
 } from './settings.ts';
+import { notificationsApp } from './notifications.ts';
+import { chatApp } from './chat.ts';
+import { ChatRoom } from './chatDurableObject.ts';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -395,12 +406,29 @@ app.route('/api/inventory', crmInventoryApp);
 app.route('/api/purchase-orders', purchaseOrdersApp);
 app.route('/api/stock-in', stockInApp);
 app.route('/api/stock-transfers', stockTransfersApp);
+app.route('/api/msrf', msrfApp);
+app.route('/api/purchase-quotes', purchaseQuotationsApp);
+app.route('/api/delegations', delegationsApp);
+app.route('/api/supplier-invoices', supplierInvoicesApp);
+app.route('/api/purchase-invoices', supplierInvoicesApp);
+app.route('/api/supplier-payments', supplierPaymentsApp);
+app.route('/api/purchase-payments', supplierPaymentsApp);
+app.route('/api/procurement-dashboard', procurementDashboardApp);
+app.route('/api/procurement/dashboard', procurementDashboardApp);
+app.route('/api/procurement/legacy', procurementLegacyApp);
+app.route('/api/supplier-reconciliation', supplierReconciliationApp);
 
 // 12. Settings, Targets, and Pipeline Stages Endpoints (Protected by authMiddleware & RBAC)
 app.route('/api/settings', settingsApp);
 app.route('/api/targets', targetsApp);
 app.route('/api/opportunity-stages', opportunityStagesApp);
 app.route('/api/opportunity-lost-reasons', opportunityLostReasonsApp);
+
+// 13. System Notifications Endpoint (Powers Live Navbar Bell across all modules)
+app.route('/api/notifications', notificationsApp);
+
+// 14. Live Chat & Team Collaboration Endpoints
+app.route('/api/chat', chatApp);
 
 // Global 404 handler
 app.notFound((c) => {
@@ -415,14 +443,15 @@ app.notFound((c) => {
 
 // Global Error Handler
 app.onError((err, c) => {
+  console.error('API Error:', err);
   return c.json(
     {
       success: false,
-      message: 'Internal server error',
+      message: err.message || 'Internal server error',
     },
     500
   );
 });
 
 export default app;
-export { app };
+export { app, ChatRoom };

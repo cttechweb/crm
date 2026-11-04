@@ -49,10 +49,12 @@ import {
   Globe,
   Upload,
   ArrowDownToLine,
+  MessageSquare,
 } from 'lucide-react';
 import { ENTERPRISE_NAV_ITEMS, MANAGER_NAV_ITEMS, EnterpriseNavItem } from '@/config/enterprise-navigation';
 import { NavDropdown } from '@/components/layout/NavDropdown';
 import { authMockService } from '@/services/authMockService';
+import { chatApiService } from '@/services/chatApiService';
 import { cn } from '@/lib/utils';
 
 const renderHeaderIcon = (name?: string, active: boolean = false) => {
@@ -101,6 +103,7 @@ const renderHeaderIcon = (name?: string, active: boolean = false) => {
     case 'Globe': return <Globe className={cls} />;
     case 'Upload': return <Upload className={cls} />;
     case 'ArrowDownToLine': return <ArrowDownToLine className={cls} />;
+    case 'MessageSquare': return <MessageSquare className={cls} />;
     default: return <Hourglass className={cls} />;
   }
 };
@@ -196,7 +199,28 @@ export function EnterpriseNavbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
   const navContainerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchChatUnread = async () => {
+      if (!currentUser) return;
+      try {
+        const count = await chatApiService.getUnreadCount();
+        if (mounted) setUnreadChatCount(count);
+      } catch {
+        // silent
+      }
+    };
+
+    fetchChatUnread();
+    const interval = setInterval(fetchChatUnread, 15000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [currentUser]);
 
   useEffect(() => {
     const syncUser = () => {
@@ -268,44 +292,34 @@ export function EnterpriseNavbar() {
       desig.includes('procure') ||
       pos.includes('purchase') ||
       pos.includes('procure') ||
-      pos === 'cpo' ||
-      name.includes('rashid') ||
-      name.includes('faisal') ||
-      name.includes('mustafa') ||
-      name.includes('musthafa');
+      pos === 'cpo';
 
-    const isSales =
+    // Unified Navbar Architecture: All staff (CEO, Managers, Sales, Operations, Purchase)
+    // receive the complete, consistent top navigation bar. Role-based security is enforced
+    // through scoped dropdown actions and page-level permission gates.
+    const isSalesEmployee =
+      isEmployee &&
       !isPurchase &&
       (dept.includes('sales') ||
         mgrType.includes('sales') ||
         empType.includes('sales') ||
         desig.includes('sales') ||
-        pos === 'cso' ||
-        name.includes('shibil') ||
-        name.includes('shaheer') ||
-        name.includes('adhil'));
+        pos.includes('sales'));
 
-    return baseNavItems.filter((item) => {
-      // Purchase personnel MUST always see the Purchase module
-      if (isPurchase && item.id === 'purchase') {
-        return true;
+    return baseNavItems.map((item) => {
+      // For Sales Executives/Staff: customize Purchase dropdown to focus on Material Requests (MSRF) and catalog
+      if (item.id === 'purchase' && isSalesEmployee) {
+        return {
+          ...item,
+          path: '/purchase?tab=msrf',
+          children: [
+            { label: 'Material Requests (MSRF)', href: '/purchase?tab=msrf', iconName: 'FileText' },
+            { label: 'Products Catalog', href: '/purchase?tab=products', iconName: 'Tag' },
+            { label: 'Warehouse Stock Check', href: '/purchase?tab=stock', iconName: 'Boxes' },
+          ],
+        };
       }
-
-      // Sales personnel do not have Purchase access
-      if (isSales && item.id === 'purchase') return false;
-
-      // Purchase personnel do not have Sales / Lead / Customer access
-      if (isPurchase && (item.id === 'sales' || item.id === 'leads' || item.id === 'customers')) return false;
-
-      // Check explicit modulePermissions if present
-      if (user.modulePermissions) {
-        if (item.id === 'purchase' && !isPurchase && user.modulePermissions.purchase === false) return false;
-        if (item.id === 'sales' && user.modulePermissions.sales === false) return false;
-        if (item.id === 'leads' && user.modulePermissions.leads === false) return false;
-        if (item.id === 'customers' && user.modulePermissions.customers === false) return false;
-      }
-
-      return true;
+      return item;
     });
   }, [currentUser]);
 

@@ -45,7 +45,7 @@ export default function ManagerDashboardPage() {
   const [mounted, setMounted] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('This Month');
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const { tasks, createTask, salesOpportunities, quotations, leads } = useEnterpriseCrm();
+  const { tasks, createTask, salesOpportunities, quotations, leads, salesOrders } = useEnterpriseCrm();
 
   const [usersVersion, setUsersVersion] = useState(0);
   const [realtimeTrigger, setRealtimeTrigger] = useState(0);
@@ -53,7 +53,9 @@ export default function ManagerDashboardPage() {
   const [isAddDeptModalOpen, setIsAddDeptModalOpen] = useState(false);
   const [newDeptName, setNewDeptName] = useState('');
 
-  const [currentDateFormatted, setCurrentDateFormatted] = useState('Wednesday, 24 Sep 2026');
+  const [currentDateFormatted, setCurrentDateFormatted] = useState(() => {
+    return new Date().toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
+  });
   const [currentTimeFormatted, setCurrentTimeFormatted] = useState('09:30 AM');
 
   const [isQuickAddEmployeeOpen, setIsQuickAddEmployeeOpen] = useState(false);
@@ -177,7 +179,35 @@ export default function ManagerDashboardPage() {
         }));
         setMaterialRequestsList(mapped);
       } else {
-        setMaterialRequestsList(BASELINE_MATERIALS);
+        // Fallback to enterprise material requests (MSRF)
+        let foundMsrf = false;
+        if (typeof window !== 'undefined') {
+          try {
+            const rawMsrf = localStorage.getItem('cooltech_crm_msrf_list') || localStorage.getItem('crm_msrf_data');
+            if (rawMsrf) {
+              const parsed = JSON.parse(rawMsrf);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                const mapped = parsed.slice(0, 4).map((m: any) => ({
+                  id: m.id,
+                  name: m.msrfNumber ? `${m.msrfNumber} (${m.projectName || m.department || 'MSRF'})` : 'Material Requisition',
+                  quantity: m.items && m.items.length > 0 ? `${m.items.length} Line Item(s)` : '1 Item',
+                  status: (m.procurementStatus || m.reportingHeadStatus || 'Pending').replace(/_/g, ' '),
+                  statusColor:
+                    m.procurementStatus === 'Closed'
+                      ? 'bg-[#D1FAE5] text-[#059669]'
+                      : m.reportingHeadStatus === 'Approved'
+                        ? 'bg-[#EBF3FE] text-[#1677FF]'
+                        : 'bg-[#FEF3C7] text-[#D97706]',
+                }));
+                setMaterialRequestsList(mapped);
+                foundMsrf = true;
+              }
+            }
+          } catch {}
+        }
+        if (!foundMsrf) {
+          setMaterialRequestsList(BASELINE_MATERIALS);
+        }
       }
 
       // Departments
@@ -410,27 +440,52 @@ export default function ManagerDashboardPage() {
     return BASELINE_TASKS;
   }, [tasks, currentUser]);
 
-  // Dynamic Live Pipeline Deals
+  // Dynamic Live Pipeline Deals (Including Sales Orders awaiting Approval)
   const dynamicDeals = useMemo(() => {
+    const deals: Array<{
+      id: string;
+      title: string;
+      customer: string;
+      stage: string;
+      stageColor: string;
+      amount: number;
+    }> = [];
+
+    // Prioritize Sales Orders needing manager review
+    if (salesOrders && salesOrders.length > 0) {
+      salesOrders.slice(0, 4).forEach((so) => {
+        const isPending = !so.status || so.status === 'Pending' || so.status === 'Pending_Approval';
+        deals.push({
+          id: so.id,
+          title: so.orderNumber ? `Sales Order ${so.orderNumber} (by ${so.owner || 'Tariq'})` : 'Commercial Order',
+          customer: so.customer || 'Commercial Client',
+          stage: isPending ? 'Pending Approval' : (so.status || 'Active Order'),
+          stageColor: isPending ? 'bg-[#FEF3C7] text-[#D97706] font-bold' : 'bg-[#D1FAE5] text-[#059669]',
+          amount: Number(so.totalAmount || so.amount) || 3150,
+        });
+      });
+    }
+
     if (salesOpportunities && salesOpportunities.length > 0) {
-      return salesOpportunities.slice(0, 4).map((opp) => {
+      salesOpportunities.slice(0, 4 - deals.length).forEach((opp) => {
         const stage = opp.stage || 'Opportunity';
         let stageColor = 'bg-[#EBF3FE] text-[#1677FF]';
         if (stage === 'Negotiation') stageColor = 'bg-[#FEF3C7] text-[#D97706]';
         if (stage === 'Invoice' || stage === 'Delivery Note' || stage === 'Order') stageColor = 'bg-[#D1FAE5] text-[#059669]';
 
-        return {
+        deals.push({
           id: opp.id,
           title: opp.title || 'HVAC Commercial Project',
           customer: opp.customer || 'Enterprise Account',
           stage,
           stageColor,
           amount: Number(opp.amount) || 250000,
-        };
+        });
       });
     }
-    return BASELINE_DEALS;
-  }, [salesOpportunities]);
+
+    return deals.length > 0 ? deals : BASELINE_DEALS;
+  }, [salesOrders, salesOpportunities]);
 
   // Dynamic Live Activities (combining CRM task history, activities, materials)
   const dynamicActivities = useMemo(() => {
@@ -442,6 +497,21 @@ export default function ManagerDashboardPage() {
       type: string;
       bgIcon: string;
     }> = [];
+
+    // Add recent sales orders from Tariq / Sales team
+    if (salesOrders && salesOrders.length > 0) {
+      salesOrders.slice(0, 3).forEach((o) => {
+        const isPending = !o.status || o.status === 'Pending' || o.status === 'Pending_Approval';
+        list.push({
+          id: `so-act-${o.id}`,
+          text: `Sales Order ${o.orderNumber || ''}: ${o.customer}`,
+          code: `${o.owner || 'Tariq Samad'} • ${isPending ? 'Pending Approval' : o.status}`,
+          time: 'Today',
+          type: 'order',
+          bgIcon: isPending ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600',
+        });
+      });
+    }
 
     // Check localStorage custom activities
     if (typeof window !== 'undefined') {
@@ -499,7 +569,7 @@ export default function ManagerDashboardPage() {
       return list.slice(0, 5);
     }
     return [];
-  }, [tasks, currentUser, realtimeTrigger]);
+  }, [tasks, currentUser, realtimeTrigger, salesOrders]);
 
   // Dynamic KPI Metrics Calculations (100% Live from Context and Storage)
   const metrics = useMemo(() => {
@@ -947,7 +1017,7 @@ export default function ManagerDashboardPage() {
                 ↑ +18.7%
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium">{metrics.totalDealsCount} deals • Q3 2026</p>
+            <p className="text-[11px] text-slate-400 font-medium">{metrics.totalDealsCount} deals • Q4 2026</p>
           </div>
           {/* Sparkline Wave */}
           <svg className="w-20 h-10 text-[#7C3AED]" viewBox="0 0 100 40" fill="none">

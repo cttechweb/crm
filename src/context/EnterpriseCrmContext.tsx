@@ -66,6 +66,7 @@ import {
   stockTransferApiService,
 } from '@/services/procurementApiService';
 import { userApiService, CrmBackendUser } from '@/services/userApiService';
+import { notificationService } from '@/services/notificationService';
 
 interface EnterpriseCrmContextType {
   currentRole: UserRole;
@@ -231,7 +232,98 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   const [purchaseOrders, setPurchaseOrders] = useState<CrmPurchaseOrder[]>([]);
   const [stockTransfers, setStockTransfers] = useState<CrmStockTransfer[]>([]);
   const [campaigns, setCampaigns] = useState<CrmCampaign[]>([]);
-  const [users, setUsers] = useState<CrmUser[]>([]);
+  const [users, setUsers] = useState<CrmUser[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cezconRaw = localStorage.getItem('cezcon_crm_users_list');
+        if (cezconRaw) {
+          const parsed = JSON.parse(cezconRaw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((u: any) => ({
+              id: String(u.id),
+              name: u.name,
+              email: u.email || `${u.username}@cooltechuae.com`,
+              role: (u.isAdmin ? 'Admin' : u.profileType?.toLowerCase().includes('manager') ? 'Manager' : 'Employee') as UserRole,
+              phone: u.phone || '+971 50 123 4567',
+              department: u.department || u.profileType || 'General',
+              status: 'Active',
+              lastLogin: 'Active now',
+              avatar: u.avatarImage || u.avatarUrl || u.avatar || '',
+              position: u.position || u.designation,
+            }));
+          }
+        }
+      } catch {}
+    }
+    return [
+      {
+        id: 'usr_superadmin_001',
+        name: 'Shemin',
+        email: 'cooltechuae@gmail.com',
+        role: 'Super Admin',
+        phone: '+971 50 123 4567',
+        department: 'Executive',
+        position: 'CEO',
+        status: 'Active',
+        lastLogin: 'Active now',
+      },
+      {
+        id: 'usr_1792733863086',
+        name: 'Mustafa',
+        email: 'im@cooltechuae.com',
+        role: 'Manager',
+        phone: '+971 55 456 7890',
+        department: 'General',
+        position: 'Purchase Officer',
+        status: 'Active',
+        lastLogin: 'Active now',
+      },
+      {
+        id: 'usr_1792054787769',
+        name: 'Rithul',
+        email: 'rithul@gmail.com',
+        role: 'Manager',
+        phone: '+971 52 345 6789',
+        department: 'Sales',
+        position: 'Sales Manager',
+        status: 'Active',
+        lastLogin: 'Active now',
+      },
+      {
+        id: 'usr_1792753099440',
+        name: 'Muhammed Arshad',
+        email: 'arshad@gmail.com',
+        role: 'Manager',
+        phone: '+971 50 567 8901',
+        department: 'General',
+        position: 'Sales Officer',
+        status: 'Active',
+        lastLogin: 'Active now',
+      },
+      {
+        id: 'usr_1792818916318',
+        name: 'Muhammed Shezin',
+        email: 'shezin@gmail.com',
+        role: 'Employee',
+        phone: '+971 50 234 5678',
+        department: 'Technical',
+        position: 'Technician',
+        status: 'Active',
+        lastLogin: 'Active now',
+      },
+      {
+        id: 'usr_1792683751144',
+        name: 'Muhammed Shemin',
+        email: 'shemin123@gmail.com',
+        role: 'Admin',
+        phone: '+971 50 987 6543',
+        department: 'Management',
+        position: 'COO',
+        status: 'Active',
+        lastLogin: 'Active now',
+      },
+    ];
+  });
   const isFetchingUsersRef = useRef(false);
   const [rbacRules, setRbacRules] = useState<PermissionRule[]>(mockRbacRules);
 
@@ -513,15 +605,30 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         if (storedTasks) {
           const parsed = JSON.parse(storedTasks);
           const sanitized = Array.isArray(parsed)
-            ? parsed.map((t: any) => ({
-              ...t,
-              assignee: {
-                ...t.assignee,
-                avatar: t.assignee?.avatar?.includes('unsplash.com') ? undefined : t.assignee?.avatar,
-              },
-            }))
+            ? parsed.map((t: any) => {
+              const isShemin = Boolean(
+                (t.assignedBy && t.assignedBy.toLowerCase().includes('shemin')) ||
+                (t.createdBy && t.createdBy.toLowerCase().includes('shemin')) ||
+                (t.id && String(t.id).includes('2712635'))
+              );
+              const isLateTask = (t.dueTime === '06:00 PM' || t.dueTime === '18:00');
+              return {
+                ...t,
+                assignedBy: isShemin ? 'shemin' : (t.assignedBy || t.createdBy),
+                createdBy: isShemin ? 'shemin' : t.createdBy,
+                department: isShemin
+                  ? (t.department && t.department !== 'Operations' && t.department !== 'Operations Desk' ? t.department : 'Executive')
+                  : t.department,
+                dueTime: isLateTask ? '10:00 AM' : (t.dueTime || '10:00 AM'),
+                assignee: {
+                  ...t.assignee,
+                  avatar: t.assignee?.avatar?.includes('unsplash.com') ? undefined : t.assignee?.avatar,
+                },
+              };
+            })
             : [];
           setTasks(sanitized);
+          persist('crm_tasks_data', sanitized, undefined, false);
         } else {
           setTasks([]);
         }
@@ -534,7 +641,19 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
               setTasks((prev) => {
                 const remoteIds = new Set(res.tasks.map((t) => t.id));
                 const localOnly = prev.filter((t) => !remoteIds.has(t.id));
-                const merged = [...localOnly, ...res.tasks];
+                const merged = [...localOnly, ...res.tasks].map((t: any) => {
+                  const isShemin = Boolean(
+                    (t.assignedBy && t.assignedBy.toLowerCase().includes('shemin')) ||
+                    (t.createdBy && t.createdBy.toLowerCase().includes('shemin')) ||
+                    (t.id && String(t.id).includes('2712635'))
+                  );
+                  const isLateTask = (t.dueTime === '06:00 PM' || t.dueTime === '18:00');
+                  return {
+                    ...t,
+                    department: isShemin && (!t.department || t.department.toLowerCase().includes('operat')) ? 'Executive' : t.department,
+                    dueTime: isLateTask ? '10:00 AM' : (t.dueTime || '10:00 AM'),
+                  };
+                });
                 persist('crm_tasks_data', merged, undefined, false);
                 return merged;
               });
@@ -567,7 +686,58 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         const storedOrders = localStorage.getItem('crm_orders_data');
         if (storedOrders) {
           const parsed = JSON.parse(storedOrders);
-          setSalesOrders(Array.isArray(parsed) ? parsed : []);
+          const ordersList = Array.isArray(parsed) ? parsed : [];
+          setSalesOrders(ordersList);
+
+          // Auto-sync missing customers from sales orders into customers master state
+          if (ordersList.length > 0) {
+            setCustomers((prevCusts) => {
+              const regSet = new Set(
+                prevCusts.map((c) => (c.customerName || c.companyName || '').trim().toLowerCase()).filter(Boolean)
+              );
+              let hasNew = false;
+              const nextCusts = [...prevCusts];
+
+              ordersList.forEach((ord: any) => {
+                const cName = (ord.customer || '').trim();
+                if (cName && !regSet.has(cName.toLowerCase())) {
+                  regSet.add(cName.toLowerCase());
+                  hasNew = true;
+                  const totalAmt = Number(ord.totalAmount) || (Number(ord.amount) || 0) + (Number(ord.vatAmount) || 0) || 2100;
+                  const paidAmt = Number(ord.paidAmount) || 0;
+                  const autoCust: CrmCustomer = {
+                    id: ord.customerId || `cust-${cName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+                    slNo: nextCusts.length + 1,
+                    customerName: cName,
+                    companyName: cName,
+                    contactPerson: ord.pointOfContact || ord.contactPerson || ord.customerContact || 'ramshad',
+                    phone: ord.phone || '+971 50 123 4567',
+                    email: ord.email || `${cName.toLowerCase().replace(/[^a-z0-9]/g, '')}@cooltechcrm.com`,
+                    owner: ord.owner || 'Tariq',
+                    status: 'Active',
+                    type: 'Customer',
+                    date: ord.orderDate || '03-11-2026',
+                    createdDate: ord.createdAt || new Date().toISOString(),
+                    lastActivity: 'Sales Order CTSO#3921 Created',
+                    companyGroup: 'Commercial Engineering',
+                    totalDeals: 1,
+                    totalSpend: totalAmt,
+                    outstanding: Math.max(0, totalAmt - paidAmt),
+                    lastOrder: ord.orderDate || 'Today',
+                    openEnquiries: 1,
+                    lastEnquiry: ord.orderDate || 'Today',
+                  };
+                  nextCusts.push(autoCust);
+                }
+              });
+
+              if (hasNew) {
+                persist('crm_customers_data', nextCusts, undefined, false);
+                return nextCusts;
+              }
+              return prevCusts;
+            });
+          }
         } else {
           setSalesOrders([]);
         }
@@ -607,14 +777,89 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
                   inv.contactPerson &&
                   (inv.contactPerson.toLowerCase().includes('mohammad hattab') || inv.contactPerson.toLowerCase().includes('hala fawzi'));
                 const realAvatar = (inv.ownerAvatar && !inv.ownerAvatar.includes('unsplash') && !inv.ownerAvatar.includes('photo-')) ? inv.ownerAvatar : (getEmployeePhoto(effectiveOwner) || undefined);
+
+                let correctedItems = inv.items;
+                let correctedAmount = Number(inv.amount) || 0;
+                let correctedSubtotal = inv.subtotal !== undefined ? Number(inv.subtotal) : undefined;
+                let correctedVatAmount = inv.vatAmount !== undefined ? Number(inv.vatAmount) : undefined;
+                let correctedCustomer = inv.customer;
+                let correctedAttention = inv.attention;
+                let correctedOpp = inv.opportunityOrderRef;
+
+                // CTSO#3939 / CTINV#15166 (PSG Split AC Unit)
+                if (inv.invoiceNumber === 'CTINV#15166' || inv.opportunityOrderRef?.includes('3939')) {
+                  correctedCustomer = inv.customer || 'PSG';
+                  correctedAttention = inv.attention || inv.contactPerson || 'Shamsad';
+                  correctedOpp = 'CTSO#3939 / Split AC';
+                  correctedAmount = 3150.00;
+                  correctedSubtotal = 3000.00;
+                  correctedVatAmount = 150.00;
+                  const hasWaterCooler = Array.isArray(inv.items) && inv.items.some((it: any) => it.code === 'CT25F2' || it.description?.toLowerCase().includes('water cooler'));
+                  if (!Array.isArray(inv.items) || inv.items.length === 0 || hasWaterCooler) {
+                    correctedItems = [
+                      {
+                        id: 'item-3939-1',
+                        description: '2-Ton Split AC Unit (or MITSUBISHI 2.0 TON SPLIT AC)',
+                        code: 'CQ4N-XMI73S',
+                        unit: 'Pcs',
+                        brand: 'MITSUBISHI',
+                        qty: 1,
+                        price: 3000,
+                        total: 3000,
+                      },
+                    ];
+                  }
+                }
+                // CTSO#3993 / CTINV#15002 (MUSSAFAH INDUSTRIAL AREA)
+                else if (inv.invoiceNumber === 'CTINV#15002' || inv.opportunityOrderRef?.includes('3993')) {
+                  correctedCustomer = inv.customer || 'MUSSAFAH INDUSTRIAL AREA, ABU DHABI';
+                  correctedAttention = inv.attention || inv.contactPerson || 'CT WEB';
+                  correctedOpp = 'CTSO#3993 / AC';
+                  const hasWaterCooler = Array.isArray(inv.items) && inv.items.some((it: any) => it.code === 'CT25F2' || it.description?.toLowerCase().includes('water cooler'));
+                  if (!Array.isArray(inv.items) || inv.items.length === 0 || hasWaterCooler || inv.amount === 3150) {
+                    correctedAmount = 3858.75;
+                    correctedSubtotal = 3675.00;
+                    correctedVatAmount = 183.75;
+                    correctedItems = [
+                      {
+                        id: 'item-3993-1',
+                        description: 'AC Installation Materials & Copper Pipe (1/2 inch)',
+                        code: 'MAT-COPPER-01',
+                        unit: 'Pcs',
+                        brand: 'Mueller',
+                        qty: 1,
+                        price: 3675,
+                        total: 3675,
+                      },
+                    ];
+                  }
+                }
+
+                const currentPaid = Number(inv.paidAmount) || 0;
+                const currentBalance = Math.max(0, correctedAmount - currentPaid);
+
                 return {
                   ...inv,
+                  customer: correctedCustomer,
+                  attention: correctedAttention,
+                  opportunityOrderRef: correctedOpp,
+                  amount: correctedAmount,
+                  subtotal: correctedSubtotal ?? (correctedAmount / 1.05),
+                  vatAmount: correctedVatAmount ?? (correctedAmount - (correctedAmount / 1.05)),
+                  totalAmount: correctedAmount,
+                  paidAmount: currentPaid,
+                  balanceAmount: currentBalance,
                   owner: effectiveOwner,
                   ownerAvatar: realAvatar,
                   contactPerson: isMockContact ? '' : (inv.contactPerson || ''),
+                  status: inv.status === 'Unpaid' ? 'Due' : (inv.status || 'Due'),
+                  items: correctedItems,
                 };
               })
               : mockInvoices;
+            if (sanitizedInvoices.length > 0) {
+              persist('crm_invoices_data', sanitizedInvoices, undefined, false);
+            }
             setInvoices(sanitizedInvoices.length > 0 ? sanitizedInvoices : mockInvoices);
           } catch (e) {
             setInvoices(mockInvoices);
@@ -772,7 +1017,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         purchaseOrderApiService
           .getPurchaseOrders({ limit: 100 })
           .then((res) => {
-            if (res && Array.isArray(res.orders) && res.orders.length > 0) {
+            if (res && Array.isArray(res.orders)) {
               setPurchaseOrders(res.orders);
               persist('crm_purchase_orders', res.orders, undefined, false);
             }
@@ -1055,6 +1300,9 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       console.error(e);
     }
     const uniqueId = `TSK-${Date.now().toString().slice(-4)}${Math.floor(100 + Math.random() * 900)}`;
+    const creator = (taskData.assignedBy || taskData.createdBy || '').toLowerCase();
+    const isShemin = creator.includes('shemin');
+    const isLateTask = taskData.dueTime === '06:00 PM' || taskData.dueTime === '18:00';
     const newTask: CrmTask = {
       ...taskData,
       id: uniqueId,
@@ -1062,6 +1310,8 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       createdAt: (taskData as any).createdAt || new Date().toISOString(),
       progress: taskData.progress ?? 0,
       assignedEmployee: taskData.assignedEmployee || taskData.assignee?.name,
+      department: taskData.department || (isShemin ? 'Executive' : 'Operations Desk'),
+      dueTime: isLateTask || !taskData.dueTime ? '10:00 AM' : taskData.dueTime,
     };
     const updated = [newTask, ...currentTasks.filter((t) => t.id !== uniqueId)];
     setTasks(updated);
@@ -1072,7 +1322,10 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   const createTask = (taskData: Partial<CrmTask> & { taskDetails: string }) => {
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const assigneeName = taskData.assignedEmployee || taskData.assignee?.name || 'Assigned Employee';
-    const managerName = taskData.assignedBy || taskData.createdBy || 'Operations Manager';
+    const managerName = taskData.assignedBy || taskData.createdBy || 'shemin';
+    const isShemin = managerName.toLowerCase().includes('shemin');
+    const defaultRole = isShemin ? 'CEO' : 'Manager';
+    const defaultDept = isShemin ? 'Executive' : 'Operations Desk';
 
     let currentTasks = tasks;
     try {
@@ -1083,6 +1336,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     }
 
     const uniqueId = taskData.id || `TSK-${Date.now().toString().slice(-4)}${Math.floor(100 + Math.random() * 900)}`;
+    const isLateTask = taskData.dueTime === '06:00 PM' || taskData.dueTime === '18:00';
 
     const newTask: CrmTask = {
       description: '',
@@ -1090,11 +1344,12 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       taskUnder: 'General Maintenance',
       taskType: 'Service Order',
       dueDate: new Date().toISOString().split('T')[0],
-      dueTime: '04:00 PM',
+      dueTime: isLateTask || !taskData.dueTime ? '10:00 AM' : taskData.dueTime,
       priority: 'Normal',
       assignedEmployee: assigneeName,
       assignedBy: managerName,
       createdBy: managerName,
+      department: taskData.department || defaultDept,
       assignee: {
         name: assigneeName,
         role: 'Employee',
@@ -1111,7 +1366,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           id: `log-${Date.now()}`,
           timestamp: `${now} - ${new Date().toLocaleDateString()}`,
           user: managerName,
-          userRole: 'Manager',
+          userRole: defaultRole,
           action: 'Created & Assigned',
           note: `Task assigned to ${assigneeName}`,
         },
@@ -1873,6 +2128,64 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     setSalesOrders(updated);
     persist('crm_orders_data', updated);
 
+    // Auto-register customer in Customer Master if not already present
+    const custName = (orderData.customer || '').trim();
+    if (custName) {
+      setCustomers((prev) => {
+        const exists = prev.some(
+          (c) => (c.customerName || c.companyName || '').trim().toLowerCase() === custName.toLowerCase()
+        );
+        if (!exists) {
+          const totalAmt = Number(orderData.totalAmount) || Number(orderData.amount) || 2100;
+          const autoCust: CrmCustomer = {
+            id: (orderData as any).customerId || `cust-${Date.now()}`,
+            slNo: prev.length + 1,
+            customerName: custName,
+            companyName: custName,
+            contactPerson: (orderData as any).pointOfContact || (orderData as any).contactPerson || custName,
+            phone: (orderData as any).phone || '+971 50 123 4567',
+            email: (orderData as any).email || `${custName.toLowerCase().replace(/[^a-z0-9]/g, '')}@cooltechcrm.com`,
+            owner: orderData.owner || 'Tariq',
+            status: 'Active',
+            type: 'Customer',
+            date: orderData.orderDate || new Date().toISOString().split('T')[0],
+            createdDate: new Date().toISOString(),
+            lastActivity: `Sales Order ${newOrder.orderNumber} placed`,
+            companyGroup: 'Commercial Engineering',
+            totalDeals: 1,
+            totalSpend: totalAmt,
+            outstanding: totalAmt,
+            lastOrder: orderData.orderDate || 'Today',
+            openEnquiries: 1,
+            lastEnquiry: orderData.orderDate || 'Today',
+          };
+          const updatedCusts = [autoCust, ...prev];
+          persist('crm_customers_data', updatedCusts);
+          customerApiService.createCustomer(autoCust).catch(() => {});
+          return updatedCusts;
+        }
+        return prev;
+      });
+    }
+
+    // Notify Sales Manager (Arafath)
+    if (!newOrder.status || newOrder.status === 'Pending') {
+      notificationService.addLocalNotification({
+        recipientId: 'arafath',
+        recipientRole: 'sales_manager',
+        title: 'Sales Order Awaiting Approval',
+        message: `${newOrder.owner || 'Tariq Samad'} submitted Sales Order ${newOrder.orderNumber} for ${newOrder.customer}. Awaiting your commercial sign-off.`,
+        type: 'approval',
+        linkUrl: `/sales?tab=orders&viewOrder=${newOrder.id}`,
+        metadata: { orderId: newOrder.id, orderNumber: newOrder.orderNumber },
+      });
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('crm_sales_updated'));
+      window.dispatchEvent(new Event('crm_notification_updated'));
+    }
+
     salesOrderApiService.createSalesOrder(newOrder).then((res) => {
       if (res?.order) {
         setSalesOrders((prev) => prev.map((o) => (o.id === uniqueId ? res.order : o)));
@@ -1883,9 +2196,28 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   };
 
   const updateSalesOrder = (id: string, updated: Partial<CrmSalesOrder>) => {
+    const existing = salesOrders.find((o) => o.id === id);
     const list = salesOrders.map((o) => (o.id === id ? { ...o, ...updated } : o));
     setSalesOrders(list);
     persist('crm_orders_data', list);
+
+    // If approved, notify Tariq (Sales Rep)
+    if (updated.status === 'Approved') {
+      notificationService.addLocalNotification({
+        recipientId: (existing as any)?.ownerId || existing?.owner || 'tariq',
+        recipientRole: 'sales',
+        title: 'Sales Order Approved',
+        message: `Sales Order ${existing?.orderNumber || id} for ${existing?.customer || 'Customer'} has been approved by Sales Manager (Arafath). You can now generate MSRF.`,
+        type: 'approval',
+        linkUrl: `/sales?tab=orders&viewOrder=${id}`,
+        metadata: { orderId: id, orderNumber: existing?.orderNumber },
+      });
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('crm_sales_updated'));
+      window.dispatchEvent(new Event('crm_notification_updated'));
+    }
 
     salesOrderApiService.updateSalesOrder(id, updated).catch((err) => {
       console.warn('[EnterpriseCrmContext] Failed to update sales order on D1:', err);
@@ -1915,17 +2247,17 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       console.error('Failed to read crm_invoices_data from localStorage:', e);
     }
 
-    const totalAmt = Number(invData.totalAmount) || 0;
+    const totalAmt = Number(invData.totalAmount) || Number(invData.amount) || 0;
     const paidAmt = Number(invData.paidAmount) || 0;
     const balanceAmt = Math.max(0, totalAmt - paidAmt);
     let derivedStatus = invData.status;
-    if (!derivedStatus || derivedStatus === 'Pending') {
+    if (!derivedStatus || derivedStatus === 'Pending' || derivedStatus === 'Unpaid') {
       if (paidAmt >= totalAmt && totalAmt > 0) {
         derivedStatus = 'Paid';
       } else if (paidAmt > 0 && paidAmt < totalAmt) {
         derivedStatus = 'Partially Paid';
       } else {
-        derivedStatus = 'Unpaid';
+        derivedStatus = 'Due';
       }
     }
 
@@ -1971,7 +2303,9 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
     if (exists) {
       list = currentInvoices.map((inv) => {
         if (inv.id !== id) return inv;
-        const total = updated.totalAmount !== undefined ? Number(updated.totalAmount) : Number(inv.totalAmount || 0);
+        const total = updated.totalAmount !== undefined
+          ? Number(updated.totalAmount)
+          : (Number(inv.totalAmount) || Number(inv.amount) || 0);
         const paid = updated.paidAmount !== undefined ? Number(updated.paidAmount) : Number(inv.paidAmount || 0);
         const balance = Math.max(0, total - paid);
 
@@ -1982,8 +2316,11 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           } else if (paid > 0 && paid < total) {
             status = 'Partially Paid';
           } else {
-            status = 'Unpaid';
+            status = 'Due';
           }
+        }
+        if (status === 'Unpaid') {
+          status = 'Due';
         }
 
         return {
@@ -2149,15 +2486,21 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
 
   // Supplier Handlers
   const addSupplier = (supData: Omit<CrmSupplier, 'id' | 'slNo'>) => {
+    const supplierName = supData.supplierName || (supData as any).name || 'Unnamed Supplier';
     const newSup: CrmSupplier = {
       ...supData,
-      id: `sup-${Date.now()}`,
+      id: (supData as any).id || `sup-${Date.now()}`,
       slNo: suppliers.length + 1,
+      supplierName,
+      name: (supData as any).name || supplierName,
+      phone: supData.phone || (supData as any).contact || '',
     };
     const updated = [newSup, ...suppliers];
     setSuppliers(updated);
     persist('crm_suppliers_list', updated);
-    supplierApiService.createSupplier(newSup).catch(() => { });
+    supplierApiService.createSupplier(newSup).catch((err) => {
+      console.error('Failed to create supplier via API:', err);
+    });
   };
 
   const updateSupplier = (id: string, updated: Partial<CrmSupplier>) => {
@@ -2176,12 +2519,21 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
 
   // Purchase Order Handlers
   const addPurchaseOrder = (poData: Omit<CrmPurchaseOrder, 'id' | 'slNo'>) => {
+    // Prevent duplicate PO if poNumber or id already exists
+    const existingPoNum = (poData as any).poNumber;
+    const existingId = (poData as any).id;
+    if (existingPoNum && purchaseOrders.some((p) => p.poNumber === existingPoNum)) {
+      return;
+    }
+    if (existingId && purchaseOrders.some((p) => p.id === existingId)) {
+      return;
+    }
     const newPo: CrmPurchaseOrder = {
       ...poData,
-      id: `po-${Date.now()}`,
+      id: existingId || `po-${Date.now()}`,
       slNo: purchaseOrders.length + 1,
     };
-    const updated = [newPo, ...purchaseOrders];
+    const updated = [newPo, ...purchaseOrders.filter((p) => p.id !== newPo.id && p.poNumber !== newPo.poNumber)];
     setPurchaseOrders(updated);
     persist('crm_purchase_orders', updated);
     purchaseOrderApiService.createPurchaseOrder(newPo).catch(() => { });
@@ -2195,10 +2547,14 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   };
 
   const deletePurchaseOrder = (id: string) => {
-    const list = purchaseOrders.filter((p) => p.id !== id);
+    const matched = purchaseOrders.find((p) => p.id === id || p.poNumber === id);
+    const list = purchaseOrders.filter((p) => p.id !== id && p.poNumber !== id);
     setPurchaseOrders(list);
     persist('crm_purchase_orders', list);
     purchaseOrderApiService.deletePurchaseOrder(id).catch(() => { });
+    if (matched && matched.poNumber && matched.poNumber !== id) {
+      purchaseOrderApiService.deletePurchaseOrder(matched.poNumber).catch(() => { });
+    }
   };
 
   // Stock Transfer Handlers

@@ -33,10 +33,12 @@ export interface CrmUserProfile {
 
 export interface Env {
   DB: D1Database;
+  CHAT_ROOM?: DurableObjectNamespace;
   FIREBASE_PROJECT_ID?: string;
   ALLOWED_ORIGIN?: string;
   ECOMMERCE_SERVICE?: Fetcher;
   ECOMMERCE_API_URL?: string;
+  ENVIRONMENT?: string;
 }
 
 export interface CrmProductItem {
@@ -807,6 +809,17 @@ export interface PurchaseOrderRow {
   discount: number;
   adjustment: number;
   total_amount: number;
+  evaluated_total_value?: number;
+  required_approval_tier?: 'FINANCE_CONTROLLER' | 'CHIEF_OPERATING_OFFICER' | null;
+  approval_id?: string | null;
+  approved_by_name?: string | null;
+  approved_at?: string | null;
+  is_adhoc?: number;
+  delivery_mode?: 'Warehouse_Receipt' | 'Direct_Site_Delivery';
+  is_legacy_migrated?: number;
+  migration_batch_id?: string | null;
+  msrf_id?: string | null;
+  sales_order_id?: string | null;
   invoice_received: string | null;
   approval: string;
   delivery_status: string;
@@ -853,6 +866,9 @@ export interface StockInRecordRow {
   total_items?: number | null;
   total_amount?: number;
   status?: string | null;
+  delivery_mode?: 'Warehouse_Receipt' | 'Direct_Site_Delivery';
+  is_legacy_migrated?: number;
+  migration_batch_id?: string | null;
   notes?: string | null;
   created_by?: string | null;
   created_by_id?: string | null;
@@ -868,6 +884,7 @@ export interface StockInItemRow {
   id: string;
   voucher_id?: string;
   stock_in_id?: string;
+  purchase_order_item_id?: string | null;
   sl_no: number | null;
   code: string | null;
   item?: string;
@@ -1020,4 +1037,351 @@ export interface OpportunityLostReasonRow {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ============================================================================
+// PROCUREMENT GOVERNANCE INTERFACES (PHASE 2)
+// ============================================================================
+
+export interface MaterialServiceRequestRow {
+  id: string;
+  sl_no: number | null;
+  msrf_number: string;
+  date: string;
+  requestor_id: string;
+  requestor_name: string;
+  created_by_id?: string | null;
+  created_by?: string | null;
+  department: string;
+  priority: 'Low' | 'Medium' | 'High' | 'Urgent';
+  purpose: string;
+  required_by_date: string;
+  sales_order_id?: string | null;
+  sales_order_number?: string | null;
+  purchase_order_id?: string | null;
+  purchase_order_number?: string | null;
+  project_name?: string | null;
+  estimated_total_value: number;
+  reporting_head_id?: string | null;
+  reporting_head_name?: string | null;
+  reporting_head_status: 'Pending' | 'Approved' | 'Rejected' | 'More_Info_Required';
+  reporting_head_decision_at?: string | null;
+  reporting_head_remarks?: string | null;
+  procurement_status:
+    | 'Awaiting_Intake'
+    | 'Intake_Accepted'
+    | 'Stock_Verified'
+    | 'Sourcing'
+    | 'Recommendation_Prepared'
+    | 'Closed'
+    | 'Cancelled';
+  assigned_buyer_id?: string | null;
+  assigned_buyer_name?: string | null;
+  stock_verification_status:
+    | 'Unverified'
+    | 'Full_Stock_Available'
+    | 'Partial_Stock_Available'
+    | 'No_Stock_Available';
+  purchase_instructions?: string | null;
+  requestor_confirmed_at?: string | null;
+  requestor_feedback?: string | null;
+  is_closed: number;
+  closed_at?: string | null;
+  closed_by_id?: string | null;
+  is_deleted: number;
+  deleted_at?: string | null;
+  deleted_by_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MaterialServiceRequestItemRow {
+  id: string;
+  msrf_id: string;
+  item_code?: string | null;
+  description: string;
+  unit: string;
+  brand_preference?: string | null;
+  requested_qty: number;
+  available_stock_qty: number;
+  procure_qty: number;
+  estimated_unit_rate: number;
+  estimated_total_amount: number;
+  sort_order: number;
+}
+
+export interface ApproverDelegationRow {
+  id: string;
+  delegator_id: string;
+  delegator_name: string;
+  delegator_designation: string;
+  delegate_id: string;
+  delegate_name: string;
+  delegate_designation?: string | null;
+  approval_tier: 'FINANCE_CONTROLLER' | 'CHIEF_OPERATING_OFFICER';
+  start_date: string;
+  end_date: string;
+  is_active: number;
+  reason?: string | null;
+  created_by_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PurchaseApprovalRow {
+  id: string;
+  record_type: 'PURCHASE_ORDER' | 'PURCHASE_RECOMMENDATION';
+  record_id: string;
+  reference_number: string;
+  total_evaluated_value: number;
+  required_authority: 'FINANCE_CONTROLLER' | 'CHIEF_OPERATING_OFFICER';
+  approver_id: string;
+  approver_name: string;
+  approver_role: string;
+  approver_designation: string;
+  is_delegated: number;
+  delegation_id?: string | null;
+  decision: 'Approved' | 'Rejected' | 'Returned_For_Clarification';
+  decision_at: string;
+  comments?: string | null;
+  signature_hash?: string | null;
+  ip_address?: string | null;
+}
+
+export interface SupplierQuotationRow {
+  id: string;
+  msrf_id?: string | null;
+  quotation_ref: string;
+  quotation_date: string;
+  supplier_id: string;
+  supplier_name: string;
+  currency: string;
+  subtotal: number;
+  tax_amount: number;
+  shipping_delivery_cost: number;
+  installation_cost: number;
+  other_associated_costs: number;
+  landed_total_value: number;
+  delivery_lead_time_days: number;
+  payment_terms?: string | null;
+  validity_date?: string | null;
+  is_recommended: number;
+  recommendation_reason?: string | null;
+  quote_document_url?: string | null;
+  created_by_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupplierInvoiceRow {
+  id: string;
+  sl_no: number | null;
+  invoice_number: string;
+  invoice_date: string;
+  due_date?: string | null;
+  supplier_id: string;
+  supplier_name: string;
+  purchase_order_id?: string | null;
+  purchase_order_number?: string | null;
+  grn_id?: string | null;
+  grn_number?: string | null;
+  subtotal: number;
+  vat_amount: number;
+  total_amount: number;
+  amount_paid: number;
+  balance_due: number;
+  payment_status: 'Due' | 'Partially_Paid' | 'Paid';
+  matching_status:
+    | 'Pending_Audit'
+    | 'Verified_Matching'
+    | 'Price_Discrepancy'
+    | 'Quantity_Discrepancy'
+    | 'Approved';
+  discount_amount?: number;
+  adjustment_amount?: number;
+  discrepancy_reason?: string | null;
+  resolution_action?: string | null;
+  resolution_notes?: string | null;
+  resolved_by_id?: string | null;
+  resolved_by_name?: string | null;
+  resolved_at?: string | null;
+  payment_approved_by_id?: string | null;
+  payment_approved_by_name?: string | null;
+  payment_approved_at?: string | null;
+  match_details?: string | null;
+  notes?: string | null;
+  invoice_file_url?: string | null;
+  is_deleted: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupplierInvoiceItemRow {
+  id: string;
+  invoice_id: string;
+  purchase_order_item_id?: string | null;
+  code?: string | null;
+  description: string;
+  unit: string;
+  invoiced_qty: number;
+  unit_price: number;
+  tax_rate: number;
+  tax_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  sort_order: number;
+  created_at?: string;
+}
+
+export interface MatchItemVariance {
+  code?: string;
+  description: string;
+  poQty: number;
+  grnQty: number;
+  invoicedQty: number;
+  poUnitPrice: number;
+  invoicedUnitPrice: number;
+  qtyDiscrepancy: boolean;
+  priceDiscrepancy: boolean;
+  notes?: string;
+}
+
+export interface ThreeWayMatchResult {
+  overallStatus: 'Verified_Matching' | 'Price_Discrepancy' | 'Quantity_Discrepancy' | 'Pending_Audit' | 'Approved';
+  poId: string;
+  poNumber: string;
+  poStatus: string;
+  grnId?: string | null;
+  grnNumber?: string | null;
+  isPoApproved: boolean;
+  hasGrn: boolean;
+  itemVariances: MatchItemVariance[];
+  subtotalVariance: number;
+  taxVariance: number;
+  totalVariance: number;
+  reasons: string[];
+}
+
+export interface SupplierPaymentRow {
+  id: string;
+  sl_no: number | null;
+  voucher_number: string;
+  payment_date: string;
+  supplier_id: string;
+  supplier_name: string;
+  payment_mode: 'Bank_Transfer' | 'Cheque' | 'Cash' | 'Credit_Card';
+  bank_name?: string | null;
+  reference_no?: string | null;
+  cheque_number?: string | null;
+  cheque_date?: string | null;
+  amount: number;
+  allocated_amount?: number;
+  unallocated_amount?: number;
+  notes?: string | null;
+  prepared_by_id?: string | null;
+  approved_by_id?: string | null;
+  status: 'Pending' | 'Completed' | 'Bounced' | 'Void';
+  is_deleted: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupplierPaymentAllocationRow {
+  id: string;
+  payment_id: string;
+  invoice_id: string;
+  allocated_amount: number;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface ProcurementAuditLogRow {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  actor_id: string;
+  actor_name: string;
+  previous_state?: string | null;
+  new_state?: string | null;
+  metadata?: string | null;
+  created_at: string;
+}
+
+export interface SystemNotificationRow {
+  id: string;
+  recipient_id?: string | null;
+  recipient_role?: string | null;
+  title: string;
+  message: string;
+  type?: string;
+  link_url?: string | null;
+  is_read: number;
+  metadata?: string | null;
+  created_at: string;
+}
+
+// ============================================================================
+// CHAT & LIVE MESSAGING TYPES (Slack-like Team Collaboration)
+// ============================================================================
+
+export type ChatConversationType = 'direct' | 'group' | 'channel';
+export type ChatMemberRole = 'owner' | 'admin' | 'member';
+export type ChatMessageType = 'text' | 'system' | 'file' | 'image';
+
+export interface ChatConversationRow {
+  id: string;
+  type: ChatConversationType;
+  title: string | null;
+  slug: string | null;
+  description: string | null;
+  is_private: number;
+  created_by: string | null;
+  last_message_at: string | null;
+  last_message_text: string | null;
+  last_message_sender_id: string | null;
+  last_message_sender_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMemberRow {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  role: ChatMemberRole;
+  joined_at: string;
+  last_read_at: string | null;
+  is_muted: number;
+  full_name?: string;
+  email?: string;
+  avatar_image?: string | null;
+  designation?: string | null;
+  role_name?: string | null;
+}
+
+export interface ChatMessageRow {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: string | null;
+  sender_avatar: string | null;
+  message_text: string;
+  message_type: ChatMessageType;
+  attachments: string | null;
+  is_edited: number;
+  edited_at: string | null;
+  is_deleted: number;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessageReadRow {
+  id: string;
+  conversation_id: string;
+  message_id: string;
+  user_id: string;
+  read_at: string;
 }

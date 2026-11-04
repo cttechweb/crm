@@ -28,7 +28,7 @@ export default function ManagerCalendarPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CalendarIcon className="w-5 h-5 text-blue-600" />
-              <h2 className="text-base font-bold text-slate-900">September 2026</h2>
+              <h2 className="text-base font-bold text-slate-900">November 2026</h2>
             </div>
             <div className="flex items-center gap-1">
               <button className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600">

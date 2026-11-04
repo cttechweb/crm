@@ -1398,17 +1398,7 @@ export function ProductsTab() {
                           {item.type || 'Product'}
                         </td>
                         <td className="py-3 px-4 text-right font-mono font-medium text-slate-700 border-r border-slate-200">
-                          {typeof item.purchaseRate === 'number' &&
-                          item.purchaseRate > 0 &&
-                          item.purchaseRate !== item.sellingPrice &&
-                          item.purchaseRate !== (item as any).price ? (
-                            Number(item.purchaseRate).toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })
-                          ) : (
-                            <span className="text-slate-400 font-sans text-xs" title="Not provided in public e-commerce catalog">—</span>
-                          )}
+                          0.00
                         </td>
                         <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 border-r border-slate-200">
                           {Number(item.sellingPrice || item.basePrice || 0).toLocaleString(undefined, {

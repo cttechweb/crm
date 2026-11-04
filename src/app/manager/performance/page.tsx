@@ -51,10 +51,10 @@ export default function ManagerPerformancePage() {
         <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold text-slate-900">Technician &amp; Field Scorecards</h2>
-            <p className="text-[11px] text-slate-500">Individual performance metrics for Q3 2026</p>
+            <p className="text-[11px] text-slate-500">Individual performance metrics for Q4 2026</p>
           </div>
           <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
-            Active Period: Sep 2026
+            Active Period: Nov 2026
           </span>
         </div>
 

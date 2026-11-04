@@ -32,6 +32,7 @@ import type {
   InvoiceItemRow,
 } from './types.ts';
 import { authMiddleware } from './auth.ts';
+import { createSystemNotification } from './notifications.ts';
 
 // Helper: Check if an owner is under a manager's reporting scope
 async function isOwnerInManagerScope(
@@ -879,6 +880,17 @@ salesOrdersApp.post('/', async (c) => {
       `).bind(id, orderNumber, quotationId).run().catch(() => {});
     }
 
+    // Notify Sales Manager (Arafath) that an order needs commercial approval
+    await createSystemNotification(c.env.DB, {
+      recipientId: 'arafath',
+      recipientRole: 'sales_manager',
+      title: 'Sales Order Awaiting Approval',
+      message: `${user?.full_name || 'Tariq Samad'} submitted Sales Order ${orderNumber} for ${customer}. Awaiting your commercial sign-off.`,
+      type: 'approval',
+      linkUrl: `/sales?tab=orders&viewOrder=${id}`,
+      metadata: { orderId: id, orderNumber, customer, totalAmount: body.totalAmount },
+    });
+
     const created = await c.env.DB.prepare('SELECT * FROM sales_orders WHERE id = ?').bind(id).first<SalesOrderRow>();
     const createdItems = await c.env.DB.prepare(
       'SELECT * FROM sales_order_items WHERE order_id = ? ORDER BY sort_order ASC'
@@ -969,6 +981,19 @@ salesOrdersApp.put('/:id', async (c) => {
           desc, qty, unit, price, discount, 5, itmVat, itmTotal, i
         ).run();
       }
+    }
+
+    // If status became Approved, notify the order owner (Tariq)
+    if (status === 'Approved' && existing.status !== 'Approved') {
+      await createSystemNotification(c.env.DB, {
+        recipientId: existing.owner_id || 'tariq',
+        recipientRole: 'sales',
+        title: 'Sales Order Approved',
+        message: `Great news! Sales Order ${existing.order_number} has been approved by Sales Manager ${user.full_name || 'Arafath'}. You may now raise an MSRF for warehouse fulfillment.`,
+        type: 'approval',
+        linkUrl: `/sales?tab=orders&viewOrder=${id}`,
+        metadata: { orderId: id, orderNumber: existing.order_number },
+      });
     }
 
     const updated = await c.env.DB.prepare('SELECT * FROM sales_orders WHERE id = ?').bind(id).first<SalesOrderRow>();

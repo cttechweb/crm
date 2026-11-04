@@ -7,8 +7,11 @@
   "scripts": {
     "dev": "npx wrangler dev",
     "deploy": "npx wrangler deploy",
+    "migrate:remote": "npx wrangler d1 migrations apply DB --remote",
+    "check:remote": "npx wrangler d1 execute DB --remote --command \"PRAGMA table_info(users);\"",
+    "mark:0009": "npx wrangler d1 execute DB --remote --command \"INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0009_user_profile_and_permissions.sql');\"",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test test/auth.test.mjs test/customers.test.mjs test/leads.test.mjs test/products.test.mjs test/leadStorageMigration.test.mjs test/automaticLeadCreation.test.mjs test/users.test.mjs test/salesWorkflow.test.mjs test/tasksAndWorker.test.mjs test/salesAuxiliary.test.mjs test/procurementAndInventory.test.mjs test/settingsAndTargets.test.mjs test/employeeDropdownSync.test.mjs"
+    "test": "node --experimental-strip-types --test test/auth.test.mjs test/customers.test.mjs test/leads.test.mjs test/products.test.mjs test/leadStorageMigration.test.mjs test/automaticLeadCreation.test.mjs test/users.test.mjs test/salesWorkflow.test.mjs test/tasksAndWorker.test.mjs test/salesAuxiliary.test.mjs test/procurementAndInventory.test.mjs test/settingsAndTargets.test.mjs test/employeeDropdownSync.test.mjs test/procurementGovernance.test.mjs test/purchaseWorkflowIntegration.test.mjs test/supplierInvoicingAndMatching.test.mjs test/phase5ProcurementLifecycle.test.mjs test/msrfApprovalWorkflow.test.mjs test/finalPurchaseValidation.test.mjs test/chat.test.mjs"
   },
   "dependencies": {
     "hono": "^4.7.2",

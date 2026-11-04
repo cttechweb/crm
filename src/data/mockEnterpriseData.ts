@@ -84,6 +84,9 @@ export function getEmployeePhoto(name?: string): string {
   if (!name || typeof window === 'undefined') return '';
   const clean = name.toLowerCase().trim();
 
+  if (clean === 'shemin' || clean.includes('shemin')) return '/avatars/shemin.jpg';
+  if (clean === 'tariq' || clean.includes('tariq')) return '/avatars/tariq.jpg';
+
   try {
     // Check cool_crm_auth
     const authRaw = localStorage.getItem('cool_crm_auth');

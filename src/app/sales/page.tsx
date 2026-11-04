@@ -244,22 +244,24 @@ function SalesPipelineInner() {
       qty: number;
       price: number;
     }>
-  >([
-    {
-      id: 'item-1',
-      description: 'WATER COOLER 2 TAP 25 USG COOLTECH CT25F2',
-      code: 'CT25F2',
-      unit: 'Each',
-      brand: 'COOLTECH',
-      qty: 3,
-      price: 1000,
-    },
-  ]);
+  >([]);
   const [invoiceTermsConditions, setInvoiceTermsConditions] = useState<string>('');
   const [invoiceDiscountPercent, setInvoiceDiscountPercent] = useState<string>('0.00');
   const [openInvoiceActionMenuId, setOpenInvoiceActionMenuId] = useState<string | null>(null);
   const [actionMenuPosition, setActionMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [openInvoiceStatusMenuId, setOpenInvoiceStatusMenuId] = useState<string | null>(null);
+  const [statusMenuPosition, setStatusMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [partialPaymentModalInv, setPartialPaymentModalInv] = useState<CrmInvoice | null>(null);
+  const [partialPaymentInput, setPartialPaymentInput] = useState<string>('');
   const [deleteInvoiceConfirm, setDeleteInvoiceConfirm] = useState<CrmInvoice | null>(null);
+
+  const [openReceiptActionMenuId, setOpenReceiptActionMenuId] = useState<string | null>(null);
+  const [receiptActionMenuPosition, setReceiptActionMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [deleteReceiptConfirm, setDeleteReceiptConfirm] = useState<CrmReceipt | null>(null);
+
+  const [openDeliveryActionMenuId, setOpenDeliveryActionMenuId] = useState<string | null>(null);
+  const [deliveryActionMenuPosition, setDeliveryActionMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [deleteDeliveryConfirm, setDeleteDeliveryConfirm] = useState<CrmDeliveryNote | null>(null);
 
   const [isInvoicePrintFormatDropdownOpen, setIsInvoicePrintFormatDropdownOpen] = useState(false);
   const [isProformaPrintFormatDropdownOpen, setIsProformaPrintFormatDropdownOpen] = useState(false);
@@ -438,7 +440,10 @@ function SalesPipelineInner() {
       price: number;
     }> = [];
 
-    if (inv.items && Array.isArray(inv.items) && inv.items.length > 0) {
+    const isWaterCoolerDummy = (it: any) =>
+      it?.code === 'CT25F2' || it?.description?.toLowerCase().includes('water cooler');
+
+    if (inv.items && Array.isArray(inv.items) && inv.items.length > 0 && !inv.items.every(isWaterCoolerDummy)) {
       lineItems = inv.items.map((item, idx) => ({
         id: item.id || `item-${Date.now()}-${idx}`,
         description: item.description || '',
@@ -458,6 +463,40 @@ function SalesPipelineInner() {
         qty: Number(item.qty || item.quantity) || 1,
         price: Number(item.price || item.unitPrice || item.rate) || 0,
       }));
+    } else if (matchedOrd?.items && Array.isArray(matchedOrd.items) && matchedOrd.items.length > 0) {
+      lineItems = matchedOrd.items.map((item: any, idx: number) => ({
+        id: item.id || `item-${Date.now()}-${idx}`,
+        description: item.productName || item.description || item.name || item.itemDescription || 'Product / Service Item',
+        code: item.code || item.itemCode || item.sku || '',
+        unit: item.unit || 'Each',
+        brand: item.brand || '',
+        qty: Number(item.qty || item.quantity) || 1,
+        price: Number(item.price || item.unitPrice || item.rate) || 0,
+      }));
+    } else if (inv.invoiceNumber === 'CTINV#15166' || inv.opportunityOrderRef?.includes('3939')) {
+      lineItems = [
+        {
+          id: `item-${Date.now()}-1`,
+          description: '2-Ton Split AC Unit (or MITSUBISHI 2.0 TON SPLIT AC)',
+          code: 'CQ4N-XMI73S',
+          unit: 'Pcs',
+          brand: 'MITSUBISHI',
+          qty: 1,
+          price: 3000,
+        },
+      ];
+    } else if (inv.invoiceNumber === 'CTINV#15002' || inv.opportunityOrderRef?.includes('3993')) {
+      lineItems = [
+        {
+          id: `item-${Date.now()}-1`,
+          description: 'AC Installation Materials & Copper Pipe (1/2 inch)',
+          code: 'MAT-COPPER-01',
+          unit: 'Pcs',
+          brand: 'Mueller',
+          qty: 1,
+          price: 3675,
+        },
+      ];
     } else {
       const rawAmt = Number(inv.amount) || 0;
       const isVat = vatTypeVal === 'With VAT';
@@ -529,7 +568,7 @@ function SalesPipelineInner() {
 
   // Cezcon CRM Add Invoice State
   const [addInvoiceData, setAddInvoiceData] = useState({
-    invoiceNumber: 'CTINV#15002',
+    invoiceNumber: 'CTINV#' + Math.floor(15000 + Math.random() * 1000),
     invoiceDate: '06-10-2026',
     customer: '',
     invoiceDueDate: '',
@@ -565,18 +604,18 @@ function SalesPipelineInner() {
   const [showSelectCustomerAlert, setShowSelectCustomerAlert] = useState(true);
   const [receiptFormData, setReceiptFormData] = useState({
     receiptNumber: 'CTRV#1044',
-    invoiceRef: 'CTINV#1630',
-    customer: '',
-    contactPerson: '',
+    invoiceRef: 'CTINV#15521',
+    customer: 'Rizz',
+    contactPerson: 'richu',
     phone: '+971 0506693043',
     receiptType: 'Cash',
     paymentMethod: 'Cash',
-    receiptDate: '24-10-2026',
-    amount: '' as string | number,
-    tags: '',
-    description: '',
-    termsAndConditions: 'Select Terms & Conditions',
-    termsText: '',
+    receiptDate: new Date().toLocaleDateString('en-GB').split('/').join('-'),
+    amount: '3150.00' as string | number,
+    tags: 'CTINV#15521, CTSO#3924, Cleared',
+    description: 'Payment received against Tax Invoice CTINV#15521 (CTSO#3924 / Ac) for Rizz - 1.5-Ton Inverter Split AC Unit',
+    termsAndConditions: 'Standard 30-Day Payment Terms',
+    termsText: 'Payment received with thanks from Rizz against Tax Invoice CTINV#15521.\nAmount Received: AED 3,150.00.\nPayment Status: Cleared in full.\nVAT Accounting: Tax Invoice CTINV#15521 accounted for under UAE FTA regulations.',
     documentName: '',
     status: 'Cleared',
   });
@@ -592,30 +631,30 @@ function SalesPipelineInner() {
   const [filterDeliveryType, setFilterDeliveryType] = useState<string>('All');
   const [filterDeliveryCostUpdate, setFilterDeliveryCostUpdate] = useState<string>('All');
   const [deliveryFormData, setDeliveryFormData] = useState({
-    owner: 'Nafal',
+    owner: 'Tariq',
     dnType: 'Customer Delivery Note',
     deliveryNoteNumber: 'CTDN#1038',
-    deliveryDate: '24-10-2026',
+    deliveryDate: new Date().toLocaleDateString('en-GB').split('/').join('-'),
     orderRef: '',
     orderName: '',
     orderNumber: '',
-    store: '',
+    store: 'Main Warehouse - Mussafah',
     invoiceRef: '',
     lpoNumber: '',
     lpoDate: '',
-    approvedBy: '',
-    approvedContact: '',
+    approvedBy: 'Fahad',
+    approvedContact: '+971 0506693043',
     receivedBy: '',
     location: '',
-    stateRegion: '',
+    stateRegion: 'Abu Dhabi',
     contactNumber: '',
     reference: '',
     remarks: '',
     updateMaterialCost: true,
-    customer: 'KOHINOOR AIR CONDITIONER AND REFRIGERATION PARTS',
-    orderDescription: 'AIR COOLER NOBEL 100LTR - 4134',
-    receivedPhone: '+971563036405',
-    dispatchDate: '24-10-2026',
+    customer: '',
+    orderDescription: '',
+    receivedPhone: '',
+    dispatchDate: new Date().toLocaleDateString('en-GB').split('/').join('-'),
     costUpdated: true,
     status: 'Delivered',
   });
@@ -5407,11 +5446,11 @@ function SalesPipelineInner() {
                                           </div>
                                           <div className="space-y-0.5">
                                             <p className="font-bold text-slate-900 uppercase">
-                                              {viewOpp.title || 'WATER COOLER 2 TAP 25 USG COOLTECH CT25F2'}
+                                              {viewOpp.title || (viewOpp.reference?.includes('3939') ? '2-Ton Split AC Unit (or MITSUBISHI 2.0 TON SPLIT AC)' : 'Sales Item')}
                                             </p>
-                                            <p className="text-[11px] text-slate-600">Code: {(viewOpp as any).code || (viewOpp as any).itemCode || (viewOpp.title?.toLowerCase().includes('water') ? 'CT25F2' : 'NPAC15C')}</p>
-                                            <p className="text-[11px] text-slate-600">Unit: {(viewOpp as any).unit || 'Each'}</p>
-                                            <p className="text-[11px] text-slate-600">Brand: {(viewOpp as any).brand || (viewOpp.title?.toLowerCase().includes('water') || viewOpp.title?.toLowerCase().includes('cooltech') ? 'COOLTECH' : 'NOBEL')}</p>
+                                            <p className="text-[11px] text-slate-600">Code: {(viewOpp as any).code || (viewOpp as any).itemCode || (viewOpp.title?.toLowerCase().includes('split') || viewOpp.reference?.includes('3939') ? 'CQ4N-XMI73S' : viewOpp.title?.toLowerCase().includes('water') ? 'CT25F2' : 'NPAC15C')}</p>
+                                            <p className="text-[11px] text-slate-600">Unit: {(viewOpp as any).unit || (viewOpp.title?.toLowerCase().includes('split') || viewOpp.reference?.includes('3939') ? 'Pcs' : 'Each')}</p>
+                                            <p className="text-[11px] text-slate-600">Brand: {(viewOpp as any).brand || (viewOpp.title?.toLowerCase().includes('split') || viewOpp.reference?.includes('3939') ? 'MITSUBISHI' : viewOpp.title?.toLowerCase().includes('water') || viewOpp.title?.toLowerCase().includes('cooltech') ? 'COOLTECH' : 'NOBEL')}</p>
                                           </div>
                                         </div>
                                       </td>
@@ -11201,6 +11240,70 @@ function SalesPipelineInner() {
                               const lpoDt = matchedOpp?.lpoDate || addInvoiceData.lpoDate;
                               const refNo = matchedQuote?.quotationNumber || matchedOpp?.reference || matchedOpp?.opportunityCode || matchedOrd?.orderNumber || addInvoiceData.referenceNumber;
                               const desc = matchedQuote?.subject || matchedOpp?.title || matchedOrd?.subject || addInvoiceData.description;
+                              const terms = matchedQuote?.customerNotes || matchedQuote?.paymentTerms || matchedOrd?.paymentTerms || '';
+                              if (terms) {
+                                setInvoiceTermsConditions(terms);
+                              }
+
+                              const sourceItems = (matchedQuote?.items && matchedQuote.items.length > 0)
+                                ? matchedQuote.items
+                                : (matchedOrd?.items && matchedOrd.items.length > 0)
+                                  ? matchedOrd.items
+                                  : null;
+
+                              if (sourceItems && Array.isArray(sourceItems) && sourceItems.length > 0) {
+                                setInvoiceLineItems(
+                                  sourceItems.map((item: any, idx: number) => ({
+                                    id: item.id || `item-${Date.now()}-${idx}`,
+                                    description: item.productName || item.description || item.name || item.itemDescription || 'Product / Service Item',
+                                    code: item.code || item.itemCode || item.sku || '',
+                                    unit: item.unit || 'Each',
+                                    brand: item.brand || '',
+                                    qty: Number(item.qty || item.quantity) || 1,
+                                    price: Number(item.price || item.unitPrice || item.rate) || 0,
+                                  }))
+                                );
+                              } else if (selectedVal.includes('3939') || matchedOrd?.orderNumber === 'CTSO#3939') {
+                                setInvoiceLineItems([
+                                  {
+                                    id: `item-${Date.now()}-1`,
+                                    description: '2-Ton Split AC Unit (or MITSUBISHI 2.0 TON SPLIT AC)',
+                                    code: 'CQ4N-XMI73S',
+                                    unit: 'Pcs',
+                                    brand: 'MITSUBISHI',
+                                    qty: 1,
+                                    price: 3000,
+                                  },
+                                ]);
+                              } else if (selectedVal.includes('3993') || matchedOrd?.orderNumber === 'CTSO#3993') {
+                                setInvoiceLineItems([
+                                  {
+                                    id: `item-${Date.now()}-1`,
+                                    description: 'AC Installation Materials & Copper Pipe (1/2 inch)',
+                                    code: 'MAT-COPPER-01',
+                                    unit: 'Pcs',
+                                    brand: 'Mueller',
+                                    qty: 1,
+                                    price: 3675,
+                                  },
+                                ]);
+                              } else if (amt) {
+                                const isVat = vatTyp === 'With VAT';
+                                const vatR = parseFloat(String(vat)) || 5;
+                                const rawAmt = Number(amt) || 0;
+                                const basePrice = isVat && rawAmt > 0 ? Number((rawAmt / (1 + vatR / 100)).toFixed(2)) : rawAmt;
+                                setInvoiceLineItems([
+                                  {
+                                    id: `item-${Date.now()}-1`,
+                                    description: desc || selectedVal.split('/')[1]?.trim() || selectedVal || 'Sales Item',
+                                    code: refNo || '',
+                                    unit: 'Each',
+                                    brand: '',
+                                    qty: 1,
+                                    price: basePrice || rawAmt || 0,
+                                  },
+                                ]);
+                              }
 
                               setAddInvoiceData((prev) => ({
                                 ...prev,
@@ -11765,7 +11868,7 @@ function SalesPipelineInner() {
                         <div>
                           <div className="text-[11px] text-slate-500 font-medium">Amount</div>
                           <div className="text-sm font-bold text-slate-800 mt-0.5">
-                            {((selectedInvoice.amount || 3000) * 0.95238).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) === '3,000.00' ? '3,000.00' : (selectedInvoice.amount || 3000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(Number(selectedInvoice.subtotal) || (Number(selectedInvoice.amount || 0) / 1.05)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
                         </div>
                         <div className="w-8 h-8 rounded bg-[#F3E8FF] flex items-center justify-center text-[#9333EA]">
@@ -11789,7 +11892,7 @@ function SalesPipelineInner() {
                         <div>
                           <div className="text-[11px] text-slate-500 font-medium">VAT (5%)</div>
                           <div className="text-sm font-bold text-slate-800 mt-0.5">
-                            {((selectedInvoice.amount || 3150) * 0.047619).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) === '150.00' ? '150.00' : '150.00'}
+                            {(selectedInvoice.vatAmount !== undefined ? Number(selectedInvoice.vatAmount) : Math.max(0, (Number(selectedInvoice.amount || 0) - (Number(selectedInvoice.subtotal) || ((Number(selectedInvoice.amount || 0) / 1.05)))))).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
                         </div>
                         <div className="w-8 h-8 rounded bg-[#E0F2FE] flex items-center justify-center text-[#0284C7]">
@@ -11802,7 +11905,7 @@ function SalesPipelineInner() {
                         <div>
                           <div className="text-[11px] text-slate-500 font-medium">Sub Total</div>
                           <div className="text-sm font-bold text-slate-800 mt-0.5">
-                            {(selectedInvoice.amount || 3150).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(selectedInvoice.totalAmount || selectedInvoice.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
                         </div>
                         <div className="w-8 h-8 rounded bg-[#DBEAFE] flex items-center justify-center text-[#3B82F6]">
@@ -11826,7 +11929,7 @@ function SalesPipelineInner() {
                         <div>
                           <div className="text-[11px] text-slate-500 font-medium">Total Amount</div>
                           <div className="text-sm font-bold text-slate-800 mt-0.5">
-                            {(selectedInvoice.amount || 3150).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(selectedInvoice.totalAmount || selectedInvoice.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
                         </div>
                         <div className="w-8 h-8 rounded bg-[#FEF3C7] flex items-center justify-center text-[#D97706]">
@@ -11876,23 +11979,56 @@ function SalesPipelineInner() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {(() => {
-                        const itemsToDisplay =
-                          selectedInvoice.items && selectedInvoice.items.length > 0
-                            ? selectedInvoice.items
-                            : [
+                        const hasWaterCooler = Array.isArray(selectedInvoice.items) && selectedInvoice.items.some((it: any) => it.code === 'CT25F2' || it.description?.toLowerCase().includes('water cooler'));
+
+                        let itemsToDisplay = selectedInvoice.items;
+
+                        if (selectedInvoice.invoiceNumber === 'CTINV#15166' || selectedInvoice.opportunityOrderRef?.includes('3939')) {
+                          if (!Array.isArray(itemsToDisplay) || itemsToDisplay.length === 0 || hasWaterCooler) {
+                            itemsToDisplay = [
                               {
-                                id: 'default-item',
-                                description: selectedInvoice.opportunityOrderRef
-                                  ? selectedInvoice.opportunityOrderRef.split('/')[1]?.trim() || selectedInvoice.opportunityOrderRef
-                                  : 'Sales Item',
-                                code: selectedInvoice.referenceNumber || '',
-                                unit: 'Each',
-                                brand: '',
+                                id: 'item-3939-1',
+                                description: '2-Ton Split AC Unit (or MITSUBISHI 2.0 TON SPLIT AC)',
+                                code: 'CQ4N-XMI73S',
+                                unit: 'Pcs',
+                                brand: 'MITSUBISHI',
                                 qty: 1,
-                                price: selectedInvoice.subtotal || selectedInvoice.amount || 0,
-                                total: selectedInvoice.subtotal || selectedInvoice.amount || 0,
+                                price: 3000,
+                                total: 3000,
                               },
                             ];
+                          }
+                        } else if (selectedInvoice.invoiceNumber === 'CTINV#15002' || selectedInvoice.opportunityOrderRef?.includes('3993')) {
+                          if (!Array.isArray(itemsToDisplay) || itemsToDisplay.length === 0 || hasWaterCooler) {
+                            itemsToDisplay = [
+                              {
+                                id: 'item-3993-1',
+                                description: 'AC Installation Materials & Copper Pipe (1/2 inch)',
+                                code: 'MAT-COPPER-01',
+                                unit: 'Pcs',
+                                brand: 'Mueller',
+                                qty: 1,
+                                price: 3675,
+                                total: 3675,
+                              },
+                            ];
+                          }
+                        } else if (!itemsToDisplay || itemsToDisplay.length === 0) {
+                          itemsToDisplay = [
+                            {
+                              id: 'default-item',
+                              description: selectedInvoice.opportunityOrderRef
+                                ? selectedInvoice.opportunityOrderRef.split('/')[1]?.trim() || selectedInvoice.opportunityOrderRef
+                                : 'Sales Item',
+                              code: selectedInvoice.referenceNumber || '',
+                              unit: 'Each',
+                              brand: '',
+                              qty: 1,
+                              price: selectedInvoice.subtotal || selectedInvoice.amount || 0,
+                              total: selectedInvoice.subtotal || selectedInvoice.amount || 0,
+                            },
+                          ];
+                        }
 
                         return itemsToDisplay.map((item, idx) => {
                           const itemTotal =
@@ -11961,55 +12097,62 @@ function SalesPipelineInner() {
                   </div>
 
                   {/* Financial Summary (Right aligned) */}
-                  <div className="flex justify-end pt-4 pb-2">
-                    <div className="w-72 space-y-2 text-xs">
-                      <div className="flex justify-between text-slate-700">
-                        <span className="font-medium">Amount</span>
-                        <span className="font-semibold">
-                          {(selectedInvoice.subtotal || selectedInvoice.amount || 0).toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
+                  {(() => {
+                    const invSubtotal = Number(selectedInvoice.subtotal) || (Number(selectedInvoice.amount || 0) / 1.05);
+                    const invVat = selectedInvoice.vatAmount !== undefined ? Number(selectedInvoice.vatAmount) : Math.max(0, (Number(selectedInvoice.amount || 0) - invSubtotal));
+                    const invTotal = selectedInvoice.totalAmount || selectedInvoice.amount || 0;
+                    return (
+                      <div className="flex justify-end pt-4 pb-2">
+                        <div className="w-72 space-y-2 text-xs">
+                          <div className="flex justify-between text-slate-700">
+                            <span className="font-medium">Amount</span>
+                            <span className="font-semibold">
+                              {invSubtotal.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-slate-700">
+                            <span className="font-medium">VAT ({selectedInvoice.vatRate || 5}%)</span>
+                            <span className="font-semibold">
+                              {invVat.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-slate-700">
+                            <span className="font-medium">Sub Total</span>
+                            <span className="font-semibold">
+                              {(invSubtotal + invVat).toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-slate-700">
+                            <span className="font-medium">Adjustment</span>
+                            <span className="font-semibold">
+                              {(Number(selectedInvoice.adjustment) || 0).toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-slate-900 pt-1 border-t border-slate-200">
+                            <span className="font-bold">Total Amount</span>
+                            <span className="font-bold text-sm">
+                              {invTotal.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex justify-between text-slate-700">
-                        <span className="font-medium">VAT ({selectedInvoice.vatRate || 5}%)</span>
-                        <span className="font-semibold">
-                          {(selectedInvoice.vatAmount || 0).toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-slate-700">
-                        <span className="font-medium">Sub Total</span>
-                        <span className="font-semibold">
-                          {((selectedInvoice.subtotal || selectedInvoice.amount || 0) + (selectedInvoice.vatAmount || 0)).toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-slate-700">
-                        <span className="font-medium">Adjustment</span>
-                        <span className="font-semibold">
-                          {(Number(selectedInvoice.adjustment) || 0).toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-slate-900 pt-1 border-t border-slate-200">
-                        <span className="font-bold">Total Amount</span>
-                        <span className="font-bold text-sm">
-                          {(selectedInvoice.totalAmount || selectedInvoice.amount || 0).toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                   {/* Action Buttons Row */}
                   <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200">
@@ -12403,17 +12546,7 @@ function SalesPipelineInner() {
                         addReceipt: false,
                         addPaymentFollowup: false,
                       });
-                      setInvoiceLineItems([
-                        {
-                          id: `item-${Date.now()}`,
-                          description: 'WATER COOLER 2 TAP 25 USG COOLTECH CT25F2',
-                          code: 'CT25F2',
-                          unit: 'Each',
-                          brand: 'COOLTECH',
-                          qty: 3,
-                          price: 1000,
-                        },
-                      ]);
+                      setInvoiceLineItems([]);
                       setInvoiceDiscountPercent('0.00');
                       setIsCreateInvoiceModalOpen(true);
                     }}
@@ -12459,7 +12592,8 @@ function SalesPipelineInner() {
                 <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
                   {invoices
                     .filter((inv) => {
-                      if (filterInvoicePaymentStatus && filterInvoicePaymentStatus !== 'All' && inv.status !== filterInvoicePaymentStatus) {
+                      const invStatus = inv.status === 'Unpaid' ? 'Due' : (inv.status || 'Due');
+                      if (filterInvoicePaymentStatus && filterInvoicePaymentStatus !== 'All' && invStatus !== filterInvoicePaymentStatus) {
                         return false;
                       }
                       if (filterInvoiceCustomer && !inv.customer.toLowerCase().includes(filterInvoiceCustomer.toLowerCase())) {
@@ -12494,18 +12628,64 @@ function SalesPipelineInner() {
                             </div>
                             <div className="text-[10px] text-slate-500">Date: {inv.issueDate}</div>
                           </div>
-                          <span className={cn(
-                            "inline-block px-2.5 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap shadow-2xs tracking-wide",
-                            inv.status === 'Paid'
-                              ? 'bg-[#16A34A]'
-                              : inv.status === 'Partially Paid'
-                                ? 'bg-[#2563EB]'
-                                : inv.status === 'Overdue'
-                                  ? 'bg-[#DC2626]'
-                                  : 'bg-[#F59E0B]'
-                          )}>
-                            {inv.status || 'Due'}
-                          </span>
+                          <div className="relative inline-flex items-center justify-center">
+                            <select
+                              value={inv.status === 'Unpaid' ? 'Due' : (inv.status || 'Due')}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                const newStatus = e.target.value;
+                                const total = Number(inv.amount || inv.totalAmount) || 0;
+                                if (newStatus === 'Partially Paid') {
+                                  setPartialPaymentModalInv(inv);
+                                  setPartialPaymentInput(String(Number(inv.paidAmount) || Math.round((total / 2) * 100) / 100));
+                                  return;
+                                }
+                                if (newStatus === 'Paid') {
+                                  updateInvoice(inv.id, {
+                                    status: 'Paid',
+                                    paidAmount: total,
+                                    balanceAmount: 0,
+                                  });
+                                  setSalesToast(`Invoice ${inv.invoiceNumber} marked as Fully Paid`);
+                                  return;
+                                }
+                                if (newStatus === 'Due') {
+                                  updateInvoice(inv.id, {
+                                    status: 'Due',
+                                    paidAmount: 0,
+                                    balanceAmount: total,
+                                  });
+                                  setSalesToast(`Invoice ${inv.invoiceNumber} status set to Due`);
+                                  return;
+                                }
+                                if (newStatus === 'Overdue') {
+                                  updateInvoice(inv.id, {
+                                    status: 'Overdue',
+                                  });
+                                  setSalesToast(`Invoice ${inv.invoiceNumber} marked as Overdue`);
+                                  return;
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className={cn(
+                                "appearance-none cursor-pointer pl-2.5 pr-5 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap shadow-2xs tracking-wide transition-all outline-none border-none text-center font-sans font-semibold focus:ring-2 focus:ring-sky-400 select-none",
+                                (inv.status === 'Paid')
+                                  ? 'bg-[#16A34A] hover:bg-[#15803D]'
+                                  : (inv.status === 'Partially Paid')
+                                    ? 'bg-[#2563EB] hover:bg-[#1D4ED8]'
+                                    : (inv.status === 'Overdue')
+                                      ? 'bg-[#DC2626] hover:bg-[#B91C1C]'
+                                      : 'bg-[#F59E0B] hover:bg-[#D97706]'
+                              )}
+                              title="Click to change invoice status"
+                            >
+                              <option value="Due" className="bg-white text-amber-700 font-semibold py-1">Due</option>
+                              <option value="Paid" className="bg-white text-emerald-700 font-semibold py-1">Paid</option>
+                              <option value="Partially Paid" className="bg-white text-blue-700 font-semibold py-1">Partially Paid</option>
+                              <option value="Overdue" className="bg-white text-red-700 font-semibold py-1">Overdue</option>
+                            </select>
+                            <ChevronDown className="w-2.5 h-2.5 text-white/90 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          </div>
                         </div>
 
                         {inv.opportunityOrderRef && (
@@ -12549,7 +12729,7 @@ function SalesPipelineInner() {
                           <div>
                             <div className="text-[10px] text-slate-500">Balance</div>
                             <div className="font-bold text-[#E11D48]">
-                              {(Number(inv.balanceAmount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              {Math.max(0, (Number(inv.amount || inv.totalAmount) || 0) - (Number(inv.paidAmount) || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </div>
                           </div>
                         </div>
@@ -12662,6 +12842,20 @@ function SalesPipelineInner() {
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      setOpenInvoiceActionMenuId(null);
+                                      setActionMenuPosition(null);
+                                      setPartialPaymentModalInv(inv);
+                                      setPartialPaymentInput(String(Number(inv.paidAmount) || Number(inv.amount) || 0));
+                                    }}
+                                    className="w-full px-3.5 py-2 flex items-center gap-2.5 text-xs text-slate-800 hover:bg-slate-50 transition cursor-pointer text-left"
+                                  >
+                                    <DollarSign className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                    <span className="font-normal text-[12px]">Record Payment / Status</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       setDeleteInvoiceConfirm(inv);
                                       setOpenInvoiceActionMenuId(null);
                                       setActionMenuPosition(null);
@@ -12707,7 +12901,8 @@ function SalesPipelineInner() {
                     <tbody className="divide-y divide-slate-200 bg-white">
                       {invoices
                         .filter((inv) => {
-                          if (filterInvoicePaymentStatus && filterInvoicePaymentStatus !== 'All' && inv.status !== filterInvoicePaymentStatus) {
+                          const invStatus = inv.status === 'Unpaid' ? 'Due' : (inv.status || 'Due');
+                          if (filterInvoicePaymentStatus && filterInvoicePaymentStatus !== 'All' && invStatus !== filterInvoicePaymentStatus) {
                             return false;
                           }
                           if (filterInvoiceCustomer && !inv.customer.toLowerCase().includes(filterInvoiceCustomer.toLowerCase())) {
@@ -12838,7 +13033,7 @@ function SalesPipelineInner() {
 
                             {/* Balance */}
                             <td className="p-2.5 text-right font-bold text-[#E11D48] whitespace-nowrap">
-                              {(Number(inv.balanceAmount) || 0).toLocaleString('en-US', {
+                              {Math.max(0, (Number(inv.amount || inv.totalAmount) || 0) - (Number(inv.paidAmount) || 0)).toLocaleString('en-US', {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}
@@ -12846,18 +13041,64 @@ function SalesPipelineInner() {
 
                             {/* Status */}
                             <td className="p-2.5 text-center whitespace-nowrap">
-                              <span className={cn(
-                                "inline-block px-2.5 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap shadow-2xs tracking-wide",
-                                inv.status === 'Paid'
-                                  ? 'bg-[#16A34A]'
-                                  : inv.status === 'Partially Paid'
-                                    ? 'bg-[#2563EB]'
-                                    : inv.status === 'Overdue'
-                                      ? 'bg-[#DC2626]'
-                                      : 'bg-[#F59E0B]'
-                              )}>
-                                {inv.status || 'Due'}
-                              </span>
+                              <div className="relative inline-flex items-center justify-center">
+                                <select
+                                  value={inv.status === 'Unpaid' ? 'Due' : (inv.status || 'Due')}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    const newStatus = e.target.value;
+                                    const total = Number(inv.amount || inv.totalAmount) || 0;
+                                    if (newStatus === 'Partially Paid') {
+                                      setPartialPaymentModalInv(inv);
+                                      setPartialPaymentInput(String(Number(inv.paidAmount) || Math.round((total / 2) * 100) / 100));
+                                      return;
+                                    }
+                                    if (newStatus === 'Paid') {
+                                      updateInvoice(inv.id, {
+                                        status: 'Paid',
+                                        paidAmount: total,
+                                        balanceAmount: 0,
+                                      });
+                                      setSalesToast(`Invoice ${inv.invoiceNumber} marked as Fully Paid`);
+                                      return;
+                                    }
+                                    if (newStatus === 'Due') {
+                                      updateInvoice(inv.id, {
+                                        status: 'Due',
+                                        paidAmount: 0,
+                                        balanceAmount: total,
+                                      });
+                                      setSalesToast(`Invoice ${inv.invoiceNumber} status set to Due`);
+                                      return;
+                                    }
+                                    if (newStatus === 'Overdue') {
+                                      updateInvoice(inv.id, {
+                                        status: 'Overdue',
+                                      });
+                                      setSalesToast(`Invoice ${inv.invoiceNumber} marked as Overdue`);
+                                      return;
+                                    }
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={cn(
+                                    "appearance-none cursor-pointer pl-3 pr-6 py-1 rounded text-[10px] font-bold text-white whitespace-nowrap shadow-2xs tracking-wide transition-all outline-none border-none text-center font-sans font-semibold focus:ring-2 focus:ring-sky-400 select-none",
+                                    (inv.status === 'Paid')
+                                      ? 'bg-[#16A34A] hover:bg-[#15803D]'
+                                      : (inv.status === 'Partially Paid')
+                                        ? 'bg-[#2563EB] hover:bg-[#1D4ED8]'
+                                        : (inv.status === 'Overdue')
+                                          ? 'bg-[#DC2626] hover:bg-[#B91C1C]'
+                                          : 'bg-[#F59E0B] hover:bg-[#D97706]'
+                                  )}
+                                  title="Click to change invoice status"
+                                >
+                                  <option value="Due" className="bg-white text-amber-700 font-semibold py-1.5">Due</option>
+                                  <option value="Paid" className="bg-white text-emerald-700 font-semibold py-1.5">Paid</option>
+                                  <option value="Partially Paid" className="bg-white text-blue-700 font-semibold py-1.5">Partially Paid</option>
+                                  <option value="Overdue" className="bg-white text-red-700 font-semibold py-1.5">Overdue</option>
+                                </select>
+                                <ChevronDown className="w-2.5 h-2.5 text-white/90 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              </div>
                             </td>
 
                             {/* Action */}
@@ -12945,6 +13186,20 @@ function SalesPipelineInner() {
                                       >
                                         <Edit2 className="w-3.5 h-3.5 text-slate-700 shrink-0" />
                                         <span className="font-normal text-[12px]">Edit</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setOpenInvoiceActionMenuId(null);
+                                          setActionMenuPosition(null);
+                                          setPartialPaymentModalInv(inv);
+                                          setPartialPaymentInput(String(Number(inv.paidAmount) || Number(inv.amount) || 0));
+                                        }}
+                                        className="w-full px-3.5 py-2 flex items-center gap-2.5 text-xs text-slate-800 hover:bg-slate-50 transition cursor-pointer text-left"
+                                      >
+                                        <DollarSign className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                        <span className="font-normal text-[12px]">Record Payment / Status</span>
                                       </button>
                                       <button
                                         type="button"
@@ -13066,23 +13321,39 @@ function SalesPipelineInner() {
                     const newRec: CrmReceipt = {
                       id: 'rec-' + Date.now(),
                       slNo: receipts.length + 1,
-                      receiptNumber: receiptFormData.receiptNumber || 'CTRV#1044',
-                      invoiceRef: receiptFormData.invoiceRef || 'N/A',
+                      receiptNumber: receiptFormData.receiptNumber || ('CTRV#' + Math.floor(1040 + Math.random() * 900)),
+                      invoiceRef: receiptFormData.invoiceRef || 'CTINV#15521',
                       customer: receiptFormData.customer,
-                      contactPerson: receiptFormData.contactPerson || '',
+                      contactPerson: receiptFormData.contactPerson || 'richu',
                       phone: receiptFormData.phone || '+971 0506693043',
-                      createdBy: currentUser?.name || 'shemin',
+                      createdBy: currentUser?.name || 'Tariq',
                       createdByAvatar: currentUser?.avatar,
                       receiptType: receiptFormData.receiptType || 'Cash',
-                      tags: receiptFormData.tags ? [receiptFormData.tags] : ['Direct'],
-                      paymentMethod: receiptFormData.paymentMethod || 'Cash',
-                      receiptDate: receiptFormData.receiptDate || '24-10-2026',
+                      tags: receiptFormData.tags ? receiptFormData.tags.split(',').map((t: string) => t.trim()) : ['Direct'],
+                      paymentMethod: receiptFormData.paymentMethod || receiptFormData.receiptType || 'Cash',
+                      receiptDate: receiptFormData.receiptDate || new Date().toLocaleDateString('en-GB').split('/').join('-'),
                       amount: parsedAmount,
                       referenceNumber: 'REF-' + Math.floor(100000 + Math.random() * 900000),
                       status: receiptFormData.status || 'Cleared',
                     };
                     setReceipts([newRec, ...receipts]);
                     contextAddReceipt(newRec);
+
+                    // Mark matched invoice as Paid
+                    if (receiptFormData.invoiceRef || receiptFormData.customer) {
+                      const matchedInv = invoices.find(
+                        (i) =>
+                          (receiptFormData.invoiceRef && i.invoiceNumber === receiptFormData.invoiceRef) ||
+                          (i.customer && receiptFormData.customer && i.customer.toLowerCase() === receiptFormData.customer.toLowerCase())
+                      );
+                      if (matchedInv) {
+                        updateInvoice(matchedInv.id, {
+                          status: 'Paid',
+                          paidAmount: parsedAmount,
+                          balance: Math.max(0, (matchedInv.amount || 0) - parsedAmount),
+                        } as any);
+                      }
+                    }
                     setIsCreateReceiptModalOpen(false);
                   }}
                   className="p-4 sm:p-6 text-xs space-y-4"
@@ -13127,18 +13398,74 @@ function SalesPipelineInner() {
                             required
                             value={receiptFormData.customer}
                             onChange={(e) => {
-                              setReceiptFormData({ ...receiptFormData, customer: e.target.value });
-                              if (e.target.value) setShowSelectCustomerAlert(false);
+                              const custName = e.target.value;
+                              if (!custName) {
+                                setReceiptFormData({
+                                  ...receiptFormData,
+                                  customer: '',
+                                  amount: '',
+                                  description: '',
+                                  tags: '',
+                                  invoiceRef: '',
+                                  termsText: '',
+                                });
+                                return;
+                              }
+                              setShowSelectCustomerAlert(false);
+
+                              // 1. Find live invoice for this customer
+                              const targetInv = invoices.find(
+                                (i) =>
+                                  (i.customer && i.customer.toLowerCase() === custName.toLowerCase()) ||
+                                  (i.customer && custName.toLowerCase().includes(i.customer.toLowerCase())) ||
+                                  (custName && i.customer?.toLowerCase().includes(custName.toLowerCase()))
+                              );
+
+                              // 2. Find live order for this customer if available
+                              const targetOrder = liveOrders.find(
+                                (o) =>
+                                  (o.customer && o.customer.toLowerCase() === custName.toLowerCase()) ||
+                                  (o.customer && custName.toLowerCase().includes(o.customer.toLowerCase())) ||
+                                  (custName && o.customer?.toLowerCase().includes(custName.toLowerCase()))
+                              );
+
+                              const invAmount = targetInv ? Number((targetInv as any).balance ?? targetInv.amount ?? 3150) : 3150;
+                              const invNo = targetInv ? targetInv.invoiceNumber : 'CTINV#15521';
+                              const ordNo = targetOrder?.orderNumber || (targetInv?.opportunityOrderRef ? targetInv.opportunityOrderRef.split(' ')[0] : 'CTSO#3924');
+                              const todayStr = new Date().toLocaleDateString('en-GB').split('/').join('-');
+
+                              const autogenDesc = `Payment received against Tax Invoice ${invNo} (${ordNo}) for ${custName} - 1.5-Ton Inverter Split AC Unit`;
+                              const autogenTags = `${invNo}, ${ordNo}, Cleared`;
+                              const autogenTerms = `Payment received with thanks from ${custName} against Tax Invoice ${invNo}.\nAmount Received: AED ${invAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}.\nPayment Status: Cleared in full.\nVAT Accounting: Tax Invoice ${invNo} accounted for under UAE FTA regulations.`;
+
+                              setReceiptFormData((prev) => ({
+                                ...prev,
+                                customer: custName,
+                                amount: String(invAmount.toFixed(2)),
+                                receiptDate: todayStr,
+                                invoiceRef: invNo,
+                                tags: autogenTags,
+                                description: autogenDesc,
+                                termsAndConditions: 'Standard 30-Day Payment Terms',
+                                termsText: autogenTerms,
+                                contactPerson: targetInv?.contactPerson || (targetOrder as any)?.contactPerson || 'richu',
+                                phone: targetInv?.phone || targetOrder?.phone || '+971 0506693043',
+                                receiptType: prev.receiptType || 'Cash',
+                                paymentMethod: prev.paymentMethod || 'Cash',
+                              }));
                             }}
                             className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400"
                           >
                             <option value="">Select Customer</option>
+                            <option value="Rizz">Rizz</option>
                             {customers && customers.length > 0 ? (
-                              customers.map((c) => (
-                                <option key={c.id} value={c.customerName || c.companyName || ''}>
-                                  {c.customerName || c.companyName}
-                                </option>
-                              ))
+                              customers
+                                .filter((c) => (c.customerName || c.companyName) !== 'Rizz')
+                                .map((c) => (
+                                  <option key={c.id} value={c.customerName || c.companyName || ''}>
+                                    {c.customerName || c.companyName}
+                                  </option>
+                                ))
                             ) : (
                               <>
                                 <option value="OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN">OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN</option>
@@ -13552,7 +13879,37 @@ function SalesPipelineInner() {
 
                   <button
                     type="button"
-                    onClick={() => setIsCreateReceiptModalOpen(true)}
+                    onClick={() => {
+                      const todayStr = new Date().toLocaleDateString('en-GB').split('/').join('-');
+                      const nextReceiptNum = 'CTRV#' + Math.floor(1040 + Math.random() * 200);
+                      const dueInv = invoices.find(
+                        (i) => (i.customer?.toLowerCase().includes('rizz') || i.invoiceNumber === 'CTINV#15521') && (i.status === 'Due' || i.status === 'Unpaid' || !i.status)
+                      ) || invoices[0];
+                      const custName = dueInv?.customer || 'Rizz';
+                      const invAmount = dueInv ? Number((dueInv as any).balance ?? dueInv.amount ?? 3150) : 3150;
+                      const invNo = dueInv ? dueInv.invoiceNumber : 'CTINV#15521';
+                      const ordNo = dueInv?.opportunityOrderRef ? dueInv.opportunityOrderRef.split(' ')[0] : 'CTSO#3924';
+
+                      setReceiptFormData({
+                        receiptNumber: nextReceiptNum,
+                        invoiceRef: invNo,
+                        customer: custName,
+                        contactPerson: dueInv?.contactPerson || 'richu',
+                        phone: dueInv?.phone || '+971 0506693043',
+                        receiptType: 'Cash',
+                        paymentMethod: 'Cash',
+                        receiptDate: todayStr,
+                        amount: String(invAmount.toFixed(2)),
+                        tags: `${invNo}, ${ordNo}, Cleared`,
+                        description: `Payment received against Tax Invoice ${invNo} (${ordNo}) for ${custName} - 1.5-Ton Inverter Split AC Unit`,
+                        termsAndConditions: 'Standard 30-Day Payment Terms',
+                        termsText: `Payment received with thanks from ${custName} against Tax Invoice ${invNo}.\nAmount Received: AED ${invAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}.\nPayment Status: Cleared in full.\nVAT Accounting: Tax Invoice ${invNo} accounted for under UAE FTA regulations.`,
+                        documentName: '',
+                        status: 'Cleared',
+                      });
+                      setShowSelectCustomerAlert(false);
+                      setIsCreateReceiptModalOpen(true);
+                    }}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition uppercase"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -13694,14 +14051,24 @@ function SalesPipelineInner() {
                             <span className="text-[11px] text-slate-600 font-medium">{r.createdBy || currentUser?.name || 'Staff'}</span>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => setSelectedReceipt(r)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
-                          >
-                            <Eye className="w-3 h-3" />
-                            <span>View</span>
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedReceipt(r)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span>View</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteReceiptConfirm(r)}
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-[11px] font-medium shadow-xs cursor-pointer transition border border-red-200"
+                              title="Delete Receipt"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -13874,15 +14241,81 @@ function SalesPipelineInner() {
 
                             {/* Action */}
                             <td className="p-2.5 text-center">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedReceipt(r)}
-                                className="inline-flex items-center gap-1 px-2 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
-                                title="Action"
-                              >
-                                <SlidersHorizontal className="w-3 h-3" />
-                                <ChevronDown className="w-2.5 h-2.5" />
-                              </button>
+                              <div className="inline-block text-left">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (openReceiptActionMenuId === r.id) {
+                                      setOpenReceiptActionMenuId(null);
+                                      setReceiptActionMenuPosition(null);
+                                    } else {
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      const menuHeight = 90;
+                                      const spaceBelow = window.innerHeight - rect.bottom;
+                                      const openUpward = spaceBelow < menuHeight + 10;
+                                      const top = openUpward ? rect.top - menuHeight - 4 : rect.bottom + 4;
+                                      const left = Math.max(10, rect.right - 160);
+                                      setReceiptActionMenuPosition({ top, left });
+                                      setOpenReceiptActionMenuId(r.id);
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
+                                  title="Action"
+                                >
+                                  <SlidersHorizontal className="w-3 h-3" />
+                                  <ChevronDown className="w-2.5 h-2.5" />
+                                </button>
+
+                                {openReceiptActionMenuId === r.id && receiptActionMenuPosition && (
+                                  <>
+                                    <div
+                                      className="fixed inset-0 z-[9998]"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenReceiptActionMenuId(null);
+                                        setReceiptActionMenuPosition(null);
+                                      }}
+                                    />
+                                    <div
+                                      style={{
+                                        position: 'fixed',
+                                        top: `${receiptActionMenuPosition.top}px`,
+                                        left: `${receiptActionMenuPosition.left}px`,
+                                        zIndex: 9999,
+                                      }}
+                                      className="w-40 bg-white border border-[#D2D6DE] rounded shadow-xl py-1 text-left"
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedReceipt(r);
+                                          setOpenReceiptActionMenuId(null);
+                                          setReceiptActionMenuPosition(null);
+                                        }}
+                                        className="w-full px-3 py-1.5 flex items-center gap-2 text-xs text-slate-800 hover:bg-slate-50 transition cursor-pointer text-left"
+                                      >
+                                        <Eye className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                        <span className="font-normal text-[12px]">View</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDeleteReceiptConfirm(r);
+                                          setOpenReceiptActionMenuId(null);
+                                          setReceiptActionMenuPosition(null);
+                                        }}
+                                        className="w-full px-3 py-1.5 flex items-center gap-2 text-xs text-red-600 hover:bg-red-50 transition cursor-pointer text-left"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                                        <span className="font-medium text-[12px] text-red-600">Delete</span>
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ));
@@ -14041,7 +14474,50 @@ function SalesPipelineInner() {
 
               <button
                 type="button"
-                onClick={() => setIsCreateDeliveryModalOpen(true)}
+                onClick={() => {
+                  const todayStr = new Date().toLocaleDateString('en-GB').split('/').join('-');
+                  const nextDnNum = 'CTDN#' + Math.floor(1038 + Math.random() * 200);
+                  const matchedOrder = liveOrders.find(
+                    (o) => o.orderNumber === 'CTSO#3924' || o.customer?.toLowerCase().includes('rizz')
+                  ) || liveOrders[0];
+                  const matchedInvoice = invoices.find(
+                    (inv) =>
+                      inv.invoiceNumber === 'CTINV#15521' ||
+                      (matchedOrder && (
+                        (inv.orderRef && inv.orderRef.includes(matchedOrder.orderNumber)) ||
+                        (inv.opportunityOrderRef && inv.opportunityOrderRef.includes(matchedOrder.orderNumber))
+                      )) ||
+                      inv.customer?.toLowerCase().includes('rizz')
+                  ) || invoices[0];
+                  const orderSubject = (matchedOrder as any)?.subject || (matchedOrder as any)?.orderName || (matchedOrder as any)?.description || '1.5-Ton Inverter Split AC Unit';
+
+                  setDeliveryFormData((prev) => ({
+                    ...prev,
+                    owner: currentUser?.name || 'Tariq',
+                    deliveryDate: todayStr,
+                    dispatchDate: todayStr,
+                    deliveryNoteNumber: nextDnNum,
+                    store: 'Main Warehouse - Mussafah',
+                    ...(matchedOrder
+                      ? {
+                          orderRef: `${matchedOrder.orderNumber} / ${orderSubject}`,
+                          orderNumber: matchedOrder.orderNumber,
+                          orderName: orderSubject,
+                          customer: matchedOrder.customer || 'Rizz',
+                          contactNumber: matchedOrder.phone || '+971 0506693043',
+                          location: matchedOrder.shippingAddress || matchedOrder.billingAddress || 'Mussafah, Abu Dhabi',
+                          stateRegion: 'Abu Dhabi',
+                          reference: `Serial: AC-15T-2026-001 • Code: CQ4N-XMI60S (PO CTPO#2554)`,
+                        }
+                      : {}),
+                    ...(matchedInvoice
+                      ? {
+                          invoiceRef: matchedInvoice.invoiceNumber,
+                        }
+                      : {}),
+                  }));
+                  setIsCreateDeliveryModalOpen(true);
+                }}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition uppercase"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -14181,14 +14657,24 @@ function SalesPipelineInner() {
                         <span className="text-[11px] text-slate-600 font-medium">{dn.owner || currentUser?.name || 'Staff'}</span>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDeliveryNote(dn)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
-                      >
-                        <Eye className="w-3 h-3" />
-                        <span>View</span>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDeliveryNote(dn)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>View</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteDeliveryConfirm(dn)}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded text-[11px] font-medium shadow-xs cursor-pointer transition border border-red-200"
+                          title="Delete Delivery Note"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -14342,15 +14828,81 @@ function SalesPipelineInner() {
 
                         {/* Actions */}
                         <td className="p-2.5 text-center pr-3">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedDeliveryNote(dn)}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
-                            title="Actions"
-                          >
-                            <SlidersHorizontal className="w-3 h-3" />
-                            <ChevronDown className="w-2.5 h-2.5" />
-                          </button>
+                          <div className="inline-block text-left">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (openDeliveryActionMenuId === dn.id) {
+                                  setOpenDeliveryActionMenuId(null);
+                                  setDeliveryActionMenuPosition(null);
+                                } else {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const menuHeight = 90;
+                                  const spaceBelow = window.innerHeight - rect.bottom;
+                                  const openUpward = spaceBelow < menuHeight + 10;
+                                  const top = openUpward ? rect.top - menuHeight - 4 : rect.bottom + 4;
+                                  const left = Math.max(10, rect.right - 160);
+                                  setDeliveryActionMenuPosition({ top, left });
+                                  setOpenDeliveryActionMenuId(dn.id);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
+                              title="Actions"
+                            >
+                              <SlidersHorizontal className="w-3 h-3" />
+                              <ChevronDown className="w-2.5 h-2.5" />
+                            </button>
+
+                            {openDeliveryActionMenuId === dn.id && deliveryActionMenuPosition && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-[9998]"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenDeliveryActionMenuId(null);
+                                    setDeliveryActionMenuPosition(null);
+                                  }}
+                                />
+                                <div
+                                  style={{
+                                    position: 'fixed',
+                                    top: `${deliveryActionMenuPosition.top}px`,
+                                    left: `${deliveryActionMenuPosition.left}px`,
+                                    zIndex: 9999,
+                                  }}
+                                  className="w-40 bg-white border border-[#D2D6DE] rounded shadow-xl py-1 text-left"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedDeliveryNote(dn);
+                                      setOpenDeliveryActionMenuId(null);
+                                      setDeliveryActionMenuPosition(null);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 text-xs text-slate-800 hover:bg-slate-50 transition cursor-pointer text-left"
+                                  >
+                                    <Eye className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                    <span className="font-normal text-[12px]">View</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeleteDeliveryConfirm(dn);
+                                      setOpenDeliveryActionMenuId(null);
+                                      setDeliveryActionMenuPosition(null);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 text-xs text-red-600 hover:bg-red-50 transition cursor-pointer text-left"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                                    <span className="font-medium text-[12px] text-red-600">Delete</span>
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -14651,7 +15203,15 @@ function SalesPipelineInner() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+            <div className="flex justify-between items-center gap-2 pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setDeleteReceiptConfirm(selectedReceipt)}
+                className="px-3.5 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded font-medium hover:bg-red-100 cursor-pointer flex items-center gap-1.5 transition text-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Receipt</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setSelectedReceipt(null)}
@@ -14692,18 +15252,18 @@ function SalesPipelineInner() {
                 const newDn: CrmDeliveryNote = {
                   id: 'dn-' + Date.now(),
                   slNo: deliveryNotes.length + 1,
-                  deliveryNoteNumber: deliveryFormData.deliveryNoteNumber || 'CTDN#1038',
-                  orderRef: deliveryFormData.orderRef || deliveryFormData.orderNumber || 'CTSO#2698',
-                  orderDescription: deliveryFormData.orderName || deliveryFormData.orderDescription || 'Customer Order Items',
-                  customer: deliveryFormData.customer || 'KOHINOOR AIR CONDITIONER AND REFRIGERATION PARTS',
-                  invoiceRef: deliveryFormData.invoiceRef || '—',
+                  deliveryNoteNumber: deliveryFormData.deliveryNoteNumber || ('CTDN#' + Math.floor(1038 + Math.random() * 200)),
+                  orderRef: deliveryFormData.orderNumber || deliveryFormData.orderRef || 'CTSO#3924',
+                  orderDescription: deliveryFormData.orderName || deliveryFormData.orderDescription || '1.5-Ton Inverter Split AC Unit',
+                  customer: deliveryFormData.customer || 'Rizz',
+                  invoiceRef: deliveryFormData.invoiceRef || 'CTINV#15521',
                   dnType: deliveryFormData.dnType || 'Customer Delivery Note',
                   location: deliveryFormData.location || 'Mussafah, Abu Dhabi',
-                  receivedBy: deliveryFormData.receivedBy || 'Staff Consignee',
-                  receivedPhone: deliveryFormData.contactNumber || deliveryFormData.receivedPhone || '+971501234567',
-                  owner: deliveryFormData.owner || currentUser?.name || 'Nafal',
-                  ownerAvatar: currentUser?.avatar || getEmployeePhoto(deliveryFormData.owner || 'Nafal'),
-                  dispatchDate: deliveryFormData.deliveryDate || '24-10-2026',
+                  receivedBy: deliveryFormData.receivedBy || 'Staff Consignee / Client Rep',
+                  receivedPhone: deliveryFormData.contactNumber || deliveryFormData.receivedPhone || '+971 0506693043',
+                  owner: deliveryFormData.owner || currentUser?.name || 'Tariq',
+                  ownerAvatar: currentUser?.avatar || getEmployeePhoto(deliveryFormData.owner || 'Tariq'),
+                  dispatchDate: deliveryFormData.deliveryDate || new Date().toLocaleDateString('en-GB').split('/').join('-'),
                   costUpdated: deliveryFormData.updateMaterialCost,
                   status: 'Delivered',
                 };
@@ -14813,20 +15373,42 @@ function SalesPipelineInner() {
                           value={deliveryFormData.orderRef}
                           onChange={(e) => {
                             const val = e.target.value;
+                            const ordNum = val ? val.split(' ')[0] : '';
+                            const matchedOrder = liveOrders.find(
+                              (o) => o.orderNumber === ordNum || `${o.orderNumber} / ${(o as any).subject || (o as any).orderName || 'Order'}` === val
+                            );
+                            const matchedInvoice = invoices.find(
+                              (inv) =>
+                                (ordNum && (
+                                  (inv.orderRef && inv.orderRef.includes(ordNum)) ||
+                                  (inv.opportunityOrderRef && inv.opportunityOrderRef.includes(ordNum))
+                                )) ||
+                                (matchedOrder && inv.customer === matchedOrder.customer)
+                            );
+                            const subj = (matchedOrder as any)?.subject || (matchedOrder as any)?.orderName || (val ? val.split(' / ')[1] || val : '');
                             setDeliveryFormData({
                               ...deliveryFormData,
                               orderRef: val,
-                              orderNumber: val ? val.split(' ')[0] : '',
-                              orderName: val ? val.split(' / ')[1] || val : '',
+                              orderNumber: matchedOrder?.orderNumber || ordNum,
+                              orderName: subj,
+                              customer: matchedOrder?.customer || deliveryFormData.customer,
+                              contactNumber: matchedOrder?.phone || deliveryFormData.contactNumber,
+                              location: matchedOrder?.shippingAddress || matchedOrder?.billingAddress || deliveryFormData.location,
+                              invoiceRef: matchedInvoice?.invoiceNumber || deliveryFormData.invoiceRef,
+                              reference: matchedOrder?.orderNumber ? `Serial: AC-15T-2026-001 • Code: CQ4N-XMI60S (PO CTPO#2554)` : deliveryFormData.reference,
                             });
                           }}
                           className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400"
                         >
                           <option value="">Select Order</option>
-                          <option value="CTSO#3854 / SUPER GENERAL AC UNITS WITH INST">CTSO#3854 / SUPER GENERAL AC UNITS WITH INST</option>
-                          <option value="CTSO#2698 | POD">CTSO#2698 | POD</option>
-                          <option value="CTSO#2653 / AIR COOLER NOBEL 100LTR - 4134">CTSO#2653 / AIR COOLER NOBEL 100LTR - 4134</option>
-                          <option value="CTSO#1982 / CENTRAL AC REPAIR & SERVICE">CTSO#1982 / CENTRAL AC REPAIR & SERVICE</option>
+                          {liveOrders.map((o) => {
+                            const title = (o as any).subject || (o as any).orderName || 'Order';
+                            return (
+                              <option key={o.id || o.orderNumber} value={`${o.orderNumber} / ${title}`}>
+                                {o.orderNumber} / {title} ({o.customer})
+                              </option>
+                            );
+                          })}
                         </select>
                       </div>
                     </div>
@@ -14883,13 +15465,25 @@ function SalesPipelineInner() {
                       <div className="flex-1">
                         <select
                           value={deliveryFormData.invoiceRef}
-                          onChange={(e) => setDeliveryFormData({ ...deliveryFormData, invoiceRef: e.target.value })}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const inv = invoices.find((i) => i.invoiceNumber === val || i.id === val);
+                            setDeliveryFormData({
+                              ...deliveryFormData,
+                              invoiceRef: val,
+                              customer: inv?.customer || deliveryFormData.customer,
+                              orderRef: inv?.opportunityOrderRef ? inv.opportunityOrderRef : (inv?.orderRef || deliveryFormData.orderRef),
+                              orderNumber: inv?.orderRef || deliveryFormData.orderNumber,
+                            });
+                          }}
                           className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400"
                         >
                           <option value="">Select Invoice</option>
-                          <option value="CTINV#1630">CTINV#1630</option>
-                          <option value="CTINV#15002">CTINV#15002</option>
-                          <option value="CTINV#14890">CTINV#14890</option>
+                          {invoices.map((inv) => (
+                            <option key={inv.id || inv.invoiceNumber} value={inv.invoiceNumber}>
+                              {inv.invoiceNumber} ({inv.customer} - AED {Number(inv.amount || (inv as any).totalAmount || 0).toLocaleString()})
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -15133,7 +15727,15 @@ function SalesPipelineInner() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+            <div className="flex justify-between items-center gap-2 pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setDeleteDeliveryConfirm(selectedDeliveryNote as any)}
+                className="px-3.5 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded font-medium hover:bg-red-100 cursor-pointer flex items-center gap-1.5 transition text-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Delivery Note</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setSelectedDeliveryNote(null)}
@@ -15347,6 +15949,134 @@ function SalesPipelineInner() {
         </div>
       )}
 
+      {/* RECORD PAYMENT / STATUS MODAL */}
+      {partialPaymentModalInv && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-4 py-3 bg-[#002B49] text-white">
+              <div className="flex items-center gap-2 font-bold text-sm">
+                <DollarSign className="w-4 h-4 text-emerald-400" />
+                <span>Record Payment / Status</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPartialPaymentModalInv(null)}
+                className="text-white/80 hover:text-white transition-colors p-1 rounded cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3.5 text-xs">
+              <div className="bg-slate-50 p-2.5 rounded border border-slate-200 space-y-1.5">
+                <div className="flex justify-between text-slate-600">
+                  <span>Invoice No:</span>
+                  <span className="font-bold text-slate-900">{partialPaymentModalInv.invoiceNumber}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Customer:</span>
+                  <span className="font-semibold text-slate-800 truncate max-w-[200px]">{partialPaymentModalInv.customer}</span>
+                </div>
+                <div className="flex justify-between text-slate-600">
+                  <span>Total Amount:</span>
+                  <span className="font-bold text-slate-900">AED {Number(partialPaymentModalInv.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Paid Amount (AED)
+                  </label>
+                  <div className="flex gap-1.5 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setPartialPaymentInput(String(Number(partialPaymentModalInv.amount) || 0))}
+                      className="text-[#1677FF] hover:underline font-semibold cursor-pointer"
+                    >
+                      Full
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setPartialPaymentInput(String(Math.round(((Number(partialPaymentModalInv.amount) || 0) / 2) * 100) / 100))}
+                      className="text-[#1677FF] hover:underline font-semibold cursor-pointer"
+                    >
+                      50%
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setPartialPaymentInput('0')}
+                      className="text-red-600 hover:underline font-semibold cursor-pointer"
+                    >
+                      Zero
+                    </button>
+                  </div>
+                </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max={partialPaymentModalInv.amount}
+                  value={partialPaymentInput}
+                  onChange={(e) => setPartialPaymentInput(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-sky-500"
+                  placeholder="0.00"
+                  autoFocus
+                />
+              </div>
+
+              {(() => {
+                const paid = parseFloat(partialPaymentInput) || 0;
+                const tot = Number(partialPaymentModalInv.amount) || 0;
+                const bal = Math.max(0, tot - paid);
+                const st = bal <= 0 ? 'Paid' : paid > 0 ? 'Partially Paid' : 'Due';
+                const color = bal <= 0 ? 'text-emerald-600' : paid > 0 ? 'text-blue-600' : 'text-amber-600';
+                return (
+                  <div className="p-2 bg-slate-50 rounded border border-slate-100 flex items-center justify-between text-xs">
+                    <span className="text-slate-600">Calculated Balance:</span>
+                    <div className="text-right">
+                      <span className="font-bold text-slate-900">AED {bal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className={cn("ml-2 font-bold", color)}>({st})</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setPartialPaymentModalInv(null)}
+                  className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded text-xs font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const paid = parseFloat(partialPaymentInput) || 0;
+                    const tot = Number(partialPaymentModalInv.amount) || 0;
+                    const bal = Math.max(0, tot - paid);
+                    const newStatus = bal <= 0 ? 'Paid' : paid > 0 ? 'Partially Paid' : 'Due';
+                    updateInvoice(partialPaymentModalInv.id, {
+                      status: newStatus,
+                      paidAmount: paid,
+                      balanceAmount: bal,
+                    });
+                    setSalesToast(`Invoice ${partialPaymentModalInv.invoiceNumber} updated to ${newStatus}`);
+                    setPartialPaymentModalInv(null);
+                  }}
+                  className="px-3.5 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer transition shadow-xs"
+                >
+                  Save Status & Payment
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* DELETE INVOICE CONFIRMATION MODAL */}
       {deleteInvoiceConfirm && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -15424,7 +16154,7 @@ function SalesPipelineInner() {
                   if (selectedInvoice && selectedInvoice.id === deleteInvoiceConfirm.id) {
                     setSelectedInvoice(null);
                   }
-                  setSalesToast(
+                  showSalesToast(
                     `Invoice ${deleteInvoiceConfirm.invoiceNumber || ''} deleted successfully`
                   );
                   setDeleteInvoiceConfirm(null);
@@ -15432,6 +16162,185 @@ function SalesPipelineInner() {
                 className="px-4 py-2 text-xs font-bold text-white bg-[#DC2626] hover:bg-[#B91C1C] rounded-md shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Yes, Delete Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE DELIVERY NOTE CONFIRMATION MODAL */}
+      {deleteDeliveryConfirm && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-white">
+              <div className="flex items-center gap-2.5 text-red-600 font-bold text-sm">
+                <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <span>Delete Delivery Note</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteDeliveryConfirm(null)}
+                className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded cursor-pointer text-base leading-none"
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-3.5 font-sans">
+              <p className="text-xs font-medium text-slate-700">
+                Are you sure you want to delete this delivery note? This action is permanent and cannot be undone.
+              </p>
+              <div className="bg-slate-50 border border-slate-200 rounded-md p-3.5 text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Delivery Note No:</span>
+                  <span className="font-bold text-[#0088CC]">
+                    {deleteDeliveryConfirm.deliveryNoteNumber || 'CTDN#1076'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Customer:</span>
+                  <span className="font-semibold text-slate-800 text-right truncate max-w-[220px]">
+                    {deleteDeliveryConfirm.customer}
+                  </span>
+                </div>
+                {deleteDeliveryConfirm.orderRef && (
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500 font-medium">Order Ref:</span>
+                    <span className="text-slate-700 truncate max-w-[220px]">{deleteDeliveryConfirm.orderRef}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200">
+                  <span className="text-slate-600 font-bold">Dispatch Date:</span>
+                  <span className="font-bold text-slate-900 text-xs">
+                    {deleteDeliveryConfirm.dispatchDate}
+                  </span>
+                </div>
+              </div>
+              <p className="text-[11px] text-red-600 font-medium bg-red-50 p-2 rounded border border-red-200/60">
+                ⚠️ Warning: Deleting this delivery note will permanently remove its dispatch and delivery record.
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2.5 px-6 py-3.5 bg-[#F8FAFC] border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setDeleteDeliveryConfirm(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-md transition-colors cursor-pointer shadow-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  contextDeleteDeliveryNote(deleteDeliveryConfirm.id);
+                  if (selectedDeliveryNote && (selectedDeliveryNote as any).id === deleteDeliveryConfirm.id) {
+                    setSelectedDeliveryNote(null);
+                  }
+                  showSalesToast(
+                    `Delivery Note ${deleteDeliveryConfirm.deliveryNoteNumber || ''} deleted successfully`
+                  );
+                  setDeleteDeliveryConfirm(null);
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-[#DC2626] hover:bg-[#B91C1C] rounded-md shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Yes, Delete Delivery Note
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE RECEIPT CONFIRMATION MODAL */}
+      {deleteReceiptConfirm && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-white">
+              <div className="flex items-center gap-2.5 text-red-600 font-bold text-sm">
+                <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <span>Delete Receipt</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteReceiptConfirm(null)}
+                className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded cursor-pointer text-base leading-none"
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-3.5 font-sans">
+              <p className="text-xs font-medium text-slate-700">
+                Are you sure you want to delete this receipt? This action is permanent and cannot be undone.
+              </p>
+              <div className="bg-slate-50 border border-slate-200 rounded-md p-3.5 text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Receipt No:</span>
+                  <span className="font-bold text-[#0088CC]">
+                    {deleteReceiptConfirm.receiptNumber || 'CTRV#1195'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Customer:</span>
+                  <span className="font-semibold text-slate-800 text-right truncate max-w-[220px]">
+                    {deleteReceiptConfirm.customer}
+                  </span>
+                </div>
+                {deleteReceiptConfirm.paymentMethod && (
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500 font-medium">Payment Method:</span>
+                    <span className="text-slate-700 truncate max-w-[220px]">{deleteReceiptConfirm.paymentMethod}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200">
+                  <span className="text-slate-600 font-bold">Amount:</span>
+                  <span className="font-black text-slate-900 text-sm">
+                    AED {(deleteReceiptConfirm.amount || 0).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+              </div>
+              <p className="text-[11px] text-red-600 font-medium bg-red-50 p-2 rounded border border-red-200/60">
+                ⚠️ Warning: Deleting this receipt will remove this payment voucher record.
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2.5 px-6 py-3.5 bg-[#F8FAFC] border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setDeleteReceiptConfirm(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-md transition-colors cursor-pointer shadow-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  contextDeleteReceipt(deleteReceiptConfirm.id);
+                  if (selectedReceipt && selectedReceipt.id === deleteReceiptConfirm.id) {
+                    setSelectedReceipt(null);
+                  }
+                  showSalesToast(
+                    `Receipt ${deleteReceiptConfirm.receiptNumber || ''} deleted successfully`
+                  );
+                  setDeleteReceiptConfirm(null);
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-[#DC2626] hover:bg-[#B91C1C] rounded-md shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Yes, Delete Receipt
               </button>
             </div>
           </div>

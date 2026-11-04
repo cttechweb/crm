@@ -6,6 +6,7 @@ import {
   ShoppingCart,
   Plus,
   X,
+  XCircle,
   ChevronDown,
   Calendar,
   Clock,
@@ -45,15 +46,56 @@ import {
   Filter,
   SlidersHorizontal,
   Package,
+  MapPin,
+  Building2,
+  AlertCircle,
 } from 'lucide-react';
+import { validateCustomerPhone } from '@/lib/phoneValidation';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { authMockService } from '@/services/authMockService';
-import { CrmSalesOrder } from '@/types/enterprise-crm';
+import { CrmSalesOrder, CrmCustomer } from '@/types/enterprise-crm';
 import { cn } from '@/lib/utils';
 import { CezconDateInput } from '@/components/ui/CezconDateInput';
 import { CezconTimeInput } from '@/components/ui/CezconTimeInput';
 import { getLiveProducts } from '@/services/productApiService';
 import type { ProductSettingItem } from '@/types/settings';
+
+const COUNTRY_CODES_LIST = [
+  { code: '+971', country: 'United Arab Emirates', flag: '🇦🇪', placeholder: '50 123 4567' },
+  { code: '+966', country: 'Saudi Arabia', flag: '🇸🇦', placeholder: '50 123 4567' },
+  { code: '+974', country: 'Qatar', flag: '🇶🇦', placeholder: '33 123 456' },
+  { code: '+968', country: 'Oman', flag: '🇴🇲', placeholder: '91 123 456' },
+  { code: '+973', country: 'Bahrain', flag: '🇧🇭', placeholder: '39 123 456' },
+  { code: '+965', country: 'Kuwait', flag: '🇰🇼', placeholder: '91 234 567' },
+  { code: '+91', country: 'India', flag: '🇮🇳', placeholder: '98765 43210' },
+  { code: '+92', country: 'Pakistan', flag: '🇵🇰', placeholder: '300 1234567' },
+  { code: '+20', country: 'Egypt', flag: '🇪🇬', placeholder: '10 1234 5678' },
+  { code: '+962', country: 'Jordan', flag: '🇯🇴', placeholder: '7 9012 3456' },
+  { code: '+961', country: 'Lebanon', flag: '🇱🇧', placeholder: '70 123 456' },
+  { code: '+44', country: 'United Kingdom', flag: '🇬🇧', placeholder: '7911 123456' },
+  { code: '+1', country: 'United States / Canada', flag: '🇺🇸', placeholder: '202 555 0123' },
+  { code: '+49', country: 'Germany', flag: '🇩🇪', placeholder: '151 1234567' },
+  { code: '+33', country: 'France', flag: '🇫🇷', placeholder: '6 12 34 56 78' },
+  { code: '+39', country: 'Italy', flag: '🇮🇹', placeholder: '312 345 6789' },
+  { code: '+34', country: 'Spain', flag: '🇪🇸', placeholder: '612 345 678' },
+  { code: '+86', country: 'China', flag: '🇨🇳', placeholder: '138 0013 8000' },
+  { code: '+81', country: 'Japan', flag: '🇯🇵', placeholder: '90 1234 5678' },
+  { code: '+82', country: 'South Korea', flag: '🇰🇷', placeholder: '10 1234 5678' },
+  { code: '+65', country: 'Singapore', flag: '🇸🇬', placeholder: '8123 4567' },
+  { code: '+60', country: 'Malaysia', flag: '🇲🇾', placeholder: '12 345 6789' },
+  { code: '+63', country: 'Philippines', flag: '🇵🇭', placeholder: '917 123 4567' },
+  { code: '+880', country: 'Bangladesh', flag: '🇧🇩', placeholder: '1712 345678' },
+  { code: '+94', country: 'Sri Lanka', flag: '🇱🇰', placeholder: '71 234 5678' },
+  { code: '+977', country: 'Nepal', flag: '🇳🇵', placeholder: '984 1234567' },
+  { code: '+90', country: 'Turkey', flag: '🇹🇷', placeholder: '532 123 4567' },
+  { code: '+27', country: 'South Africa', flag: '🇿🇦', placeholder: '82 123 4567' },
+  { code: '+234', country: 'Nigeria', flag: '🇳🇬', placeholder: '802 123 4567' },
+  { code: '+254', country: 'Kenya', flag: '🇰🇪', placeholder: '712 345678' },
+  { code: '+61', country: 'Australia', flag: '🇦🇺', placeholder: '412 345 678' },
+  { code: '+64', country: 'New Zealand', flag: '🇳🇿', placeholder: '21 123 4567' },
+  { code: '+55', country: 'Brazil', flag: '🇧🇷', placeholder: '11 91234 5678' },
+  { code: '+7', country: 'Russia / Kazakhstan', flag: '🇷🇺', placeholder: '912 345 6789' },
+];
 
 interface OrderItemRow {
   id: string;
@@ -75,6 +117,7 @@ export function CezconOrderModule() {
     updateSalesOrder,
     deleteSalesOrder,
     customers,
+    addCustomer,
     salesOpportunities,
     addOpportunity,
     users,
@@ -83,11 +126,115 @@ export function CezconOrderModule() {
 
   const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
 
+  // Role check: Only Sales Managers, CSO, COO, and CEO have commercial sales order approval authority.
+  // Operations Managers, Purchase Officers, and Sales Executives cannot approve commercial customer orders.
+  const isSalesManagerOrAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    const role = (currentUser.role || '').toLowerCase();
+    const pos = (currentUser.position || '').toLowerCase();
+    const des = (currentUser.designation || '').toLowerCase();
+    const dept = (currentUser.department || '').toLowerCase();
+    const mgrType = (currentUser.managerType || '').toLowerCase();
+
+    // 1. Executive Management (CEO, COO, Super Admin, Admin) always retain top-level governance
+    const isExecutive =
+      role === 'super_admin' ||
+      role === 'admin' ||
+      pos.includes('ceo') ||
+      pos.includes('coo') ||
+      des.includes('ceo') ||
+      des.includes('coo');
+
+    if (isExecutive) return true;
+
+    // 2. Explicitly EXCLUDE non-sales departments (Operations, Purchase, Logistics, etc.)
+    const isNonSalesDept =
+      pos.includes('operation') ||
+      des.includes('operation') ||
+      dept.includes('operation') ||
+      mgrType.includes('operation') ||
+      pos.includes('purchase') ||
+      des.includes('purchase') ||
+      dept.includes('purchase') ||
+      mgrType.includes('purchase');
+
+    if (isNonSalesDept) {
+      return false; // Operations and Purchase cannot commercially approve sales orders
+    }
+
+    // 3. Must be in Sales Leadership (Sales Manager, CSO, Head of Sales)
+    const isSalesLeadership =
+      pos.includes('sales manager') ||
+      des.includes('sales manager') ||
+      mgrType.includes('sales') ||
+      pos.includes('cso') ||
+      des.includes('cso') ||
+      (dept.includes('sales') && (role === 'manager' || pos.includes('manager') || pos.includes('head')));
+
+    return isSalesLeadership;
+  }, [currentUser]);
+
+  // Check if current user is from Operations (e.g. Fahad - Operation Manager / Technical Staff)
+  const isOperationsStaff = useMemo(() => {
+    if (!currentUser) return false;
+    const pos = (currentUser.position || '').toLowerCase();
+    const des = (currentUser.designation || '').toLowerCase();
+    const dept = (currentUser.department || '').toLowerCase();
+    const mgrType = (currentUser.managerType || '').toLowerCase();
+    return (
+      pos.includes('operation') ||
+      des.includes('operation') ||
+      dept.includes('operation') ||
+      mgrType.includes('operation')
+    );
+  }, [currentUser]);
+
+  // Check if current user is the sales rep / creator who raised this order
+  // Business Rule: Sales Managers (Arafath) only review & approve/reject orders.
+  // The Material Request (MSRF) must be generated by the user who created the sales order (e.g. Tariq).
+  const isOrderCreator = useMemo(() => {
+    return (order?: CrmSalesOrder | null) => {
+      if (!order || !currentUser) return false;
+      const pos = (currentUser.position || '').toLowerCase();
+      const des = (currentUser.designation || '').toLowerCase();
+      const mgrType = (currentUser.managerType || '').toLowerCase();
+
+      // Sales Managers cannot generate Material Requests
+      const isSalesManager =
+        pos.includes('sales manager') ||
+        des.includes('sales manager') ||
+        mgrType.includes('sales');
+
+      if (isSalesManager) return false;
+
+      const currentUserName = (currentUser.name || '').toLowerCase().trim();
+      const currentUserEmail = (currentUser.email || '').toLowerCase().trim();
+      const orderOwnerName = (order.owner || '').toLowerCase().trim();
+      const orderAssigned = (order.assignedTo || '').toLowerCase().trim();
+
+      if (!orderOwnerName) {
+        return !isSalesManager;
+      }
+
+      return (
+        currentUserName === orderOwnerName ||
+        orderOwnerName.includes(currentUserName) ||
+        currentUserName.includes(orderOwnerName) ||
+        currentUserEmail.startsWith(orderOwnerName) ||
+        currentUserName === orderAssigned
+      );
+    };
+  }, [currentUser]);
+
   // View state: 'table' (Image 2) or 'create' / 'edit' (Image 1)
   const [viewMode, setViewMode] = useState<'table' | 'create' | 'edit'>('table');
   const [orderToEdit, setOrderToEdit] = useState<CrmSalesOrder | null>(null);
   const [selectedOrderForView, setSelectedOrderForView] = useState<CrmSalesOrder | null>(null);
-  const [actionDropdownOrderId, setActionDropdownOrderId] = useState<string | null>(null);
+  const [actionDropdownTarget, setActionDropdownTarget] = useState<{
+    order: CrmSalesOrder;
+    top: number;
+    right: number;
+  } | null>(null);
 
   // Table filters & pagination (Image 2)
   const [subTab, setSubTab] = useState<string>('all');
@@ -105,7 +252,31 @@ export function CezconOrderModule() {
   // Quick Customer modal toggle inside form
   const [isQuickCustomerModalOpen, setIsQuickCustomerModalOpen] = useState(false);
   const [quickCustomerName, setQuickCustomerName] = useState('');
+  const [quickCustomerContactPerson, setQuickCustomerContactPerson] = useState('');
+  const [quickCustomerPhoneCode, setQuickCustomerPhoneCode] = useState('+971');
   const [quickCustomerPhone, setQuickCustomerPhone] = useState('');
+  const [quickCustomerEmail, setQuickCustomerEmail] = useState('');
+  const [quickCustomerLocation, setQuickCustomerLocation] = useState('');
+  const [isQuickCustomerCodeDropdownOpen, setIsQuickCustomerCodeDropdownOpen] = useState(false);
+  const [quickCustomerCodeSearch, setQuickCustomerCodeSearch] = useState('');
+  const [isQuickSavingCustomer, setIsQuickSavingCustomer] = useState(false);
+  const [quickCustomerPhoneTouched, setQuickCustomerPhoneTouched] = useState(false);
+
+  const phoneValidation = useMemo(() => {
+    return validateCustomerPhone(quickCustomerPhone, quickCustomerPhoneCode, false);
+  }, [quickCustomerPhone, quickCustomerPhoneCode]);
+
+  const selectedCountryObj = useMemo(() => {
+    return COUNTRY_CODES_LIST.find((c) => c.code === quickCustomerPhoneCode) || COUNTRY_CODES_LIST[0];
+  }, [quickCustomerPhoneCode]);
+
+  const filteredCountryCodes = useMemo(() => {
+    if (!quickCustomerCodeSearch.trim()) return COUNTRY_CODES_LIST;
+    const q = quickCustomerCodeSearch.toLowerCase();
+    return COUNTRY_CODES_LIST.filter(
+      (c) => c.country.toLowerCase().includes(q) || c.code.includes(q)
+    );
+  }, [quickCustomerCodeSearch]);
 
   // E-Commerce Catalog state for Line Items auto-fill
   const [catalogProducts, setCatalogProducts] = useState<ProductSettingItem[]>([]);
@@ -341,19 +512,19 @@ export function CezconOrderModule() {
   const [opportunityNumber, setOpportunityNumber] = useState('');
   const [leadNumber, setLeadNumber] = useState('');
   const [discountPercent, setDiscountPercent] = useState<number>(0);
-  const [manualDiscountAmount, setManualDiscountAmount] = useState<number>(0);
+  const [manualDiscountAmount, setManualDiscountAmount] = useState<number | string>('');
   const [vatRate, setVatRate] = useState<number>(5);
-  const [adjustment, setAdjustment] = useState<number>(0);
+  const [adjustment, setAdjustment] = useState<number | string>('');
   const [campaign, setCampaign] = useState('Select Campaign');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [lpoDate, setLpoDate] = useState('');
   const [comments, setComments] = useState('');
-  const [orderStatus, setOrderStatus] = useState('Completed');
+  const [orderStatus, setOrderStatus] = useState('Pending');
   const [reference, setReference] = useState('');
 
   // Middle Line Items Section (Order Form)
   const [isOrderFormActive, setIsOrderFormActive] = useState(false);
-  const [manualAmount, setManualAmount] = useState<number>(0);
+  const [manualAmount, setManualAmount] = useState<number | string>('');
   const [lineItems, setLineItems] = useState<OrderItemRow[]>([
     {
       id: 'item_1',
@@ -390,6 +561,26 @@ export function CezconOrderModule() {
   const showToast = (msg: string) => {
     setOrderToast(msg);
     setTimeout(() => setOrderToast(null), 3000);
+  };
+
+  // Live synchronization of selected order for the view modal
+  const activeViewOrder = useMemo(() => {
+    if (!selectedOrderForView) return null;
+    return salesOrders?.find((o) => o.id === selectedOrderForView.id) || selectedOrderForView;
+  }, [salesOrders, selectedOrderForView]);
+
+  const handleApproveFromModal = (order: CrmSalesOrder) => {
+    updateSalesOrder(order.id, { status: 'Approved' });
+    setSelectedOrderForView((prev) => (prev ? { ...prev, status: 'Approved' } : null));
+    showToast(`Order ${order.orderNumber} Approved by Sales Management! Handed off to Operations.`);
+  };
+
+  const handleRejectFromModal = (order: CrmSalesOrder) => {
+    if (confirm(`Are you sure you want to reject Order ${order.orderNumber}?`)) {
+      updateSalesOrder(order.id, { status: 'Cancelled' });
+      setSelectedOrderForView((prev) => (prev ? { ...prev, status: 'Cancelled' } : null));
+      showToast(`Order ${order.orderNumber} Rejected`);
+    }
   };
 
   useEffect(() => {
@@ -511,13 +702,13 @@ export function CezconOrderModule() {
     return lineItems.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
   }, [lineItems]);
 
-  const effectiveAmount = isOrderFormActive ? itemsTotalAmount : (manualAmount || 0);
+  const effectiveAmount = isOrderFormActive ? itemsTotalAmount : (parseFloat(String(manualAmount)) || 0);
 
   const calculatedDiscount = useMemo(() => {
     if (discountPercent > 0) {
       return (effectiveAmount * discountPercent) / 100;
     }
-    return manualDiscountAmount || 0;
+    return parseFloat(String(manualDiscountAmount)) || 0;
   }, [effectiveAmount, discountPercent, manualDiscountAmount]);
 
   const amountAfterDiscount = useMemo(() => {
@@ -536,7 +727,7 @@ export function CezconOrderModule() {
   }, [amountAfterDiscount, calculatedVatAmount]);
 
   const grandTotalAmount = useMemo(() => {
-    return subTotal + (Number(adjustment) || 0);
+    return subTotal + (parseFloat(String(adjustment)) || 0);
   }, [subTotal, adjustment]);
 
   // Helper to open create form
@@ -566,16 +757,16 @@ export function CezconOrderModule() {
     setOpportunityNumber('');
     setLeadNumber('');
     setDiscountPercent(0);
-    setManualDiscountAmount(0);
+    setManualDiscountAmount('');
     setVatRate(5);
-    setAdjustment(0);
+    setAdjustment('');
     setCampaign('Select Campaign');
     setDeliveryDate('');
     setLpoDate('');
     setComments('');
-    setOrderStatus('Completed');
+    setOrderStatus('Pending');
     setReference('');
-    setManualAmount(0);
+    setManualAmount('');
     setIsOrderFormActive(false);
     setLineItems([
       {
@@ -605,32 +796,61 @@ export function CezconOrderModule() {
     setOpportunityNumber(order.opportunityRef || '');
     setLeadNumber(order.leadNumber || '');
     setOrderDate(order.orderDate || '14-10-2026');
+    setOrderTime((order as any).orderTime || '01:01 PM');
     setOrderOwner(order.owner || currentUser?.name || '');
     setContactPerson(order.contactPerson || '');
-    setOrderStatus(order.status || 'Completed');
+    setPointOfContact(order.contactPerson || order.customer || 'Select Customer First');
+    setOrderStatus(order.status || 'Pending');
     setOrderType(order.category || 'Supply And Installation');
-    setLpoNumber(order.poReference || '');
-    setAdjustment(0);
+    setLpoNumber(order.poReference || (order as any).lpoNumber || '');
+    setDeliveryDate((order as any).deliveryDate || order.deliveryDueDate || '');
+    setLpoDate((order as any).lpoDate || '');
+    setLocation((order as any).location || order.shippingAddress || order.billingAddress || '');
+    setDeliveryMethod((order as any).deliveryMethod || '');
+    setBusinessOpportunity((order as any).businessOpportunity || order.opportunityRef || 'Select Business Opportunity');
+    setOrderTags((order as any).orderTags || '');
+    setComments(order.notes || (order as any).comments || '');
+    setReference((order as any).reference || '');
+    setSource((order as any).source || 'Select Source');
+    setSourceName((order as any).sourceName || '');
+    setAdjustment((order as any).adjustment !== undefined && (order as any).adjustment !== 0 ? String((order as any).adjustment) : '');
     setVatRate(5);
     setVatType('With VAT');
-    setManualAmount(order.amount || 0);
+    setManualAmount(order.amount !== undefined && order.amount !== 0 ? String(order.amount) : '');
     setIsOrderFormActive(Boolean(order.items && order.items.length > 0));
 
-    const basePrice = order.amount || 0;
-    setLineItems([
-      {
-        id: 'item_1',
-        description: order.subject || 'Supply of AC Units & Materials',
-        additionalDescription: '',
-        showAdditional: false,
-        code: 'AC-1001',
-        unit: 'Pcs',
-        brand: 'COOLTECH',
-        qty: 1,
-        price: basePrice,
-        total: basePrice,
-      },
-    ]);
+    if (order.items && order.items.length > 0) {
+      setLineItems(
+        order.items.map((it, idx) => ({
+          id: it.id || `item_${idx + 1}`,
+          description: it.productName || it.name || it.description || '',
+          additionalDescription: it.description || '',
+          showAdditional: false,
+          code: it.sku || it.itemCode || '',
+          unit: it.unit || 'Pcs',
+          brand: (it as any).brand || '',
+          qty: it.quantity || 1,
+          price: it.unitPrice || 0,
+          total: it.totalAmount || (it.quantity * it.unitPrice) || 0,
+        }))
+      );
+    } else {
+      const basePrice = order.amount || 0;
+      setLineItems([
+        {
+          id: 'item_1',
+          description: order.subject || 'Supply of AC Units & Materials',
+          additionalDescription: '',
+          showAdditional: false,
+          code: 'AC-1001',
+          unit: 'Pcs',
+          brand: 'COOLTECH',
+          qty: 1,
+          price: basePrice,
+          total: basePrice,
+        },
+      ]);
+    }
     setSelectedTermsPreset('');
     setTermsContent(order.paymentTerms || '');
     setViewMode('edit');
@@ -788,10 +1008,10 @@ export function CezconOrderModule() {
 
       // 4. Financials (Amount, VAT, Discount)
       if (foundOpp.amount && foundOpp.amount > 0) {
-        setManualAmount(foundOpp.amount);
+        setManualAmount(String(foundOpp.amount));
       }
       if (foundOpp.discount) {
-        setManualDiscountAmount(Number(foundOpp.discount) || 0);
+        setManualDiscountAmount(String(foundOpp.discount));
       }
       if (foundOpp.vatRate) {
         setVatRate(Number(foundOpp.vatRate) || 5);
@@ -800,7 +1020,7 @@ export function CezconOrderModule() {
         setVatType(foundOpp.vatType as any);
       }
       if (foundOpp.adjustment) {
-        setAdjustment(Number(foundOpp.adjustment) || 0);
+        setAdjustment(String(foundOpp.adjustment));
       }
 
       // 5. Source & Campaign
@@ -858,7 +1078,7 @@ export function CezconOrderModule() {
         }
       }
       if (foundLead.value && foundLead.value > 0 && !manualAmount) {
-        setManualAmount(foundLead.value);
+        setManualAmount(String(foundLead.value));
       }
       if (foundLead.source && foundLead.source !== 'Select Source') {
         if (!customSources.includes(foundLead.source)) {
@@ -922,12 +1142,34 @@ export function CezconOrderModule() {
       amount: effectiveAmount,
       vatAmount: calculatedVatAmount,
       totalAmount: grandTotalAmount,
-      profit: effectiveAmount * 0.25,
       receivable: grandTotalAmount,
       poReference: lpoNumber,
       paymentTerms: termsContent,
       notes: comments,
+      items: isOrderFormActive
+        ? lineItems.filter((i) => i.description.trim()).map((i) => ({
+            id: i.id,
+            productId: i.code,
+            itemCode: i.code,
+            sku: i.code,
+            name: i.description,
+            productName: i.description,
+            description: i.additionalDescription || i.description,
+            quantity: i.qty,
+            unit: i.unit,
+            unitPrice: i.price,
+            taxRate: 5,
+            taxAmount: (i.total * 5) / 100,
+            totalAmount: i.total,
+          }))
+        : undefined,
     };
+
+    (orderData as any).deliveryDate = deliveryDate;
+    (orderData as any).lpoDate = lpoDate;
+    (orderData as any).location = location;
+    (orderData as any).deliveryMethod = deliveryMethod;
+    (orderData as any).businessOpportunity = businessOpportunity;
 
     if (orderToEdit) {
       updateSalesOrder(orderToEdit.id, orderData);
@@ -941,16 +1183,76 @@ export function CezconOrderModule() {
   };
 
   // Quick Customer Add
-  const handleSaveQuickCustomer = () => {
-    if (!quickCustomerName.trim()) {
-      alert('Please enter a Customer Name');
+  const handleSaveQuickCustomer = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmedName = quickCustomerName.trim();
+    if (!trimmedName) {
+      alert('Validation Error: Please enter Customer or Company Name.');
       return;
     }
-    setCustomerName(quickCustomerName.trim());
-    setPointOfContact(quickCustomerName.trim());
+
+    setQuickCustomerPhoneTouched(true);
+    if (quickCustomerPhone.trim()) {
+      const v = validateCustomerPhone(quickCustomerPhone, quickCustomerPhoneCode, false);
+      if (!v.isValid) {
+        alert(`Phone Validation Error: ${v.message}`);
+        return;
+      }
+    }
+
+    setIsQuickSavingCustomer(true);
+
+    const formattedPhone = quickCustomerPhone.trim()
+      ? `${quickCustomerPhoneCode} ${quickCustomerPhone.trim()}`
+      : `${quickCustomerPhoneCode} 50 000 0000`;
+
+    const generatedEmail = quickCustomerEmail.trim() || `${trimmedName.toLowerCase().replace(/[^a-z0-9]/g, '')}@example.com`;
+    const resolvedContact = quickCustomerContactPerson.trim() || trimmedName;
+
+    const newCustomerPayload: any = {
+      customerName: trimmedName,
+      companyName: trimmedName,
+      contactPerson: resolvedContact,
+      phone: formattedPhone,
+      mobile: formattedPhone,
+      email: generatedEmail,
+      owner: orderOwner || currentUser?.name || 'Cool Admin',
+      status: 'Active',
+      type: 'Customer',
+      date: new Date().toISOString().split('T')[0],
+      createdDate: new Date().toISOString().split('T')[0],
+      assignedDate: new Date().toISOString().split('T')[0],
+    };
+
+    try {
+      if (addCustomer) {
+        await addCustomer(newCustomerPayload);
+      }
+    } catch (err) {
+      console.error('Failed to add customer to database:', err);
+    }
+
+    // Immediately select this new customer in the current form
+    setCustomerName(trimmedName);
+    setPointOfContact(resolvedContact);
+    setContactPerson(resolvedContact);
+    if (!customContacts.includes(resolvedContact)) {
+      setCustomContacts((prev) => [...prev, resolvedContact]);
+    }
+    if (quickCustomerLocation.trim()) {
+      setLocation(quickCustomerLocation.trim());
+    }
+
     setIsQuickCustomerModalOpen(false);
     setQuickCustomerName('');
+    setQuickCustomerContactPerson('');
     setQuickCustomerPhone('');
+    setQuickCustomerPhoneTouched(false);
+    setQuickCustomerEmail('');
+    setQuickCustomerLocation('');
+    setIsQuickCustomerCodeDropdownOpen(false);
+    setIsQuickSavingCustomer(false);
+    showToast(`Customer "${trimmedName}" added and selected!`);
   };
 
   // Filtered orders list for table view (Image 2)
@@ -1144,7 +1446,17 @@ export function CezconOrderModule() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setIsQuickCustomerModalOpen(true)}
+              onClick={() => {
+                setQuickCustomerName('');
+                setQuickCustomerContactPerson('');
+                setQuickCustomerPhoneCode('+971');
+                setQuickCustomerPhone('');
+                setQuickCustomerPhoneTouched(false);
+                setQuickCustomerEmail('');
+                setQuickCustomerLocation('');
+                setIsQuickCustomerCodeDropdownOpen(false);
+                setIsQuickCustomerModalOpen(true);
+              }}
               className="flex items-center gap-1 px-3 py-1 bg-[#5cb85c] hover:bg-[#4cae4c] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -1178,9 +1490,12 @@ export function CezconOrderModule() {
                       value={customerName}
                       onChange={(e) => handleCustomerSelect(e.target.value)}
                       required
-                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                     >
                       <option value="">Select Customer</option>
+                      {customerName && !customers?.some((c) => (c.customerName || c.companyName) === customerName) && (
+                        <option value={customerName}>{customerName}</option>
+                      )}
                       {customers?.map((c) => (
                         <option key={c.id} value={c.customerName || c.companyName}>
                           {c.customerName || c.companyName}
@@ -1192,7 +1507,13 @@ export function CezconOrderModule() {
                     type="button"
                     onClick={() => {
                       setQuickCustomerName('');
+                      setQuickCustomerContactPerson('');
+                      setQuickCustomerPhoneCode('+971');
                       setQuickCustomerPhone('');
+                      setQuickCustomerPhoneTouched(false);
+                      setQuickCustomerEmail('');
+                      setQuickCustomerLocation('');
+                      setIsQuickCustomerCodeDropdownOpen(false);
                       setIsQuickCustomerModalOpen(true);
                     }}
                     className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer flex items-center gap-0.5 transition-colors px-1"
@@ -1277,11 +1598,12 @@ export function CezconOrderModule() {
                   type={isOrderFormActive ? 'text' : 'number'}
                   step="any"
                   readOnly={isOrderFormActive}
-                  value={isOrderFormActive ? itemsTotalAmount.toFixed(2) : (manualAmount === 0 ? '0.00' : manualAmount)}
-                  onChange={(e) => setManualAmount(Number(e.target.value) || 0)}
+                  placeholder="0.00"
+                  value={isOrderFormActive ? itemsTotalAmount.toFixed(2) : manualAmount}
+                  onChange={(e) => setManualAmount(e.target.value)}
                   className={cn(
-                    'flex-1 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500',
-                    isOrderFormActive ? 'bg-slate-50 font-medium text-slate-700' : 'bg-white font-medium'
+                    'flex-1 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium',
+                    isOrderFormActive ? 'bg-slate-50 font-medium text-slate-700' : 'bg-white'
                   )}
                 />
               </div>
@@ -1306,9 +1628,10 @@ export function CezconOrderModule() {
                 <input
                   type="number"
                   step="any"
+                  placeholder="0.00"
                   value={adjustment}
-                  onChange={(e) => setAdjustment(Number(e.target.value) || 0)}
-                  className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  onChange={(e) => setAdjustment(e.target.value)}
+                  className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                 />
               </div>
 
@@ -1581,16 +1904,15 @@ export function CezconOrderModule() {
                 {/* Opportunity Number */}
                 <div className="flex items-center gap-2">
                   <label className="w-28 font-semibold text-slate-700 shrink-0">
-                    Opportunity Number <span className="text-red-500">*</span>
+                    Opportunity Number
                   </label>
                   <div className="flex-1 flex items-center gap-1.5">
                     <select
-                      required
                       value={opportunityNumber}
                       onChange={(e) => handleOpportunitySelect(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                     >
-                      <option value="">Select Opportunity</option>
+                      <option value="">None (Direct Order)</option>
                       {opportunityNumber && !salesOpportunities?.some((o) => o.opportunityCode === opportunityNumber || o.id === opportunityNumber) && (
                         <option value={opportunityNumber}>{opportunityNumber}</option>
                       )}
@@ -1650,12 +1972,13 @@ export function CezconOrderModule() {
                 <input
                   type="number"
                   step="any"
+                  placeholder="0.00"
                   value={manualDiscountAmount}
                   onChange={(e) => {
-                    setManualDiscountAmount(Number(e.target.value) || 0);
+                    setManualDiscountAmount(e.target.value);
                     setDiscountPercent(0);
                   }}
-                  className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                 />
               </div>
 
@@ -1762,13 +2085,13 @@ export function CezconOrderModule() {
                 <select
                   value={orderStatus}
                   onChange={(e) => setOrderStatus(e.target.value)}
-                  className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                 >
-                  <option value="Completed">Completed</option>
-                  <option value="Confirmed">Confirmed</option>
-                  <option value="In Progress">In Progress</option>
                   <option value="Pending">Pending</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Confirmed">Confirmed</option>
                   <option value="Delivered">Delivered</option>
+                  <option value="Completed">Completed</option>
                   <option value="Cancelled">Cancelled</option>
                 </select>
               </div>
@@ -2433,59 +2756,239 @@ export function CezconOrderModule() {
           </div>
         )}
 
-        {/* Quick Customer Modal */}
+        {/* Quick Customer Modal with Comprehensive Global Phone Country Codes */}
         {isQuickCustomerModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-sm border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95">
               <div className="flex items-center justify-between border-b pb-2">
-                <h3 className="font-bold text-slate-800 text-sm">Add Quick Customer</h3>
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-sm leading-tight">Add Quick Customer</h3>
+                    <p className="text-[10px] text-slate-500">Save new customer directly to CRM database</p>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setIsQuickCustomerModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-600"
+                  onClick={() => {
+                    setIsQuickCustomerModalOpen(false);
+                    setQuickCustomerPhoneTouched(false);
+                  }}
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer p-1"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="space-y-3 text-xs">
+
+              <form onSubmit={handleSaveQuickCustomer} className="space-y-3.5 text-xs">
+                {/* Customer Name */}
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Customer / Company *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Customer / Company Name <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Al Futtaim Engineering"
+                    autoFocus
+                    placeholder="e.g. Al Futtaim Engineering / Emirates Group"
                     value={quickCustomerName}
                     onChange={(e) => setQuickCustomerName(e.target.value)}
-                    className="w-full border border-slate-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-blue-500 text-xs text-slate-800"
                   />
                 </div>
+
+                {/* Contact Person */}
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Phone</label>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Contact Person Name (Optional)
+                  </label>
                   <input
                     type="text"
-                    placeholder="+971 50 123 4567"
-                    value={quickCustomerPhone}
-                    onChange={(e) => setQuickCustomerPhone(e.target.value)}
-                    className="w-full border border-slate-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-blue-500"
+                    placeholder="e.g. Rashid Mansoor"
+                    value={quickCustomerContactPerson}
+                    onChange={(e) => setQuickCustomerContactPerson(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-blue-500 text-xs text-slate-800"
                   />
                 </div>
-              </div>
-              <div className="flex items-center justify-end gap-2 pt-2 border-t">
-                <button
-                  type="button"
-                  onClick={() => setIsQuickCustomerModalOpen(false)}
-                  className="px-3 py-1.5 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 text-xs font-medium cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveQuickCustomer}
-                  className="px-4 py-1.5 bg-[#5cb85c] hover:bg-[#4cae4c] text-white rounded text-xs font-bold cursor-pointer transition shadow-2xs"
-                >
-                  Add
-                </button>
-              </div>
+
+                {/* International Phone Number with Dropdown */}
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Phone / Mobile Number (All Countries Supported)
+                  </label>
+                  <div
+                    className={cn(
+                      'flex rounded border overflow-visible bg-white relative transition-colors items-center',
+                      quickCustomerPhoneTouched && quickCustomerPhone.trim() && !phoneValidation.isValid
+                        ? 'border-red-400 ring-1 ring-red-400/20 bg-red-50/10 focus-within:border-red-500'
+                        : quickCustomerPhoneTouched && quickCustomerPhone.trim() && phoneValidation.isValid
+                        ? 'border-emerald-500 ring-1 ring-emerald-500/20 bg-emerald-50/10 focus-within:border-emerald-600'
+                        : 'border-slate-300 focus-within:border-blue-500'
+                    )}
+                  >
+                    {/* Country Code Picker Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsQuickCustomerCodeDropdownOpen(!isQuickCustomerCodeDropdownOpen);
+                        setQuickCustomerCodeSearch('');
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border-r border-slate-300 text-xs font-semibold text-slate-700 cursor-pointer shrink-0 transition-colors"
+                      title="Select Country Calling Code"
+                    >
+                      <span className="text-sm">{selectedCountryObj.flag}</span>
+                      <span>{selectedCountryObj.code}</span>
+                      <ChevronDown className="w-3 h-3 text-slate-400" />
+                    </button>
+
+                    {/* Phone Number Input */}
+                    <input
+                      type="tel"
+                      placeholder={selectedCountryObj.placeholder || '50 123 4567'}
+                      value={quickCustomerPhone}
+                      onChange={(e) => {
+                        const cleanVal = e.target.value.replace(/[^0-9\s\-()+]/g, '');
+                        setQuickCustomerPhone(cleanVal);
+                        setQuickCustomerPhoneTouched(true);
+                      }}
+                      onBlur={() => setQuickCustomerPhoneTouched(true)}
+                      className="flex-1 px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none bg-transparent"
+                    />
+
+                    {/* Live Validation Status Indicator Icon */}
+                    {quickCustomerPhoneTouched && quickCustomerPhone.trim() && (
+                      <div className="flex items-center pr-2.5 pointer-events-none">
+                        {phoneValidation.isValid ? (
+                          <Check className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-red-500" />
+                        )}
+                      </div>
+                    )}
+
+                    {/* Country Code Searchable Dropdown Menu */}
+                    {isQuickCustomerCodeDropdownOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-50"
+                          onClick={() => setIsQuickCustomerCodeDropdownOpen(false)}
+                        />
+                        <div className="absolute left-0 top-full mt-1 w-72 max-h-56 bg-white border border-slate-300 rounded-md shadow-xl z-50 p-2 overflow-hidden flex flex-col animate-in fade-in duration-100">
+                          <div className="relative mb-1.5 shrink-0">
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Search country or code (e.g. UAE, Saudi, +91)..."
+                              value={quickCustomerCodeSearch}
+                              onChange={(e) => setQuickCustomerCodeSearch(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded px-2.5 py-1 text-[11px] focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                          <div className="overflow-y-auto flex-1 space-y-0.5">
+                            {filteredCountryCodes.map((c) => (
+                              <button
+                                key={`${c.code}-${c.country}`}
+                                type="button"
+                                onClick={() => {
+                                  setQuickCustomerPhoneCode(c.code);
+                                  setIsQuickCustomerCodeDropdownOpen(false);
+                                  setQuickCustomerCodeSearch('');
+                                }}
+                                className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-left text-xs cursor-pointer hover:bg-blue-50 transition-colors ${
+                                  quickCustomerPhoneCode === c.code ? 'bg-blue-50/80 font-bold text-blue-700' : 'text-slate-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <span className="text-sm">{c.flag}</span>
+                                  <span className="truncate">{c.country}</span>
+                                </div>
+                                <span className="font-mono text-[11px] text-slate-500 ml-2 shrink-0">{c.code}</span>
+                              </button>
+                            ))}
+                            {filteredCountryCodes.length === 0 && (
+                              <div className="p-3 text-center text-slate-400 text-xs">
+                                No matching country found
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Inline Feedback Helper / Error Message */}
+                  {quickCustomerPhoneTouched && quickCustomerPhone.trim() && !phoneValidation.isValid && (
+                    <p className="text-[11px] text-red-600 flex items-center gap-1 font-medium mt-1 animate-in fade-in">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{phoneValidation.message}</span>
+                    </p>
+                  )}
+                  {quickCustomerPhoneTouched && quickCustomerPhone.trim() && phoneValidation.isValid && (
+                    <p className="text-[11px] text-emerald-600 flex items-center gap-1 font-medium mt-1 animate-in fade-in">
+                      <Check className="w-3.5 h-3.5 shrink-0" />
+                      <span>
+                        Valid {selectedCountryObj.country} {phoneValidation.type ? `(${phoneValidation.type})` : ''} number
+                      </span>
+                    </p>
+                  )}
+                  {(!quickCustomerPhoneTouched || !quickCustomerPhone.trim()) && (
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Format example: {selectedCountryObj.placeholder} ({selectedCountryObj.country})
+                    </p>
+                  )}
+                </div>
+
+                {/* Email (Optional) */}
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Email Address (Optional)
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="contact@customer.com"
+                    value={quickCustomerEmail}
+                    onChange={(e) => setQuickCustomerEmail(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-blue-500 text-xs text-slate-800"
+                  />
+                </div>
+
+                {/* Location / Address (Optional) */}
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Location / City (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Dubai, Abu Dhabi, Riyadh"
+                    value={quickCustomerLocation}
+                    onChange={(e) => setQuickCustomerLocation(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-blue-500 text-xs text-slate-800"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsQuickCustomerModalOpen(false);
+                      setQuickCustomerPhoneTouched(false);
+                    }}
+                    className="px-3.5 py-1.5 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isQuickSavingCustomer}
+                    className="px-4 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer transition shadow-xs flex items-center gap-1.5 disabled:opacity-60"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{isQuickSavingCustomer ? 'Saving...' : 'Add Customer'}</span>
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
@@ -3050,7 +3553,6 @@ export function CezconOrderModule() {
                   <th className="p-2.5 w-24 text-right text-slate-600">Amount</th>
                   <th className="p-2.5 w-20 text-right text-slate-600">VAT</th>
                   <th className="p-2.5 w-24 text-right text-slate-600">Total</th>
-                  <th className="p-2.5 w-28 text-right text-slate-600">Profit</th>
                   <th className="p-2.5 w-24 text-right text-slate-600">Receivable</th>
                   <th className="p-2.5 w-20 text-center text-slate-600">Actions</th>
                 </tr>
@@ -3088,8 +3590,9 @@ export function CezconOrderModule() {
                           <div className="text-[#2563EB] font-bold text-xs flex items-center gap-1.5 flex-wrap">
                             <button
                               type="button"
-                              onClick={() => handleOpenEdit(o)}
+                              onClick={() => setSelectedOrderForView(o)}
                               className="hover:underline cursor-pointer"
+                              title="Click to view order details"
                             >
                               {o.orderNumber}
                             </button>
@@ -3136,14 +3639,17 @@ export function CezconOrderModule() {
                       {/* Order Status */}
                       <td className="p-2.5">
                         <span
-                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${o.status === 'Completed'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : o.status === 'Confirmed'
-                              ? 'bg-blue-50 text-blue-700'
-                              : 'bg-slate-100 text-slate-700'
-                            }`}
+                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
+                            o.status === 'Completed' || o.status === 'Approved'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : o.status === 'Confirmed'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : o.status === 'Cancelled' || o.status === 'Rejected'
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}
                         >
-                          {o.status || 'Confirmed'}
+                          {o.status || 'In Progress'}
                         </span>
                       </td>
 
@@ -3171,17 +3677,6 @@ export function CezconOrderModule() {
                         })}
                       </td>
 
-                      {/* Profit */}
-                      <td className="p-2.5 text-right font-bold text-[#16A34A] whitespace-nowrap">
-                        {Number(o.profit || (o.amount ? o.amount * 0.25 : 0)).toLocaleString(
-                          'en-US',
-                          {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          }
-                        )}
-                      </td>
-
                       {/* Receivable */}
                       <td className="p-2.5 text-right font-bold text-[#E11D48] whitespace-nowrap">
                         {Number(o.receivable || o.totalAmount || 0).toLocaleString('en-US', {
@@ -3195,60 +3690,24 @@ export function CezconOrderModule() {
                         <div className="relative inline-block text-left">
                           <button
                             type="button"
-                            onClick={() =>
-                              setActionDropdownOrderId(
-                                actionDropdownOrderId === o.id ? null : o.id
-                              )
-                            }
+                            onClick={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setActionDropdownTarget(
+                                actionDropdownTarget?.order.id === o.id
+                                  ? null
+                                  : {
+                                      order: o,
+                                      top: rect.bottom + 4,
+                                      right: Math.max(16, window.innerWidth - rect.right),
+                                    }
+                              );
+                            }}
                             className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#1E293B] hover:bg-[#0F172A] text-white rounded text-[11px] font-medium shadow-xs cursor-pointer transition"
                             title="Actions"
                           >
                             <Eye className="w-3 h-3" />
                             <ChevronDown className="w-2.5 h-2.5" />
                           </button>
-
-                          {actionDropdownOrderId === o.id && (
-                            <div className="absolute right-0 top-full mt-1 z-50 w-36 bg-white border border-slate-200 rounded shadow-lg py-1 text-left text-xs animate-in fade-in zoom-in-95">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActionDropdownOrderId(null);
-                                  const isManager = typeof window !== 'undefined' && window.location.pathname.startsWith('/manager');
-                                  window.location.href = isManager
-                                    ? `/manager/sales?tab=invoice&orderId=${encodeURIComponent(o.id)}`
-                                    : `/sales?tab=invoice&orderId=${encodeURIComponent(o.id)}`;
-                                }}
-                                className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-blue-600 font-medium cursor-pointer"
-                              >
-                                <FileText className="w-3.5 h-3.5 text-blue-600" />
-                                <span>Create Invoice</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActionDropdownOrderId(null);
-                                  handleOpenEdit(o);
-                                }}
-                                className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-700 cursor-pointer"
-                              >
-                                <Edit2 className="w-3.5 h-3.5 text-blue-600" />
-                                <span>Edit Order</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActionDropdownOrderId(null);
-                                  if (confirm(`Are you sure you want to delete order ${o.orderNumber}?`)) {
-                                    deleteSalesOrder(o.id);
-                                  }
-                                }}
-                                className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-red-50 text-red-600 cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                                <span>Delete</span>
-                              </button>
-                            </div>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -3308,6 +3767,543 @@ export function CezconOrderModule() {
 
       {/* Floating fixed portal dropdown for E-Commerce Product Selection */}
       {renderProductDropdown()}
+
+      {/* Floating Fixed Portal for Order Actions (Prevents table scrollbar clipping) */}
+      {actionDropdownTarget && (
+        <>
+          <div
+            className="fixed inset-0 z-[99998] bg-transparent cursor-default"
+            onClick={() => setActionDropdownTarget(null)}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: `${actionDropdownTarget.top}px`,
+              right: `${actionDropdownTarget.right}px`,
+              zIndex: 99999,
+            }}
+            className="w-48 bg-white border border-slate-200 rounded-lg shadow-2xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-100 divide-y divide-slate-100"
+          >
+            {/* View Order Option */}
+            <button
+              type="button"
+              onClick={() => {
+                const targetOrder = actionDropdownTarget.order;
+                setActionDropdownTarget(null);
+                setSelectedOrderForView(targetOrder);
+              }}
+              className="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-50 text-slate-800 font-semibold cursor-pointer transition-colors"
+            >
+              <Eye className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>View Order</span>
+            </button>
+
+            {/* Sales Manager Approve Order Action (Restricted strictly to Sales Managers & Executive Management) */}
+            {isSalesManagerOrAdmin && actionDropdownTarget.order.status !== 'Approved' && actionDropdownTarget.order.status !== 'Completed' && (
+              <button
+                type="button"
+                onClick={() => {
+                  const targetOrder = actionDropdownTarget.order;
+                  setActionDropdownTarget(null);
+                  updateSalesOrder(targetOrder.id, { status: 'Approved' });
+                  showToast(`Order ${targetOrder.orderNumber} Approved by Sales Management! Handed off to Operations.`);
+                }}
+                className="w-full px-3 py-2 flex items-center gap-2 hover:bg-emerald-50 text-emerald-700 font-semibold cursor-pointer transition-colors"
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Approve Order</span>
+              </button>
+            )}
+
+            {/* Sales Manager Reject Order Action (Restricted strictly to Sales Managers & Executive Management) */}
+            {isSalesManagerOrAdmin && actionDropdownTarget.order.status !== 'Cancelled' && actionDropdownTarget.order.status !== 'Rejected' && (
+              <button
+                type="button"
+                onClick={() => {
+                  const targetOrder = actionDropdownTarget.order;
+                  setActionDropdownTarget(null);
+                  if (confirm(`Are you sure you want to reject Order ${targetOrder.orderNumber}?`)) {
+                    updateSalesOrder(targetOrder.id, { status: 'Cancelled' });
+                    showToast(`Order ${targetOrder.orderNumber} Rejected`);
+                  }
+                }}
+                className="w-full px-3 py-2 flex items-center gap-2 hover:bg-rose-50 text-rose-700 font-medium cursor-pointer transition-colors"
+              >
+                <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>Reject Order</span>
+              </button>
+            )}
+
+            {/* When order is approved, only the Order Creator (Sales Rep who raised it) can generate Material Request (MSRF) */}
+            {actionDropdownTarget.order.status === 'Approved' && isOrderCreator(actionDropdownTarget.order) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const targetOrder = actionDropdownTarget.order;
+                  setActionDropdownTarget(null);
+                  window.location.href = `/purchase?tab=msrf&orderId=${encodeURIComponent(targetOrder.id)}`;
+                }}
+                className="w-full px-3 py-2 flex items-center gap-2 hover:bg-sky-50 text-sky-700 font-semibold cursor-pointer transition-colors"
+              >
+                <Package className="w-4 h-4 text-sky-600 shrink-0" />
+                <span>Generate MSRF</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                const targetOrder = actionDropdownTarget.order;
+                setActionDropdownTarget(null);
+                const isManager = typeof window !== 'undefined' && window.location.pathname.startsWith('/manager');
+                window.location.href = isManager
+                  ? `/manager/sales?tab=invoice&orderId=${encodeURIComponent(targetOrder.id)}`
+                  : `/sales?tab=invoice&orderId=${encodeURIComponent(targetOrder.id)}`;
+              }}
+              className="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-50 text-blue-600 font-medium cursor-pointer transition-colors"
+            >
+              <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Create Invoice</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const targetOrder = actionDropdownTarget.order;
+                setActionDropdownTarget(null);
+                handleOpenEdit(targetOrder);
+              }}
+              className="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-50 text-slate-700 cursor-pointer transition-colors"
+            >
+              <Edit2 className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Edit Order</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const targetOrder = actionDropdownTarget.order;
+                setActionDropdownTarget(null);
+                if (confirm(`Are you sure you want to delete order ${targetOrder.orderNumber}?`)) {
+                  deleteSalesOrder(targetOrder.id);
+                }
+              }}
+              className="w-full px-3 py-2 flex items-center gap-2 hover:bg-red-50 text-red-600 cursor-pointer transition-colors"
+            >
+              <Trash2 className="w-4 h-4 text-red-600 shrink-0" />
+              <span>Delete</span>
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* VIEW ORDER DETAILS MODAL (with Inside Approve & Reject)        */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {activeViewOrder && (
+        <div
+          className="fixed inset-0 z-[99990] flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto font-sans"
+          onClick={() => setSelectedOrderForView(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 my-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="bg-[#0B1E2E] text-white px-5 py-3.5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded bg-white/10 flex items-center justify-center text-white">
+                  <ShoppingCart className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-sm tracking-tight text-white">
+                      Order Details: {activeViewOrder.orderNumber}
+                    </h3>
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                        activeViewOrder.status === 'Completed' || activeViewOrder.status === 'Approved'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                          : activeViewOrder.status === 'Confirmed'
+                            ? 'bg-blue-500/20 text-blue-300 border border-blue-400/40'
+                            : activeViewOrder.status === 'Cancelled' || activeViewOrder.status === 'Rejected'
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-400/40'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
+                      }`}
+                    >
+                      {activeViewOrder.status || 'Pending'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 mt-0.5">
+                    {activeViewOrder.subject || 'Sales Order Supply & Commissioning'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrderForView(null)}
+                  className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer text-xs"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Approval State Action Banner */}
+            <div className="border-b border-slate-200 shrink-0">
+              {activeViewOrder.status === 'Pending' && (
+                <div className="bg-amber-50 border-l-4 border-amber-500 p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-amber-900">
+                    <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                    <div>
+                      <span className="font-bold">Pending Sales Management Approval</span>
+                      <p className="text-[11px] text-amber-800">
+                        This order is waiting for Sales Leadership review. Once approved, the Order Creator ({activeViewOrder.owner || 'Tariq'}) can raise the Material Request (MSRF).
+                      </p>
+                    </div>
+                  </div>
+
+                  {isSalesManagerOrAdmin ? (
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={() => handleApproveFromModal(activeViewOrder)}
+                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold cursor-pointer transition shadow-xs flex items-center gap-1.5"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Approve Order</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRejectFromModal(activeViewOrder)}
+                        className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-semibold cursor-pointer transition shadow-xs flex items-center gap-1.5"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>Reject Order</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-amber-700 font-medium italic">
+                      (Only Sales Managers / Admins can approve)
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {activeViewOrder.status === 'Approved' && (
+                <div className="bg-emerald-50 border-l-4 border-emerald-500 p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-emerald-900">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <span className="font-bold">Order Approved by Sales Management</span>
+                      <p className="text-[11px] text-emerald-800">
+                        Commercial approval granted. Ready for Order Creator ({activeViewOrder.owner || 'Tariq'}) to raise Material Request (MSRF) for warehouse stock fulfillment.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    {/* Only the user who created the sales order (Tariq) can generate the MSRF */}
+                    {isOrderCreator(activeViewOrder) ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedOrderForView(null);
+                          window.location.href = `/purchase?tab=msrf&orderId=${encodeURIComponent(activeViewOrder.id)}`;
+                        }}
+                        className="px-3.5 py-1.5 bg-[#00838F] hover:bg-[#006978] text-white rounded text-xs font-bold cursor-pointer transition shadow-xs flex items-center gap-1.5"
+                      >
+                        <Package className="w-3.5 h-3.5" />
+                        <span>Generate MSRF</span>
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-emerald-800 font-medium bg-emerald-100/70 border border-emerald-200 px-2.5 py-1 rounded">
+                        Awaiting Order Creator ({activeViewOrder.owner || 'Sales Rep'}) to raise MSRF
+                      </span>
+                    )}
+
+                    {isSalesManagerOrAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => handleRejectFromModal(activeViewOrder)}
+                        className="px-2.5 py-1 text-rose-700 hover:bg-rose-100 rounded text-xs font-medium cursor-pointer transition"
+                      >
+                        Revoke / Reject
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {(activeViewOrder.status === 'Cancelled' || activeViewOrder.status === 'Rejected') && (
+                <div className="bg-rose-50 border-l-4 border-rose-500 p-3 flex items-center gap-2 text-xs text-rose-900">
+                  <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <div>
+                    <span className="font-bold">Order Rejected / Cancelled</span>
+                    <p className="text-[11px] text-rose-800">This order was cancelled and will not proceed to procurement.</p>
+                  </div>
+                </div>
+              )}
+
+              {activeViewOrder.status === 'Completed' && (
+                <div className="bg-blue-50 border-l-4 border-blue-500 p-3 flex items-center gap-2 text-xs text-blue-900">
+                  <Check className="w-4 h-4 text-blue-600 shrink-0" />
+                  <div>
+                    <span className="font-bold">Order Completed</span>
+                    <p className="text-[11px] text-blue-800">Fully delivered and completed.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Body - Scrollable */}
+            <div className="p-5 overflow-y-auto flex-1 space-y-5 text-xs text-slate-700">
+              {/* Top Details Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Customer Information Card */}
+                <div className="bg-slate-50/70 border border-slate-200 rounded-md p-3.5 space-y-2.5">
+                  <div className="flex items-center gap-1.5 pb-2 border-b border-slate-200 font-bold text-slate-800 text-xs">
+                    <Shield className="w-3.5 h-3.5 text-red-500" />
+                    <span>Customer Information</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 text-[11px]">
+                    <span className="text-slate-500 font-medium">Customer:</span>
+                    <span className="col-span-2 font-bold text-blue-600">{activeViewOrder.customer}</span>
+
+                    <span className="text-slate-500 font-medium">Contact Person:</span>
+                    <span className="col-span-2 font-semibold text-slate-800">{activeViewOrder.contactPerson || 'N/A'}</span>
+
+                    <span className="text-slate-500 font-medium">Phone / Mobile:</span>
+                    <span className="col-span-2 font-semibold text-slate-800">{activeViewOrder.phone || '+971 50 123 4567'}</span>
+
+                    <span className="text-slate-500 font-medium">Location / Site:</span>
+                    <span className="col-span-2 text-slate-700">{activeViewOrder.billingAddress || activeViewOrder.shippingAddress || (activeViewOrder as any).location || 'MUSSAFAH INDUSTRIAL AREA, ABU DHABI'}</span>
+                  </div>
+                </div>
+
+                {/* Order Information Card */}
+                <div className="bg-slate-50/70 border border-slate-200 rounded-md p-3.5 space-y-2.5">
+                  <div className="flex items-center gap-1.5 pb-2 border-b border-slate-200 font-bold text-slate-800 text-xs">
+                    <FileText className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Order & Commercial Details</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5 text-[11px]">
+                    <span className="text-slate-500 font-medium">Order Number:</span>
+                    <span className="col-span-2 font-bold text-slate-900 font-mono">{activeViewOrder.orderNumber}</span>
+
+                    <span className="text-slate-500 font-medium">Order Date:</span>
+                    <span className="col-span-2 font-semibold text-slate-800">{activeViewOrder.orderDate}</span>
+
+                    <span className="text-slate-500 font-medium">LPO Number:</span>
+                    <span className="col-span-2 font-semibold text-slate-800">{activeViewOrder.poReference || (activeViewOrder as any).lpoNumber || '123456784'}</span>
+
+                    <span className="text-slate-500 font-medium">Delivery Date:</span>
+                    <span className="col-span-2 text-slate-700">{activeViewOrder.deliveryDueDate || (activeViewOrder as any).deliveryDate || '05-10-2026'}</span>
+
+                    <span className="text-slate-500 font-medium">Order Owner:</span>
+                    <span className="col-span-2 text-slate-800 font-semibold">{activeViewOrder.owner || 'Tariq'}</span>
+
+                    <span className="text-slate-500 font-medium">Category / Type:</span>
+                    <span className="col-span-2 text-slate-700">{activeViewOrder.category || 'Supply And Installation'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Line Items Table */}
+              <div className="border border-slate-200 rounded-md overflow-hidden bg-white">
+                <div className="bg-slate-100 px-3 py-2 border-b border-slate-200 font-bold text-xs text-slate-800 flex items-center justify-between">
+                  <span>Scope of Work & Ordered Products</span>
+                  <span className="text-[11px] font-normal text-slate-500">
+                    Currency: UAE Dirhams (AED)
+                  </span>
+                </div>
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                      <th className="p-2.5 w-10 text-center">#</th>
+                      <th className="p-2.5">Product / Item Description</th>
+                      <th className="p-2.5 w-24">Code / SKU</th>
+                      <th className="p-2.5 w-20 text-center">Qty</th>
+                      <th className="p-2.5 w-24 text-right">Unit Price</th>
+                      <th className="p-2.5 w-28 text-right">Total (AED)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {activeViewOrder.items && activeViewOrder.items.length > 0 ? (
+                      activeViewOrder.items.map((it, idx) => (
+                        <tr key={it.id || idx} className="hover:bg-slate-50/50">
+                          <td className="p-2.5 text-center text-slate-500">{idx + 1}</td>
+                          <td className="p-2.5">
+                            <div className="font-semibold text-slate-800">{it.productName || it.name || it.description}</div>
+                            {it.description && it.description !== it.productName && (
+                              <div className="text-[11px] text-slate-500">{it.description}</div>
+                            )}
+                          </td>
+                          <td className="p-2.5 font-mono text-[11px] text-slate-600">{it.sku || it.itemCode || '-'}</td>
+                          <td className="p-2.5 text-center font-semibold text-slate-800">{it.quantity} {it.unit || 'Pcs'}</td>
+                          <td className="p-2.5 text-right text-slate-700">{Number(it.unitPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                          <td className="p-2.5 text-right font-bold text-slate-900">{Number(it.totalAmount || (it.quantity * it.unitPrice) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr className="hover:bg-slate-50/50">
+                        <td className="p-2.5 text-center text-slate-500">1</td>
+                        <td className="p-2.5">
+                          <div className="font-semibold text-slate-800">{activeViewOrder.subject || 'Supply of AC Units and Accessories'}</div>
+                          <div className="text-[11px] text-slate-500">Direct Sales Order supply and fulfillment</div>
+                        </td>
+                        <td className="p-2.5 font-mono text-[11px] text-slate-600">AC-3920</td>
+                        <td className="p-2.5 text-center font-semibold text-slate-800">1 Unit</td>
+                        <td className="p-2.5 text-right text-slate-700">{Number(activeViewOrder.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                        <td className="p-2.5 text-right font-bold text-slate-900">{Number(activeViewOrder.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Bottom Row: Comments (Left) & Financial Summary (Right) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                {/* Notes & Terms */}
+                <div className="bg-slate-50 border border-slate-200 rounded-md p-3.5 space-y-2">
+                  <div className="font-semibold text-slate-800 text-xs">Payment Terms & Notes:</div>
+                  <p className="text-[11px] text-slate-600 whitespace-pre-wrap leading-relaxed">
+                    {activeViewOrder.paymentTerms || activeViewOrder.notes || '1. Delivery: Within scheduled timeline.\n2. Payment: As per confirmed LPO terms.\n3. Standard 12-month manufacturer warranty.'}
+                  </p>
+                </div>
+
+                {/* Financial Summary */}
+                <div className="bg-slate-50 border border-slate-200 rounded-md p-3.5 space-y-2 text-xs">
+                  <div className="flex justify-between text-slate-600">
+                    <span>Subtotal / Amount:</span>
+                    <span className="font-semibold text-slate-800">
+                      AED {Number(activeViewOrder.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>VAT (5%):</span>
+                    <span className="font-semibold text-slate-800">
+                      AED {Number(activeViewOrder.vatAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-t border-slate-300 pt-2 text-sm font-bold text-slate-900">
+                    <span>Total Amount:</span>
+                    <span className="text-[#0B1E2E]">
+                      AED {Number(activeViewOrder.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-t border-slate-200 pt-1.5 text-xs font-bold text-[#E11D48]">
+                    <span>Total Receivable:</span>
+                    <span>
+                      AED {Number(activeViewOrder.receivable || activeViewOrder.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer Controls */}
+            <div className="bg-slate-100 border-t border-slate-200 px-5 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="text-[11px] text-slate-500">
+                Created by: <span className="font-semibold text-slate-700">{activeViewOrder.owner || 'Tariq'}</span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Approve Button inside Modal for Sales Manager */}
+                {isSalesManagerOrAdmin && activeViewOrder.status !== 'Approved' && activeViewOrder.status !== 'Completed' && (
+                  <button
+                    type="button"
+                    onClick={() => handleApproveFromModal(activeViewOrder)}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold cursor-pointer transition shadow-xs flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Approve Order</span>
+                  </button>
+                )}
+
+                {/* Reject Button inside Modal for Sales Manager */}
+                {isSalesManagerOrAdmin && activeViewOrder.status !== 'Cancelled' && activeViewOrder.status !== 'Rejected' && (
+                  <button
+                    type="button"
+                    onClick={() => handleRejectFromModal(activeViewOrder)}
+                    className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-semibold cursor-pointer transition shadow-xs flex items-center gap-1.5"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    <span>Reject Order</span>
+                  </button>
+                )}
+
+                {/* Generate MSRF Button: strictly for the Order Creator (Tariq) when Approved */}
+                {activeViewOrder.status === 'Approved' && isOrderCreator(activeViewOrder) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const id = activeViewOrder.id;
+                      setSelectedOrderForView(null);
+                      window.location.href = `/purchase?tab=msrf&orderId=${encodeURIComponent(id)}`;
+                    }}
+                    className="px-3.5 py-2 bg-[#00838F] hover:bg-[#006978] text-white rounded text-xs font-bold cursor-pointer transition shadow-xs flex items-center gap-1.5"
+                  >
+                    <Package className="w-4 h-4" />
+                    <span>Generate MSRF</span>
+                  </button>
+                )}
+
+                {/* Create Invoice */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = activeViewOrder.id;
+                    setSelectedOrderForView(null);
+                    const isManager = typeof window !== 'undefined' && window.location.pathname.startsWith('/manager');
+                    window.location.href = isManager
+                      ? `/manager/sales?tab=invoice&orderId=${encodeURIComponent(id)}`
+                      : `/sales?tab=invoice&orderId=${encodeURIComponent(id)}`;
+                  }}
+                  className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-blue-600 rounded text-xs font-semibold cursor-pointer transition flex items-center gap-1.5"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Create Invoice</span>
+                </button>
+
+                {/* Edit Order */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const orderToEditTarget = activeViewOrder;
+                    setSelectedOrderForView(null);
+                    handleOpenEdit(orderToEditTarget);
+                  }}
+                  className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded text-xs font-semibold cursor-pointer transition flex items-center gap-1.5"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Edit Order</span>
+                </button>
+
+                {/* Close Modal */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrderForView(null)}
+                  className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs font-medium cursor-pointer transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Toast Notification */}
+      {orderToast && (
+        <div className="fixed bottom-5 right-5 z-[999999] bg-[#0F172A] text-white text-xs px-4 py-2.5 rounded-md shadow-2xl flex items-center gap-2 animate-in slide-in-from-bottom-2 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{orderToast}</span>
+        </div>
+      )}
     </div>
   );
 }

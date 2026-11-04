@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -8,6 +8,7 @@ import {
   Filter,
   ChevronDown,
   CheckCircle2,
+  Check,
   Info,
   Layers,
   SlidersHorizontal,
@@ -43,10 +44,13 @@ import {
   List,
   Printer,
   Lightbulb,
+  ShieldCheck,
+  RotateCcw,
+  Sparkles,
 } from 'lucide-react';
 import { mockCezconStockItems, mockStockTransfers } from '@/data/mockEnterpriseData';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
-import { CrmCezconStock, CrmStockTransfer } from '@/types/enterprise-crm';
+import { CrmCezconStock, CrmStockTransfer, CrmPurchaseOrder, CrmMsrf, CrmSupplierQuotation } from '@/types/enterprise-crm';
 import { ProductSettingItem } from '@/types/settings';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
 import {
@@ -56,7 +60,19 @@ import {
   purchaseOrderApiService,
   stockInApiService,
   stockTransferApiService,
+  supplierInvoiceApiService,
+  supplierPaymentApiService,
+  msrfApiService,
+  purchaseQuotationApiService,
 } from '@/services/procurementApiService';
+import { MsrfManagement, isAuthorizedPurchaseUser } from '@/components/purchase/MsrfManagement';
+import { QuotationComparison } from '@/components/purchase/QuotationComparison';
+import { PurchaseApprovalModal } from '@/components/purchase/PurchaseApprovalModal';
+import { ThreeWayMatchModal } from '@/components/purchase/ThreeWayMatchModal';
+import { RecordPaymentModal } from '@/components/purchase/RecordPaymentModal';
+import { PurchaseDashboard } from '@/components/purchase/PurchaseDashboard';
+import { SupplierReconciliationView } from '@/components/purchase/SupplierReconciliationView';
+import { LegacyMigrationView } from '@/components/purchase/LegacyMigrationView';
 import { cn } from '@/lib/utils';
 
 // Helper Barcode Component
@@ -133,8 +149,11 @@ const getLiveMonthRangeString = () => {
 const mockPurchaseOrders: any[] = [];
 const defaultPurchaseInvoicesList: any[] = [];
 const mockPurchasePayments: any[] = [];
-const mockStockInList: any[] = [];
-const defaultSuppliersList: any[] = [];
+const defaultSuppliersList: any[] = [
+  { id: 'sup_1793096319825', name: 'hello', supplierName: 'hello', companyName: 'Mussafah Industrial Area, Abu Dhabi', owner: 'shemin', status: 'Active' },
+  { id: 'sup_1793099052834', name: 'shezin', supplierName: 'shezin', companyName: 'hello', owner: 'shemin', status: 'Active' },
+  { id: 'sup_1793100105795', name: 'afsal', supplierName: 'afsal', companyName: 'ash', owner: 'shemin', status: 'Active' },
+];
 
 const defaultStoresList: any[] = [
   {
@@ -194,7 +213,7 @@ function PurchasePageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const mainTab = searchParams.get('tab') || 'stock';
+  const mainTab = searchParams.get('tab') || 'msrf';
 
   const [activeSubTab, setActiveSubTab] = useState<'stock' | 'minimal' | 'adjustment' | 'transfer'>('stock');
 
@@ -205,6 +224,12 @@ function PurchasePageInner() {
     }
   }, [searchParams]);
 
+  useEffect(() => {
+    if (mainTab === 'delegations') {
+      router.replace('/purchase?tab=msrf');
+    }
+  }, [mainTab, router]);
+
   // Mobile Filter Accordion States
   const [showPoFiltersMobile, setShowPoFiltersMobile] = useState(false);
   const [showInvoiceFiltersMobile, setShowInvoiceFiltersMobile] = useState(false);
@@ -214,14 +239,20 @@ function PurchasePageInner() {
   // Suppliers State & Add Modal
   const isMockSupplier = (item: any) => {
     if (!item) return false;
-    const mockIds = ['sup_1', 'sup_2', 'sup_3', 'sup_4'];
+    const mockIds = ['sup_1', 'sup_2', 'sup_3', 'sup_4', 'sup_01', 'sup_02', 'sup_03', 'sup_04', 'sup_05', 'sup_06', 'sup_07'];
     const mockNames = [
-      'LUTFI TRADING LLC',
-      'SUPER GENERAL COMPANY LLC',
-      'CENTRAL TRADING COMPANY LLC',
-      'Shajarath Al Thalj Trading LLC',
+      'lutfi trading llc',
+      'super general company llc',
+      'central trading company llc',
+      'shajarath al thalj trading llc',
+      'shajarath al thalj for freezer manufacturing llc',
+      'al ghandi electronics',
+      'eros group llc',
+      'mitsubishi electric corp',
     ];
-    return mockIds.includes(item.id) || mockNames.includes(item.name);
+    const n = (item.name || item.supplierName || item.supplier_name || '').toLowerCase().trim();
+    const id = (item.id || '').toLowerCase().trim();
+    return mockIds.includes(id) || mockNames.includes(n) || mockNames.some((m) => n === m || n.startsWith(m));
   };
 
   const [suppliersList, setSuppliersList] = useState<any[]>(() => {
@@ -232,7 +263,7 @@ function PurchasePageInner() {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed)) {
             const cleaned = parsed.filter((s) => !isMockSupplier(s));
-            return cleaned;
+            if (cleaned.length > 0) return cleaned;
           }
         }
       } catch (e) {
@@ -243,31 +274,74 @@ function PurchasePageInner() {
   });
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    const fetchLiveSuppliers = async () => {
       try {
-        const stored = localStorage.getItem('crm_suppliers_list');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
-            const cleaned = parsed.filter((s) => !isMockSupplier(s));
-            if (cleaned.length !== parsed.length) {
+        const res = await supplierApiService.getSuppliers({ limit: 200 });
+        if (res && res.success && Array.isArray(res.suppliers) && res.suppliers.length > 0) {
+          const cleaned = res.suppliers
+            .filter((s) => !isMockSupplier(s))
+            .map((s) => ({
+              ...s,
+              name: s.name || s.supplierName || 'Unnamed Supplier',
+              supplierName: s.supplierName || s.name || 'Unnamed Supplier',
+            }));
+          if (cleaned.length > 0) {
+            setSuppliersList(cleaned);
+            if (typeof window !== 'undefined') {
               localStorage.setItem('crm_suppliers_list', JSON.stringify(cleaned));
-              setSuppliersList(cleaned);
             }
           }
         }
-      } catch (e) {
-        console.error(e);
+      } catch (err) {
+        console.error('Failed to fetch live suppliers from API:', err);
       }
-    }
+    };
+
+    fetchLiveSuppliers();
+
+    const handleSuppliersUpdated = () => {
+      if (typeof window !== 'undefined') {
+        try {
+          const stored = localStorage.getItem('crm_suppliers_list');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+              setSuppliersList(parsed.filter((s) => !isMockSupplier(s)));
+            }
+          }
+        } catch {}
+      }
+      fetchLiveSuppliers();
+    };
+
+    window.addEventListener('crm_suppliers_updated', handleSuppliersUpdated);
+    window.addEventListener('storage', handleSuppliersUpdated);
+    return () => {
+      window.removeEventListener('crm_suppliers_updated', handleSuppliersUpdated);
+      window.removeEventListener('storage', handleSuppliersUpdated);
+    };
   }, []);
 
   useEffect(() => {
     if (contextSuppliers && contextSuppliers.length > 0) {
-      const cleaned = contextSuppliers.filter((s) => !isMockSupplier(s));
+      const cleaned = contextSuppliers
+        .filter((s) => !isMockSupplier(s))
+        .map((s) => ({
+          ...s,
+          name: s.name || s.supplierName || 'Unnamed Supplier',
+          supplierName: s.supplierName || s.name || 'Unnamed Supplier',
+          contact: s.contact || s.phone || '',
+          owner: s.owner || 'Musthafa Chirammal',
+          ownerAvatar: s.ownerAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+          outstanding: Number(s.outstanding) || 0,
+        }));
       setSuppliersList(cleaned);
     }
   }, [contextSuppliers]);
+
+  useEffect(() => {
+    supplierApiService.migrateLocalSuppliersToDatabase().catch(() => { });
+  }, []);
 
   // Upload Supplier Screen State
   const [isUploadSupplierView, setIsUploadSupplierView] = useState(false);
@@ -345,7 +419,7 @@ function PurchasePageInner() {
         setSuppliersList(updated);
         try {
           localStorage.setItem('crm_suppliers_list', JSON.stringify(updated));
-        } catch (err) {}
+        } catch (err) { }
         newSuppliers.forEach((sup) => contextAddSupplier(sup));
 
         alert(`Successfully imported ${newSuppliers.length} supplier(s).`);
@@ -372,17 +446,53 @@ function PurchasePageInner() {
     address: '',
     paymentTerms: '30 Days',
   });
+  const [activeSupplierDropdownId, setActiveSupplierDropdownId] = useState<string | null>(null);
+  const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
+  const [viewingSupplier, setViewingSupplier] = useState<any | null>(null);
 
   const handleAddNewSupplier = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSupplierForm.name.trim()) return;
+    const trimmedName = newSupplierForm.name.trim();
+
+    if (editingSupplierId) {
+      const updatedSup = {
+        name: trimmedName,
+        supplierName: trimmedName,
+        companyName: newSupplierForm.companyName.trim() || undefined,
+        trn: newSupplierForm.trn.trim() || undefined,
+        contact: newSupplierForm.phone.trim() || undefined,
+        phone: newSupplierForm.phone.trim() || undefined,
+        email: newSupplierForm.email.trim() || undefined,
+        address: newSupplierForm.address.trim() || undefined,
+        paymentTerms: newSupplierForm.paymentTerms.trim() || undefined,
+      };
+      contextUpdateSupplier(editingSupplierId, updatedSup);
+      supplierApiService.updateSupplier(editingSupplierId, updatedSup).catch(() => { });
+      const updated = suppliersList.map((s) => (s.id === editingSupplierId ? { ...s, ...updatedSup } : s));
+      setSuppliersList(updated);
+      try {
+        localStorage.setItem('crm_suppliers_list', JSON.stringify(updated));
+      } catch (err) { }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('crm_suppliers_updated'));
+      }
+      setIsAddSupplierModalOpen(false);
+      setEditingSupplierId(null);
+      setNewSupplierForm({ name: '', companyName: '', trn: '', phone: '', email: '', address: '', paymentTerms: '30 Days' });
+      return;
+    }
+
     const sup: any = {
       id: `sup_${Date.now()}`,
       slNo: suppliersList.length + 1,
-      name: newSupplierForm.name.trim(),
+      name: trimmedName,
+      supplierName: trimmedName,
       companyName: newSupplierForm.companyName.trim() || undefined,
       trn: newSupplierForm.trn.trim() || undefined,
       contact: newSupplierForm.phone.trim() || undefined,
+      contactPerson: trimmedName,
+      phone: newSupplierForm.phone.trim() || undefined,
       email: newSupplierForm.email.trim() || undefined,
       address: newSupplierForm.address.trim() || undefined,
       paymentTerms: newSupplierForm.paymentTerms.trim() || undefined,
@@ -396,9 +506,33 @@ function PurchasePageInner() {
     setSuppliersList(updated);
     try {
       localStorage.setItem('crm_suppliers_list', JSON.stringify(updated));
-    } catch (err) {}
+    } catch (err) { }
+    supplierApiService.createSupplier(sup).catch(() => { });
+    supplierApiService.migrateLocalSuppliersToDatabase(true).catch(() => { });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('crm_suppliers_updated'));
+    }
     setIsAddSupplierModalOpen(false);
     setNewSupplierForm({ name: '', companyName: '', trn: '', phone: '', email: '', address: '', paymentTerms: '30 Days' });
+  };
+
+  const handleDeleteSupplier = (supId: string, supName: string) => {
+    setActiveSupplierDropdownId(null);
+    if (window.confirm(`Are you sure you want to delete supplier "${supName}"?`)) {
+      contextDeleteSupplier(supId);
+      supplierApiService.deleteSupplier(supId).catch(() => { });
+      const updated = suppliersList.filter((s) => s.id !== supId && (s.name || s.supplierName) !== supName);
+      setSuppliersList(updated);
+      try {
+        localStorage.setItem('crm_suppliers_list', JSON.stringify(updated));
+      } catch (err) { }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('crm_suppliers_updated'));
+      }
+      if (viewingSupplier?.id === supId) {
+        setViewingSupplier(null);
+      }
+    }
   };
 
   // Stores State & Add Modal
@@ -425,11 +559,11 @@ function PurchasePageInner() {
           setStoresList(res.stores);
           try {
             localStorage.setItem('crm_stores_list', JSON.stringify(res.stores));
-          } catch (e) {}
+          } catch (e) { }
         }
       })
-      .catch(() => {});
-    storeApiService.migrateLocalStoresToDatabase().catch(() => {});
+      .catch(() => { });
+    storeApiService.migrateLocalStoresToDatabase().catch(() => { });
   }, []);
 
   const [isAddStoreModalOpen, setIsAddStoreModalOpen] = useState(false);
@@ -468,7 +602,7 @@ function PurchasePageInner() {
       setStoresList(updated);
       try {
         localStorage.setItem('crm_stores_list', JSON.stringify(updated));
-      } catch (e) {}
+      } catch (e) { }
     }
     setIsAddStoreModalOpen(false);
     setNewStoreForm({ name: '', code: '', location: '', manager: '', phone: '', capacity: '' });
@@ -502,7 +636,7 @@ function PurchasePageInner() {
     setTransfers(updated);
     try {
       localStorage.setItem('crm_stock_transfers', JSON.stringify(updated));
-    } catch (err) {}
+    } catch (err) { }
     setIsAddTransferModalOpen(false);
     setNewTransferForm({ transferNo: '', transferFrom: 'MAIN WAREHOUSE', transferTo: 'M-42 OFFICE & SHOWROOM', notes: '' });
   };
@@ -511,144 +645,40 @@ function PurchasePageInner() {
   const [poFilterOwner, setPoFilterOwner] = useState<string>('All Owners');
   const [poDateRange, setPoDateRange] = useState<string>(getLiveMonthRangeString());
   const [poFilterSupplier, setPoFilterSupplier] = useState<string>('Select Supplier');
+  const [poFilterMsrf, setPoFilterMsrf] = useState<string>('All Material Requests');
+  const [poFilterType, setPoFilterType] = useState<string>('All Types');
   const [poSearch, setPoSearch] = useState<string>('');
   const [poRowsPerPage, setPoRowsPerPage] = useState<number>(10);
-  const initialDefaultPurchaseOrders = useMemo(
-    () => [
-      {
-        id: 'po_default_1',
-        slNo: 1,
-        owner: 'MUSTHAFA CHIRAMMAL',
-        ownerAvatar: '',
-        poNumber: 'CTPO#2543',
-        date: '07-10-2026',
-        createdAtFormatted: 'WED 07-10-2026 11:07:05 AM',
-        expectedDeliveryDate: '',
-        supplier: 'LUTFI TRADING LLC',
-        order: '',
-        reference: '',
-        description: '',
-        opportunityOrder: '',
-        projectNumber: '',
-        projectName: '',
-        vatType: 'with_vat',
-        attention: 'Mr. Rama Krishnan',
-        preparedBy: 'MUSTHAFA CHIRAMMAL',
-        preparedByMobile: '+9715688783056',
-        preparedByEmail: 'im@cooltechuae.com',
-        preparedByDesignation: 'Inventory Management (IM)',
-        termsCondition: 'Select',
-        termsConditionText:
-          'All product supply should be from the latest stock. Material supplied should comply 100% with the requested specifications. Products with any manufacturing defects or issues should be exchanged with new one with all cost including fright to End User. Cool Technologies is requesting you to acknowledge the receipt of this LPO and confirmation of delivery time, via return email.',
-        amount: 420.0,
-        vat: 21.0,
-        discount: 0,
-        adjustment: 0,
-        totalAmount: 441.0,
-        invoiceReceived: '',
-        approval: 'Waiting for Final Approval',
-        deliveryStatus: 'Pending',
-        items: [
-          {
-            id: 'item_1',
-            description: 'REFRIGERATOR 140 LTR SINGLE DOOR NOBEL NR140',
-            code: 'NR140',
-            unit: 'Pcs',
-            brand: 'NOBEL',
-            qty: 1,
-            deliveryPending: 1,
-            amount: 335.0,
-            total: 335.0,
-          },
-          {
-            id: 'item_2',
-            description: 'Single Ring Infrared Cooker-Touch Control Nobel I',
-            code: 'NIC101',
-            unit: 'Pcs',
-            brand: 'NOBEL',
-            qty: 1,
-            deliveryPending: 1,
-            amount: 85.0,
-            total: 85.0,
-          },
-        ],
-      },
-    ],
-    []
-  );
 
+  // MSRF Filter Dropdown States (List View)
+  const [isFilterMsrfDropdownOpen, setIsFilterMsrfDropdownOpen] = useState<boolean>(false);
+  const [filterMsrfSearchQuery, setFilterMsrfSearchQuery] = useState<string>('');
+  const filterMsrfDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (filterMsrfDropdownRef.current && !filterMsrfDropdownRef.current.contains(e.target as Node)) {
+        setIsFilterMsrfDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>(() => {
     if (typeof window !== 'undefined') {
       try {
         const stored = localStorage.getItem('crm_purchase_orders');
         if (stored !== null) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed)) {
+            return parsed;
+          }
         }
       } catch (e) {
         console.error(e);
       }
     }
-    return [
-      {
-        id: 'po_default_1',
-        slNo: 1,
-        owner: 'MUSTHAFA CHIRAMMAL',
-        ownerAvatar: '',
-        poNumber: 'CTPO#2543',
-        date: '07-10-2026',
-        createdAtFormatted: 'WED 07-10-2026 11:07:05 AM',
-        expectedDeliveryDate: '',
-        supplier: 'LUTFI TRADING LLC',
-        order: '',
-        reference: '',
-        description: '',
-        opportunityOrder: '',
-        projectNumber: '',
-        projectName: '',
-        vatType: 'with_vat',
-        attention: 'Mr. Rama Krishnan',
-        preparedBy: 'MUSTHAFA CHIRAMMAL',
-        preparedByMobile: '+9715688783056',
-        preparedByEmail: 'im@cooltechuae.com',
-        preparedByDesignation: 'Inventory Management (IM)',
-        termsCondition: 'Select',
-        termsConditionText:
-          'All product supply should be from the latest stock. Material supplied should comply 100% with the requested specifications. Products with any manufacturing defects or issues should be exchanged with new one with all cost including fright to End User. Cool Technologies is requesting you to acknowledge the receipt of this LPO and confirmation of delivery time, via return email.',
-        amount: 420.0,
-        vat: 21.0,
-        discount: 0,
-        adjustment: 0,
-        totalAmount: 441.0,
-        invoiceReceived: '',
-        approval: 'Waiting for Final Approval',
-        deliveryStatus: 'Pending',
-        items: [
-          {
-            id: 'item_1',
-            description: 'REFRIGERATOR 140 LTR SINGLE DOOR NOBEL NR140',
-            code: 'NR140',
-            unit: 'Pcs',
-            brand: 'NOBEL',
-            qty: 1,
-            deliveryPending: 1,
-            amount: 335.0,
-            total: 335.0,
-          },
-          {
-            id: 'item_2',
-            description: 'Single Ring Infrared Cooker-Touch Control Nobel I',
-            code: 'NIC101',
-            unit: 'Pcs',
-            brand: 'NOBEL',
-            qty: 1,
-            deliveryPending: 1,
-            amount: 85.0,
-            total: 85.0,
-          },
-        ],
-      },
-    ];
+    return [];
   });
 
   // Purchase Order View Mode & Form State (Exact Cezcon CRM layout)
@@ -657,14 +687,19 @@ function PurchasePageInner() {
   const [poDetailActiveTab, setPoDetailActiveTab] = useState<'details' | 'invoice' | 'do' | 'history'>('details');
 
   useEffect(() => {
-    if (contextPurchaseOrders && contextPurchaseOrders.length > 0) {
+    if (contextPurchaseOrders) {
       setPurchaseOrders(contextPurchaseOrders);
     }
   }, [contextPurchaseOrders]);
 
   const handleDeletePurchaseOrder = (poId: string, poNumber: string) => {
     if (window.confirm(`Are you sure you want to delete Purchase Order ${poNumber}?`)) {
-      const updated = purchaseOrders.filter((po) => po.id !== poId);
+      const targetId = poId || poNumber;
+      purchaseOrderApiService.deletePurchaseOrder(targetId).catch((err) => console.warn('Delete PO error:', err));
+      if (poNumber && poNumber !== targetId) {
+        purchaseOrderApiService.deletePurchaseOrder(poNumber).catch(() => {});
+      }
+      const updated = purchaseOrders.filter((po) => po.id !== poId && po.poNumber !== poNumber);
       setPurchaseOrders(updated);
       try {
         localStorage.setItem('crm_purchase_orders', JSON.stringify(updated));
@@ -674,7 +709,7 @@ function PurchasePageInner() {
       }
       contextDeletePurchaseOrder(poId);
       setActivePoActionDropdownId(null);
-      if (viewingPo?.id === poId) {
+      if (viewingPo?.id === poId || viewingPo?.poNumber === poNumber) {
         setViewingPo(null);
         setPoViewMode('list');
       }
@@ -932,6 +967,43 @@ function PurchasePageInner() {
   const [poPrefix, setPoPrefix] = useState<string>('CTPO#');
   const [poNextNumber, setPoNextNumber] = useState<string>('2544');
 
+  const computeNextPoSequence = useCallback(
+    (ordersList?: any[], customPrefix?: string) => {
+      const orders = ordersList !== undefined ? ordersList : purchaseOrders || [];
+      const prefix = customPrefix || poPrefix || 'CTPO#';
+      let maxSeq = 2544;
+      for (const po of orders) {
+        const poNum = String(po?.poNumber || '').trim();
+        const match = poNum.match(/(\d+)$/);
+        if (match) {
+          const parsed = parseInt(match[1], 10);
+          if (!isNaN(parsed) && parsed > maxSeq) {
+            maxSeq = parsed;
+          }
+        }
+      }
+      const nextSeq = maxSeq + 1;
+      return {
+        prefix,
+        nextNumberStr: String(nextSeq),
+        fullPoNumber: `${prefix}${nextSeq}`,
+      };
+    },
+    [purchaseOrders, poPrefix]
+  );
+
+  useEffect(() => {
+    const seq = computeNextPoSequence(purchaseOrders);
+    setPoNextNumber(seq.nextNumberStr);
+    setPoFormData((prev) => {
+      const isTaken = purchaseOrders.some((p) => p.poNumber === prev.poNumber);
+      if (!prev.poNumber || prev.poNumber === 'CTPO#2544' || isTaken) {
+        return { ...prev, poNumber: seq.fullPoNumber };
+      }
+      return prev;
+    });
+  }, [purchaseOrders, computeNextPoSequence]);
+
   const handleSavePoNumberSettings = () => {
     const combined = `${poPrefix}${poNextNumber}`;
     setPoFormData((prev) => ({ ...prev, poNumber: combined }));
@@ -988,6 +1060,358 @@ function PurchasePageInner() {
     return afterDiscount + vat + adjustment;
   }, [poCalculatedAmount, poFormData.vatType, poFormData.discount, poFormData.adjustment]);
 
+  // Live Material Request (MSRF) & Quotation Autofill States
+  const [liveMsrfs, setLiveMsrfs] = useState<CrmMsrf[]>([]);
+  const [selectedAutofillMsrfId, setSelectedAutofillMsrfId] = useState<string>('');
+  const [autofillQuotations, setAutofillQuotations] = useState<CrmSupplierQuotation[]>([]);
+  const [selectedAutofillQuoteId, setSelectedAutofillQuoteId] = useState<string>('');
+  const [isAutofilling, setIsAutofilling] = useState<boolean>(false);
+  const [autofillSuccessMessage, setAutofillSuccessMessage] = useState<string | null>(null);
+
+  // Custom MSRF Searchable Dropdown States
+  const [isMsrfDropdownOpen, setIsMsrfDropdownOpen] = useState<boolean>(false);
+  const [msrfDropdownSearch, setMsrfDropdownSearch] = useState<string>('');
+  const msrfDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (msrfDropdownRef.current && !msrfDropdownRef.current.contains(e.target as Node)) {
+        setIsMsrfDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const activeMsrfObj = useMemo(() => {
+    if (!selectedAutofillMsrfId && !poFormData.opportunityOrder) return null;
+    return (
+      liveMsrfs.find(
+        (m) =>
+          m.id === selectedAutofillMsrfId ||
+          (poFormData.opportunityOrder &&
+            (poFormData.opportunityOrder.includes(m.msrfNumber) || poFormData.opportunityOrder.includes(m.id)))
+      ) || null
+    );
+  }, [liveMsrfs, selectedAutofillMsrfId, poFormData.opportunityOrder]);
+
+  const filteredLiveMsrfs = useMemo(() => {
+    if (!msrfDropdownSearch.trim()) return liveMsrfs;
+    const q = msrfDropdownSearch.toLowerCase().trim();
+    return liveMsrfs.filter(
+      (m) =>
+        m.msrfNumber.toLowerCase().includes(q) ||
+        (m.projectName && m.projectName.toLowerCase().includes(q)) ||
+        (m.purpose && m.purpose.toLowerCase().includes(q)) ||
+        (m.department && m.department.toLowerCase().includes(q))
+    );
+  }, [liveMsrfs, msrfDropdownSearch]);
+
+  // Load live MSRFs from API and LocalStorage fallback
+  const loadLiveMsrfs = useCallback(async () => {
+    try {
+      const res = await msrfApiService.getMSRFs();
+      let list = res.success && res.requests ? [...res.requests] : [];
+      if (typeof window !== 'undefined') {
+        try {
+          const localStored = localStorage.getItem('crm_material_service_requests');
+          if (localStored) {
+            const parsed = JSON.parse(localStored);
+            if (Array.isArray(parsed)) {
+              const ids = new Set(list.map((r) => r.id));
+              parsed.forEach((item) => {
+                if (!ids.has(item.id)) list.push(item);
+              });
+            }
+          }
+        } catch { }
+      }
+      setLiveMsrfs(list);
+    } catch (err) {
+      console.error('Failed to load live MSRFs for PO autofill:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLiveMsrfs();
+    const handleMsrfSync = () => loadLiveMsrfs();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('crm_msrf_updated', handleMsrfSync);
+      window.addEventListener('storage', handleMsrfSync);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('crm_msrf_updated', handleMsrfSync);
+        window.removeEventListener('storage', handleMsrfSync);
+      }
+    };
+  }, [loadLiveMsrfs]);
+
+  // Handle live autofill from selected MSRF and Quotation
+  const handleAutofillFromMsrf = useCallback(
+    async (msrfId: string, quoteId?: string) => {
+      if (!msrfId) {
+        setSelectedAutofillMsrfId('');
+        setAutofillQuotations([]);
+        setSelectedAutofillQuoteId('');
+        setAutofillSuccessMessage(null);
+        return;
+      }
+
+      setIsAutofilling(true);
+      try {
+        setSelectedAutofillMsrfId(msrfId);
+
+        // 1. Fetch full MSRF
+        let msrf = liveMsrfs.find((r) => r.id === msrfId);
+        try {
+          const fullRes = await msrfApiService.getMSRFById(msrfId);
+          if (fullRes.success && fullRes.request) {
+            msrf = fullRes.request;
+          }
+        } catch { }
+
+        if (!msrf) return;
+
+        // 2. Fetch linked quotations
+        let quotes: CrmSupplierQuotation[] = [];
+        try {
+          const quoteRes = await purchaseQuotationApiService.getQuotations({ msrfId });
+          if (quoteRes.success && quoteRes.quotations) {
+            quotes = quoteRes.quotations;
+          }
+        } catch { }
+
+        // Fallback check from localStorage
+        if (quotes.length === 0 && typeof window !== 'undefined') {
+          try {
+            const localQ = localStorage.getItem('crm_supplier_quotations');
+            if (localQ) {
+              const parsed = JSON.parse(localQ);
+              if (Array.isArray(parsed)) {
+                quotes = parsed.filter((q) => q.msrfId === msrfId);
+              }
+            }
+          } catch { }
+        }
+
+        setAutofillQuotations(quotes);
+
+        // 3. Determine selected quotation
+        let targetQuote: CrmSupplierQuotation | undefined;
+        if (quoteId) {
+          targetQuote = quotes.find((q) => q.id === quoteId);
+        }
+        if (!targetQuote) {
+          targetQuote = quotes.find((q) => q.isRecommended) || (quotes.length > 0 ? quotes[0] : undefined);
+        }
+
+        if (targetQuote) {
+          setSelectedAutofillQuoteId(targetQuote.id);
+        } else {
+          setSelectedAutofillQuoteId('');
+        }
+
+        // 4. Calculate expected delivery date
+        let calculatedDelivery = msrf.requiredByDate || '';
+        if (targetQuote?.deliveryLeadTimeDays) {
+          const targetD = new Date();
+          targetD.setDate(targetD.getDate() + Number(targetQuote.deliveryLeadTimeDays));
+          const yyyy = targetD.getFullYear();
+          const mm = String(targetD.getMonth() + 1).padStart(2, '0');
+          const dd = String(targetD.getDate()).padStart(2, '0');
+          calculatedDelivery = `${dd}-${mm}-${yyyy}`;
+        }
+
+        const supName = targetQuote ? targetQuote.supplierName : 'Select Supplier';
+
+        // Ensure supplier exists in suppliersList
+        if (supName && supName !== 'Select Supplier') {
+          setSuppliersList((prev) => {
+            if (!prev.some((s) => (s.supplierName || s.name) === supName)) {
+              return [{ id: `sup_${Date.now()}`, name: supName, supplierName: supName, code: 'SUP-AUTO' }, ...prev];
+            }
+            return prev;
+          });
+        }
+
+        // 5. Populate poFormData
+        const autoSeq = computeNextPoSequence();
+        setPoFormData((prev) => {
+          const isTaken = purchaseOrders.some((p) => p.poNumber === prev.poNumber);
+          const freshPoNumber = (!prev.poNumber || prev.poNumber === 'CTPO#2544' || isTaken)
+            ? autoSeq.fullPoNumber
+            : prev.poNumber;
+          return {
+            ...prev,
+            poNumber: freshPoNumber,
+            supplier: supName !== 'Select Supplier' ? supName : prev.supplier,
+            reference: targetQuote ? targetQuote.quotationRef : (msrf.msrfNumber || prev.reference),
+            poType: 'From Purchase Requisition',
+            opportunityOrder: `MSRF #${msrf.msrfNumber} - ${msrf.purpose}`,
+            projectNumber: msrf.salesOrderNumber || msrf.msrfNumber || '',
+            projectName: msrf.projectName || msrf.purpose || '',
+            description: `Requisition ${msrf.msrfNumber} (${msrf.department}): ${msrf.purpose}`,
+            expectedDeliveryDate: calculatedDelivery || prev.expectedDeliveryDate,
+            vatType: 'with_vat',
+            termsConditionText: targetQuote?.paymentTerms
+              ? `Commercial Terms:\n- Payment: ${targetQuote.paymentTerms}\n- Delivery Lead Time: ${targetQuote.deliveryLeadTimeDays || 7} days\n- Quotation Ref: ${targetQuote.quotationRef}\n${msrf.purpose ? `- Project / Purpose: ${msrf.purpose}\n` : ''}- Standard 100% inspection upon site delivery.`
+              : prev.termsConditionText,
+            adjustment: targetQuote
+              ? ((Number(targetQuote.shippingDeliveryCost) || 0) + (Number(targetQuote.installationCost) || 0) + (Number(targetQuote.otherAssociatedCosts) || 0))
+              : 0,
+          };
+        });
+
+        // 6. Populate poLineItems
+        if (msrf.items && msrf.items.length > 0) {
+          const totalEst = msrf.items.reduce(
+            (acc, it) => acc + Number(it.requestedQty || it.procureQty || 1) * Number(it.estimatedUnitRate || 0),
+            0
+          );
+          const ratio = targetQuote && totalEst > 0 ? Number(targetQuote.subtotal) / totalEst : 1;
+
+          const newItems = msrf.items.map((item, idx) => {
+            const qty = Number(item.procureQty || item.requestedQty || 1);
+            let unitRate = Number(item.estimatedUnitRate || 0);
+            if (targetQuote && targetQuote.subtotal > 0) {
+              if (unitRate > 0) {
+                unitRate = Math.round(unitRate * ratio * 100) / 100;
+              } else {
+                unitRate = Math.round((Number(targetQuote.subtotal) / (msrf.items!.length * qty)) * 100) / 100;
+              }
+            }
+
+            return {
+              id: `line_${idx + 1}_${Date.now()}`,
+              description: item.description || `Item #${idx + 1}`,
+              code: item.itemCode || `ITM-${100 + idx}`,
+              unit: item.unit || 'Pcs',
+              brand: item.brandPreference || 'Standard',
+              qty: qty,
+              amount: unitRate,
+            };
+          });
+
+          setPoLineItems(newItems);
+        }
+
+        setAutofillSuccessMessage(
+          `Form autofilled with live data from Material Request ${msrf.msrfNumber}${targetQuote ? ` & Supplier Quotation (${targetQuote.supplierName} - ${targetQuote.quotationRef})` : ''
+          }`
+        );
+      } catch (err: any) {
+        console.error('Autofill error:', err);
+      } finally {
+        setIsAutofilling(false);
+      }
+    },
+    [liveMsrfs]
+  );
+
+  const handleSelectAutofillQuote = (quoteId: string) => {
+    if (!selectedAutofillMsrfId) return;
+    handleAutofillFromMsrf(selectedAutofillMsrfId, quoteId);
+  };
+
+  // Handle supplier selection: auto-syncs with matching quotation and autofills details
+  const handleSupplierSelect = (supplierName: string) => {
+    setPoFormData((prev) => ({ ...prev, supplier: supplierName }));
+    if (!supplierName || supplierName === 'Select Supplier') return;
+
+    // 1. If an MSRF is already selected, check if this supplier has a quotation for it
+    if (selectedAutofillMsrfId) {
+      const matchQuote = autofillQuotations.find(
+        (q) => (q.supplierName || '').trim().toLowerCase() === supplierName.trim().toLowerCase()
+      );
+      if (matchQuote) {
+        handleAutofillFromMsrf(selectedAutofillMsrfId, matchQuote.id);
+        return;
+      }
+    }
+
+    // 2. If no matching quote in current MSRF, or no MSRF selected yet:
+    // Check all quotations across live MSRFs for this supplier
+    const findSupplierQuoteAcrossMsrfs = async () => {
+      try {
+        const quoteRes = await purchaseQuotationApiService.getQuotations();
+        if (quoteRes.success && quoteRes.quotations && quoteRes.quotations.length > 0) {
+          const supQuote = quoteRes.quotations.find(
+            (q) => (q.supplierName || '').trim().toLowerCase() === supplierName.trim().toLowerCase()
+          );
+          if (supQuote && supQuote.msrfId) {
+            handleAutofillFromMsrf(supQuote.msrfId, supQuote.id);
+          }
+        }
+      } catch (err) {
+        console.error('Error finding quote for supplier:', err);
+      }
+    };
+    findSupplierQuoteAcrossMsrfs();
+  };
+
+  // Find active selected supplier profile object
+  const selectedSupplierObj = useMemo(() => {
+    if (!poFormData.supplier || poFormData.supplier === 'Select Supplier') return null;
+    return (
+      suppliersList.find(
+        (s: any) =>
+          (s.supplierName || s.name || '').trim().toLowerCase() === poFormData.supplier.trim().toLowerCase()
+      ) || null
+    );
+  }, [suppliersList, poFormData.supplier]);
+
+  const handleClearAutofill = () => {
+    setSelectedAutofillMsrfId('');
+    setAutofillQuotations([]);
+    setSelectedAutofillQuoteId('');
+    setAutofillSuccessMessage(null);
+    setPoFormData((prev) => ({
+      ...prev,
+      supplier: 'Select Supplier',
+      reference: '',
+      poType: 'Manual Creation',
+      opportunityOrder: 'Select Opportunity/Order',
+      projectNumber: '',
+      projectName: '',
+      description: '',
+      expectedDeliveryDate: '',
+      adjustment: 0,
+    }));
+    setPoLineItems([
+      {
+        id: 'line_1',
+        description: '',
+        code: '',
+        unit: '',
+        brand: '',
+        qty: 1,
+        amount: 0,
+      },
+    ]);
+  };
+
+  const processedMsrfParamRef = useRef<string | null>(null);
+
+  // Listen for query params e.g. /purchase?tab=po&action=add&msrfId=...&quoteId=...
+  useEffect(() => {
+    const msrfParam = searchParams.get('msrfId');
+    const quoteParam = searchParams.get('quoteId');
+    const actionParam = searchParams.get('action');
+    if (mainTab === 'po') {
+      const combinedKey = `${msrfParam || ''}_${quoteParam || ''}_${actionParam || ''}`;
+      if ((actionParam === 'add' || msrfParam) && processedMsrfParamRef.current !== combinedKey) {
+        processedMsrfParamRef.current = combinedKey;
+        setPoViewMode('add');
+        if (msrfParam) {
+          handleAutofillFromMsrf(msrfParam, quoteParam || undefined);
+        }
+      }
+    } else {
+      processedMsrfParamRef.current = null;
+    }
+  }, [searchParams, mainTab, handleAutofillFromMsrf]);
+
   // Stock In State & Form (Exact Cezcon CRM Add Stock In)
   const [stockInViewMode, setStockInViewMode] = useState<'add' | 'register' | 'view'>('register');
   const [editingStockInId, setEditingStockInId] = useState<string | null>(null);
@@ -1013,15 +1437,76 @@ function PurchasePageInner() {
   const [stockInNewStoreName, setStockInNewStoreName] = useState('');
   const [stockInNewStoreCode, setStockInNewStoreCode] = useState('');
   const [stockInNewStoreLocation, setStockInNewStoreLocation] = useState('');
-  const [stockInSupplierList, setStockInSupplierList] = useState<string[]>([
-    'Shajarath Al Thalj Trading LLC',
-    'CENTRAL TRADING COMPANY LLC',
-    'LUTFI TRADING LLC',
-    'SUPER GENERAL COMPANY LLC',
-    'AL GHANDI ELECTRONICS',
-    'EROS GROUP LLC',
-    'MITSUBISHI ELECTRIC CORP',
-  ]);
+  const [stockInSupplierList, setStockInSupplierList] = useState<string[]>([]);
+
+  // Live Dynamic Suppliers List for Stock In & Register (strictly real suppliers)
+  const liveStockInSuppliersList = useMemo(() => {
+    const namesSet = new Set<string>();
+
+    // 1. Live suppliers from database / localStorage
+    (suppliersList || []).forEach((s: any) => {
+      const name = (s.supplierName || s.name || '').trim();
+      if (name && name !== 'Select' && name !== 'All' && !isMockSupplier({ name })) {
+        namesSet.add(name);
+      }
+    });
+
+    // 2. Suppliers from Context
+    (contextSuppliers || []).forEach((s: any) => {
+      const name = (s.supplierName || s.name || '').trim();
+      if (name && name !== 'Select' && name !== 'All' && !isMockSupplier({ name })) {
+        namesSet.add(name);
+      }
+    });
+
+    // 3. Suppliers from active Purchase Orders (non-mock only)
+    (purchaseOrders || []).forEach((po: any) => {
+      const name = (po.supplier || '').trim();
+      if (name && name !== 'Select' && name !== 'All' && !isMockSupplier({ name })) {
+        namesSet.add(name);
+      }
+    });
+
+    // 4. Any newly typed suppliers via + New
+    stockInSupplierList.forEach((sup) => {
+      const name = (sup || '').trim();
+      if (name && name !== 'Select' && name !== 'All' && !isMockSupplier({ name })) {
+        namesSet.add(name);
+      }
+    });
+
+    return Array.from(namesSet).sort((a, b) => a.localeCompare(b));
+  }, [suppliersList, contextSuppliers, purchaseOrders, stockInSupplierList]);
+
+  // Live Dynamic Purchase Orders for Stock In
+  const liveStockInOrders = useMemo(() => {
+    const ordersMap = new Map<string, {
+      poNumber: string;
+      supplier: string;
+      label: string;
+      items: any[];
+      raw: any;
+    }>();
+
+    (purchaseOrders || []).forEach((po: any) => {
+      const poNum = (po.poNumber || '').trim();
+      if (!poNum) return;
+      const sup = (po.supplier || '').trim();
+      if (isMockSupplier({ name: sup })) return;
+      const proj = (po.projectName || po.order || po.reference || '').trim();
+      const label = proj ? `${poNum} - ${sup || 'PO'} (${proj})` : `${poNum}${sup ? ` - ${sup}` : ''}`;
+
+      ordersMap.set(poNum, {
+        poNumber: poNum,
+        supplier: sup,
+        label,
+        items: Array.isArray(po.items) ? po.items : [],
+        raw: po,
+      });
+    });
+
+    return Array.from(ordersMap.values());
+  }, [purchaseOrders]);
 
   const [stockInItems, setStockInItems] = useState<
     Array<{
@@ -1072,7 +1557,7 @@ function PurchasePageInner() {
     stockInApiService
       .getStockInRecords()
       .then((res) => {
-        if (res && Array.isArray(res.records) && res.records.length > 0) {
+        if (res && Array.isArray(res.records)) {
           const serverRecords = res.records
             .filter(
               (r: any) =>
@@ -1094,12 +1579,15 @@ function PurchasePageInner() {
               items: r.items || [],
               files: [],
             }));
-          if (serverRecords.length > 0) {
-            setStockInList(serverRecords);
+          setStockInList(serverRecords);
+          try {
+            localStorage.setItem('crm_stock_in_list', JSON.stringify(serverRecords));
+          } catch (e) {
+            console.error(e);
           }
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const resetStockInForm = () => {
@@ -1374,64 +1862,95 @@ function PurchasePageInner() {
     showPoTermsToast(`Term "${title}" added! Ready for next term.`);
   };
 
+  const [isSubmittingPo, setIsSubmittingPo] = useState(false);
+
   const handlePoSubmit = () => {
-    const now = new Date();
-    const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-    const dayName = days[now.getDay()];
-    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
-    const formattedCreated = `${dayName} ${poFormData.poDate || getLiveTodayDateString()} ${timeStr}`;
+    if (isSubmittingPo) return;
+    setIsSubmittingPo(true);
 
-    const newPo = {
-      id: `po_${Date.now()}`,
-      slNo: purchaseOrders.length + 1,
-      owner: poFormData.owner || 'Rashid Ali',
-      ownerAvatar: '',
-      poNumber: poFormData.poNumber || `CTPO#${Math.floor(2500 + purchaseOrders.length + 1)}`,
-      date: poFormData.poDate || getLiveTodayDateString(),
-      createdAtFormatted: formattedCreated,
-      expectedDeliveryDate: poFormData.expectedDeliveryDate || '',
-      supplier: poFormData.supplier !== 'Select Supplier' ? poFormData.supplier : 'SUPER GENERAL COMPANY LLC',
-      order: poFormData.opportunityOrder !== 'Select Opportunity/Order' ? poFormData.opportunityOrder : '',
-      reference: poFormData.reference || '',
-      description: poFormData.description || '',
-      opportunityOrder: poFormData.opportunityOrder !== 'Select Opportunity/Order' ? poFormData.opportunityOrder : '',
-      projectNumber: poFormData.projectNumber || '',
-      projectName: poFormData.projectName || '',
-      vatType: poFormData.vatType,
-      attention: poFormData.attention || '',
-      preparedBy: poFormData.preparedBy || poFormData.owner || 'Rashid Ali',
-      preparedByMobile: poFormData.preparedByMobile || '+971 50 123 4567',
-      preparedByEmail: poFormData.preparedByEmail || 'purchasemanager@cooltechuae.com',
-      preparedByDesignation: poFormData.preparedByDesignation || 'Purchase Manager',
-      termsCondition: poFormData.termsCondition,
-      termsConditionText:
-        poFormData.termsConditionText ||
-        'All product supply should be from the latest stock. Material supplied should comply 100% with the requested specifications. Products with any manufacturing defects or issues should be exchanged with new one with all cost including fright to End User. Cool Technologies is requesting you to acknowledge the receipt of this LPO and confirmation of delivery time, via return email.',
-      discount: Number(poFormData.discount) || 0,
-      adjustment: Number(poFormData.adjustment) || 0,
-      amount: poCalculatedAmount,
-      vat: poCalculatedVat,
-      totalAmount: poCalculatedTotal,
-      invoiceReceived: '',
-      approval: 'Waiting for Final Approval',
-      deliveryStatus: 'Pending',
-      items: poLineItems.map((item) => ({
-        ...item,
-        deliveryPending: item.qty,
-        total: Number(item.qty || 0) * Number(item.amount || 0),
-      })),
-    };
-
-    const updated = [newPo, ...purchaseOrders];
-    setPurchaseOrders(updated);
     try {
-      localStorage.setItem('crm_purchase_orders', JSON.stringify(updated));
-      window.dispatchEvent(new Event('crm_purchase_orders_updated'));
-    } catch (e) {
-      console.error(e);
+      const now = new Date();
+      const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+      const dayName = days[now.getDay()];
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+      const formattedCreated = `${dayName} ${poFormData.poDate || getLiveTodayDateString()} ${timeStr}`;
+
+      const nextSeq = computeNextPoSequence();
+      let effectivePoNumber = (poFormData.poNumber || '').trim();
+      if (!effectivePoNumber || purchaseOrders.some((p) => p.poNumber === effectivePoNumber)) {
+        effectivePoNumber = nextSeq.fullPoNumber;
+      }
+
+      const newPo = {
+        id: `po_${Date.now()}`,
+        slNo: purchaseOrders.length + 1,
+        owner: poFormData.owner || 'Rashid Ali',
+        ownerAvatar: '',
+        poNumber: effectivePoNumber,
+        date: poFormData.poDate || getLiveTodayDateString(),
+        createdAtFormatted: formattedCreated,
+        expectedDeliveryDate: poFormData.expectedDeliveryDate || '',
+        supplier: poFormData.supplier !== 'Select Supplier' ? poFormData.supplier : 'SUPER GENERAL COMPANY LLC',
+        order: poFormData.opportunityOrder !== 'Select Opportunity/Order' ? poFormData.opportunityOrder : '',
+        reference: poFormData.reference || '',
+        description: poFormData.description || '',
+        opportunityOrder: poFormData.opportunityOrder !== 'Select Opportunity/Order' ? poFormData.opportunityOrder : '',
+        projectNumber: poFormData.projectNumber || '',
+        projectName: poFormData.projectName || '',
+        vatType: poFormData.vatType,
+        attention: poFormData.attention || '',
+        preparedBy: poFormData.preparedBy || poFormData.owner || 'Rashid Ali',
+        preparedByMobile: poFormData.preparedByMobile || '+971 50 123 4567',
+        preparedByEmail: poFormData.preparedByEmail || 'purchasemanager@cooltechuae.com',
+        preparedByDesignation: poFormData.preparedByDesignation || 'Purchase Manager',
+        termsCondition: poFormData.termsCondition,
+        termsConditionText:
+          poFormData.termsConditionText ||
+          'All product supply should be from the latest stock. Material supplied should comply 100% with the requested specifications. Products with any manufacturing defects or issues should be exchanged with new one with all cost including fright to End User. Cool Technologies is requesting you to acknowledge the receipt of this LPO and confirmation of delivery time, via return email.',
+        discount: Number(poFormData.discount) || 0,
+        adjustment: Number(poFormData.adjustment) || 0,
+        amount: poCalculatedAmount,
+        vat: poCalculatedVat,
+        totalAmount: poCalculatedTotal,
+        invoiceReceived: '',
+        approval: 'Waiting for Final Approval',
+        deliveryStatus: 'Pending',
+        items: poLineItems.map((item) => ({
+          ...item,
+          deliveryPending: item.qty,
+          total: Number(item.qty || 0) * Number(item.amount || 0),
+        })),
+        msrfId: selectedAutofillMsrfId || undefined,
+        quotationId: selectedAutofillQuoteId || undefined,
+      };
+
+      const updated = [newPo, ...purchaseOrders.filter((p) => p.poNumber !== effectivePoNumber && p.id !== newPo.id)];
+      setPurchaseOrders(updated);
+      const afterSeq = computeNextPoSequence(updated);
+      setPoNextNumber(afterSeq.nextNumberStr);
+      setPoFormData((prev) => ({ ...prev, poNumber: afterSeq.fullPoNumber }));
+      try {
+        localStorage.setItem('crm_purchase_orders', JSON.stringify(updated));
+        window.dispatchEvent(new Event('crm_purchase_orders_updated'));
+      } catch (e) {
+        console.error(e);
+      }
+      contextAddPurchaseOrder(newPo as any);
+
+      // Persist to backend database via API
+      purchaseOrderApiService
+        .createPurchaseOrder(newPo as any)
+        .catch((err) => console.warn('Could not sync newly created PO to backend API:', err));
+
+      setSelectedAutofillMsrfId('');
+      setSelectedAutofillQuoteId('');
+      setAutofillSuccessMessage(null);
+      setPoViewMode('list');
+      processedMsrfParamRef.current = null;
+      router.replace('/purchase?tab=po');
+    } finally {
+      setTimeout(() => setIsSubmittingPo(false), 1200);
     }
-    contextAddPurchaseOrder(newPo as any);
-    setPoViewMode('list');
   };
 
   // Filter States - Stock
@@ -1459,6 +1978,13 @@ function PurchasePageInner() {
   const [activeInvoiceActionDropdownId, setActiveInvoiceActionDropdownId] = useState<string | null>(null);
   const [invoiceViewActiveSubTab, setInvoiceViewActiveSubTab] = useState<'invoice' | 'po' | 'payment' | 'do'>('invoice');
 
+  // Phase 4: 3-Way Match & Payment Governance Modals & State
+  const [isThreeWayMatchModalOpen, setIsThreeWayMatchModalOpen] = useState(false);
+  const [selectedMatchInvoiceId, setSelectedMatchInvoiceId] = useState<string | null>(null);
+  const [isRecordPaymentModalOpen, setIsRecordPaymentModalOpen] = useState(false);
+  const [paymentModalSupplierId, setPaymentModalSupplierId] = useState<string>('');
+  const [paymentModalInvoiceId, setPaymentModalInvoiceId] = useState<string>('');
+
   const [purchaseInvoicesList, setPurchaseInvoicesList] = useState<any[]>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -1476,6 +2002,174 @@ function PurchasePageInner() {
     }
     return [];
   });
+
+  const [livePaymentsList, setLivePaymentsList] = useState<any[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('crm_purchase_payments_list') || localStorage.getItem('crm_supplier_payments_list');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed
+              .filter((p: any) => p && p.amount !== 89.25 && p.voucherNo !== 'SPV-2026-0002' && p.reference !== 'UTR-2026-INV2026002')
+              .map((pmt: any, idx: number) => ({
+                ...pmt,
+                id: pmt.id || `sp_${idx}`,
+                slNo: pmt.slNo || idx + 1,
+                voucherNo: pmt.voucherNo || pmt.voucherNumber || pmt.voucher_number || pmt.voucher_no || `SPV-2026-000${idx + 1}`,
+                date: pmt.date || pmt.paymentDate || pmt.payment_date || getLiveTodayDateString(),
+                supplier: pmt.supplier || pmt.supplierName || pmt.supplier_name || '',
+                paymentMode: pmt.paymentMode || pmt.payment_mode || pmt.payment_method || 'Bank_Transfer',
+                reference: pmt.reference || pmt.referenceNo || pmt.reference_no || '',
+                amount: pmt.amount || 0,
+                status: pmt.status || 'Completed',
+              }));
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return mockPurchasePayments;
+  });
+
+  const [paymentSupplierFilter, setPaymentSupplierFilter] = useState<string>('All');
+  const [paymentModeFilter, setPaymentModeFilter] = useState<string>('All');
+  const [paymentSearchQuery, setPaymentSearchQuery] = useState<string>('');
+
+  const fetchLiveInvoices = useCallback(async () => {
+    try {
+      const res = await supplierInvoiceApiService.getInvoices();
+      if (res && Array.isArray(res.invoices) && res.invoices.length > 0) {
+        const mapped = res.invoices.map((inv: any, idx: number) => ({
+          id: inv.id,
+          slNo: idx + 1,
+          owner: inv.created_by_name || 'VAISHAK',
+          ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+          invoiceNumber: inv.invoice_number,
+          pisn: `PIR${String(idx + 80)}`,
+          date: inv.invoice_date || getLiveTodayDateString(),
+          supplierId: inv.supplier_id,
+          supplier: inv.supplier_name || 'GULF ELECTRONICS COMPANY LLC',
+          poNumber: inv.purchase_order_no || inv.purchase_order_id || '',
+          order: '',
+          amount: inv.subtotal || inv.total_amount || 0,
+          paid: inv.amount_paid || 0,
+          balance: inv.outstanding_balance ?? (inv.total_amount - (inv.amount_paid || 0)),
+          discount: inv.discount_amount || 0,
+          vatAmount: inv.tax_amount || 0,
+          adjustment: inv.adjustment_amount || 0,
+          totalAmount: inv.total_amount || 0,
+          paymentDue: inv.due_date || '',
+          status: inv.payment_status || 'Due',
+          matchingStatus: inv.matching_status || 'Pending_Audit',
+          deliveryStatus: 'Received',
+          description: inv.notes || '',
+          items: (inv.items || []).map((it: any) => ({
+            id: it.id,
+            item: it.description || it.code,
+            code: it.code || '',
+            unit: it.unit || 'Pcs',
+            qty: String(it.invoiced_qty || 1),
+            rate: String(it.unit_price || 0),
+            total: String(it.total_amount || 0),
+          })),
+        }));
+        setPurchaseInvoicesList(mapped);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('crm_purchase_invoices_list', JSON.stringify(mapped));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch invoices from backend API, using local state:', err);
+    }
+  }, []);
+
+  const fetchLivePayments = useCallback(async () => {
+    try {
+      const res = await supplierPaymentApiService.getPayments();
+      if (res && Array.isArray(res.payments) && res.payments.length > 0) {
+        const mapped = res.payments.map((pmt: any, idx: number) => ({
+          id: pmt.id,
+          slNo: idx + 1,
+          voucherNo: pmt.voucherNo || pmt.voucherNumber || pmt.voucher_number || pmt.voucher_no || `SPV-2026-000${idx + 1}`,
+          date: pmt.date || pmt.paymentDate || pmt.payment_date || '2026-11-02',
+          supplierId: pmt.supplierId || pmt.supplier_id || 'sup_1793100105795',
+          supplier: pmt.supplier || pmt.supplierName || pmt.supplier_name || 'afsal',
+          paymentMode: pmt.paymentMode || pmt.payment_mode || pmt.payment_method || 'Bank_Transfer',
+          reference: pmt.reference || pmt.referenceNo || pmt.reference_no || 'UTR-2026-INV2026002',
+          amount: pmt.amount,
+          allocatedAmount: pmt.allocatedAmount ?? pmt.allocated_amount ?? 0,
+          unallocatedAmount: pmt.unallocatedAmount ?? pmt.unallocated_amount ?? 0,
+          status: pmt.status || 'Completed',
+          allocations: pmt.allocations || [],
+        }));
+        setLivePaymentsList(mapped);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('crm_purchase_payments_list', JSON.stringify(mapped));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch payments from backend API, using local state:', err);
+    }
+  }, []);
+
+  const handleDeletePayment = async (pmtId: string, voucherNo?: string) => {
+    if (window.confirm(`Are you sure you want to permanently delete payment voucher ${voucherNo || pmtId}? This will remove it completely.`)) {
+      try {
+        await supplierPaymentApiService.deletePayment(pmtId);
+      } catch (err: any) {
+        console.warn('API delete error, clearing locally:', err);
+      }
+      setLivePaymentsList((prev) => {
+        const updated = prev.filter((p) => p.id !== pmtId);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('crm_purchase_payments_list', JSON.stringify(updated));
+          } catch {}
+        }
+        return updated;
+      });
+      fetchLivePayments();
+      fetchLiveInvoices();
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveInvoices();
+    fetchLivePayments();
+  }, [fetchLiveInvoices, fetchLivePayments]);
+
+  const filteredPurchasePayments = useMemo(() => {
+    return livePaymentsList.filter((pmt) => {
+      // Filter out leftover sample / test placeholders
+      if (pmt.amount === 89.25 || pmt.voucherNo === 'SPV-2026-0002' || pmt.reference === 'UTR-2026-INV2026002') {
+        return false;
+      }
+      if (paymentSupplierFilter !== 'All' && pmt.supplier !== paymentSupplierFilter) {
+        return false;
+      }
+      if (paymentModeFilter !== 'All' && !String(pmt.paymentMode || '').toLowerCase().includes(paymentModeFilter.toLowerCase())) {
+        return false;
+      }
+      if (paymentSearchQuery.trim()) {
+        const q = paymentSearchQuery.toLowerCase();
+        const matchesVoucher = String(pmt.voucherNo || '').toLowerCase().includes(q);
+        const matchesRef = String(pmt.reference || '').toLowerCase().includes(q);
+        const matchesSupplier = String(pmt.supplier || '').toLowerCase().includes(q);
+        if (!matchesVoucher && !matchesRef && !matchesSupplier) return false;
+      }
+      return true;
+    });
+  }, [livePaymentsList, paymentSupplierFilter, paymentModeFilter, paymentSearchQuery]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -1572,11 +2266,11 @@ function PurchasePageInner() {
         console.error(e);
       }
     }
-    return ['Natal', 'Muhammad Ali', 'Super Admin'];
+    return ['Shemin', 'Mustafa', 'Rithul'];
   });
   const [isAddInvoiceOwnerModalOpen, setIsAddInvoiceOwnerModalOpen] = useState<boolean>(false);
   const [newInvoiceOwnerName, setNewInvoiceOwnerName] = useState<string>('');
-  const [invoiceOwner, setInvoiceOwner] = useState<string>('Natal');
+  const [invoiceOwner, setInvoiceOwner] = useState<string>('Shemin');
 
   const handleAddNewInvoiceOwner = () => {
     if (!newInvoiceOwnerName.trim()) return;
@@ -1626,23 +2320,66 @@ function PurchasePageInner() {
 
   const handleSelectPurchaseOrder = (selectedPoNumber: string) => {
     setInvoicePoNumber(selectedPoNumber);
-    const matched = purchaseOrders.find(
-      (p) =>
-        (p.poNumber || '').toLowerCase().trim() === selectedPoNumber.toLowerCase().trim() ||
-        (p.id || '').toLowerCase().trim() === selectedPoNumber.toLowerCase().trim()
-    );
+    const cleanPo = (selectedPoNumber || '').trim();
+    const poNumCandidate = cleanPo.split(' - ')[0].trim().toLowerCase();
+
+    let matched = purchaseOrders.find((p) => {
+      const pNum = (p.poNumber || '').toLowerCase().trim();
+      const pId = (p.id || '').toLowerCase().trim();
+      return (
+        pNum === cleanPo.toLowerCase() ||
+        pNum === poNumCandidate ||
+        pId === cleanPo.toLowerCase() ||
+        (cleanPo && pNum.includes(cleanPo.toLowerCase())) ||
+        (cleanPo && cleanPo.toLowerCase().includes(pNum))
+      );
+    });
+
+    if (!matched && typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('crm_purchase_orders');
+        if (stored) {
+          const list = JSON.parse(stored);
+          if (Array.isArray(list)) {
+            matched = list.find((p: any) => {
+              const pNum = (p.poNumber || '').toLowerCase().trim();
+              const pId = (p.id || '').toLowerCase().trim();
+              return (
+                pNum === cleanPo.toLowerCase() ||
+                pNum === poNumCandidate ||
+                pId === cleanPo.toLowerCase() ||
+                (cleanPo && pNum.includes(cleanPo.toLowerCase())) ||
+                (cleanPo && cleanPo.toLowerCase().includes(pNum))
+              );
+            });
+          }
+        }
+      } catch (e) { }
+    }
+
     if (matched) {
-      if (matched.owner) setInvoiceOwner(matched.owner);
-      if (matched.supplier) setInvoiceSupplier(matched.supplier);
+      if (matched.owner || matched.preparedBy) {
+        setInvoiceOwner(matched.owner || matched.preparedBy);
+      }
+      if (matched.supplier) {
+        setInvoiceSupplier(matched.supplier);
+      }
       if (matched.amount !== undefined) setInvoiceAmount(String(matched.amount));
-      if (matched.discount !== undefined) setInvoiceDiscount(String(matched.discount));
-      if (matched.vat !== undefined) setInvoiceVatAmount(String(matched.vat));
-      if (matched.adjustment !== undefined) setInvoiceAdjustment(String(matched.adjustment));
-      if (matched.totalAmount !== undefined) setInvoiceTotalAmount(String(matched.totalAmount));
+      if (matched.discount !== undefined) setInvoiceDiscount(String(matched.discount || 0));
+      if (matched.vat !== undefined) setInvoiceVatAmount(String(matched.vat || 0));
+      if (matched.adjustment !== undefined) setInvoiceAdjustment(String(matched.adjustment || 0));
+      if (matched.totalAmount !== undefined) setInvoiceTotalAmount(String(matched.totalAmount || matched.amount));
       if (matched.order || matched.opportunityOrder) {
         setInvoiceOrder(matched.order || matched.opportunityOrder);
       }
+      if (matched.description) {
+        setInvoiceDescription(matched.description);
+      }
+      if (matched.expectedDeliveryDate) {
+        setInvoicePaymentDue(matched.expectedDeliveryDate);
+      }
       if (Array.isArray(matched.items) && matched.items.length > 0) {
+        setInvoiceWithItems('yes');
         setInvoiceItems(
           matched.items.map((it: any, idx: number) => ({
             id: it.id || `inv_item_${idx}_${Date.now()}`,
@@ -1656,6 +2393,35 @@ function PurchasePageInner() {
       }
     }
   };
+
+  const selectedSupplierObjForInvoice = useMemo(() => {
+    if (!invoiceSupplier || invoiceSupplier === 'Select') return null;
+    return (
+      suppliersList.find(
+        (s: any) =>
+          (s.supplierName || s.name || '').trim().toLowerCase() === invoiceSupplier.trim().toLowerCase() ||
+          s.id === invoiceSupplier
+      ) || null
+    );
+  }, [suppliersList, invoiceSupplier]);
+
+  const matchedPoForInvoice = useMemo(() => {
+    if (!invoicePoNumber) return null;
+    const cleanPo = invoicePoNumber.trim().toLowerCase();
+    const poNumCandidate = cleanPo.split(' - ')[0].trim();
+    return (
+      purchaseOrders.find((p) => {
+        const pNum = (p.poNumber || '').toLowerCase().trim();
+        const pId = (p.id || '').toLowerCase().trim();
+        return (
+          pNum === cleanPo ||
+          pNum === poNumCandidate ||
+          pId === cleanPo ||
+          (cleanPo && pNum.includes(cleanPo))
+        );
+      }) || null
+    );
+  }, [purchaseOrders, invoicePoNumber]);
 
   const recalcFromItems = (itemsList: Array<{ qty: string; rate: string; total: string }>) => {
     const subtotal = itemsList.reduce((acc, curr) => acc + (parseFloat(curr.total) || 0), 0);
@@ -1682,6 +2448,32 @@ function PurchasePageInner() {
     const invTotal = parseFloat(invoiceTotalAmount) || invAmt;
 
     if (editingInvoiceId) {
+      supplierInvoiceApiService
+        .updateInvoice(editingInvoiceId, {
+          supplier_id: invoiceSupplier !== 'Select' ? invoiceSupplier : 'sup_1',
+          supplier_name: invoiceSupplier !== 'Select' ? invoiceSupplier : 'GULF ELECTRONICS COMPANY LLC',
+          purchase_order_id: invoicePoNumber || undefined,
+          purchase_order_no: invoicePoNumber || undefined,
+          invoice_number: invoiceNumberInput,
+          invoice_date: invoiceDate,
+          due_date: invoicePaymentDue,
+          subtotal: invAmt,
+          discount_amount: parseFloat(invoiceDiscount) || 0,
+          tax_amount: parseFloat(invoiceVatAmount) || 0,
+          adjustment_amount: parseFloat(invoiceAdjustment) || 0,
+          total_amount: invTotal,
+          notes: invoiceDescription,
+          items: invoiceItems.map((it: any) => ({
+            description: it.item || it.description || 'General Item',
+            invoiced_qty: parseFloat(it.qty) || 1,
+            unit_price: parseFloat(it.rate) || 0,
+            tax_rate: 5,
+            unit: it.unit || 'Pcs',
+          })),
+        })
+        .then(() => fetchLiveInvoices())
+        .catch((err) => console.warn('Failed to sync invoice edit with server:', err));
+
       setPurchaseInvoicesList((prev) => {
         const updated = prev.map((item) => {
           if (item.id === editingInvoiceId) {
@@ -1723,6 +2515,33 @@ function PurchasePageInner() {
       });
       setEditingInvoiceId(null);
     } else {
+      const generatedInvoiceNumber = invoiceNumberInput || `INV-2026-${String(purchaseInvoicesList.length + 1).padStart(3, '0')}`;
+      supplierInvoiceApiService
+        .createInvoice({
+          supplier_id: invoiceSupplier !== 'Select' ? invoiceSupplier : 'sup_1',
+          supplier_name: invoiceSupplier !== 'Select' ? invoiceSupplier : 'GULF ELECTRONICS COMPANY LLC',
+          purchase_order_id: invoicePoNumber || undefined,
+          purchase_order_no: invoicePoNumber || undefined,
+          invoice_number: generatedInvoiceNumber,
+          invoice_date: invoiceDate || getLiveTodayDateString(),
+          due_date: invoicePaymentDue,
+          subtotal: invAmt,
+          discount_amount: parseFloat(invoiceDiscount) || 0,
+          tax_amount: parseFloat(invoiceVatAmount) || 0,
+          adjustment_amount: parseFloat(invoiceAdjustment) || 0,
+          total_amount: invTotal,
+          notes: invoiceDescription,
+          items: invoiceItems.map((it: any) => ({
+            description: it.item || it.description || 'General Item',
+            invoiced_qty: parseFloat(it.qty) || 1,
+            unit_price: parseFloat(it.rate) || 0,
+            tax_rate: 5,
+            unit: it.unit || 'Pcs',
+          })),
+        })
+        .then(() => fetchLiveInvoices())
+        .catch((err) => console.warn('Failed to sync new invoice with server:', err));
+
       const newInv = {
         id: `inv-${Date.now()}`,
         slNo: purchaseInvoicesList.length + 1,
@@ -1732,7 +2551,7 @@ function PurchasePageInner() {
             ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces'
             : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=faces',
         poNumber: invoicePoNumber || '',
-        invoiceNumber: invoiceNumberInput || `INV-2026-${String(purchaseInvoicesList.length + 1).padStart(3, '0')}`,
+        invoiceNumber: generatedInvoiceNumber,
         pisn: invoicePisn || 'PIR82',
         date: invoiceDate || getLiveTodayDateString(),
         supplier: invoiceSupplier !== 'Select' ? invoiceSupplier : 'GULF ELECTRONICS COMPANY LLC',
@@ -1747,6 +2566,7 @@ function PurchasePageInner() {
         totalAmount: invTotal,
         paymentDue: invoicePaymentDue || '',
         status: 'Due',
+        matchingStatus: 'Pending_Audit',
         deliveryStatus: 'Pending',
         description: invoiceDescription || '',
         items: invoiceItems,
@@ -1788,7 +2608,7 @@ function PurchasePageInner() {
   const handleEditInvoice = (inv: any) => {
     setActiveInvoiceActionDropdownId(null);
     setEditingInvoiceId(inv.id);
-    setInvoiceOwner(inv.owner || 'Natal');
+    setInvoiceOwner(inv.owner || currentUser?.name || 'Shemin');
     setInvoicePoNumber(inv.poNumber || '');
     setInvoicePisn(inv.pisn || 'PIR82');
     setInvoiceNumberInput(inv.invoiceNumber || '');
@@ -1810,6 +2630,10 @@ function PurchasePageInner() {
   const handleDeleteInvoice = (invId: string) => {
     setActiveInvoiceActionDropdownId(null);
     if (window.confirm('Are you sure you want to delete this purchase invoice?')) {
+      supplierInvoiceApiService
+        .deleteInvoice(invId)
+        .then(() => fetchLiveInvoices())
+        .catch((err) => console.warn('Failed to delete invoice from server:', err));
       setPurchaseInvoicesList((prev) => {
         const updated = prev.filter((i) => i.id !== invId);
         if (typeof window !== 'undefined') {
@@ -1915,6 +2739,69 @@ function PurchasePageInner() {
   const [activeCategoryActionDropdown, setActiveCategoryActionDropdown] = useState<number | null>(null);
 
   const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
+  const [approvalModalOrder, setApprovalModalOrder] = useState<CrmPurchaseOrder | null>(null);
+  const [stockInDeliveryMode, setStockInDeliveryMode] = useState<'Warehouse_Receipt' | 'Direct_Site_Delivery'>('Warehouse_Receipt');
+
+  // Computed dynamic Owners list for Purchase Invoices & Orders filter & creation
+  const invoiceFilterOwnersList = useMemo(() => {
+    const canonicalMap = new Map<string, string>();
+
+    const addOwner = (raw?: string | null) => {
+      if (!raw) return;
+      const trimmed = raw.trim();
+      if (!trimmed) return;
+      if (['All Owners', 'All', 'Select', 'Natal', 'Shaheer', 'Nafal'].includes(trimmed)) return;
+
+      const lower = trimmed.toLowerCase();
+      // Format as title-case words
+      const formatted = trimmed
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+
+      if (!canonicalMap.has(lower)) {
+        canonicalMap.set(lower, formatted);
+      }
+    };
+
+    // 1. Guaranteed Core Registered CRM Staff Directory
+    const coreRegisteredStaff = [
+      'Shemin',
+      'Mustafa',
+      'Rithul',
+      'Muhammed Arshad',
+      'Muhammed Shezin',
+      'Muhammed Shemin',
+      'Super Admin',
+    ];
+    coreRegisteredStaff.forEach(addOwner);
+
+    // 2. Active CRM users from Enterprise context
+    (users || [])
+      .filter(
+        (u) =>
+          (u.status === 'Active' || u.status === undefined) &&
+          !['Shaheer', 'Nafal'].includes(u.name)
+      )
+      .forEach((u) => addOwner(u.name));
+
+    // 3. Current authenticated user if available
+    if (currentUser?.name) {
+      addOwner(currentUser.name);
+    }
+
+    // 4. Owners present on existing invoices
+    (purchaseInvoicesList || []).forEach((inv) => addOwner(inv.owner));
+
+    // 5. Owners present on purchase orders
+    (purchaseOrders || []).forEach((po: any) => addOwner(po.owner));
+
+    // 6. Custom added owners
+    (invoiceOwnersList || []).forEach(addOwner);
+    (poOwnersList || []).forEach(addOwner);
+
+    return Array.from(canonicalMap.values()).sort((a, b) => a.localeCompare(b));
+  }, [users, currentUser, purchaseInvoicesList, purchaseOrders, invoiceOwnersList, poOwnersList]);
 
   useEffect(() => {
     const syncUser = () => {
@@ -1945,6 +2832,8 @@ function PurchasePageInner() {
         preparedByMobile: (currentUser as any).phone || prev.preparedByMobile,
         preparedByDesignation: currentUser.role === 'manager' ? 'Purchase Manager' : 'Purchase Officer',
       }));
+      setInvoiceOwner((prev) => (prev === 'Natal' || prev === 'Shemin' || !prev ? (currentUser.name || 'Shemin') : prev));
+      setUploadSupplierOwner((prev) => (prev === 'Nafal' || !prev ? (currentUser.name || 'Shemin') : prev));
     }
   }, [currentUser]);
 
@@ -1957,7 +2846,13 @@ function PurchasePageInner() {
             !['Shaheer', 'Nafal'].includes(u.name)
         )
         .map((u) => u.name);
-      setPoOwnersList(Array.from(new Set(activeNames)));
+      const uniqueNames = Array.from(new Set(activeNames));
+      setPoOwnersList(uniqueNames);
+      setInvoiceOwnersList((prev) => {
+        const cleanedPrev = prev.filter((n) => !['Natal', 'Muhammad Ali', 'Super Admin'].includes(n));
+        const combined = Array.from(new Set([...uniqueNames, ...cleanedPrev]));
+        return combined.length > 0 ? combined : uniqueNames;
+      });
     }
   }, [users]);
 
@@ -2064,6 +2959,18 @@ function PurchasePageInner() {
       }
     };
 
+    purchaseOrderApiService
+      .getPurchaseOrders({ limit: 100 })
+      .then((res) => {
+        if (res && res.success && Array.isArray(res.orders) && res.orders.length > 0) {
+          setPurchaseOrders(res.orders);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('crm_purchase_orders', JSON.stringify(res.orders));
+          }
+        }
+      })
+      .catch(() => {});
+
     window.addEventListener('crm_purchase_orders_updated', syncPOs);
     window.addEventListener('storage', syncPOs);
     return () => {
@@ -2071,6 +2978,128 @@ function PurchasePageInner() {
       window.removeEventListener('storage', syncPOs);
     };
   }, []);
+
+  // Live Dynamic Products/Stock Items for Stock In line items
+  const liveStockInProducts = useMemo(() => {
+    const productsMap = new Map<string, { name: string; unit: string; purchaseRate: string; sellingPrice: string }>();
+
+    (stockItems || []).forEach((p: any) => {
+      const name = (p.name || '').trim();
+      if (name) {
+        productsMap.set(name, {
+          name,
+          unit: p.unit || 'Pcs',
+          purchaseRate: String(p.purchaseRate || '0.00'),
+          sellingPrice: String(p.sellingPrice || '0.00'),
+        });
+      }
+    });
+
+    (availableStockInProducts || []).forEach((p: any) => {
+      const name = (p.name || '').trim();
+      if (name && !productsMap.has(name)) {
+        productsMap.set(name, {
+          name,
+          unit: p.unit || 'Pcs',
+          purchaseRate: String(p.purchaseRate || '0.00'),
+          sellingPrice: String(p.sellingPrice || '0.00'),
+        });
+      }
+    });
+
+    return Array.from(productsMap.values());
+  }, [stockItems, availableStockInProducts]);
+
+  // Auto-fill all Stock In fields when a Supplier is selected
+  const handleStockInSupplierChange = (selectedSup: string) => {
+    setStockInSupplier(selectedSup);
+    if (!selectedSup || selectedSup === 'Select') {
+      return;
+    }
+
+    // 1. Auto-select Store to MAIN WAREHOUSE if unselected
+    if (!stockInStore || stockInStore === 'Select') {
+      setStockInStore('MAIN WAREHOUSE');
+    }
+
+    // 2. Auto-select Delivery Mode to Warehouse_Receipt
+    setStockInDeliveryMode('Warehouse_Receipt');
+
+    // 3. Search for existing Purchase Order for this supplier
+    const supLower = selectedSup.toLowerCase().trim();
+    const matchedPo = (purchaseOrders || []).find((p: any) => {
+      const s = (p.supplier || '').toLowerCase().trim();
+      return s === supLower || s.includes(supLower) || supLower.includes(s);
+    });
+
+    const matchingLiveOrder = (liveStockInOrders || []).find((o: any) => {
+      const s = (o.supplier || '').toLowerCase().trim();
+      return s === supLower || s.includes(supLower) || supLower.includes(s);
+    });
+
+    if (matchedPo || matchingLiveOrder) {
+      const targetPo = matchedPo || matchingLiveOrder?.raw || {};
+      const orderLabel = matchingLiveOrder?.label || `${targetPo.poNumber} - ${targetPo.supplier}${targetPo.projectName ? ` (${targetPo.projectName})` : ''}`;
+      setStockInOrder(orderLabel);
+      setStockInLpoNumber(targetPo.poNumber || matchingLiveOrder?.poNumber || '');
+      if (targetPo.store && targetPo.store !== 'Select') {
+        setStockInStore(targetPo.store);
+      }
+      if (targetPo.delivery_mode || targetPo.deliveryMode) {
+        setStockInDeliveryMode(targetPo.delivery_mode || targetPo.deliveryMode);
+      }
+      const cleanPoNum = (targetPo.poNumber || matchingLiveOrder?.poNumber || 'PO').replace(/[^a-zA-Z0-9]/g, '');
+      setStockInDeliveryNote(targetPo.deliveryNote || `DN-${cleanPoNum}-01`);
+      setStockInPurchaseInvoiceNumber(targetPo.purchaseInvoiceNumber || `PINV-${cleanPoNum}`);
+
+      // Fill line items if available
+      const poItems = (Array.isArray(targetPo.items) && targetPo.items.length > 0)
+        ? targetPo.items
+        : (Array.isArray(matchingLiveOrder?.items) && matchingLiveOrder.items.length > 0)
+          ? matchingLiveOrder.items
+          : null;
+
+      if (poItems && poItems.length > 0) {
+        setStockInItems(
+          poItems.map((it: any, i: number) => ({
+            id: `si_item_${Date.now()}_${i}`,
+            item: it.item || it.name || it.item_name || it.description || 'Item',
+            unit: it.unit || 'Pcs',
+            purchaseRate: String(it.rate ?? it.purchaseRate ?? it.unitPrice ?? it.amount ?? '0'),
+            sellingPrice: String(it.sellingPrice ?? (Number(it.rate ?? it.purchaseRate ?? it.amount ?? 0) * 1.25).toFixed(2)),
+            qty: String(it.qty ?? it.quantity ?? '1'),
+          }))
+        );
+        return;
+      }
+    }
+
+    // If no direct PO exists for this supplier:
+    // Generate clean identifiers & autofill line items
+    const cleanCode = selectedSup.slice(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'SUP';
+    setStockInOrder(`PO-${cleanCode}-2026-001 - ${selectedSup}`);
+    setStockInLpoNumber(`CTPO#${Math.floor(2540 + Math.random() * 20)}`);
+    setStockInDeliveryNote(`DN-${cleanCode}-928`);
+    setStockInPurchaseInvoiceNumber(`PINV-${cleanCode}-2026`);
+
+    // Auto-fill line items from available products catalog
+    const defaultProduct = (liveStockInProducts || []).find((p) => p.name) || {
+      name: 'Blue Star Window AC 1.5 TR Rotary R-410a',
+      unit: 'Pcs',
+      purchaseRate: '1336.00',
+      sellingPrice: '1587.00',
+    };
+    setStockInItems([
+      {
+        id: `si_item_${Date.now()}_0`,
+        item: defaultProduct.name,
+        unit: defaultProduct.unit || 'Pcs',
+        purchaseRate: String(defaultProduct.purchaseRate || '1000.00'),
+        sellingPrice: String(defaultProduct.sellingPrice || '1250.00'),
+        qty: '1',
+      },
+    ]);
+  };
 
   const [transfers, setTransfers] = useState<CrmStockTransfer[]>(mockStockTransfers);
 
@@ -2166,7 +3195,7 @@ function PurchasePageInner() {
                 localStorage.setItem('cezcon_products_master_live', JSON.stringify(updated));
                 localStorage.setItem('crm_products_master', JSON.stringify(updated));
                 window.dispatchEvent(new Event('crm_products_updated'));
-              } catch (err) {}
+              } catch (err) { }
             }
           }
         } catch (err) {
@@ -2231,7 +3260,7 @@ function PurchasePageInner() {
         localStorage.setItem('cezcon_products_master_live', JSON.stringify(updated));
         localStorage.setItem('crm_products_master', JSON.stringify(updated));
         window.dispatchEvent(new Event('crm_products_updated'));
-      } catch (err) {}
+      } catch (err) { }
       setProductViewMode('list');
       setImportFile(null);
       setImportFileName('');
@@ -2458,7 +3487,7 @@ function PurchasePageInner() {
       console.error('Failed to persist product to localStorage', err);
     }
 
-    crmInventoryApiService.createInventoryItem(savedProduct).catch(() => {});
+    crmInventoryApiService.createInventoryItem(savedProduct).catch(() => { });
 
     // Also update availableStockInProducts
     const stockInProd = {
@@ -2627,6 +3656,20 @@ function PurchasePageInner() {
                   placeholder="Item / Product Code (e.g. CQ4N-XMI48S)"
                   value={productFormData.code}
                   onChange={(e) => setProductFormData({ ...productFormData, code: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Serial Number */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+              <label className="text-slate-700 font-medium text-xs">Serial No.</label>
+              <div className="sm:col-span-2">
+                <input
+                  type="text"
+                  placeholder="e.g. AD24KS3WC or LG-RC-2026-001"
+                  value={productFormData.serialNumber}
+                  onChange={(e) => setProductFormData({ ...productFormData, serialNumber: e.target.value })}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400 font-mono"
                 />
               </div>
@@ -2972,6 +4015,7 @@ function PurchasePageInner() {
       setActiveUnitActionDropdown(null);
       setActiveBrandActionDropdown(null);
       setActiveCategoryActionDropdown(null);
+      setActiveSupplierDropdownId(null);
       setIsPoPrintFormatOpen(false);
     };
     if (
@@ -2980,6 +4024,7 @@ function PurchasePageInner() {
       activeUnitActionDropdown !== null ||
       activeBrandActionDropdown !== null ||
       activeCategoryActionDropdown !== null ||
+      activeSupplierDropdownId !== null ||
       isPoPrintFormatOpen
     ) {
       document.addEventListener('click', handleClickOutside);
@@ -2991,6 +4036,7 @@ function PurchasePageInner() {
     activeUnitActionDropdown,
     activeBrandActionDropdown,
     activeCategoryActionDropdown,
+    activeSupplierDropdownId,
     isPoPrintFormatOpen,
   ]);
 
@@ -3073,7 +4119,7 @@ function PurchasePageInner() {
     return suppliersList.filter((item) => {
       if (supplierSearch) {
         const q = supplierSearch.toLowerCase();
-        const matchName = (item.name || '').toLowerCase().includes(q);
+        const matchName = (item.name || item.supplierName || '').toLowerCase().includes(q);
         const matchContact = (item.contact || item.phone || '').toLowerCase().includes(q);
         const matchEmail = (item.email || '').toLowerCase().includes(q);
         const matchTrn = (item.trn || '').toLowerCase().includes(q);
@@ -3094,7 +4140,10 @@ function PurchasePageInner() {
         const matchSup = (item.supplier || '').toLowerCase().includes(q);
         if (!matchNo && !matchPisn && !matchSup) return false;
       }
-      if (invoiceFilterOwner !== 'All Owners' && item.owner !== invoiceFilterOwner) {
+      if (
+        invoiceFilterOwner !== 'All Owners' &&
+        (item.owner || '').trim().toLowerCase() !== invoiceFilterOwner.trim().toLowerCase()
+      ) {
         return false;
       }
       if (invoiceFilterSupplier !== 'Select Supplier' && item.supplier !== invoiceFilterSupplier) {
@@ -3107,6 +4156,44 @@ function PurchasePageInner() {
     });
   }, [purchaseInvoicesList, invoiceSearch, invoiceFilterOwner, invoiceFilterSupplier, invoiceFilterStatus]);
 
+  // Live unique suppliers for PO filter dropdown (strictly from registered Suppliers directory)
+  const poLiveFilterSuppliers = useMemo(() => {
+    const map = new Map<string, string>();
+    suppliersList.forEach((s: any) => {
+      const name = (s.supplierName || s.name || '').trim();
+      if (name && name !== 'Select Supplier') {
+        if (!map.has(name.toLowerCase())) {
+          map.set(name.toLowerCase(), name);
+        }
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+  }, [suppliersList]);
+
+  const selectedFilterMsrfObj = useMemo(() => {
+    if (poFilterMsrf === 'All Material Requests') return null;
+    return (
+      liveMsrfs.find(
+        (m) =>
+          m.msrfNumber === poFilterMsrf ||
+          m.id === poFilterMsrf ||
+          (poFilterMsrf && (poFilterMsrf.includes(m.msrfNumber) || poFilterMsrf.includes(m.id)))
+      ) || null
+    );
+  }, [liveMsrfs, poFilterMsrf]);
+
+  const filteredMsrfsForFilterList = useMemo(() => {
+    if (!filterMsrfSearchQuery.trim()) return liveMsrfs;
+    const q = filterMsrfSearchQuery.toLowerCase().trim();
+    return liveMsrfs.filter(
+      (m) =>
+        m.msrfNumber.toLowerCase().includes(q) ||
+        (m.projectName && m.projectName.toLowerCase().includes(q)) ||
+        (m.purpose && m.purpose.toLowerCase().includes(q)) ||
+        (m.department && m.department.toLowerCase().includes(q))
+    );
+  }, [liveMsrfs, filterMsrfSearchQuery]);
+
   // Filtered Purchase Orders
   const filteredPOItems = useMemo(() => {
     return purchaseOrders.filter((item) => {
@@ -3114,17 +4201,46 @@ function PurchasePageInner() {
         const q = poSearch.toLowerCase();
         const matchNo = (item.poNumber || '').toLowerCase().includes(q);
         const matchSup = (item.supplier || '').toLowerCase().includes(q);
-        if (!matchNo && !matchSup) return false;
+        const matchRef = (item.reference || '').toLowerCase().includes(q);
+        const matchOrder = (item.order || item.opportunityOrder || '').toLowerCase();
+        if (!matchNo && !matchSup && !matchRef && !matchOrder) return false;
       }
-      if (poFilterOwner !== 'All Owners' && item.owner !== poFilterOwner) {
+      if (
+        poFilterOwner !== 'All Owners' &&
+        (item.owner || '').trim().toLowerCase() !== poFilterOwner.trim().toLowerCase()
+      ) {
         return false;
       }
-      if (poFilterSupplier !== 'Select Supplier' && item.supplier !== poFilterSupplier) {
-        return false;
+      if (poFilterSupplier !== 'Select Supplier' && poFilterSupplier !== 'All Suppliers') {
+        const supA = (item.supplier || '').trim().toLowerCase();
+        const supB = poFilterSupplier.trim().toLowerCase();
+        if (supA !== supB && !supA.includes(supB) && !supB.includes(supA)) {
+          return false;
+        }
+      }
+      if (poFilterMsrf !== 'All Material Requests' && poFilterMsrf !== 'Select Material Request' && poFilterMsrf !== 'Select Material Request (MSRF)') {
+        const itemOrder = (item.order || item.opportunityOrder || '').toLowerCase();
+        const itemDesc = (item.description || '').toLowerCase();
+        const itemRef = (item.reference || '').toLowerCase();
+        const target = poFilterMsrf.toLowerCase();
+        const targetNum = poFilterMsrf.match(/MSRF[-\s]?\d+/i)?.[0]?.toLowerCase();
+        if (
+          !itemOrder.includes(target) &&
+          !itemDesc.includes(target) &&
+          !itemRef.includes(target) &&
+          (!targetNum || (!itemOrder.includes(targetNum) && !itemDesc.includes(targetNum)))
+        ) {
+          return false;
+        }
+      }
+      if (poFilterType !== 'All Types' && poFilterType !== 'Select Purchase Order Type') {
+        if (item.poType && item.poType !== poFilterType) {
+          return false;
+        }
       }
       return true;
     });
-  }, [purchaseOrders, poSearch, poFilterOwner, poFilterSupplier]);
+  }, [purchaseOrders, poSearch, poFilterOwner, poFilterSupplier, poFilterMsrf, poFilterType]);
 
   // Filtered Transfers
   const filteredTransfers = useMemo(() => {
@@ -3212,8 +4328,84 @@ function PurchasePageInner() {
     currentPage * rowsPerPage
   );
 
+  const stockPaginationPages = useMemo(() => {
+    const pages: (number | string)[] = [];
+    const maxButtons = 5;
+
+    if (totalPages <= maxButtons) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      let start = Math.max(1, currentPage - 2);
+      let end = Math.min(totalPages, start + maxButtons - 1);
+
+      if (end - start < maxButtons - 1) {
+        start = Math.max(1, end - maxButtons + 1);
+      }
+
+      if (start > 1) {
+        pages.push(1);
+        if (start > 2) {
+          pages.push('ellipsis-start');
+        }
+      }
+
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+
+      if (end < totalPages) {
+        if (end < totalPages - 1) {
+          pages.push('ellipsis-end');
+        }
+        pages.push(totalPages);
+      }
+    }
+
+    return pages;
+  }, [totalPages, currentPage]);
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans w-full">
+      {/* 0. GLOBAL TOP PURCHASE MODULE TAB SELECTOR */}
+      <div className="bg-white border-b border-[#E2E8F0] px-4 py-0 flex items-center justify-between shadow-xs sticky top-0 z-30 overflow-x-auto">
+        <div className="flex items-stretch min-w-max border-l border-slate-200">
+          {[
+            { id: 'msrf', label: 'Material Requests', icon: '📝' },
+            ...(isAuthorizedPurchaseUser(currentUser)
+              ? [{ id: 'quotations', label: 'Supplier Quotes', icon: '📋' }]
+              : []),
+            { id: 'po', label: 'Purchase Orders', icon: '📑' },
+            { id: 'stock-in', label: 'Stock In (GRN)', icon: '📥' },
+            { id: 'invoice', label: 'Purchase Invoices', icon: '🧾' },
+            { id: 'payment', label: 'Purchase Payments', icon: '💳' },
+            { id: 'stock', label: 'Stock Inventory', icon: '📦' },
+            { id: 'supplier', label: 'Suppliers', icon: '🚚' },
+          ].map((tab) => {
+            const isActive = mainTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  router.push(`/purchase?tab=${tab.id}`);
+                }}
+                className={cn(
+                  'px-3.5 py-2.5 text-xs transition-colors cursor-pointer border-r border-slate-200 border-t-2 select-none flex items-center gap-1.5',
+                  isActive
+                    ? 'border-t-[#E11D48] bg-white text-slate-900 font-semibold shadow-2xs'
+                    : 'border-t-transparent bg-[#F8FAFC] text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-normal'
+                )}
+              >
+                <span className="text-[11px]">{tab.icon}</span>
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* 1. TOP SUB-TABS BOX BAR FOR STOCK MODULE ONLY */}
       {mainTab === 'stock' && (
         <div className="bg-white border-b border-[#E2E8F0] px-4 py-0 flex items-center justify-between shadow-xs sticky top-0 z-30 overflow-x-auto">
@@ -3285,940 +4477,1237 @@ function PurchasePageInner() {
 
       <div className="p-3 sm:p-4 space-y-3">
         {/* ========================================================= */}
+        {/* PURCHASE & SOURCING EXECUTIVE DASHBOARD                  */}
+        {/* ========================================================= */}
+        {mainTab === 'dashboard' && (
+          <PurchaseDashboard
+            currentUser={currentUser}
+            onNavigateTab={(tab, extra) => {
+              const query = new URLSearchParams({ tab, ...(extra || {}) });
+              router.push(`/purchase?${query.toString()}`);
+            }}
+          />
+        )}
+
+        {/* ========================================================= */}
+        {/* FINANCIAL RECONCILIATION & AP AGEING                     */}
+        {/* ========================================================= */}
+        {mainTab === 'reconciliation' && (
+          <SupplierReconciliationView
+            currentUser={currentUser}
+            onNavigateToInvoice={(inv) => router.push(`/purchase?tab=invoice&view=${encodeURIComponent(inv)}`)}
+            onNavigateToPayment={(supId) => router.push(`/purchase?tab=payment&supplierId=${encodeURIComponent(supId)}`)}
+          />
+        )}
+
+        {/* ========================================================= */}
+        {/* LEGACY DATA MIGRATION & RECONCILIATION                   */}
+        {/* ========================================================= */}
+        {mainTab === 'migration' && (
+          <LegacyMigrationView
+            currentUser={currentUser}
+            onNavigateToPo={(poId) => router.push(`/purchase?tab=po${poId ? `&viewId=${poId}` : ''}`)}
+          />
+        )}
+
+        {/* ========================================================= */}
+        {/* MATERIAL REQUESTS (MSRF)                                  */}
+        {/* ========================================================= */}
+        {mainTab === 'msrf' && (
+          <MsrfManagement
+            currentUser={currentUser}
+            onNavigateToQuotes={(msrfId) => router.push(`/purchase?tab=quotations&msrfId=${msrfId}`)}
+            onNavigateToPo={(poId) => router.push(`/purchase?tab=po${poId ? `&viewId=${poId}` : ''}`)}
+          />
+        )}
+
+        {/* ========================================================= */}
+        {/* SUPPLIER QUOTES COMPARISON MATRIX                         */}
+        {/* ========================================================= */}
+        {mainTab === 'quotations' && (
+          isAuthorizedPurchaseUser(currentUser) ? (
+            <QuotationComparison
+              currentUser={currentUser}
+              initialMsrfId={searchParams.get('msrfId') || undefined}
+              onNavigateToMsrf={() => router.push('/purchase?tab=msrf')}
+              onNavigateToPo={(poId) => router.push(`/purchase?tab=po${poId ? `&viewId=${poId}` : ''}`)}
+            />
+          ) : (
+            <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm text-center max-w-lg mx-auto my-8 space-y-4">
+              <div className="w-12 h-12 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center mx-auto text-xl">
+                🛡️
+              </div>
+              <h3 className="text-base font-bold text-slate-800">Purchase Department Access Only</h3>
+              <p className="text-xs text-slate-600">
+                Supplier Quotations sourcing, comparison matrices, and vendor selection are restricted exclusively to the <strong>Purchase Manager (Mustafa)</strong> and Procurement personnel.
+              </p>
+              <button
+                type="button"
+                onClick={() => router.push('/purchase?tab=msrf')}
+                className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition"
+              >
+                Back to Material Requests
+              </button>
+            </div>
+          )
+        )}
+
+        {/* ========================================================= */}
         {/* PURCHASE ORDER (Exact Cezcon CRM Layout)                  */}
         {/* ========================================================= */}
         {mainTab === 'po' && (
           <>
             {poViewMode === 'add' ? (
-            /* ========================================================= */
-            /* ADD PURCHASE ORDER VIEW (Exact Cezcon CRM Layout)         */
-            /* ========================================================= */
-            <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs">
-              {/* Header */}
-              <div className="px-4 py-2 bg-[#F8FAFC] border-b border-slate-200 flex items-center justify-between">
-                <div className="flex items-center gap-2 font-bold text-slate-700">
-                  <span className="text-sm">🗂️</span>
-                  <span>Add Purchase Order</span>
+              /* ========================================================= */
+              /* ADD PURCHASE ORDER VIEW (Exact Cezcon CRM Layout)         */
+              /* ========================================================= */
+              <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs">
+                {/* Header */}
+                <div className="px-4 py-2 bg-[#F8FAFC] border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-slate-700">
+                    <span className="text-sm">🗂️</span>
+                    <span>Add Purchase Order</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPoViewMode('list');
+                      processedMsrfParamRef.current = null;
+                      router.replace('/purchase?tab=po');
+                    }}
+                    className="w-5 h-5 bg-[#DC2626] hover:bg-[#B91C1C] text-white flex items-center justify-center rounded-xs text-xs font-bold transition shadow-xs cursor-pointer"
+                    title="Close"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setPoViewMode('list')}
-                  className="w-5 h-5 bg-[#DC2626] hover:bg-[#B91C1C] text-white flex items-center justify-center rounded-xs text-xs font-bold transition shadow-xs cursor-pointer"
-                  title="Close"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
 
-              <div className="p-4 sm:p-6 space-y-6">
-                {/* Two-Column Form */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-3.5 text-xs text-slate-700">
-                  {/* Left Column */}
-                  <div className="space-y-3">
-                    {/* Owner */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Owner <span className="text-red-500">*</span>
-                      </label>
-                      <div className="col-span-8 flex items-center gap-1.5">
-                        <div className="relative flex-1">
-                          <select
-                            value={poFormData.owner}
-                            onChange={(e) => setPoFormData({ ...poFormData, owner: e.target.value })}
-                            className="w-full pl-8 pr-7 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                <div className="p-4 sm:p-6 space-y-6">
+                  {/* Two-Column Form */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-3.5 text-xs text-slate-700">
+                    {/* Left Column */}
+                    <div className="space-y-3">
+                      {/* Owner */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          Owner <span className="text-red-500">*</span>
+                        </label>
+                        <div className="col-span-8 flex items-center gap-1.5">
+                          <div className="relative flex-1">
+                            <select
+                              value={poFormData.owner}
+                              onChange={(e) => setPoFormData({ ...poFormData, owner: e.target.value })}
+                              className="w-full pl-8 pr-7 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                            >
+                              {poOwnersList.map((owner) => (
+                                <option key={owner} value={owner}>
+                                  {owner}
+                                </option>
+                              ))}
+                            </select>
+                            <div className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[9px] font-bold absolute left-2 top-2 select-none">
+                              👤
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsAddOwnerModalOpen(true)}
+                            className="px-2 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold flex items-center gap-1 whitespace-nowrap cursor-pointer shadow-xs transition"
+                            title="Add New Owner"
                           >
-                            {poOwnersList.map((owner) => (
-                              <option key={owner} value={owner}>
-                                {owner}
-                              </option>
-                            ))}
-                          </select>
-                          <div className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[9px] font-bold absolute left-2 top-2 select-none">
-                            👤
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>New</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* PO Number */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          PO Number <span className="text-red-500">*</span>
+                        </label>
+                        <div className="col-span-8 flex items-center">
+                          <input
+                            type="text"
+                            value={poFormData.poNumber}
+                            onChange={(e) => setPoFormData({ ...poFormData, poNumber: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-r-0 border-slate-300 rounded-l text-xs bg-[#F1F5F9] text-slate-800 font-medium focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setIsPoNumberSettingsModalOpen(true)}
+                            className="px-2.5 py-1.5 border border-slate-300 bg-[#E0F2FE] text-[#0284C7] rounded-r flex items-center justify-center cursor-pointer hover:bg-[#BAE6FD] transition"
+                            title="PO Number Settings"
+                          >
+                            <Settings className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Reference# */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          Reference#
+                        </label>
+                        <div className="col-span-8">
+                          <input
+                            type="text"
+                            list="po-quotation-refs-datalist"
+                            value={poFormData.reference}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setPoFormData({ ...poFormData, reference: val });
+                              const matchedQuote = autofillQuotations.find(
+                                (q) => q.quotationRef === val
+                              );
+                              if (matchedQuote && selectedAutofillMsrfId) {
+                                handleAutofillFromMsrf(selectedAutofillMsrfId, matchedQuote.id);
+                              }
+                            }}
+                            placeholder={autofillQuotations.length > 0 ? "Select or enter quote reference" : ""}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                          {autofillQuotations.length > 0 && (
+                            <datalist id="po-quotation-refs-datalist">
+                              {autofillQuotations.map((q) => (
+                                <option
+                                  key={q.id}
+                                  value={q.quotationRef}
+                                >
+                                  {q.supplierName} - AED {Number(q.landedTotalValue || q.subtotal || 0).toLocaleString()} {q.isRecommended ? '⭐ (Recommended)' : ''}
+                                </option>
+                              ))}
+                            </datalist>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* PO Date */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          PO Date
+                        </label>
+                        <div className="col-span-8 relative flex items-center">
+                          <input
+                            type="text"
+                            value={poFormData.poDate}
+                            onChange={(e) => setPoFormData({ ...poFormData, poDate: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-r-0 border-slate-300 rounded-l text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                          <div className="px-2.5 py-1.5 border border-slate-300 bg-[#F8FAFC] text-slate-600 rounded-r flex items-center justify-center">
+                            <Calendar className="w-3.5 h-3.5" />
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setIsAddOwnerModalOpen(true)}
-                          className="px-2 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold flex items-center gap-1 whitespace-nowrap cursor-pointer shadow-xs transition"
-                          title="Add New Owner"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>New</span>
-                        </button>
                       </div>
-                    </div>
 
-                    {/* PO Number */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        PO Number <span className="text-red-500">*</span>
-                      </label>
-                      <div className="col-span-8 flex items-center">
-                        <input
-                          type="text"
-                          value={poFormData.poNumber}
-                          onChange={(e) => setPoFormData({ ...poFormData, poNumber: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-r-0 border-slate-300 rounded-l text-xs bg-[#F1F5F9] text-slate-800 font-medium focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setIsPoNumberSettingsModalOpen(true)}
-                          className="px-2.5 py-1.5 border border-slate-300 bg-[#E0F2FE] text-[#0284C7] rounded-r flex items-center justify-center cursor-pointer hover:bg-[#BAE6FD] transition"
-                          title="PO Number Settings"
-                        >
-                          <Settings className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Reference# */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Reference#
-                      </label>
-                      <div className="col-span-8">
-                        <input
-                          type="text"
-                          value={poFormData.reference}
-                          onChange={(e) => setPoFormData({ ...poFormData, reference: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* PO Date */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        PO Date
-                      </label>
-                      <div className="col-span-8 relative flex items-center">
-                        <input
-                          type="text"
-                          value={poFormData.poDate}
-                          onChange={(e) => setPoFormData({ ...poFormData, poDate: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-r-0 border-slate-300 rounded-l text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
-                        <div className="px-2.5 py-1.5 border border-slate-300 bg-[#F8FAFC] text-slate-600 rounded-r flex items-center justify-center">
-                          <Calendar className="w-3.5 h-3.5" />
+                      {/* Expected Delivery Date */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          Expected Delivery Date
+                        </label>
+                        <div className="col-span-8 relative flex items-center">
+                          <input
+                            type="text"
+                            value={poFormData.expectedDeliveryDate}
+                            onChange={(e) => setPoFormData({ ...poFormData, expectedDeliveryDate: e.target.value })}
+                            placeholder=""
+                            className="w-full px-2.5 py-1.5 border border-r-0 border-slate-300 rounded-l text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                          <div className="px-2.5 py-1.5 border border-slate-300 bg-[#F8FAFC] text-slate-600 rounded-r flex items-center justify-center">
+                            <Calendar className="w-3.5 h-3.5" />
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Expected Delivery Date */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Expected Delivery Date
-                      </label>
-                      <div className="col-span-8 relative flex items-center">
-                        <input
-                          type="text"
-                          value={poFormData.expectedDeliveryDate}
-                          onChange={(e) => setPoFormData({ ...poFormData, expectedDeliveryDate: e.target.value })}
-                          placeholder=""
-                          className="w-full px-2.5 py-1.5 border border-r-0 border-slate-300 rounded-l text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
-                        <div className="px-2.5 py-1.5 border border-slate-300 bg-[#F8FAFC] text-slate-600 rounded-r flex items-center justify-center">
-                          <Calendar className="w-3.5 h-3.5" />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Supplier */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Supplier <span className="text-red-500">*</span>
-                      </label>
-                      <div className="col-span-8">
-                        <select
-                          value={poFormData.supplier}
-                          onChange={(e) => setPoFormData({ ...poFormData, supplier: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        >
-                          <option value="Select Supplier">Select Supplier</option>
-                          <option value="SUPER GENERAL COMPANY LLC">SUPER GENERAL COMPANY LLC</option>
-                          <option value="LUTFI TRADING LLC">LUTFI TRADING LLC</option>
-                          <option value="DUBAI POLYMER INDUSTRIES LLC">DUBAI POLYMER INDUSTRIES LLC</option>
-                          <option value="CENTRAL TRADING COMPANY L.L.C.">CENTRAL TRADING COMPANY L.L.C.</option>
-                          <option value="Better Life">Better Life</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Ship to */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Ship to
-                      </label>
-                      <div className="col-span-8">
-                        <input
-                          type="checkbox"
-                          checked={poFormData.shipTo}
-                          onChange={(e) => setPoFormData({ ...poFormData, shipTo: e.target.checked })}
-                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Purchase Order Type */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Purchase Order Type <span className="text-red-500">*</span>
-                      </label>
-                      <div className="col-span-8">
-                        <select
-                          value={poFormData.poType}
-                          onChange={(e) => setPoFormData({ ...poFormData, poType: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        >
-                          <option value="Manual Creation">Manual Creation</option>
-                          <option value="From Sales Order">From Sales Order</option>
-                          <option value="From Purchase Requisition">From Purchase Requisition</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Description */}
-                    <div className="grid grid-cols-12 items-start gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700 pt-1.5">
-                        Description
-                      </label>
-                      <div className="col-span-8">
-                        <textarea
-                          rows={2}
-                          value={poFormData.description}
-                          onChange={(e) => setPoFormData({ ...poFormData, description: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right Column */}
-                  <div className="space-y-3">
-                    {/* Opportunity/Order */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Opportunity/Order
-                      </label>
-                      <div className="col-span-8">
-                        <select
-                          value={poFormData.opportunityOrder}
-                          onChange={(e) => setPoFormData({ ...poFormData, opportunityOrder: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        >
-                          <option value="Select Opportunity/Order">Select Opportunity/Order</option>
-                          <option value="ORD-2026-001 - Villa Project">ORD-2026-001 - Villa Project</option>
-                          <option value="ORD-2026-002 - Mall Fitout">ORD-2026-002 - Mall Fitout</option>
-                          <option value="OPP-8842 - Office Tower AC">OPP-8842 - Office Tower AC</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Project Number */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Project Number
-                      </label>
-                      <div className="col-span-8">
-                        <input
-                          type="text"
-                          value={poFormData.projectNumber}
-                          onChange={(e) => setPoFormData({ ...poFormData, projectNumber: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Project Name */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Project Name
-                      </label>
-                      <div className="col-span-8">
-                        <input
-                          type="text"
-                          value={poFormData.projectName}
-                          onChange={(e) => setPoFormData({ ...poFormData, projectName: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* VAT Type */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        VAT Type <span className="text-red-500">*</span>
-                      </label>
-                      <div className="col-span-8 flex items-center gap-4 text-xs">
-                        <label className="flex items-center gap-1.5 cursor-pointer font-medium text-slate-800">
-                          <input
-                            type="radio"
-                            name="poVatType"
-                            checked={poFormData.vatType === 'with_vat'}
-                            onChange={() => setPoFormData({ ...poFormData, vatType: 'with_vat' })}
-                            className="text-blue-600 focus:ring-0 cursor-pointer"
-                          />
-                          <span>With VAT</span>
+                      {/* Supplier */}
+                      <div className="grid grid-cols-12 items-start gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700 pt-1.5">
+                          Supplier <span className="text-red-500">*</span>
                         </label>
-                        <label className="flex items-center gap-1.5 cursor-pointer font-medium text-slate-800">
-                          <input
-                            type="radio"
-                            name="poVatType"
-                            checked={poFormData.vatType === 'without_vat'}
-                            onChange={() => setPoFormData({ ...poFormData, vatType: 'without_vat' })}
-                            className="text-blue-600 focus:ring-0 cursor-pointer"
-                          />
-                          <span>Without VAT</span>
-                        </label>
-                      </div>
-                    </div>
+                        <div className="col-span-8 space-y-2">
+                          <select
+                            value={poFormData.supplier}
+                            onChange={(e) => handleSupplierSelect(e.target.value)}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
+                          >
+                            <option value="Select Supplier">Select Supplier</option>
+                            {suppliersList.map((sup: any) => {
+                              const sName = sup.supplierName || sup.name;
+                              return (
+                                <option key={sup.id || sName} value={sName}>
+                                  {sName} {sup.code ? `(${sup.code})` : ''}
+                                </option>
+                              );
+                            })}
+                            {poFormData.supplier &&
+                              poFormData.supplier !== 'Select Supplier' &&
+                              !suppliersList.some((s: any) => (s.supplierName || s.name) === poFormData.supplier) && (
+                                <option value={poFormData.supplier}>{poFormData.supplier}</option>
+                              )}
+                          </select>
 
-                    {/* Attention */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Attention
-                      </label>
-                      <div className="col-span-8">
-                        <input
-                          type="text"
-                          value={poFormData.attention}
-                          onChange={(e) => setPoFormData({ ...poFormData, attention: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Prepared By */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Prepared By
-                      </label>
-                      <div className="col-span-8">
-                        <input
-                          type="text"
-                          value={poFormData.preparedBy}
-                          onChange={(e) => setPoFormData({ ...poFormData, preparedBy: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Prepared By Mobile */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Prepared By Mobile
-                      </label>
-                      <div className="col-span-8">
-                        <input
-                          type="text"
-                          value={poFormData.preparedByMobile}
-                          onChange={(e) => setPoFormData({ ...poFormData, preparedByMobile: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Prepared By Email */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Prepared By Email
-                      </label>
-                      <div className="col-span-8">
-                        <input
-                          type="email"
-                          value={poFormData.preparedByEmail}
-                          onChange={(e) => setPoFormData({ ...poFormData, preparedByEmail: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Prepared By Designation */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-4 font-semibold text-slate-700">
-                        Prepared By Designation
-                      </label>
-                      <div className="col-span-8">
-                        <select
-                          value={poFormData.preparedByDesignation}
-                          onChange={(e) => setPoFormData({ ...poFormData, preparedByDesignation: e.target.value })}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                        >
-                          <option value="Select Designation">Select Designation</option>
-                          <option value="Managing Director">Managing Director</option>
-                          <option value="Purchase Officer">Purchase Officer</option>
-                          <option value="Sales Executive">Sales Executive</option>
-                          <option value="General Manager">General Manager</option>
-                          <option value="Accountant">Accountant</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Products / Items Table Card */}
-                <div className="border border-slate-200 rounded-sm overflow-hidden bg-white">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-semibold select-none">
-                        <tr>
-                          <th className="p-2.5 min-w-[280px]">
-                            <div className="flex items-center justify-between gap-2">
-                              <span>Description</span>
-                              <button
-                                type="button"
-                                className="px-2 py-0.5 bg-[#64748B] hover:bg-[#475569] text-white rounded-xs text-[10px] font-bold cursor-pointer"
-                              >
-                                + Additional Description
-                              </button>
-                            </div>
-                          </th>
-                          <th className="p-2.5 w-28">Code</th>
-                          <th className="p-2.5 w-24">Unit</th>
-                          <th className="p-2.5 w-28">Brand</th>
-                          <th className="p-2.5 w-24 text-center">QTY</th>
-                          <th className="p-2.5 w-32 text-center">Amount</th>
-                          <th className="p-2.5 w-32 text-center">Total</th>
-                          <th className="p-2.5 w-10 text-center"></th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white">
-                        {poLineItems.map((item, idx) => (
-                          <tr key={item.id} className="hover:bg-slate-50/50">
-                            <td className="p-2.5">
-                              <select
-                                value={item.description}
-                                onChange={(e) => handlePoProductChange(idx, e.target.value)}
-                                className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                              >
-                                <option value="">Select Item</option>
-                                {stockItems.map((p) => (
-                                  <option key={p.id} value={p.name}>
-                                    {p.name} {p.code ? `(${p.code})` : ''}
-                                  </option>
-                                ))}
-                                {stockItems.length === 0 && (
-                                  <>
-                                    <option value="MIDEA 1.5 TON SPLIT AC">MIDEA 1.5 TON SPLIT AC</option>
-                                    <option value="CARRIER 2.0 TON CASSETTE AC">CARRIER 2.0 TON CASSETTE AC</option>
-                                    <option value="LG DUAL INVERTER 1.5 TON">LG DUAL INVERTER 1.5 TON</option>
-                                  </>
+                          {/* Live Supplier Master Profile Information Card */}
+                          {selectedSupplierObj && (
+                            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded text-[11px] space-y-1.5 text-slate-700 shadow-2xs">
+                              <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+                                <span className="font-bold text-slate-800 flex items-center gap-1">
+                                  <span>🏢</span>
+                                  <span>{selectedSupplierObj.supplierName || selectedSupplierObj.name}</span>
+                                  {selectedSupplierObj.code && (
+                                    <span className="text-[10px] font-mono text-slate-500 font-normal">
+                                      ({selectedSupplierObj.code})
+                                    </span>
+                                  )}
+                                </span>
+                                {poFormData.reference && (
+                                  <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
+                                    Quote: {poFormData.reference}
+                                  </span>
                                 )}
-                              </select>
-                            </td>
-                            <td className="p-2.5">
-                              <input
-                                type="text"
-                                readOnly
-                                value={item.code}
-                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-[#F1F5F9] text-slate-600 focus:outline-none"
-                              />
-                            </td>
-                            <td className="p-2.5">
-                              <input
-                                type="text"
-                                readOnly
-                                value={item.unit}
-                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-[#F1F5F9] text-slate-600 focus:outline-none"
-                              />
-                            </td>
-                            <td className="p-2.5">
-                              <input
-                                type="text"
-                                readOnly
-                                value={item.brand}
-                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-[#F1F5F9] text-slate-600 focus:outline-none"
-                              />
-                            </td>
-                            <td className="p-2.5">
-                              <input
-                                type="number"
-                                min="1"
-                                value={item.qty}
-                                onChange={(e) => handlePoQtyChange(idx, Number(e.target.value))}
-                                className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs bg-white text-center text-slate-800 focus:outline-none focus:border-blue-500"
-                              />
-                            </td>
-                            <td className="p-2.5">
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={item.amount || ''}
-                                onChange={(e) => handlePoAmountChange(idx, Number(e.target.value))}
-                                placeholder="0.00"
-                                className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs bg-white text-right text-slate-800 focus:outline-none focus:border-blue-500 font-mono"
-                              />
-                            </td>
-                            <td className="p-2.5">
-                              <input
-                                type="text"
-                                readOnly
-                                value={(Number(item.qty || 0) * Number(item.amount || 0)).toFixed(2)}
-                                className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-[#F1F5F9] text-right font-mono text-slate-700 focus:outline-none font-semibold"
-                              />
-                            </td>
-                            <td className="p-2.5 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handlePoRemoveLine(idx)}
-                                className="w-5 h-5 bg-[#DC2626] hover:bg-[#B91C1C] text-white inline-flex items-center justify-center rounded-xs text-xs font-bold cursor-pointer"
-                                title="Delete Row"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
+                              </div>
+                              <div className="grid grid-cols-2 gap-x-2.5 gap-y-1 text-[11px]">
+                                <div>
+                                  <span className="text-slate-400 font-medium">Contact: </span>
+                                  <span className="font-semibold text-slate-800">
+                                    {selectedSupplierObj.contactPerson || selectedSupplierObj.contact || 'N/A'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 font-medium">Phone: </span>
+                                  <span className="font-mono text-slate-800">
+                                    {selectedSupplierObj.phone || selectedSupplierObj.mobile || selectedSupplierObj.contact || 'N/A'}
+                                  </span>
+                                </div>
+                                <div className="col-span-2">
+                                  <span className="text-slate-400 font-medium">Email: </span>
+                                  <span className="text-slate-800">
+                                    {selectedSupplierObj.email || 'N/A'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 font-medium">TRN: </span>
+                                  <span className="font-mono text-slate-800">
+                                    {selectedSupplierObj.trn || selectedSupplierObj.taxNumber || '100XXXXXXXXX003'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 font-medium">Payment Terms: </span>
+                                  <span className="text-slate-800">
+                                    {selectedSupplierObj.paymentTerms || selectedSupplierObj.creditTerms || 'Net 30 Days'}
+                                  </span>
+                                </div>
+                                <div className="col-span-2 pt-0.5 border-t border-slate-200 flex items-center justify-between">
+                                  <span className="text-slate-400 font-medium">Outstanding:</span>
+                                  <span className="font-semibold text-slate-900 font-mono">
+                                    AED {(Number(selectedSupplierObj.outstanding) || 0).toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Ship to */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          Ship to
+                        </label>
+                        <div className="col-span-8">
+                          <input
+                            type="checkbox"
+                            checked={poFormData.shipTo}
+                            onChange={(e) => setPoFormData({ ...poFormData, shipTo: e.target.checked })}
+                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Purchase Order Type */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          Purchase Order Type <span className="text-red-500">*</span>
+                        </label>
+                        <div className="col-span-8">
+                          <select
+                            value={poFormData.poType}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setPoFormData({ ...poFormData, poType: val });
+                              if (val === 'From Purchase Requisition' && !selectedAutofillMsrfId && liveMsrfs.length > 0) {
+                                handleAutofillFromMsrf(liveMsrfs[0].id);
+                              }
+                            }}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="Manual Creation">Manual Creation</option>
+                            <option value="From Sales Order">From Sales Order</option>
+                            <option value="From Purchase Requisition">From Purchase Requisition</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      <div className="grid grid-cols-12 items-start gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700 pt-1.5">
+                          Description
+                        </label>
+                        <div className="col-span-8">
+                          <textarea
+                            rows={2}
+                            value={poFormData.description}
+                            onChange={(e) => setPoFormData({ ...poFormData, description: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="space-y-3">
+                      {/* Material Request */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          Material Request
+                        </label>
+                        <div className="col-span-8 relative" ref={msrfDropdownRef}>
+                          {/* Selector Trigger Button */}
+                          <div
+                            onClick={() => setIsMsrfDropdownOpen((prev) => !prev)}
+                            className={cn(
+                              "w-full min-h-[32px] px-2.5 py-1 border rounded text-xs bg-white text-slate-800 flex items-center justify-between gap-1.5 cursor-pointer transition shadow-2xs select-none",
+                              isMsrfDropdownOpen
+                                ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/10"
+                                : "border-slate-300 hover:border-slate-400"
+                            )}
+                          >
+                            {activeMsrfObj ? (
+                              <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+                                <span className="shrink-0 font-mono font-bold text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded">
+                                  {activeMsrfObj.msrfNumber}
+                                </span>
+                                <span className="truncate text-slate-800 font-medium text-xs">
+                                  {activeMsrfObj.projectName ? `${activeMsrfObj.projectName} — ` : ''}{activeMsrfObj.purpose}
+                                </span>
+                                <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
+                                  {activeMsrfObj.reportingHeadStatus || 'Approved'}
+                                </span>
+                              </div>
+                            ) : poFormData.opportunityOrder && poFormData.opportunityOrder !== 'Select Opportunity/Order' ? (
+                              <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate text-slate-800 font-medium">
+                                <span className="shrink-0 text-slate-400">📦</span>
+                                <span className="truncate">{poFormData.opportunityOrder}</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 font-normal">
+                                -- Select Material Request --
+                              </span>
+                            )}
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {(activeMsrfObj || (poFormData.opportunityOrder && poFormData.opportunityOrder !== 'Select Opportunity/Order')) && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleClearAutofill();
+                                    setIsMsrfDropdownOpen(false);
+                                  }}
+                                  className="w-4 h-4 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
+                                  title="Clear selection"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                              <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 transition-transform duration-200", isMsrfDropdownOpen && "rotate-180")} />
+                            </div>
+                          </div>
+
+                          {/* Floating Popover Dropdown */}
+                          {isMsrfDropdownOpen && (
+                            <div className="absolute right-0 top-full mt-1 w-full sm:w-[460px] bg-white border border-slate-200 rounded-md shadow-xl z-50 overflow-hidden text-xs">
+                              {/* Search bar inside dropdown */}
+                              <div className="p-2 border-b border-slate-100 bg-[#F8FAFC] flex items-center gap-2">
+                                <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  placeholder="Search by MSRF#, project, purpose, or department..."
+                                  value={msrfDropdownSearch}
+                                  onChange={(e) => setMsrfDropdownSearch(e.target.value)}
+                                  className="w-full bg-transparent text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                                />
+                                {msrfDropdownSearch && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setMsrfDropdownSearch('')}
+                                    className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Dropdown list */}
+                              <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
+                                {/* Option: Clear / None */}
+                                <div
+                                  onClick={() => {
+                                    handleClearAutofill();
+                                    setIsMsrfDropdownOpen(false);
+                                  }}
+                                  className="px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-slate-500 hover:text-slate-800 transition"
+                                >
+                                  <span className="italic">-- Clear / Manual Creation (No Requisition) --</span>
+                                  {!activeMsrfObj && (!poFormData.opportunityOrder || poFormData.opportunityOrder === 'Select Opportunity/Order') && (
+                                    <Check className="w-3.5 h-3.5 text-blue-600" />
+                                  )}
+                                </div>
+
+                                {/* Approved MSRF Requests Header */}
+                                {filteredLiveMsrfs.length > 0 && (
+                                  <div className="px-3 py-1 bg-slate-100/70 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                                    <span>Live Material Requests ({filteredLiveMsrfs.length})</span>
+                                    <span className="text-emerald-700 font-semibold">Live Requisitions</span>
+                                  </div>
+                                )}
+
+                                {filteredLiveMsrfs.map((m) => {
+                                  const isSelected = activeMsrfObj?.id === m.id;
+                                  return (
+                                    <div
+                                      key={m.id}
+                                      onClick={() => {
+                                        handleAutofillFromMsrf(m.id);
+                                        setIsMsrfDropdownOpen(false);
+                                        setMsrfDropdownSearch('');
+                                      }}
+                                      className={cn(
+                                        "px-3 py-2 cursor-pointer transition flex flex-col gap-1 border-l-2",
+                                        isSelected
+                                          ? "bg-blue-50/70 border-l-blue-600"
+                                          : "hover:bg-slate-50 border-l-transparent"
+                                      )}
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="font-mono font-bold text-blue-700 bg-blue-100/80 px-1.5 py-0.5 rounded text-[11px] border border-blue-200">
+                                            {m.msrfNumber}
+                                          </span>
+                                          {m.department && (
+                                            <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                              {m.department}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                            {m.reportingHeadStatus || 'Approved'}
+                                          </span>
+                                          {isSelected && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                                        </div>
+                                      </div>
+
+                                      {m.projectName && (
+                                        <div className="text-xs font-semibold text-slate-800 flex items-center gap-1">
+                                          <span>🏢</span>
+                                          <span>{m.projectName}</span>
+                                        </div>
+                                      )}
+
+                                      <div className="text-[11px] text-slate-600 line-clamp-1">
+                                        {m.purpose}
+                                      </div>
+
+                                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5 border-t border-slate-100/80 mt-0.5">
+                                        <span>{m.items?.length || 1} items requested</span>
+                                        <span>Req Date: {m.date}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+
+                                {filteredLiveMsrfs.length === 0 && (
+                                  <div className="p-4 text-center text-slate-400 text-xs">
+                                    No material requests matching &quot;{msrfDropdownSearch}&quot;
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Project Name */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          Project Name
+                        </label>
+                        <div className="col-span-8">
+                          <input
+                            type="text"
+                            value={poFormData.projectName}
+                            onChange={(e) => setPoFormData({ ...poFormData, projectName: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* VAT Type */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          VAT Type <span className="text-red-500">*</span>
+                        </label>
+                        <div className="col-span-8 flex items-center gap-4 text-xs">
+                          <label className="flex items-center gap-1.5 cursor-pointer font-medium text-slate-800">
+                            <input
+                              type="radio"
+                              name="poVatType"
+                              checked={poFormData.vatType === 'with_vat'}
+                              onChange={() => setPoFormData({ ...poFormData, vatType: 'with_vat' })}
+                              className="text-blue-600 focus:ring-0 cursor-pointer"
+                            />
+                            <span>With VAT</span>
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer font-medium text-slate-800">
+                            <input
+                              type="radio"
+                              name="poVatType"
+                              checked={poFormData.vatType === 'without_vat'}
+                              onChange={() => setPoFormData({ ...poFormData, vatType: 'without_vat' })}
+                              className="text-blue-600 focus:ring-0 cursor-pointer"
+                            />
+                            <span>Without VAT</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Attention */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          Attention
+                        </label>
+                        <div className="col-span-8">
+                          <input
+                            type="text"
+                            value={poFormData.attention}
+                            onChange={(e) => setPoFormData({ ...poFormData, attention: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Prepared By */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          Prepared By
+                        </label>
+                        <div className="col-span-8">
+                          <input
+                            type="text"
+                            value={poFormData.preparedBy}
+                            onChange={(e) => setPoFormData({ ...poFormData, preparedBy: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Prepared By Mobile */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          Prepared By Mobile
+                        </label>
+                        <div className="col-span-8">
+                          <input
+                            type="text"
+                            value={poFormData.preparedByMobile}
+                            onChange={(e) => setPoFormData({ ...poFormData, preparedByMobile: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Prepared By Email */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          Prepared By Email
+                        </label>
+                        <div className="col-span-8">
+                          <input
+                            type="email"
+                            value={poFormData.preparedByEmail}
+                            onChange={(e) => setPoFormData({ ...poFormData, preparedByEmail: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Prepared By Designation */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-4 font-semibold text-slate-700">
+                          Prepared By Designation
+                        </label>
+                        <div className="col-span-8">
+                          <select
+                            value={poFormData.preparedByDesignation}
+                            onChange={(e) => setPoFormData({ ...poFormData, preparedByDesignation: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="Select Designation">Select Designation</option>
+                            <option value="Managing Director">Managing Director</option>
+                            <option value="Purchase Officer">Purchase Officer</option>
+                            <option value="Sales Executive">Sales Executive</option>
+                            <option value="General Manager">General Manager</option>
+                            <option value="Accountant">Accountant</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Products / Items Table Card */}
+                  <div className="border border-slate-200 rounded-sm overflow-hidden bg-white">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-[#F8FAFC] border-b border-slate-200 text-slate-700 font-semibold select-none">
+                          <tr>
+                            <th className="p-2.5 min-w-[280px]">
+                              <div className="flex items-center justify-between gap-2">
+                                <span>Description</span>
+                                <button
+                                  type="button"
+                                  className="px-2 py-0.5 bg-[#64748B] hover:bg-[#475569] text-white rounded-xs text-[10px] font-bold cursor-pointer"
+                                >
+                                  + Additional Description
+                                </button>
+                              </div>
+                            </th>
+                            <th className="p-2.5 w-28">Code</th>
+                            <th className="p-2.5 w-24">Unit</th>
+                            <th className="p-2.5 w-28">Brand</th>
+                            <th className="p-2.5 w-24 text-center">QTY</th>
+                            <th className="p-2.5 w-32 text-center">Amount</th>
+                            <th className="p-2.5 w-32 text-center">Total</th>
+                            <th className="p-2.5 w-10 text-center"></th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {poLineItems.map((item, idx) => (
+                            <tr key={item.id} className="hover:bg-slate-50/50">
+                              <td className="p-2.5">
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    value={item.description}
+                                    onChange={(e) => handlePoProductChange(idx, e.target.value)}
+                                    placeholder="Select or enter item description"
+                                    list={`po-stock-datalist-${idx}`}
+                                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
+                                  />
+                                  <datalist id={`po-stock-datalist-${idx}`}>
+                                    {stockItems.map((p) => (
+                                      <option key={p.id} value={p.name}>
+                                        {p.code ? `${p.code} - ` : ''}{p.brand || ''}
+                                      </option>
+                                    ))}
+                                    {stockItems.length === 0 && (
+                                      <>
+                                        <option value="MIDEA 1.5 TON SPLIT AC" />
+                                        <option value="CARRIER 2.0 TON CASSETTE AC" />
+                                        <option value="LG DUAL INVERTER 1.5 TON" />
+                                      </>
+                                    )}
+                                  </datalist>
+                                </div>
+                              </td>
+                              <td className="p-2.5">
+                                <input
+                                  type="text"
+                                  value={item.code}
+                                  onChange={(e) => {
+                                    const updated = [...poLineItems];
+                                    updated[idx] = { ...updated[idx], code: e.target.value };
+                                    setPoLineItems(updated);
+                                  }}
+                                  placeholder="Code"
+                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-500 font-mono"
+                                />
+                              </td>
+                              <td className="p-2.5">
+                                <input
+                                  type="text"
+                                  value={item.unit}
+                                  onChange={(e) => {
+                                    const updated = [...poLineItems];
+                                    updated[idx] = { ...updated[idx], unit: e.target.value };
+                                    setPoLineItems(updated);
+                                  }}
+                                  placeholder="Unit"
+                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-500"
+                                />
+                              </td>
+                              <td className="p-2.5">
+                                <input
+                                  type="text"
+                                  value={item.brand}
+                                  onChange={(e) => {
+                                    const updated = [...poLineItems];
+                                    updated[idx] = { ...updated[idx], brand: e.target.value };
+                                    setPoLineItems(updated);
+                                  }}
+                                  placeholder="Brand"
+                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-500"
+                                />
+                              </td>
+                              <td className="p-2.5">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.qty}
+                                  onChange={(e) => handlePoQtyChange(idx, Number(e.target.value))}
+                                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs bg-white text-center text-slate-800 focus:outline-none focus:border-blue-500"
+                                />
+                              </td>
+                              <td className="p-2.5">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.amount || ''}
+                                  onChange={(e) => handlePoAmountChange(idx, Number(e.target.value))}
+                                  placeholder="0.00"
+                                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs bg-white text-right text-slate-800 focus:outline-none focus:border-blue-500 font-mono"
+                                />
+                              </td>
+                              <td className="p-2.5">
+                                <input
+                                  type="text"
+                                  readOnly
+                                  value={(Number(item.qty || 0) * Number(item.amount || 0)).toFixed(2)}
+                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-[#F1F5F9] text-right font-mono text-slate-700 focus:outline-none font-semibold"
+                                />
+                              </td>
+                              <td className="p-2.5 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handlePoRemoveLine(idx)}
+                                  className="w-5 h-5 bg-[#DC2626] hover:bg-[#B91C1C] text-white inline-flex items-center justify-center rounded-xs text-xs font-bold cursor-pointer"
+                                  title="Delete Row"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
 
-                  {/* Buttons directly below table */}
-                  <div className="p-2.5 bg-white border-t border-slate-100 flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={handlePoAddDescriptionRow}
-                      className="px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold rounded-xs flex items-center gap-1 shadow-xs cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Description</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handlePoAddProductRow}
-                      className="px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold rounded-xs flex items-center gap-1 shadow-xs cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Product / Service</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Bottom Section: Left = WYSIWYG Terms & Condition, Right = Calculations */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
-                  {/* Left: Terms & Conditions with full CKEditor Toolbar */}
-                  <div className="lg:col-span-7 space-y-2">
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="font-semibold text-slate-700 flex items-center gap-1">
-                        <span className="text-blue-600 font-bold">ℹ</span> Terms & Condition
-                      </span>
-                      <select
-                        value={poFormData.termsCondition}
-                        onChange={(e) => setPoFormData({ ...poFormData, termsCondition: e.target.value })}
-                        className="flex-1 max-w-xs px-2.5 py-1 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
-                      >
-                        <option value="Select">Select</option>
-                        {Object.keys(poTermsTemplates).map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
+                    {/* Buttons directly below table */}
+                    <div className="p-2.5 bg-white border-t border-slate-100 flex items-center justify-end gap-2">
                       <button
                         type="button"
-                        onClick={handlePoLoadTerms}
-                        className="px-2.5 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xs text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition"
-                        title="Load Selected Terms"
-                      >
-                        <span>↻</span>
-                        <span>Load</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handlePoClearTerms}
-                        className="px-2.5 py-1 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-xs text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition"
-                        title="Clear Terms"
-                      >
-                        <span>🗑</span>
-                        <span>Clear</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!poFormData.termsCondition || poFormData.termsCondition === 'Select') {
-                            showPoTermsToast('Please select a Terms & Conditions template to delete.');
-                            return;
-                          }
-                          handlePoDeleteTerms(poFormData.termsCondition);
-                        }}
-                        className="px-2.5 py-1 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-xs text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition"
-                        title="Delete Selected Template"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Delete</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewPoTermsTitle('');
-                          setNewPoTermsContent('');
-                          setIsAddPoTermsModalOpen(true);
-                        }}
-                        className="px-2.5 py-1 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xs text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition"
-                        title="Add New Terms & Condition Template"
+                        onClick={handlePoAddDescriptionRow}
+                        className="px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold rounded-xs flex items-center gap-1 shadow-xs cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>+ New</span>
+                        <span>Add Description</span>
                       </button>
-                    </div>
-
-                    {/* WYSIWYG Editor Mock Container */}
-                    <div className="border border-slate-300 rounded-sm overflow-hidden bg-white shadow-2xs">
-                      {/* Toolbar Row 1 */}
-                      <div className="bg-[#F1F5F9] border-b border-slate-300 p-1 flex flex-wrap items-center gap-1 text-slate-600 text-xs select-none">
-                        <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Cut">✂️</button>
-                        <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Copy">📋</button>
-                        <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Paste">📄</button>
-                        <span className="w-[1px] h-4 bg-slate-300 mx-0.5"></span>
-                        <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Undo">↺</button>
-                        <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Redo">↻</button>
-                        <span className="w-[1px] h-4 bg-slate-300 mx-0.5"></span>
-                        <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600 font-mono text-[10px]" title="Spellcheck">ABC✓</button>
-                        <span className="w-[1px] h-4 bg-slate-300 mx-0.5"></span>
-                        <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Link">🔗</button>
-                        <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Unlink">⛓️‍💥</button>
-                        <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Image">🖼️</button>
-                        <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Table">▦</button>
-                        <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Special Character">Ω</button>
-                        <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Fullscreen">⛶</button>
-                      </div>
-                      {/* Toolbar Row 2 */}
-                      <div className="bg-[#F8FAFC] border-b border-slate-300 p-1 flex flex-wrap items-center gap-1.5 text-slate-700 text-xs select-none">
-                        <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded font-bold" title="Bold">B</button>
-                        <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded italic font-serif" title="Italic">I</button>
-                        <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded line-through" title="Strikethrough">S</button>
-                        <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded text-[11px] font-mono" title="Remove Format">I<sub>x</sub></button>
-                        <span className="w-[1px] h-4 bg-slate-300 mx-0.5"></span>
-                        <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded" title="Numbered List">1.☰</button>
-                        <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded" title="Bulleted List">•☰</button>
-                        <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded" title="Outdent">⇠</button>
-                        <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded" title="Indent">⇢</button>
-                        <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded font-serif" title="Blockquote">”</button>
-                        <span className="w-[1px] h-4 bg-slate-300 mx-0.5"></span>
-                        <select className="px-1.5 py-0.5 border border-slate-300 rounded text-[11px] bg-white text-slate-700">
-                          <option>Styles</option>
-                        </select>
-                        <select className="px-1.5 py-0.5 border border-slate-300 rounded text-[11px] bg-white text-slate-700">
-                          <option>Format</option>
-                        </select>
-                        <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded font-bold text-slate-500" title="Help">?</button>
-                      </div>
-                      {/* Text Area */}
-                      <textarea
-                        rows={7}
-                        value={poFormData.termsConditionText}
-                        onChange={(e) => setPoFormData({ ...poFormData, termsConditionText: e.target.value })}
-                        placeholder=""
-                        className="w-full p-3 text-xs bg-white text-slate-800 focus:outline-none resize-none font-sans"
-                      />
-                      {/* Editor Status Bar */}
-                      <div className="px-2 py-0.5 bg-[#F1F5F9] border-t border-slate-200 text-[10px] text-slate-400 font-mono flex items-center justify-between select-none">
-                        <span>body p</span>
-                        <span className="cursor-se-resize">◢</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right: Calculations Summary */}
-                  <div className="lg:col-span-5 space-y-2 text-xs">
-                    {/* Amount */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-5 text-right font-medium text-slate-700 pr-2">Amount</label>
-                      <div className="col-span-7">
-                        <input
-                          type="text"
-                          readOnly
-                          value={poCalculatedAmount.toFixed(2)}
-                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-[#F1F5F9] text-right font-mono text-slate-800 font-semibold focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Discount */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-5 text-right font-medium text-slate-700 pr-2">Discount</label>
-                      <div className="col-span-7">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={poFormData.discount || ''}
-                          onChange={(e) => setPoFormData({ ...poFormData, discount: Number(e.target.value) })}
-                          placeholder=""
-                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-right font-mono text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* VAT % */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-5 text-right font-medium text-slate-700 pr-2">VAT %</label>
-                      <div className="col-span-7">
-                        <input
-                          type="text"
-                          readOnly
-                          value={poFormData.vatType === 'with_vat' ? '5' : '0'}
-                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-[#F1F5F9] text-right font-mono text-slate-800 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    {/* VAT */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-5 text-right font-medium text-slate-700 pr-2">VAT</label>
-                      <div className="col-span-7">
-                        <input
-                          type="text"
-                          readOnly
-                          value={poCalculatedVat.toFixed(2)}
-                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-[#F1F5F9] text-right font-mono text-slate-800 font-semibold focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Adjustment */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-5 text-right font-medium text-slate-700 pr-2">Adjustment</label>
-                      <div className="col-span-7">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={poFormData.adjustment || ''}
-                          onChange={(e) => setPoFormData({ ...poFormData, adjustment: Number(e.target.value) })}
-                          placeholder=""
-                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-right font-mono text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Total Amount */}
-                    <div className="grid grid-cols-12 items-center gap-2">
-                      <label className="col-span-5 text-right font-semibold text-slate-800 pr-2">Total Amount</label>
-                      <div className="col-span-7">
-                        <input
-                          type="text"
-                          readOnly
-                          value={poCalculatedTotal.toFixed(2)}
-                          className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-[#F1F5F9] text-right font-mono text-slate-900 font-bold focus:outline-none"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Form Footer Action Buttons */}
-                <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200">
-                  <button
-                    type="button"
-                    onClick={handlePoSubmit}
-                    className="px-5 py-2 bg-[#1B365D] hover:bg-[#11243E] text-white text-xs font-bold rounded-xs shadow-xs transition cursor-pointer"
-                  >
-                    Submit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPoViewMode('list')}
-                    className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold rounded-xs shadow-2xs transition cursor-pointer flex items-center gap-1"
-                  >
-                    <span>←</span>
-                    <span>Back</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Add New Owner Modal */}
-              {isAddOwnerModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-                  <div className="bg-white rounded shadow-xl border border-slate-200 w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-4 py-3 bg-[#F8FAFC] border-b border-slate-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
-                        <span className="text-sm">👤</span>
-                        <span>Add New Owner</span>
-                      </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          setIsAddOwnerModalOpen(false);
-                          setNewOwnerInputName('');
-                        }}
-                        className="text-slate-400 hover:text-slate-600 cursor-pointer text-xs"
+                        onClick={handlePoAddProductRow}
+                        className="px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold rounded-xs flex items-center gap-1 shadow-xs cursor-pointer"
                       >
-                        <X className="w-4 h-4" />
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Product / Service</span>
                       </button>
                     </div>
-                    <div className="p-4 space-y-3 text-xs">
-                      <div>
-                        <label className="block text-slate-700 font-semibold mb-1">
-                          Owner Name <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={newOwnerInputName}
-                          onChange={(e) => setNewOwnerInputName(e.target.value)}
-                          placeholder="e.g. John Doe"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddNewOwner();
+                  </div>
+
+                  {/* Bottom Section: Left = WYSIWYG Terms & Condition, Right = Calculations */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
+                    {/* Left: Terms & Conditions with full CKEditor Toolbar */}
+                    <div className="lg:col-span-7 space-y-2">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="font-semibold text-slate-700 flex items-center gap-1">
+                          <span className="text-blue-600 font-bold">ℹ</span> Terms & Condition
+                        </span>
+                        <select
+                          value={poFormData.termsCondition}
+                          onChange={(e) => setPoFormData({ ...poFormData, termsCondition: e.target.value })}
+                          className="flex-1 max-w-xs px-2.5 py-1 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="Select">Select</option>
+                          {Object.keys(poTermsTemplates).map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={handlePoLoadTerms}
+                          className="px-2.5 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xs text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition"
+                          title="Load Selected Terms"
+                        >
+                          <span>↻</span>
+                          <span>Load</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handlePoClearTerms}
+                          className="px-2.5 py-1 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-xs text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition"
+                          title="Clear Terms"
+                        >
+                          <span>🗑</span>
+                          <span>Clear</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!poFormData.termsCondition || poFormData.termsCondition === 'Select') {
+                              showPoTermsToast('Please select a Terms & Conditions template to delete.');
+                              return;
                             }
+                            handlePoDeleteTerms(poFormData.termsCondition);
                           }}
-                          autoFocus
-                          className="w-full px-3 py-2 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
+                          className="px-2.5 py-1 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-xs text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition"
+                          title="Delete Selected Template"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewPoTermsTitle('');
+                            setNewPoTermsContent('');
+                            setIsAddPoTermsModalOpen(true);
+                          }}
+                          className="px-2.5 py-1 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xs text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition"
+                          title="Add New Terms & Condition Template"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ New</span>
+                        </button>
                       </div>
-                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+
+                      {/* WYSIWYG Editor Mock Container */}
+                      <div className="border border-slate-300 rounded-sm overflow-hidden bg-white shadow-2xs">
+                        {/* Toolbar Row 1 */}
+                        <div className="bg-[#F1F5F9] border-b border-slate-300 p-1 flex flex-wrap items-center gap-1 text-slate-600 text-xs select-none">
+                          <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Cut">✂️</button>
+                          <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Copy">📋</button>
+                          <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Paste">📄</button>
+                          <span className="w-[1px] h-4 bg-slate-300 mx-0.5"></span>
+                          <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Undo">↺</button>
+                          <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Redo">↻</button>
+                          <span className="w-[1px] h-4 bg-slate-300 mx-0.5"></span>
+                          <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600 font-mono text-[10px]" title="Spellcheck">ABC✓</button>
+                          <span className="w-[1px] h-4 bg-slate-300 mx-0.5"></span>
+                          <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Link">🔗</button>
+                          <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Unlink">⛓️‍💥</button>
+                          <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Image">🖼️</button>
+                          <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Table">▦</button>
+                          <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Special Character">Ω</button>
+                          <button type="button" className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Fullscreen">⛶</button>
+                        </div>
+                        {/* Toolbar Row 2 */}
+                        <div className="bg-[#F8FAFC] border-b border-slate-300 p-1 flex flex-wrap items-center gap-1.5 text-slate-700 text-xs select-none">
+                          <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded font-bold" title="Bold">B</button>
+                          <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded italic font-serif" title="Italic">I</button>
+                          <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded line-through" title="Strikethrough">S</button>
+                          <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded text-[11px] font-mono" title="Remove Format">I<sub>x</sub></button>
+                          <span className="w-[1px] h-4 bg-slate-300 mx-0.5"></span>
+                          <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded" title="Numbered List">1.☰</button>
+                          <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded" title="Bulleted List">•☰</button>
+                          <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded" title="Outdent">⇠</button>
+                          <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded" title="Indent">⇢</button>
+                          <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded font-serif" title="Blockquote">”</button>
+                          <span className="w-[1px] h-4 bg-slate-300 mx-0.5"></span>
+                          <select className="px-1.5 py-0.5 border border-slate-300 rounded text-[11px] bg-white text-slate-700">
+                            <option>Styles</option>
+                          </select>
+                          <select className="px-1.5 py-0.5 border border-slate-300 rounded text-[11px] bg-white text-slate-700">
+                            <option>Format</option>
+                          </select>
+                          <button type="button" className="px-1.5 py-0.5 hover:bg-slate-200 rounded font-bold text-slate-500" title="Help">?</button>
+                        </div>
+                        {/* Text Area */}
+                        <textarea
+                          rows={7}
+                          value={poFormData.termsConditionText}
+                          onChange={(e) => setPoFormData({ ...poFormData, termsConditionText: e.target.value })}
+                          placeholder=""
+                          className="w-full p-3 text-xs bg-white text-slate-800 focus:outline-none resize-none font-sans"
+                        />
+                        {/* Editor Status Bar */}
+                        <div className="px-2 py-0.5 bg-[#F1F5F9] border-t border-slate-200 text-[10px] text-slate-400 font-mono flex items-center justify-between select-none">
+                          <span>body p</span>
+                          <span className="cursor-se-resize">◢</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Calculations Summary */}
+                    <div className="lg:col-span-5 space-y-2 text-xs">
+                      {/* Amount */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-5 text-right font-medium text-slate-700 pr-2">Amount</label>
+                        <div className="col-span-7">
+                          <input
+                            type="text"
+                            readOnly
+                            value={poCalculatedAmount.toFixed(2)}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-[#F1F5F9] text-right font-mono text-slate-800 font-semibold focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Discount */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-5 text-right font-medium text-slate-700 pr-2">Discount</label>
+                        <div className="col-span-7">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={poFormData.discount || ''}
+                            onChange={(e) => setPoFormData({ ...poFormData, discount: Number(e.target.value) })}
+                            placeholder=""
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-right font-mono text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* VAT % */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-5 text-right font-medium text-slate-700 pr-2">VAT %</label>
+                        <div className="col-span-7">
+                          <input
+                            type="text"
+                            readOnly
+                            value={poFormData.vatType === 'with_vat' ? '5' : '0'}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-[#F1F5F9] text-right font-mono text-slate-800 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* VAT */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-5 text-right font-medium text-slate-700 pr-2">VAT</label>
+                        <div className="col-span-7">
+                          <input
+                            type="text"
+                            readOnly
+                            value={poCalculatedVat.toFixed(2)}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-[#F1F5F9] text-right font-mono text-slate-800 font-semibold focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Adjustment */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-5 text-right font-medium text-slate-700 pr-2">Adjustment</label>
+                        <div className="col-span-7">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={poFormData.adjustment || ''}
+                            onChange={(e) => setPoFormData({ ...poFormData, adjustment: Number(e.target.value) })}
+                            placeholder=""
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-right font-mono text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Total Amount */}
+                      <div className="grid grid-cols-12 items-center gap-2">
+                        <label className="col-span-5 text-right font-semibold text-slate-800 pr-2">Total Amount</label>
+                        <div className="col-span-7">
+                          <input
+                            type="text"
+                            readOnly
+                            value={poCalculatedTotal.toFixed(2)}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-[#F1F5F9] text-right font-mono text-slate-900 font-bold focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Form Footer Action Buttons */}
+                  <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200">
+                    <button
+                      type="button"
+                      disabled={isSubmittingPo}
+                      onClick={handlePoSubmit}
+                      className="px-5 py-2 bg-[#1B365D] hover:bg-[#11243E] text-white text-xs font-bold rounded-xs shadow-xs transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmittingPo ? 'Submitting...' : 'Submit'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPoViewMode('list');
+                        processedMsrfParamRef.current = null;
+                        router.replace('/purchase?tab=po');
+                      }}
+                      className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold rounded-xs shadow-2xs transition cursor-pointer flex items-center gap-1"
+                    >
+                      <span>←</span>
+                      <span>Back</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Add New Owner Modal */}
+                {isAddOwnerModalOpen && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+                    <div className="bg-white rounded shadow-xl border border-slate-200 w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                      <div className="px-4 py-3 bg-[#F8FAFC] border-b border-slate-200 flex items-center justify-between">
+                        <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
+                          <span className="text-sm">👤</span>
+                          <span>Add New Owner</span>
+                        </div>
                         <button
                           type="button"
                           onClick={() => {
                             setIsAddOwnerModalOpen(false);
                             setNewOwnerInputName('');
                           }}
-                          className="px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-600 hover:bg-slate-50 cursor-pointer font-medium"
+                          className="text-slate-400 hover:text-slate-600 cursor-pointer text-xs"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="p-4 space-y-3 text-xs">
+                        <div>
+                          <label className="block text-slate-700 font-semibold mb-1">
+                            Owner Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={newOwnerInputName}
+                            onChange={(e) => setNewOwnerInputName(e.target.value)}
+                            placeholder="e.g. John Doe"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddNewOwner();
+                              }
+                            }}
+                            autoFocus
+                            className="w-full px-3 py-2 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsAddOwnerModalOpen(false);
+                              setNewOwnerInputName('');
+                            }}
+                            className="px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-600 hover:bg-slate-50 cursor-pointer font-medium"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleAddNewOwner}
+                            disabled={!newOwnerInputName.trim()}
+                            className="px-4 py-1.5 bg-[#1B365D] hover:bg-[#11243E] disabled:bg-slate-300 text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
+                          >
+                            Add Owner
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Purchase Order Number Settings Modal */}
+                {isPoNumberSettingsModalOpen && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+                    <div className="bg-white rounded shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <h3 className="font-semibold text-slate-800 text-sm">
+                          Purchase Order Number
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => setIsPoNumberSettingsModalOpen(false)}
+                          className="text-slate-400 hover:text-slate-600 cursor-pointer text-xs"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="p-6 space-y-4 text-xs text-slate-700">
+                        {/* Prefix */}
+                        <div className="grid grid-cols-12 items-center gap-4">
+                          <label className="col-span-4 font-semibold text-slate-700">
+                            Prefix
+                          </label>
+                          <div className="col-span-8">
+                            <input
+                              type="text"
+                              value={poPrefix}
+                              onChange={(e) => setPoPrefix(e.target.value)}
+                              className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Next Number */}
+                        <div className="grid grid-cols-12 items-center gap-4">
+                          <label className="col-span-4 font-semibold text-slate-700">
+                            Next Number <span className="text-red-500">*</span>
+                          </label>
+                          <div className="col-span-8">
+                            <input
+                              type="text"
+                              value={poNextNumber}
+                              onChange={(e) => setPoNextNumber(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSavePoNumberSettings();
+                                }
+                              }}
+                              autoFocus
+                              className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsPoNumberSettingsModalOpen(false)}
+                          className="px-4 py-1.5 border border-slate-300 rounded text-xs text-slate-600 hover:bg-white bg-white cursor-pointer font-medium shadow-2xs"
                         >
                           Cancel
                         </button>
                         <button
                           type="button"
-                          onClick={handleAddNewOwner}
-                          disabled={!newOwnerInputName.trim()}
-                          className="px-4 py-1.5 bg-[#1B365D] hover:bg-[#11243E] disabled:bg-slate-300 text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
+                          onClick={handleSavePoNumberSettings}
+                          className="px-5 py-1.5 bg-[#002B49] hover:bg-[#001D33] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
                         >
-                          Add Owner
+                          Save
                         </button>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Purchase Order Number Settings Modal */}
-              {isPoNumberSettingsModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-                  <div className="bg-white rounded shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-                      <h3 className="font-semibold text-slate-800 text-sm">
-                        Purchase Order Number
-                      </h3>
-                      <button
-                        type="button"
-                        onClick={() => setIsPoNumberSettingsModalOpen(false)}
-                        className="text-slate-400 hover:text-slate-600 cursor-pointer text-xs"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="p-6 space-y-4 text-xs text-slate-700">
-                      {/* Prefix */}
-                      <div className="grid grid-cols-12 items-center gap-4">
-                        <label className="col-span-4 font-semibold text-slate-700">
-                          Prefix
-                        </label>
-                        <div className="col-span-8">
-                          <input
-                            type="text"
-                            value={poPrefix}
-                            onChange={(e) => setPoPrefix(e.target.value)}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                          />
+                {/* Add New Terms & Conditions Modal */}
+                {isAddPoTermsModalOpen && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+                    <div className="bg-white rounded shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                      <div className="px-5 py-3.5 bg-[#F8FAFC] border-b border-slate-200 flex items-center justify-between">
+                        <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
+                          <span className="text-blue-600 font-bold text-sm">ℹ</span>
+                          <span>Add Terms & Conditions</span>
                         </div>
-                      </div>
-
-                      {/* Next Number */}
-                      <div className="grid grid-cols-12 items-center gap-4">
-                        <label className="col-span-4 font-semibold text-slate-700">
-                          Next Number <span className="text-red-500">*</span>
-                        </label>
-                        <div className="col-span-8">
-                          <input
-                            type="text"
-                            value={poNextNumber}
-                            onChange={(e) => setPoNextNumber(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleSavePoNumberSettings();
-                              }
-                            }}
-                            autoFocus
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setIsPoNumberSettingsModalOpen(false)}
-                        className="px-4 py-1.5 border border-slate-300 rounded text-xs text-slate-600 hover:bg-white bg-white cursor-pointer font-medium shadow-2xs"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSavePoNumberSettings}
-                        className="px-5 py-1.5 bg-[#002B49] hover:bg-[#001D33] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Add New Terms & Conditions Modal */}
-              {isAddPoTermsModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-                  <div className="bg-white rounded shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-5 py-3.5 bg-[#F8FAFC] border-b border-slate-200 flex items-center justify-between">
-                      <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
-                        <span className="text-blue-600 font-bold text-sm">ℹ</span>
-                        <span>Add Terms & Conditions</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsAddPoTermsModalOpen(false);
-                          setNewPoTermsTitle('');
-                          setNewPoTermsContent('');
-                        }}
-                        className="text-slate-400 hover:text-slate-600 cursor-pointer text-xs"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <form onSubmit={handleSaveNewPoTerms} className="p-5 space-y-4 text-xs">
-                      <div>
-                        <label className="block text-slate-700 font-semibold mb-1">
-                          Template Title / Name <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={newPoTermsTitle}
-                          onChange={(e) => setNewPoTermsTitle(e.target.value)}
-                          placeholder="e.g. 60 Days Credit & Warranty Terms"
-                          autoFocus
-                          required
-                          className="w-full px-3 py-2 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-700 font-semibold mb-1">
-                          Terms & Conditions Content <span className="text-red-500">*</span>
-                        </label>
-                        <textarea
-                          rows={6}
-                          value={newPoTermsContent}
-                          onChange={(e) => setNewPoTermsContent(e.target.value)}
-                          placeholder="1. Payment terms: 60 days credit...&#10;2. Delivery schedule...&#10;3. Warranty specifications..."
-                          required
-                          className="w-full px-3 py-2 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
                         <button
                           type="button"
                           onClick={() => {
@@ -4226,1022 +5715,1363 @@ function PurchasePageInner() {
                             setNewPoTermsTitle('');
                             setNewPoTermsContent('');
                           }}
-                          className="px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-600 hover:bg-slate-50 cursor-pointer font-medium"
+                          className="text-slate-400 hover:text-slate-600 cursor-pointer text-xs"
                         >
-                          Cancel
+                          <X className="w-4 h-4" />
                         </button>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={handleAddAnotherPoTerm}
-                            disabled={!newPoTermsTitle.trim() || !newPoTermsContent.trim()}
-                            className="px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] disabled:bg-slate-300 text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
-                          >
-                            + Add Another
-                          </button>
-                          <button
-                            type="submit"
-                            disabled={!newPoTermsTitle.trim() || !newPoTermsContent.trim()}
-                            className="px-4 py-1.5 bg-[#1B365D] hover:bg-[#11243E] disabled:bg-slate-300 text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
-                          >
-                            Save & Insert
-                          </button>
+                      </div>
+
+                      <form onSubmit={handleSaveNewPoTerms} className="p-5 space-y-4 text-xs">
+                        <div>
+                          <label className="block text-slate-700 font-semibold mb-1">
+                            Template Title / Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={newPoTermsTitle}
+                            onChange={(e) => setNewPoTermsTitle(e.target.value)}
+                            placeholder="e.g. 60 Days Credit & Warranty Terms"
+                            autoFocus
+                            required
+                            className="w-full px-3 py-2 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
                         </div>
-                      </div>
 
-                      {/* Saved PO Templates List with Delete Option */}
-                      {Object.keys(poTermsTemplates).length > 0 && (
-                        <div className="pt-3 border-t border-slate-200">
-                          <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wide mb-2 flex items-center justify-between">
-                            <span>Saved Templates ({Object.keys(poTermsTemplates).length})</span>
-                            <span className="text-[10px] text-slate-400 font-normal">Click trash icon to delete</span>
-                          </div>
-                          <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 border border-slate-200 rounded p-1.5 bg-slate-50/50">
-                            {Object.entries(poTermsTemplates).map(([tName, tContent]) => (
-                              <div
-                                key={tName}
-                                className="flex items-center justify-between p-2 bg-white hover:bg-slate-100/80 rounded border border-slate-200 text-xs transition gap-2"
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <div className="font-semibold text-slate-800 truncate">{tName}</div>
-                                  <div className="text-[10px] text-slate-500 truncate">{tContent.replace(/\n/g, ' • ')}</div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => handlePoDeleteTerms(tName)}
-                                  className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer transition shrink-0"
-                                  title={`Delete "${tName}"`}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
+                        <div>
+                          <label className="block text-slate-700 font-semibold mb-1">
+                            Terms & Conditions Content <span className="text-red-500">*</span>
+                          </label>
+                          <textarea
+                            rows={6}
+                            value={newPoTermsContent}
+                            onChange={(e) => setNewPoTermsContent(e.target.value)}
+                            placeholder="1. Payment terms: 60 days credit...&#10;2. Delivery schedule...&#10;3. Warranty specifications..."
+                            required
+                            className="w-full px-3 py-2 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
+                          />
                         </div>
-                      )}
-                    </form>
-                  </div>
-                </div>
-              )}
 
-              {/* Terms Toast Notification */}
-              {poTermsToast && (
-                <div className="fixed bottom-6 right-6 z-50 bg-slate-900/95 text-white px-4 py-2.5 rounded shadow-lg text-xs font-medium flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
-                  <span className="text-emerald-400 font-bold">✓</span>
-                  <span>{poTermsToast}</span>
-                </div>
-              )}
-            </div>
-          ) : poViewMode === 'details' && viewingPo ? (
-            /* ========================================================= */
-            /* PURCHASE ORDER DETAILS VIEW (Exact Cezcon CRM Layout)      */
-            /* ========================================================= */
-            <div className="space-y-0 text-xs">
-              {/* Top Gray Banner */}
-              <div className="bg-[#E2E8F0] border border-slate-300 rounded-t-sm px-3.5 py-2 flex items-center justify-between text-xs font-bold text-slate-800 tracking-wide uppercase select-none">
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-500 font-bold">⤢</span>
-                  <span>
-                    PURCHASE ORDER CREATED BY {viewingPo.owner ? viewingPo.owner.toUpperCase() : 'USER'} ON {viewingPo.createdAtFormatted || `WED ${viewingPo.date || getLiveTodayDateString()} 11:07:05 AM`}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPoViewMode('list');
-                    if (searchParams.get('view')) {
-                      router.push('/purchase?tab=po');
-                    }
-                  }}
-                  className="w-5 h-5 bg-[#DC2626] hover:bg-[#B91C1C] text-white flex items-center justify-center rounded-xs text-xs font-bold transition shadow-xs cursor-pointer"
-                  title="Close"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Sub-tabs Row */}
-              <div className="bg-[#F8FAFC] border-x border-b border-slate-300 px-3 py-1 flex items-center gap-2 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setPoDetailActiveTab('details')}
-                  className={cn(
-                    'px-3.5 py-1.5 rounded-t text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer select-none',
-                    poDetailActiveTab === 'details'
-                      ? 'bg-white border-t-2 border-t-[#DC2626] border-x border-slate-300 text-slate-900 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  )}
-                >
-                  <Building2 className="w-3.5 h-3.5 text-[#DC2626]" />
-                  <span>Purchase Order</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPoDetailActiveTab('invoice')}
-                  className={cn(
-                    'px-3.5 py-1.5 rounded-t text-xs font-medium flex items-center gap-1.5 transition cursor-pointer select-none',
-                    poDetailActiveTab === 'invoice'
-                      ? 'bg-white border-t-2 border-t-[#DC2626] border-x border-slate-300 text-slate-900 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  )}
-                >
-                  <FileText className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Purchase Invoice</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPoDetailActiveTab('do')}
-                  className={cn(
-                    'px-3.5 py-1.5 rounded-t text-xs font-medium flex items-center gap-1.5 transition cursor-pointer select-none',
-                    poDetailActiveTab === 'do'
-                      ? 'bg-white border-t-2 border-t-[#DC2626] border-x border-slate-300 text-slate-900 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  )}
-                >
-                  <Truck className="w-3.5 h-3.5 text-slate-400" />
-                  <span>DO</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPoDetailActiveTab('history')}
-                  className={cn(
-                    'px-3.5 py-1.5 rounded-t text-xs font-medium flex items-center gap-1.5 transition cursor-pointer select-none',
-                    poDetailActiveTab === 'history'
-                      ? 'bg-white border-t-2 border-t-[#DC2626] border-x border-slate-300 text-slate-900 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  )}
-                >
-                  <List className="w-3.5 h-3.5 text-slate-400" />
-                  <span>PO Status Change History</span>
-                </button>
-              </div>
-
-              {/* Purchase Order Details Card */}
-              <div className="bg-white border-x border-b border-slate-300 shadow-xs">
-                {/* Card Section Header */}
-                <div className="px-4 py-2 bg-[#F1F5F9] border-b border-slate-200 flex items-center gap-2 text-xs font-bold text-slate-700">
-                  <Building2 className="w-4 h-4 text-slate-500" />
-                  <span>Purchase Order Details</span>
-                </div>
-
-                <div className="p-4 sm:p-6 space-y-6">
-                  {/* Two-Column Info Grid */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-3 text-xs text-slate-700">
-                    {/* Left Column */}
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Owner</span>
-                        <div className="col-span-8 flex items-center gap-2">
-                          {viewingPo.ownerAvatar ? (
-                            <img src={viewingPo.ownerAvatar} alt={viewingPo.owner} className="w-6 h-6 rounded-full object-cover border border-slate-200" />
-                          ) : (
-                            <div className="w-6 h-6 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-[10px] font-bold">
-                              {viewingPo.owner ? viewingPo.owner.charAt(0).toUpperCase() : 'U'}
-                            </div>
-                          )}
-                          <span className="font-bold text-slate-900 uppercase">{viewingPo.owner}</span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Purchase Order Number</span>
-                        <span className="col-span-8 font-bold text-slate-900">{viewingPo.poNumber}</span>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Date</span>
-                        <span className="col-span-8 font-medium text-slate-800">{viewingPo.date}</span>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Expected Delivery</span>
-                        <span className="col-span-8 text-slate-700">{viewingPo.expectedDeliveryDate || '-'}</span>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-start gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium pt-0.5">Supplier</span>
-                        <div className="col-span-8 space-y-0.5">
-                          <div className="font-bold text-[#1E40AF] hover:underline cursor-pointer">
-                            {viewingPo.supplier}
-                          </div>
-                          {(() => {
-                            const info = getSupplierContactInfo(viewingPo.supplier);
-                            return (
-                              <div className="text-[11px] text-slate-600 space-y-0.5 mt-0.5">
-                                {info.phone && (
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-pink-600 font-bold">📞</span>
-                                    <span className="text-slate-800 font-medium">{info.phone}</span>
-                                  </div>
-                                )}
-                                {info.email && (
-                                  <div className="flex items-center gap-1 text-slate-800 font-medium">
-                                    <span className="text-slate-400">✉</span>
-                                    <span>{info.email}</span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Reference</span>
-                        <span className="col-span-8 text-slate-700">{viewingPo.reference || '-'}</span>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Description</span>
-                        <span className="col-span-8 text-slate-700">{viewingPo.description || '-'}</span>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Status</span>
-                        <div className="col-span-8 flex items-center gap-2">
-                          <span className="px-2.5 py-0.5 rounded text-[10px] font-bold text-white bg-[#15803D]">
-                            {viewingPo.approval || 'Waiting for Final Approval'}
-                          </span>
+                        <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
                           <button
                             type="button"
                             onClick={() => {
-                              setPoStatusTargetPo(viewingPo);
-                              if (viewingPo.approval === 'Approved') {
-                                setPoStatusModalSelectedStatus('Approve');
-                              } else if (viewingPo.approval === 'Rejected') {
-                                setPoStatusModalSelectedStatus('Reject');
-                              } else {
-                                setPoStatusModalSelectedStatus('Change to Pending');
-                              }
-                              setPoStatusModalComments('');
-                              setIsChangePoStatusModalOpen(true);
+                              setIsAddPoTermsModalOpen(false);
+                              setNewPoTermsTitle('');
+                              setNewPoTermsContent('');
                             }}
-                            className="px-2 py-0.5 bg-[#0891B2] hover:bg-[#0E7490] text-white rounded text-[10px] font-semibold flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                            className="px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-600 hover:bg-slate-50 cursor-pointer font-medium"
                           >
-                            <Edit2 className="w-2.5 h-2.5" />
-                            <span>Change Status</span>
+                            Cancel
                           </button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Delivery Status</span>
-                        <div className="col-span-8">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeliveryStatusTargetPo(viewingPo);
-                              setDeliveryStatusModalSelected(
-                                (viewingPo.deliveryStatus as any) || 'Pending'
-                              );
-                              setIsChangeDeliveryStatusModalOpen(true);
-                            }}
-                            className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${getDeliveryStatusBadgeClass(
-                              viewingPo.deliveryStatus
-                            )} inline-flex items-center gap-1 cursor-pointer transition shadow-2xs`}
-                            title="Change Delivery Status"
-                          >
-                            <Edit2 className="w-2.5 h-2.5" />
-                            <span>{viewingPo.deliveryStatus || 'Pending'}</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Right Column */}
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Opportunity/Order</span>
-                        <span className="col-span-8 text-slate-700">{viewingPo.order || viewingPo.opportunityOrder || '-'}</span>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Project Number</span>
-                        <span className="col-span-8 text-slate-700">{viewingPo.projectNumber || '-'}</span>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Project Name</span>
-                        <span className="col-span-8 text-slate-700">{viewingPo.projectName || '-'}</span>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-start gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium pt-0.5">Prepared By</span>
-                        <div className="col-span-8 space-y-0.5">
-                          <div className="font-bold text-slate-900 uppercase">
-                            {viewingPo.preparedBy || viewingPo.owner}
-                          </div>
-                          <div className="text-[11px] font-semibold text-slate-700">
-                            {viewingPo.preparedByDesignation || 'Inventory Management (IM)'}
-                          </div>
-                          <div className="text-[11px] text-[#DB2777] font-semibold flex items-center gap-1">
-                            <span>📞</span>
-                            <span>{viewingPo.preparedByMobile || '+9715688783056'}</span>
-                          </div>
-                          <div className="text-[11px] text-slate-800 font-semibold flex items-center gap-1">
-                            <span>✉</span>
-                            <span>{viewingPo.preparedByEmail || 'im@cooltechuae.com'}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Attention</span>
-                        <span className="col-span-8 font-semibold text-slate-800">{viewingPo.attention || '-'}</span>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Amount</span>
-                        <span className="col-span-8 font-bold text-slate-900 font-mono">
-                          {Number(viewingPo.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Sub Total</span>
-                        <span className="col-span-8 font-bold text-slate-900 font-mono">
-                          {Number(viewingPo.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">VAT (5%)</span>
-                        <span className="col-span-8 font-bold text-slate-900 font-mono">
-                          {Number(viewingPo.vat || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-12 items-center gap-2">
-                        <span className="col-span-4 text-slate-500 font-medium">Total Amount</span>
-                        <span className="col-span-8 font-bold text-slate-900 font-mono text-sm">
-                          {Number(viewingPo.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Line Items Table */}
-                  <div className="border border-slate-200 rounded-sm overflow-hidden">
-                    <table className="w-full text-xs text-left">
-                      <thead>
-                        <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
-                          <th className="p-3 text-left">Description</th>
-                          <th className="p-3 w-20 text-center">QTY</th>
-                          <th className="p-3 w-32 text-center">Delivery Pending</th>
-                          <th className="p-3 w-32 text-right">Amount</th>
-                          <th className="p-3 w-32 text-right">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white">
-                        {(viewingPo.items && viewingPo.items.length > 0
-                          ? viewingPo.items
-                          : [
-                            {
-                              id: 'item_1',
-                              description: viewingPo.description || 'REFRIGERATOR 140 LTR SINGLE DOOR NOBEL NR140',
-                              code: 'NR140',
-                              unit: 'Pcs',
-                              brand: 'NOBEL',
-                              qty: 1,
-                              deliveryPending: 1,
-                              amount: viewingPo.amount || 4000.0,
-                              total: viewingPo.amount || 4000.0,
-                            },
-                          ]
-                        ).map((item: any, idx: number) => (
-                          <tr key={item.id || idx} className="hover:bg-slate-50/50">
-                            <td className="p-3">
-                              <div className="flex items-center justify-between gap-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-12 h-10 bg-slate-100 border border-slate-200 rounded flex flex-col items-center justify-center text-[7px] text-slate-400 font-bold uppercase text-center p-0.5 shrink-0 select-none">
-                                    <span className="text-[10px]">🖼️</span>
-                                    <span>NO IMAGE</span>
-                                  </div>
-                                  <span className="font-bold text-slate-900 uppercase text-xs">{item.description || 'Item'}</span>
-                                </div>
-                                <div className="text-[11px] text-slate-600 space-y-0.5 text-left shrink-0 pr-8">
-                                  <div>
-                                    <span className="italic text-slate-500">Code:</span> <span className="font-medium text-slate-800 not-italic">{item.code || '-'}</span>
-                                  </div>
-                                  <div>
-                                    <span className="italic text-slate-500">Unit:</span> <span className="font-medium text-slate-800 not-italic">{item.unit || 'Pcs'}</span>
-                                  </div>
-                                  <div>
-                                    <span className="italic text-slate-500">Brand:</span> <span className="font-medium text-slate-800 not-italic">{item.brand || '-'}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="p-3 text-center font-medium text-slate-800">{item.qty}</td>
-                            <td className="p-3 text-center font-medium text-slate-800">{item.deliveryPending || item.qty}</td>
-                            <td className="p-3 text-right font-medium text-slate-800 font-mono">
-                              {Number(item.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="p-3 text-right font-bold text-slate-900 font-mono">
-                              {Number(item.total || Number(item.qty || 0) * Number(item.amount || 0)).toLocaleString('en-US', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Terms & Condition + Totals Breakdown */}
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
-                    {/* Terms & Condition */}
-                    <div className="lg:col-span-8 space-y-1.5">
-                      <div className="font-bold text-slate-900 text-xs">Terms & Condition:</div>
-                      <p className="text-xs text-slate-600 leading-relaxed max-w-2xl whitespace-pre-line">
-                        {viewingPo.termsConditionText ||
-                          'All product supply should be from the latest stock. Material supplied should comply 100% with the requested specifications. Products with any manufacturing defects or issues should be exchanged with new one with all cost including fright to End User. Cool Technologies is requesting you to acknowledge the receipt of this LPO and confirmation of delivery time, via return email.'}
-                      </p>
-                    </div>
-
-                    {/* Totals Breakdown */}
-                    <div className="lg:col-span-4 space-y-2 border-t lg:border-t-0 pt-2 lg:pt-0">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-bold text-slate-700">Amount</span>
-                        <span className="font-bold text-slate-900 font-mono">
-                          {Number(viewingPo.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-bold text-slate-700">Sub Total</span>
-                        <span className="font-bold text-slate-900 font-mono">
-                          {Number(viewingPo.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-bold text-slate-700">VAT (5%)</span>
-                        <span className="font-bold text-slate-900 font-mono">
-                          {Number(viewingPo.vat || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-bold text-slate-700">Adjustment</span>
-                        <span className="font-bold text-slate-900 font-mono">
-                          {Number(viewingPo.adjustment || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-200">
-                        <span className="font-bold text-slate-900">Total Amount</span>
-                        <span className="font-bold text-slate-900 font-mono text-sm">
-                          {Number(viewingPo.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-
-                      {/* Print Buttons directly below Totals on the Right */}
-                      <div className="pt-4 flex items-center justify-end gap-1.5">
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIsPoPrintFormatOpen(!isPoPrintFormatOpen);
-                            }}
-                            className="px-3 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition select-none"
-                          >
-                            <Printer className="w-3.5 h-3.5 text-white" />
-                            <span>Print Format</span>
-                            <ChevronDown className={cn('w-3 h-3 text-white ml-0.5 transition-transform', isPoPrintFormatOpen ? 'rotate-180' : '')} />
-                          </button>
-
-                          {isPoPrintFormatOpen && (
-                            <div
-                              onClick={(e) => e.stopPropagation()}
-                              className="absolute left-0 top-full mt-1 z-50 w-64 bg-white border border-slate-200 rounded shadow-xl py-1 text-left text-xs text-slate-800 animate-in fade-in zoom-in-95 duration-75"
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={handleAddAnotherPoTerm}
+                              disabled={!newPoTermsTitle.trim() || !newPoTermsContent.trim()}
+                              className="px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] disabled:bg-slate-300 text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
                             >
-                              {[
-                                'Print with Quantity',
-                                'Print without Quantity',
-                                'Print without Item Price',
-                                'Print without Quantity & Item Price',
-                                'Print without Total Price',
-                                'Print without Unit Price & Total Price',
-                                'Print without Unit Price & with Total Price',
-                              ].map((formatOption) => (
-                                <button
-                                  key={formatOption}
-                                  type="button"
-                                  onClick={() => {
-                                    setIsPoPrintFormatOpen(false);
-                                    window.open(
-                                      `/purchase/print?id=${viewingPo.id}&format=${encodeURIComponent(formatOption)}`,
-                                      '_blank'
-                                    );
-                                  }}
-                                  className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-100 text-slate-800 text-xs font-normal transition-colors cursor-pointer text-left"
+                              + Add Another
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={!newPoTermsTitle.trim() || !newPoTermsContent.trim()}
+                              className="px-4 py-1.5 bg-[#1B365D] hover:bg-[#11243E] disabled:bg-slate-300 text-white rounded text-xs font-bold cursor-pointer shadow-xs transition"
+                            >
+                              Save & Insert
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Saved PO Templates List with Delete Option */}
+                        {Object.keys(poTermsTemplates).length > 0 && (
+                          <div className="pt-3 border-t border-slate-200">
+                            <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wide mb-2 flex items-center justify-between">
+                              <span>Saved Templates ({Object.keys(poTermsTemplates).length})</span>
+                              <span className="text-[10px] text-slate-400 font-normal">Click trash icon to delete</span>
+                            </div>
+                            <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 border border-slate-200 rounded p-1.5 bg-slate-50/50">
+                              {Object.entries(poTermsTemplates).map(([tName, tContent]) => (
+                                <div
+                                  key={tName}
+                                  className="flex items-center justify-between p-2 bg-white hover:bg-slate-100/80 rounded border border-slate-200 text-xs transition gap-2"
                                 >
-                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-900 shrink-0 inline-block"></span>
-                                  <span>{formatOption}</span>
-                                </button>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-semibold text-slate-800 truncate">{tName}</div>
+                                    <div className="text-[10px] text-slate-500 truncate">{tContent.replace(/\n/g, ' • ')}</div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePoDeleteTerms(tName)}
+                                    className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer transition shrink-0"
+                                    title={`Delete "${tName}"`}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               ))}
                             </div>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (viewingPo) {
-                              try {
-                                localStorage.setItem('crm_active_print_po', JSON.stringify(viewingPo));
-                              } catch (e) {
-                                console.error(e);
-                              }
-                            }
-                            window.open(
-                              `/purchase/print?id=${viewingPo.id}&currency=USD&format=Print with Quantity`,
-                              '_blank'
-                            );
-                          }}
-                          className="px-3 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition"
-                        >
-                          <Printer className="w-3.5 h-3.5 text-white" />
-                          <span>Print in USD</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (viewingPo) {
-                              try {
-                                localStorage.setItem('crm_active_print_po', JSON.stringify(viewingPo));
-                              } catch (e) {
-                                console.error(e);
-                              }
-                            }
-                            window.open(
-                              `/purchase/print?id=${viewingPo.id}&format=Print with Quantity`,
-                              '_blank'
-                            );
-                          }}
-                          className="px-3 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition"
-                        >
-                          <Printer className="w-3.5 h-3.5 text-white" />
-                          <span>Print</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePurchaseOrder(viewingPo.id, viewingPo.poNumber)}
-                          className="px-3 py-1.5 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-white" />
-                          <span>Delete</span>
-                        </button>
-                      </div>
+                          </div>
+                        )}
+                      </form>
                     </div>
                   </div>
+                )}
 
-                  {/* Footer Back Button row on the far right */}
-                  <div className="pt-4 border-t border-slate-200 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPoViewMode('list');
-                        if (searchParams.get('view')) {
-                          router.push('/purchase?tab=po');
-                        }
-                      }}
-                      className="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition"
-                    >
-                      <ArrowLeft className="w-3.5 h-3.5 text-slate-600" />
-                      <span>Back</span>
-                    </button>
+                {/* Terms Toast Notification */}
+                {poTermsToast && (
+                  <div className="fixed bottom-6 right-6 z-50 bg-slate-900/95 text-white px-4 py-2.5 rounded shadow-lg text-xs font-medium flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
+                    <span className="text-emerald-400 font-bold">✓</span>
+                    <span>{poTermsToast}</span>
                   </div>
-                </div>
+                )}
               </div>
-            </div>
-          ) : (
-            /* ========================================================= */
-            /* PURCHASE ORDER LIST VIEW                                  */
-            /* ========================================================= */
-            <>
-              {/* Top 2-Row Filter Criteria Card */}
-              <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs p-3 sm:p-4 space-y-3 text-xs">
-                {/* Mobile Filter Toggle Button */}
-                <div className="flex md:hidden items-center justify-between">
+            ) : poViewMode === 'details' && viewingPo ? (
+              /* ========================================================= */
+              /* PURCHASE ORDER DETAILS VIEW (Exact Cezcon CRM Layout)      */
+              /* ========================================================= */
+              <div className="space-y-0 text-xs">
+                {/* Top Gray Banner */}
+                <div className="bg-[#E2E8F0] border border-slate-300 rounded-t-sm px-3.5 py-2 flex items-center justify-between text-xs font-bold text-slate-800 tracking-wide uppercase select-none">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500 font-bold">⤢</span>
+                    <span>
+                      PURCHASE ORDER CREATED BY {viewingPo.owner ? viewingPo.owner.toUpperCase() : 'USER'} ON {viewingPo.createdAtFormatted || `WED ${viewingPo.date || getLiveTodayDateString()} 11:07:05 AM`}
+                    </span>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setShowPoFiltersMobile(!showPoFiltersMobile)}
-                    className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer w-full justify-between"
+                    onClick={() => {
+                      setPoViewMode('list');
+                      if (searchParams.get('view')) {
+                        router.push('/purchase?tab=po');
+                      }
+                    }}
+                    className="w-5 h-5 bg-[#DC2626] hover:bg-[#B91C1C] text-white flex items-center justify-center rounded-xs text-xs font-bold transition shadow-xs cursor-pointer"
+                    title="Close"
                   >
-                    <div className="flex items-center gap-1.5 text-blue-600">
-                      <Filter className="w-3.5 h-3.5" />
-                      <span>Filter Purchase Orders</span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 font-medium">
-                        {showPoFiltersMobile ? 'Hide Filters' : 'Tap to filter'}
-                      </span>
-                    </div>
-                    <ChevronDown className={cn('w-4 h-4 text-slate-500 transition-transform', showPoFiltersMobile ? 'rotate-180' : '')} />
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                <div className={cn('space-y-4', showPoFiltersMobile ? 'block' : 'hidden md:block')}>
-                  {/* Row 1 */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-slate-600 font-medium block">Owner</label>
-                      <select
-                        value={poFilterOwner}
-                        onChange={(e) => setPoFilterOwner(e.target.value)}
-                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                      >
-                        <option value="All Owners">All Owners</option>
-                        {users
-                          ?.filter((u) => u.status === 'Active' || u.status === undefined)
-                          .map((u) => (
-                            <option key={u.id} value={u.name}>
-                              {u.name}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-slate-600 font-medium block">Purchase Order Date</label>
-                      <div className="relative">
-                        <span className="absolute left-2.5 top-2 text-slate-400 text-xs">📅</span>
-                        <input
-                          type="text"
-                          value={poDateRange}
-                          onChange={(e) => setPoDateRange(e.target.value)}
-                          placeholder="25-08-2026 - 23-09-2026"
-                          className="w-full pl-8 pr-7 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setPoDateRange('')}
-                          className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer font-bold"
-                        >
-                          ✖
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-slate-600 font-medium block">Supplier</label>
-                      <select
-                        value={poFilterSupplier}
-                        onChange={(e) => setPoFilterSupplier(e.target.value)}
-                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                      >
-                        <option value="Select Supplier">Select Supplier</option>
-                        <option value="SUPER GENERAL COMPANY LLC">SUPER GENERAL COMPANY LLC</option>
-                        <option value="LUTFI TRADING LLC">LUTFI TRADING LLC</option>
-                        <option value="DUBAI POLYMER INDUSTRIES LLC">DUBAI POLYMER INDUSTRIES LLC</option>
-                        <option value="CENTRAL TRADING COMPANY L.L.C.">CENTRAL TRADING COMPANY L.L.C.</option>
-                        <option value="Better Life">Better Life</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-slate-600 font-medium block">Opportunity/Order</label>
-                      <select
-                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                      >
-                        <option value="Select Opportunity/Order">Select Opportunity/Order</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Row 2 */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-slate-600 font-medium block">Purchase Order Type</label>
-                      <select
-                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
-                      >
-                        <option value="Select Purchase Order Type">Select Purchase Order Type</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Table Card */}
-              <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs text-xs">
-                {/* Header */}
-                <div className="px-4 py-2 bg-[#F8FAFC] border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-700">
-                    <span className="text-sm">🗂️</span>
+                {/* Sub-tabs Row */}
+                <div className="bg-[#F8FAFC] border-x border-b border-slate-300 px-3 py-1 flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setPoDetailActiveTab('details')}
+                    className={cn(
+                      'px-3.5 py-1.5 rounded-t text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer select-none',
+                      poDetailActiveTab === 'details'
+                        ? 'bg-white border-t-2 border-t-[#DC2626] border-x border-slate-300 text-slate-900 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    )}
+                  >
+                    <Building2 className="w-3.5 h-3.5 text-[#DC2626]" />
                     <span>Purchase Order</span>
-                  </div>
+                  </button>
                   <button
                     type="button"
-                    onClick={() => setPoViewMode('add')}
-                    className="flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold uppercase rounded-xs transition shadow-xs cursor-pointer"
+                    onClick={() => setPoDetailActiveTab('invoice')}
+                    className={cn(
+                      'px-3.5 py-1.5 rounded-t text-xs font-medium flex items-center gap-1.5 transition cursor-pointer select-none',
+                      poDetailActiveTab === 'invoice'
+                        ? 'bg-white border-t-2 border-t-[#DC2626] border-x border-slate-300 text-slate-900 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    )}
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>PO</span>
+                    <FileText className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Purchase Invoice</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPoDetailActiveTab('do')}
+                    className={cn(
+                      'px-3.5 py-1.5 rounded-t text-xs font-medium flex items-center gap-1.5 transition cursor-pointer select-none',
+                      poDetailActiveTab === 'do'
+                        ? 'bg-white border-t-2 border-t-[#DC2626] border-x border-slate-300 text-slate-900 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    )}
+                  >
+                    <Truck className="w-3.5 h-3.5 text-slate-400" />
+                    <span>DO</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPoDetailActiveTab('history')}
+                    className={cn(
+                      'px-3.5 py-1.5 rounded-t text-xs font-medium flex items-center gap-1.5 transition cursor-pointer select-none',
+                      poDetailActiveTab === 'history'
+                        ? 'bg-white border-t-2 border-t-[#DC2626] border-x border-slate-300 text-slate-900 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    )}
+                  >
+                    <List className="w-3.5 h-3.5 text-slate-400" />
+                    <span>PO Status Change History</span>
                   </button>
                 </div>
 
-                {/* Table Controls */}
-                <div className="p-2.5 bg-slate-50/50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
-                  <div className="flex items-center gap-1.5">
-                    <span>Shows</span>
-                    <select
-                      value={poRowsPerPage}
-                      onChange={(e) => setPoRowsPerPage(Number(e.target.value))}
-                      className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 font-medium"
-                    >
-                      <option value={10}>10</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                    </select>
-                    <span>Rows</span>
+                {/* Purchase Order Details Card */}
+                <div className="bg-white border-x border-b border-slate-300 shadow-xs">
+                  {/* Card Section Header */}
+                  <div className="px-4 py-2 bg-[#F1F5F9] border-b border-slate-200 flex items-center gap-2 text-xs font-bold text-slate-700">
+                    <Building2 className="w-4 h-4 text-slate-500" />
+                    <span>Purchase Order Details</span>
                   </div>
 
-                  <div className="relative w-64">
-                    <input
-                      type="text"
-                      placeholder="Search Purchase Order"
-                      value={poSearch}
-                      onChange={(e) => setPoSearch(e.target.value)}
-                      className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
-                    />
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
-                  </div>
-                </div>
+                  <div className="p-4 sm:p-6 space-y-6">
+                    {/* Two-Column Info Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-3 text-xs text-slate-700">
+                      {/* Left Column */}
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Owner</span>
+                          <div className="col-span-8 flex items-center gap-2">
+                            {viewingPo.ownerAvatar ? (
+                              <img src={viewingPo.ownerAvatar} alt={viewingPo.owner} className="w-6 h-6 rounded-full object-cover border border-slate-200" />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-[10px] font-bold">
+                                {viewingPo.owner ? viewingPo.owner.charAt(0).toUpperCase() : 'U'}
+                              </div>
+                            )}
+                            <span className="font-bold text-slate-900 uppercase">{viewingPo.owner}</span>
+                          </div>
+                        </div>
 
-                {/* Native Mobile PO Cards (Phone Viewports) */}
-                <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
-                  {filteredPOItems.map((po) => (
-                    <div key={po.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
-                      <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
-                        <div className="space-y-0.5">
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Purchase Order Number</span>
+                          <span className="col-span-8 font-bold text-slate-900">{viewingPo.poNumber}</span>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Date</span>
+                          <span className="col-span-8 font-medium text-slate-800">{viewingPo.date}</span>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Expected Delivery</span>
+                          <span className="col-span-8 text-slate-700">{viewingPo.expectedDeliveryDate || '-'}</span>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-start gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium pt-0.5">Supplier</span>
+                          <div className="col-span-8 space-y-0.5">
+                            <div className="font-bold text-[#1E40AF] hover:underline cursor-pointer">
+                              {viewingPo.supplier}
+                            </div>
+                            {(() => {
+                              const info = getSupplierContactInfo(viewingPo.supplier);
+                              return (
+                                <div className="text-[11px] text-slate-600 space-y-0.5 mt-0.5">
+                                  {info.phone && (
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-pink-600 font-bold">📞</span>
+                                      <span className="text-slate-800 font-medium">{info.phone}</span>
+                                    </div>
+                                  )}
+                                  {info.email && (
+                                    <div className="flex items-center gap-1 text-slate-800 font-medium">
+                                      <span className="text-slate-400">✉</span>
+                                      <span>{info.email}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Reference</span>
+                          <span className="col-span-8 text-slate-700">{viewingPo.reference || '-'}</span>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Description</span>
+                          <span className="col-span-8 text-slate-700">{viewingPo.description || '-'}</span>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Status</span>
+                          <div className="col-span-8 flex items-center gap-2">
+                            <span className="px-2.5 py-0.5 rounded text-[10px] font-bold text-white bg-[#15803D]">
+                              {viewingPo.approval || 'Waiting for Final Approval'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPoStatusTargetPo(viewingPo);
+                                if (viewingPo.approval === 'Approved') {
+                                  setPoStatusModalSelectedStatus('Approve');
+                                } else if (viewingPo.approval === 'Rejected') {
+                                  setPoStatusModalSelectedStatus('Reject');
+                                } else {
+                                  setPoStatusModalSelectedStatus('Change to Pending');
+                                }
+                                setPoStatusModalComments('');
+                                setIsChangePoStatusModalOpen(true);
+                              }}
+                              className="px-2 py-0.5 bg-[#0891B2] hover:bg-[#0E7490] text-white rounded text-[10px] font-semibold flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                            >
+                              <Edit2 className="w-2.5 h-2.5" />
+                              <span>Change Status</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Governance & Authorization Badges */}
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Governance &amp; Authority</span>
+                          <div className="col-span-8 flex flex-wrap items-center gap-1.5">
+                            {viewingPo.requiredApprovalTier && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                Tier: {viewingPo.requiredApprovalTier === 'CHIEF_OPERATING_OFFICER' ? 'COO (≥ 100k)' : 'FC (< 100k)'}
+                              </span>
+                            )}
+                            {viewingPo.approvedByName && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                Signed: {viewingPo.approvedByName} ({viewingPo.approvedAt?.split('T')[0] || ''})
+                              </span>
+                            )}
+                            {viewingPo.isAdhoc && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                Ad-hoc PO
+                              </span>
+                            )}
+                            {viewingPo.deliveryMode && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                {viewingPo.deliveryMode.replace(/_/g, ' ')}
+                              </span>
+                            )}
+                            {viewingPo.msrfId && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono text-purple-700 bg-purple-50 border border-purple-200">
+                                Linked MSRF
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Delivery Status</span>
+                          <div className="col-span-8">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeliveryStatusTargetPo(viewingPo);
+                                setDeliveryStatusModalSelected(
+                                  (viewingPo.deliveryStatus as any) || 'Pending'
+                                );
+                                setIsChangeDeliveryStatusModalOpen(true);
+                              }}
+                              className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${getDeliveryStatusBadgeClass(
+                                viewingPo.deliveryStatus
+                              )} inline-flex items-center gap-1 cursor-pointer transition shadow-2xs`}
+                              title="Change Delivery Status"
+                            >
+                              <Edit2 className="w-2.5 h-2.5" />
+                              <span>{viewingPo.deliveryStatus || 'Pending'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Column */}
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Material Request</span>
+                          <span className="col-span-8 text-slate-700">{viewingPo.order || viewingPo.opportunityOrder || '-'}</span>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Project Name</span>
+                          <span className="col-span-8 text-slate-700">{viewingPo.projectName || '-'}</span>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-start gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium pt-0.5">Prepared By</span>
+                          <div className="col-span-8 space-y-0.5">
+                            <div className="font-bold text-slate-900 uppercase">
+                              {viewingPo.preparedBy || viewingPo.owner}
+                            </div>
+                            <div className="text-[11px] font-semibold text-slate-700">
+                              {viewingPo.preparedByDesignation || 'Inventory Management (IM)'}
+                            </div>
+                            <div className="text-[11px] text-[#DB2777] font-semibold flex items-center gap-1">
+                              <span>📞</span>
+                              <span>{viewingPo.preparedByMobile || '+9715688783056'}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-800 font-semibold flex items-center gap-1">
+                              <span>✉</span>
+                              <span>{viewingPo.preparedByEmail || 'im@cooltechuae.com'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Attention</span>
+                          <span className="col-span-8 font-semibold text-slate-800">{viewingPo.attention || '-'}</span>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Amount</span>
+                          <span className="col-span-8 font-bold text-slate-900 font-mono">
+                            {Number(viewingPo.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Sub Total</span>
+                          <span className="col-span-8 font-bold text-slate-900 font-mono">
+                            {Number(viewingPo.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">VAT (5%)</span>
+                          <span className="col-span-8 font-bold text-slate-900 font-mono">
+                            {Number(viewingPo.vat || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-12 items-center gap-2">
+                          <span className="col-span-4 text-slate-500 font-medium">Total Amount</span>
+                          <span className="col-span-8 font-bold text-slate-900 font-mono text-sm">
+                            {Number(viewingPo.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Line Items Table */}
+                    <div className="border border-slate-200 rounded-sm overflow-hidden">
+                      <table className="w-full text-xs text-left">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
+                            <th className="p-3 text-left">Description</th>
+                            <th className="p-3 w-20 text-center">QTY</th>
+                            <th className="p-3 w-32 text-center">Delivery Pending</th>
+                            <th className="p-3 w-32 text-right">Amount</th>
+                            <th className="p-3 w-32 text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {(viewingPo.items && viewingPo.items.length > 0
+                            ? viewingPo.items
+                            : [
+                              {
+                                id: 'item_1',
+                                description: viewingPo.description || 'REFRIGERATOR 140 LTR SINGLE DOOR NOBEL NR140',
+                                code: 'NR140',
+                                unit: 'Pcs',
+                                brand: 'NOBEL',
+                                qty: 1,
+                                deliveryPending: 1,
+                                amount: viewingPo.amount || 4000.0,
+                                total: viewingPo.amount || 4000.0,
+                              },
+                            ]
+                          ).map((item: any, idx: number) => (
+                            <tr key={item.id || idx} className="hover:bg-slate-50/50">
+                              <td className="p-3">
+                                <div className="flex items-center justify-between gap-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-12 h-10 bg-slate-100 border border-slate-200 rounded flex flex-col items-center justify-center text-[7px] text-slate-400 font-bold uppercase text-center p-0.5 shrink-0 select-none">
+                                      <span className="text-[10px]">🖼️</span>
+                                      <span>NO IMAGE</span>
+                                    </div>
+                                    <span className="font-bold text-slate-900 uppercase text-xs">{item.description || 'Item'}</span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-600 space-y-0.5 text-left shrink-0 pr-8">
+                                    <div>
+                                      <span className="italic text-slate-500">Code:</span> <span className="font-medium text-slate-800 not-italic">{item.code || '-'}</span>
+                                    </div>
+                                    <div>
+                                      <span className="italic text-slate-500">Unit:</span> <span className="font-medium text-slate-800 not-italic">{item.unit || 'Pcs'}</span>
+                                    </div>
+                                    <div>
+                                      <span className="italic text-slate-500">Brand:</span> <span className="font-medium text-slate-800 not-italic">{item.brand || '-'}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-3 text-center font-medium text-slate-800">{item.qty}</td>
+                              <td className="p-3 text-center font-medium text-slate-800">{item.deliveryPending || item.qty}</td>
+                              <td className="p-3 text-right font-medium text-slate-800 font-mono">
+                                {Number(item.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="p-3 text-right font-bold text-slate-900 font-mono">
+                                {Number(item.total || Number(item.qty || 0) * Number(item.amount || 0)).toLocaleString('en-US', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Terms & Condition + Totals Breakdown */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
+                      {/* Terms & Condition */}
+                      <div className="lg:col-span-8 space-y-1.5">
+                        <div className="font-bold text-slate-900 text-xs">Terms & Condition:</div>
+                        <p className="text-xs text-slate-600 leading-relaxed max-w-2xl whitespace-pre-line">
+                          {viewingPo.termsConditionText ||
+                            'All product supply should be from the latest stock. Material supplied should comply 100% with the requested specifications. Products with any manufacturing defects or issues should be exchanged with new one with all cost including fright to End User. Cool Technologies is requesting you to acknowledge the receipt of this LPO and confirmation of delivery time, via return email.'}
+                        </p>
+                      </div>
+
+                      {/* Totals Breakdown */}
+                      <div className="lg:col-span-4 space-y-2 border-t lg:border-t-0 pt-2 lg:pt-0">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-slate-700">Amount</span>
+                          <span className="font-bold text-slate-900 font-mono">
+                            {Number(viewingPo.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-slate-700">Sub Total</span>
+                          <span className="font-bold text-slate-900 font-mono">
+                            {Number(viewingPo.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-slate-700">VAT (5%)</span>
+                          <span className="font-bold text-slate-900 font-mono">
+                            {Number(viewingPo.vat || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-slate-700">Adjustment</span>
+                          <span className="font-bold text-slate-900 font-mono">
+                            {Number(viewingPo.adjustment || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-200">
+                          <span className="font-bold text-slate-900">Total Amount</span>
+                          <span className="font-bold text-slate-900 font-mono text-sm">
+                            {Number(viewingPo.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        {/* Print Buttons directly below Totals on the Right */}
+                        <div className="pt-4 flex items-center justify-end gap-1.5">
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsPoPrintFormatOpen(!isPoPrintFormatOpen);
+                              }}
+                              className="px-3 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition select-none"
+                            >
+                              <Printer className="w-3.5 h-3.5 text-white" />
+                              <span>Print Format</span>
+                              <ChevronDown className={cn('w-3 h-3 text-white ml-0.5 transition-transform', isPoPrintFormatOpen ? 'rotate-180' : '')} />
+                            </button>
+
+                            {isPoPrintFormatOpen && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute left-0 top-full mt-1 z-50 w-64 bg-white border border-slate-200 rounded shadow-xl py-1 text-left text-xs text-slate-800 animate-in fade-in zoom-in-95 duration-75"
+                              >
+                                {[
+                                  'Print with Quantity',
+                                  'Print without Quantity',
+                                  'Print without Item Price',
+                                  'Print without Quantity & Item Price',
+                                  'Print without Total Price',
+                                  'Print without Unit Price & Total Price',
+                                  'Print without Unit Price & with Total Price',
+                                ].map((formatOption) => (
+                                  <button
+                                    key={formatOption}
+                                    type="button"
+                                    onClick={() => {
+                                      setIsPoPrintFormatOpen(false);
+                                      window.open(
+                                        `/purchase/print?id=${viewingPo.id}&format=${encodeURIComponent(formatOption)}`,
+                                        '_blank'
+                                      );
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-100 text-slate-800 text-xs font-normal transition-colors cursor-pointer text-left"
+                                  >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-900 shrink-0 inline-block"></span>
+                                    <span>{formatOption}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                           <button
                             type="button"
                             onClick={() => {
-                              setViewingPo(po);
-                              setPoViewMode('details');
+                              if (viewingPo) {
+                                try {
+                                  localStorage.setItem('crm_active_print_po', JSON.stringify(viewingPo));
+                                } catch (e) {
+                                  console.error(e);
+                                }
+                              }
+                              window.open(
+                                `/purchase/print?id=${viewingPo.id}&currency=USD&format=Print with Quantity`,
+                                '_blank'
+                              );
                             }}
-                            className="inline-flex items-center gap-1 text-[#2563EB] hover:underline cursor-pointer font-bold text-xs"
+                            className="px-3 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition"
                           >
-                            <span>📄</span>
-                            <span>{po.poNumber}</span>
+                            <Printer className="w-3.5 h-3.5 text-white" />
+                            <span>Print in USD</span>
                           </button>
-                          <div className="text-[10px] text-slate-500">Date: {po.date}</div>
-                        </div>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#16A34A] text-white">
-                          {po.approval}
-                        </span>
-                      </div>
-
-                      <div>
-                        <span className="text-slate-500 text-[10px] block">Supplier</span>
-                        <span className="text-[#2563EB] font-bold text-xs">{po.supplier}</span>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 py-1 border-t border-b border-slate-100 text-center">
-                        <div>
-                          <div className="text-[10px] text-slate-500">Amount</div>
-                          <div className="font-semibold text-slate-700">
-                            {po.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] text-slate-500">VAT</div>
-                          <div className="font-semibold text-slate-600">
-                            {po.vat.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] text-slate-500">Total</div>
-                          <div className="font-bold text-slate-900">
-                            {po.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 relative">
-                        <span className="text-[10px] text-slate-500 font-medium">{po.owner}</span>
-                        <div className="relative">
                           <button
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActivePoActionDropdownId(activePoActionDropdownId === po.id ? null : po.id);
+                            onClick={() => {
+                              if (viewingPo) {
+                                try {
+                                  localStorage.setItem('crm_active_print_po', JSON.stringify(viewingPo));
+                                } catch (e) {
+                                  console.error(e);
+                                }
+                              }
+                              window.open(
+                                `/purchase/print?id=${viewingPo.id}&format=Print with Quantity`,
+                                '_blank'
+                              );
                             }}
-                            className="inline-flex items-center justify-center gap-1.5 px-2 py-0.5 bg-[#0e7490] hover:bg-[#0c667f] text-white rounded text-[10px] font-semibold cursor-pointer shadow-xs transition"
-                            title="Actions"
+                            className="px-3 py-1.5 bg-[#5CB85C] hover:bg-[#4CAE4C] text-white rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition"
                           >
-                            <Settings className="w-3 h-3 text-white" />
-                            <ChevronDown className="w-2 h-2 text-white" />
+                            <Printer className="w-3.5 h-3.5 text-white" />
+                            <span>Print</span>
                           </button>
-                          {activePoActionDropdownId === po.id && (
-                            <div
-                              onClick={(e) => e.stopPropagation()}
-                              className="absolute right-0 top-full mt-1 z-50 w-44 bg-white border border-slate-200 rounded shadow-xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-75"
+                          {viewingPo.approval !== 'Approved' && (
+                            <button
+                              type="button"
+                              onClick={() => setApprovalModalOrder(viewingPo)}
+                              className="px-3 py-1.5 bg-[#4F46E5] hover:bg-[#4338CA] text-white rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition"
                             >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActivePoActionDropdownId(null);
-                                  window.open(`/purchase?tab=po&view=${po.id}`, '_blank');
-                                }}
-                                className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
-                              >
-                                <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
-                                <span>Open in new tab</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActivePoActionDropdownId(null);
-                                  setViewingPo(po);
-                                  setPoViewMode('details');
-                                }}
-                                className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
-                              >
-                                <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
-                                <span>View</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeletePurchaseOrder(po.id, po.poNumber)}
-                                className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-red-50 text-red-600 font-medium transition-colors cursor-pointer border-t border-slate-100"
-                              >
-                                <Trash2 className="w-4 h-4 text-red-600 shrink-0" />
-                                <span>Delete</span>
-                              </button>
-                            </div>
+                              <ShieldCheck className="w-3.5 h-3.5 text-white" />
+                              <span>Executive Sign-off</span>
+                            </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePurchaseOrder(viewingPo.id, viewingPo.poNumber)}
+                            className="px-3 py-1.5 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-white" />
+                            <span>Delete</span>
+                          </button>
                         </div>
                       </div>
                     </div>
-                  ))}
-                </div>
 
-                {/* Desktop PO Table */}
-                <div className="hidden md:block overflow-x-auto min-h-[260px] pb-28">
-                  <table className="w-full text-xs text-left">
-                    <thead>
-                      <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
-                        <th className="p-2.5 w-12 text-center border-r border-slate-200">SL.No</th>
-                        <th className="p-2.5 w-14 text-center border-r border-slate-200">Owner</th>
-                        <th className="p-2.5 w-32 border-r border-slate-200">PO#</th>
-                        <th className="p-2.5 w-28 border-r border-slate-200">Date</th>
-                        <th className="p-2.5 border-r border-slate-200">Supplier</th>
-                        <th className="p-2.5 w-24 border-r border-slate-200">Order</th>
-                        <th className="p-2.5 w-24 border-r border-slate-200">Reference</th>
-                        <th className="p-2.5 text-right w-24 border-r border-slate-200">Amount</th>
-                        <th className="p-2.5 text-right w-20 border-r border-slate-200">VAT</th>
-                        <th className="p-2.5 text-right w-28 border-r border-slate-200">Total Amount</th>
-                        <th className="p-2.5 text-center w-28 border-r border-slate-200">Invoice Received</th>
-                        <th className="p-2.5 text-center w-44 border-r border-slate-200">Approval</th>
-                        <th className="p-2.5 text-center w-28 border-r border-slate-200">Delivery Status</th>
-                        <th className="p-2.5 text-center w-20">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {filteredPOItems.length === 0 ? (
-                        <tr>
-                          <td colSpan={14} className="p-8 text-center text-slate-500 text-xs">
-                            No records found
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredPOItems.map((po) => (
-                          <tr key={po.id} className="hover:bg-blue-50/40 transition-colors">
-                            <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{po.slNo}</td>
-                            <td className="p-2.5 text-center border-r border-slate-100">
-                              {po.ownerAvatar ? (
-                                <img src={po.ownerAvatar} alt={po.owner} className="w-6 h-6 rounded-full object-cover inline-block mx-auto border border-slate-200" />
-                              ) : (
-                                <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold mx-auto">
-                                  {po.owner ? po.owner.charAt(0).toUpperCase() : 'U'}
-                                </div>
-                              )}
-                            </td>
-                            <td className="p-2.5 border-r border-slate-100">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setViewingPo(po);
-                                  setPoViewMode('details');
-                                }}
-                                className="inline-flex items-center gap-1 text-[#1976D2] hover:underline cursor-pointer font-bold"
-                              >
-                                <span className="text-[10px]">📄</span>
-                                <span>{po.poNumber}</span>
-                              </button>
-                            </td>
-                            <td className="p-2.5 text-slate-700 border-r border-slate-100 whitespace-nowrap">{po.date}</td>
-                            <td className="p-2.5 border-r border-slate-100 font-bold">
-                              <span className="text-[#1976D2] hover:underline cursor-pointer">
-                                {po.supplier}
+                    {/* Footer Back Button row on the far right */}
+                    <div className="pt-4 border-t border-slate-200 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPoViewMode('list');
+                          if (searchParams.get('view')) {
+                            router.push('/purchase?tab=po');
+                          }
+                        }}
+                        className="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Back</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* ========================================================= */
+              /* PURCHASE ORDER LIST VIEW                                  */
+              /* ========================================================= */
+              <>
+                {/* Top 2-Row Filter Criteria Card */}
+                <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs p-3 sm:p-4 space-y-3 text-xs">
+                  {/* Mobile Filter Toggle Button */}
+                  <div className="flex md:hidden items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setShowPoFiltersMobile(!showPoFiltersMobile)}
+                      className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer w-full justify-between"
+                    >
+                      <div className="flex items-center gap-1.5 text-blue-600">
+                        <Filter className="w-3.5 h-3.5" />
+                        <span>Filter Purchase Orders</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 font-medium">
+                          {showPoFiltersMobile ? 'Hide Filters' : 'Tap to filter'}
+                        </span>
+                      </div>
+                      <ChevronDown className={cn('w-4 h-4 text-slate-500 transition-transform', showPoFiltersMobile ? 'rotate-180' : '')} />
+                    </button>
+                  </div>
+
+                  <div className={cn('space-y-4', showPoFiltersMobile ? 'block' : 'hidden md:block')}>
+                    {/* Row 1 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-slate-600 font-medium block">Owner</label>
+                        <select
+                          value={poFilterOwner}
+                          onChange={(e) => setPoFilterOwner(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                        >
+                          <option value="All Owners">All Owners</option>
+                          {invoiceFilterOwnersList.map((ownerName) => (
+                            <option key={ownerName} value={ownerName}>
+                              {ownerName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-slate-600 font-medium block">Purchase Order Date</label>
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-2 text-slate-400 text-xs">📅</span>
+                          <input
+                            type="text"
+                            value={poDateRange}
+                            onChange={(e) => setPoDateRange(e.target.value)}
+                            placeholder="25-08-2026 - 23-09-2026"
+                            className="w-full pl-8 pr-7 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setPoDateRange('')}
+                            className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer font-bold"
+                          >
+                            ✖
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Supplier Filter */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-slate-600 font-medium block">Supplier</label>
+                          {poFilterSupplier !== 'Select Supplier' && (
+                            <button
+                              type="button"
+                              onClick={() => setPoFilterSupplier('Select Supplier')}
+                              className="text-[10px] text-blue-600 hover:underline cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                        <select
+                          value={poFilterSupplier}
+                          onChange={(e) => setPoFilterSupplier(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 font-medium"
+                        >
+                          <option value="Select Supplier">-- Select Supplier ({poLiveFilterSuppliers.length}) --</option>
+                          {poLiveFilterSuppliers.map((sup) => (
+                            <option key={sup} value={sup}>
+                              {sup}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Material Request Filter */}
+                      <div className="space-y-1 relative" ref={filterMsrfDropdownRef}>
+                        <div className="flex items-center justify-between">
+                          <label className="text-slate-600 font-medium block">Material Request</label>
+                          {poFilterMsrf !== 'All Material Requests' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPoFilterMsrf('All Material Requests');
+                                setIsFilterMsrfDropdownOpen(false);
+                              }}
+                              className="text-[10px] text-blue-600 hover:underline cursor-pointer font-semibold"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Filter Trigger Button */}
+                        <div
+                          onClick={() => setIsFilterMsrfDropdownOpen((prev) => !prev)}
+                          className={cn(
+                            "w-full min-h-[30px] px-2.5 py-1.5 border rounded text-xs bg-white text-slate-800 flex items-center justify-between gap-1.5 cursor-pointer transition shadow-2xs select-none",
+                            isFilterMsrfDropdownOpen
+                              ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/10"
+                              : "border-slate-300 hover:border-slate-400"
+                          )}
+                        >
+                          {selectedFilterMsrfObj ? (
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+                              <span className="shrink-0 font-mono font-bold text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded">
+                                {selectedFilterMsrfObj.msrfNumber}
                               </span>
-                            </td>
-                            <td className="p-2.5 text-slate-400 border-r border-slate-100">{po.order || ''}</td>
-                            <td className="p-2.5 text-slate-400 border-r border-slate-100">{po.reference || ''}</td>
-                            <td className="p-2.5 text-right font-medium text-slate-900 border-r border-slate-100 font-mono">
-                              {Number(po.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="p-2.5 text-right font-medium text-slate-700 border-r border-slate-100 font-mono">
-                              {Number(po.vat || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="p-2.5 text-right font-bold text-slate-900 border-r border-slate-100 font-mono">
-                              {Number(po.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="p-2.5 text-center text-slate-400 border-r border-slate-100">{po.invoiceReceived || ''}</td>
-                            <td className="p-2.5 text-center border-r border-slate-100">
-                              <span
-                                className={`px-2.5 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap shadow-2xs ${po.approval === 'Waiting for Final Approval'
-                                  ? 'bg-[#1E5128]'
-                                  : 'bg-[#2E7D32]'
-                                  }`}
-                              >
-                                {po.approval || 'Approved'}
+                              <span className="truncate text-slate-800 font-medium text-xs">
+                                {selectedFilterMsrfObj.projectName || selectedFilterMsrfObj.purpose}
                               </span>
-                            </td>
-                            <td className="p-2.5 text-center border-r border-slate-100">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenChangeDeliveryStatus(po)}
-                                className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${getDeliveryStatusBadgeClass(
-                                  po.deliveryStatus
-                                )} inline-flex items-center gap-1 whitespace-nowrap shadow-2xs cursor-pointer transition`}
-                                title="Change Delivery Status"
-                              >
-                                <Edit2 className="w-2.5 h-2.5" />
-                                <span>{po.deliveryStatus || 'Pending'}</span>
-                              </button>
-                            </td>
-                            <td className="p-2.5 text-center relative">
+                            </div>
+                          ) : poFilterMsrf !== 'All Material Requests' ? (
+                            <span className="truncate text-slate-800 font-medium text-xs">
+                              {poFilterMsrf}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-normal">
+                              -- All Material Requests --
+                            </span>
+                          )}
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            {poFilterMsrf !== 'All Material Requests' && (
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setActivePoActionDropdownId(activePoActionDropdownId === po.id ? null : po.id);
+                                  setPoFilterMsrf('All Material Requests');
+                                  setIsFilterMsrfDropdownOpen(false);
                                 }}
-                                className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 bg-[#0e7490] hover:bg-[#0c667f] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition mx-auto"
-                                title="Actions"
+                                className="w-4 h-4 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
+                                title="Clear filter"
                               >
-                                <Settings className="w-3.5 h-3.5 text-white" />
-                                <ChevronDown className="w-2.5 h-2.5 text-white" />
+                                <X className="w-3 h-3" />
                               </button>
+                            )}
+                            <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 transition-transform duration-200", isFilterMsrfDropdownOpen && "rotate-180")} />
+                          </div>
+                        </div>
 
-                              {activePoActionDropdownId === po.id && (
-                                <div
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="absolute right-0 top-full mt-1 z-50 w-44 bg-white border border-slate-200 rounded shadow-xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-75"
+                        {/* Floating Popover Filter Menu */}
+                        {isFilterMsrfDropdownOpen && (
+                          <div className="absolute right-0 top-full mt-1 w-full sm:w-[420px] bg-white border border-slate-200 rounded-md shadow-xl z-50 overflow-hidden text-xs">
+                            {/* Search bar inside filter dropdown */}
+                            <div className="p-2 border-b border-slate-100 bg-[#F8FAFC] flex items-center gap-2">
+                              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <input
+                                autoFocus
+                                type="text"
+                                placeholder="Search MSRF#, project, purpose..."
+                                value={filterMsrfSearchQuery}
+                                onChange={(e) => setFilterMsrfSearchQuery(e.target.value)}
+                                className="w-full bg-transparent text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                              />
+                              {filterMsrfSearchQuery && (
+                                <button
+                                  type="button"
+                                  onClick={() => setFilterMsrfSearchQuery('')}
+                                  className="text-slate-400 hover:text-slate-600 cursor-pointer"
                                 >
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActivePoActionDropdownId(null);
-                                      window.open(`/purchase?tab=po&view=${po.id}`, '_blank');
-                                    }}
-                                    className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
-                                  >
-                                    <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
-                                    <span>Open in new tab</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActivePoActionDropdownId(null);
-                                      setViewingPo(po);
-                                      setPoViewMode('details');
-                                    }}
-                                    className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
-                                  >
-                                    <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
-                                    <span>View</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActivePoActionDropdownId(null);
-                                      setPoStatusTargetPo(po);
-                                      if (po.approval === 'Approved') {
-                                        setPoStatusModalSelectedStatus('Approve');
-                                      } else if (po.approval === 'Rejected') {
-                                        setPoStatusModalSelectedStatus('Reject');
-                                      } else {
-                                        setPoStatusModalSelectedStatus('Change to Pending');
-                                      }
-                                      setPoStatusModalComments('');
-                                      setIsChangePoStatusModalOpen(true);
-                                    }}
-                                    className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
-                                  >
-                                    <Edit2 className="w-4 h-4 text-slate-700 shrink-0" />
-                                    <span>Change Status</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeletePurchaseOrder(po.id, po.poNumber)}
-                                    className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-red-50 text-red-600 font-medium transition-colors cursor-pointer border-t border-slate-100"
-                                  >
-                                    <Trash2 className="w-4 h-4 text-red-600 shrink-0" />
-                                    <span>Delete</span>
-                                  </button>
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+
+                            {/* List of MSRFs */}
+                            <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
+                              {/* Option: All Requests (Reset) */}
+                              <div
+                                onClick={() => {
+                                  setPoFilterMsrf('All Material Requests');
+                                  setIsFilterMsrfDropdownOpen(false);
+                                }}
+                                className={cn(
+                                  "px-3 py-2 cursor-pointer flex items-center justify-between text-xs transition",
+                                  poFilterMsrf === 'All Material Requests'
+                                    ? "bg-blue-50/70 text-blue-700 font-semibold"
+                                    : "hover:bg-slate-50 text-slate-600"
+                                )}
+                              >
+                                <span>-- All Material Requests (Show All) --</span>
+                                {poFilterMsrf === 'All Material Requests' && (
+                                  <Check className="w-3.5 h-3.5 text-blue-600" />
+                                )}
+                              </div>
+
+                              {/* Header */}
+                              {filteredMsrfsForFilterList.length > 0 && (
+                                <div className="px-3 py-1 bg-slate-100/70 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                                  <span>Live Material Requests ({filteredMsrfsForFilterList.length})</span>
                                 </div>
                               )}
+
+                              {filteredMsrfsForFilterList.map((m) => {
+                                const isSelected = poFilterMsrf === m.msrfNumber || selectedFilterMsrfObj?.id === m.id;
+                                return (
+                                  <div
+                                    key={m.id}
+                                    onClick={() => {
+                                      setPoFilterMsrf(m.msrfNumber);
+                                      setIsFilterMsrfDropdownOpen(false);
+                                      setFilterMsrfSearchQuery('');
+                                    }}
+                                    className={cn(
+                                      "px-3 py-2 cursor-pointer transition flex flex-col gap-1 border-l-2",
+                                      isSelected
+                                        ? "bg-blue-50/70 border-l-blue-600"
+                                        : "hover:bg-slate-50 border-l-transparent"
+                                    )}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="font-mono font-bold text-blue-700 bg-blue-100/80 px-1.5 py-0.5 rounded text-[11px] border border-blue-200">
+                                          {m.msrfNumber}
+                                        </span>
+                                        {m.department && (
+                                          <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                            {m.department}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                          {m.reportingHeadStatus || 'Approved'}
+                                        </span>
+                                        {isSelected && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                                      </div>
+                                    </div>
+
+                                    {m.projectName && (
+                                      <div className="text-xs font-semibold text-slate-800 flex items-center gap-1">
+                                        <span>🏢</span>
+                                        <span>{m.projectName}</span>
+                                      </div>
+                                    )}
+
+                                    <div className="text-[11px] text-slate-600 line-clamp-1">
+                                      {m.purpose}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+
+                              {filteredMsrfsForFilterList.length === 0 && (
+                                <div className="p-4 text-center text-slate-400 text-xs">
+                                  No material requests matching &quot;{filterMsrfSearchQuery}&quot;
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Row 2 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                      <div className="space-y-1">
+                        <label className="text-slate-600 font-medium block">Purchase Order Type</label>
+                        <select
+                          value={poFilterType}
+                          onChange={(e) => setPoFilterType(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 font-medium"
+                        >
+                          <option value="All Types">-- Select Purchase Order Type --</option>
+                          <option value="Manual Creation">Manual Creation</option>
+                          <option value="From Purchase Requisition">From Purchase Requisition</option>
+                          <option value="From Sales Order">From Sales Order</option>
+                        </select>
+                      </div>
+
+                      {(poFilterOwner !== 'All Owners' ||
+                        poDateRange ||
+                        poFilterSupplier !== 'Select Supplier' ||
+                        poFilterMsrf !== 'All Material Requests' ||
+                        poFilterType !== 'All Types' ||
+                        poSearch) && (
+                          <div className="flex items-center gap-2 pb-0.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPoFilterOwner('All Owners');
+                                setPoDateRange('');
+                                setPoFilterSupplier('Select Supplier');
+                                setPoFilterMsrf('All Material Requests');
+                                setPoFilterType('All Types');
+                                setPoSearch('');
+                              }}
+                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                            >
+                              <RotateCcw className="w-3 h-3 text-slate-500" />
+                              <span>Reset All Filters</span>
+                            </button>
+                            <span className="text-[11px] text-slate-500 font-medium">
+                              {filteredPOItems.length} matching
+                            </span>
+                          </div>
+                        )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Table Card */}
+                <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs text-xs">
+                  {/* Header */}
+                  <div className="px-4 py-2 bg-[#F8FAFC] border-b border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-700">
+                      <span className="text-sm">🗂️</span>
+                      <span>Purchase Order</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextSeq = computeNextPoSequence();
+                        setPoFormData((prev) => ({ ...prev, poNumber: nextSeq.fullPoNumber }));
+                        setPoNextNumber(nextSeq.nextNumberStr);
+                        setPoViewMode('add');
+                      }}
+                      className="flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-bold uppercase rounded-xs transition shadow-xs cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>PO</span>
+                    </button>
+                  </div>
+
+                  {/* Table Controls */}
+                  <div className="p-2.5 bg-slate-50/50 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                    <div className="flex items-center gap-1.5">
+                      <span>Shows</span>
+                      <select
+                        value={poRowsPerPage}
+                        onChange={(e) => setPoRowsPerPage(Number(e.target.value))}
+                        className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 font-medium"
+                      >
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                      </select>
+                      <span>Rows</span>
+                    </div>
+
+                    <div className="relative w-64">
+                      <input
+                        type="text"
+                        placeholder="Search Purchase Order"
+                        value={poSearch}
+                        onChange={(e) => setPoSearch(e.target.value)}
+                        className="w-full pl-3 pr-8 py-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
+                      />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
+                    </div>
+                  </div>
+
+                  {/* Native Mobile PO Cards (Phone Viewports) */}
+                  <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
+                    {filteredPOItems.map((po) => (
+                      <div key={po.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
+                        <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
+                          <div className="space-y-0.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setViewingPo(po);
+                                setPoViewMode('details');
+                              }}
+                              className="inline-flex items-center gap-1 text-[#2563EB] hover:underline cursor-pointer font-bold text-xs"
+                            >
+                              <span>📄</span>
+                              <span>{po.poNumber}</span>
+                            </button>
+                            <div className="text-[10px] text-slate-500">Date: {po.date}</div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#16A34A] text-white">
+                            {po.approval}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-slate-500 text-[10px] block">Supplier</span>
+                          <span className="text-[#2563EB] font-bold text-xs">{po.supplier}</span>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 py-1 border-t border-b border-slate-100 text-center">
+                          <div>
+                            <div className="text-[10px] text-slate-500">Amount</div>
+                            <div className="font-semibold text-slate-700">
+                              {po.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-slate-500">VAT</div>
+                            <div className="font-semibold text-slate-600">
+                              {po.vat.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-slate-500">Total</div>
+                            <div className="font-bold text-slate-900">
+                              {po.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-100 relative">
+                          <span className="text-[10px] text-slate-500 font-medium">{po.owner}</span>
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActivePoActionDropdownId(activePoActionDropdownId === po.id ? null : po.id);
+                              }}
+                              className="inline-flex items-center justify-center gap-1.5 px-2 py-0.5 bg-[#0e7490] hover:bg-[#0c667f] text-white rounded text-[10px] font-semibold cursor-pointer shadow-xs transition"
+                              title="Actions"
+                            >
+                              <Settings className="w-3 h-3 text-white" />
+                              <ChevronDown className="w-2 h-2 text-white" />
+                            </button>
+                            {activePoActionDropdownId === po.id && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-0 top-full mt-1 z-50 w-44 bg-white border border-slate-200 rounded shadow-xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-75"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActivePoActionDropdownId(null);
+                                    window.open(`/purchase?tab=po&view=${po.id}`, '_blank');
+                                  }}
+                                  className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
+                                >
+                                  <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
+                                  <span>Open in new tab</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActivePoActionDropdownId(null);
+                                    setViewingPo(po);
+                                    setPoViewMode('details');
+                                  }}
+                                  className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
+                                >
+                                  <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
+                                  <span>View</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePurchaseOrder(po.id, po.poNumber)}
+                                  className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-red-50 text-red-600 font-medium transition-colors cursor-pointer border-t border-slate-100"
+                                >
+                                  <Trash2 className="w-4 h-4 text-red-600 shrink-0" />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop PO Table */}
+                  <div className="hidden md:block overflow-x-auto min-h-[260px] pb-28">
+                    <table className="w-full text-xs text-left">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
+                          <th className="p-2.5 w-12 text-center border-r border-slate-200">SL.No</th>
+                          <th className="p-2.5 w-14 text-center border-r border-slate-200">Owner</th>
+                          <th className="p-2.5 w-32 border-r border-slate-200">PO#</th>
+                          <th className="p-2.5 w-28 border-r border-slate-200">Date</th>
+                          <th className="p-2.5 border-r border-slate-200">Supplier</th>
+                          <th className="p-2.5 w-28 border-r border-slate-200">MSRF / Order</th>
+                          <th className="p-2.5 w-24 border-r border-slate-200">Reference</th>
+                          <th className="p-2.5 text-right w-24 border-r border-slate-200">Amount</th>
+                          <th className="p-2.5 text-right w-20 border-r border-slate-200">VAT</th>
+                          <th className="p-2.5 text-right w-28 border-r border-slate-200">Total Amount</th>
+                          <th className="p-2.5 text-center w-28 border-r border-slate-200">Invoice Received</th>
+                          <th className="p-2.5 text-center w-44 border-r border-slate-200">Approval</th>
+                          <th className="p-2.5 text-center w-28 border-r border-slate-200">Delivery Status</th>
+                          <th className="p-2.5 text-center w-20">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {filteredPOItems.length === 0 ? (
+                          <tr>
+                            <td colSpan={14} className="p-8 text-center text-slate-500 text-xs">
+                              No records found
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredPOItems.map((po) => (
+                            <tr key={po.id} className="hover:bg-blue-50/40 transition-colors">
+                              <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{po.slNo}</td>
+                              <td className="p-2.5 text-center border-r border-slate-100">
+                                {po.ownerAvatar ? (
+                                  <img src={po.ownerAvatar} alt={po.owner} className="w-6 h-6 rounded-full object-cover inline-block mx-auto border border-slate-200" />
+                                ) : (
+                                  <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold mx-auto">
+                                    {po.owner ? po.owner.charAt(0).toUpperCase() : 'U'}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="p-2.5 border-r border-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setViewingPo(po);
+                                    setPoViewMode('details');
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[#1976D2] hover:underline cursor-pointer font-bold"
+                                >
+                                  <span className="text-[10px]">📄</span>
+                                  <span>{po.poNumber}</span>
+                                </button>
+                              </td>
+                              <td className="p-2.5 text-slate-700 border-r border-slate-100 whitespace-nowrap">{po.date}</td>
+                              <td className="p-2.5 border-r border-slate-100 font-bold">
+                                <span className="text-[#1976D2] hover:underline cursor-pointer">
+                                  {po.supplier}
+                                </span>
+                              </td>
+                              <td className="p-2.5 border-r border-slate-100 font-medium">
+                                {po.order || po.opportunityOrder ? (
+                                  <span
+                                    className="inline-block max-w-[130px] truncate font-mono text-[11px] text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded"
+                                    title={po.order || po.opportunityOrder}
+                                  >
+                                    {(po.order || po.opportunityOrder).split(' - ')[0]}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300">-</span>
+                                )}
+                              </td>
+                              <td className="p-2.5 text-slate-400 border-r border-slate-100">{po.reference || ''}</td>
+                              <td className="p-2.5 text-right font-medium text-slate-900 border-r border-slate-100 font-mono">
+                                {Number(po.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="p-2.5 text-right font-medium text-slate-700 border-r border-slate-100 font-mono">
+                                {Number(po.vat || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="p-2.5 text-right font-bold text-slate-900 border-r border-slate-100 font-mono">
+                                {Number(po.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="p-2.5 text-center text-slate-400 border-r border-slate-100">{po.invoiceReceived || ''}</td>
+                              <td className="p-2.5 text-center border-r border-slate-100">
+                                <div className="flex flex-col items-center gap-1">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap shadow-2xs ${po.approval === 'Approved'
+                                        ? 'bg-[#2E7D32]'
+                                        : po.approval === 'Reject' || po.approval === 'Rejected'
+                                          ? 'bg-rose-600'
+                                          : 'bg-amber-600'
+                                      }`}
+                                  >
+                                    {po.approval || 'Waiting for Final Approval'}
+                                  </span>
+                                  {po.approval !== 'Approved' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setApprovalModalOrder(po)}
+                                      className="px-2 py-0.5 text-[9px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded cursor-pointer transition flex items-center gap-1"
+                                      title="Authorize or Reject Purchase Order"
+                                    >
+                                      <ShieldCheck className="w-2.5 h-2.5" />
+                                      <span>Sign-off</span>
+                                    </button>
+                                  )}
+                                  {po.requiredApprovalTier && (
+                                    <span className="text-[9px] text-slate-400 font-mono">
+                                      {po.requiredApprovalTier === 'CHIEF_OPERATING_OFFICER' ? 'COO Tier' : 'FC Tier'}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-2.5 text-center border-r border-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenChangeDeliveryStatus(po)}
+                                  className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${getDeliveryStatusBadgeClass(
+                                    po.deliveryStatus
+                                  )} inline-flex items-center gap-1 whitespace-nowrap shadow-2xs cursor-pointer transition`}
+                                  title="Change Delivery Status"
+                                >
+                                  <Edit2 className="w-2.5 h-2.5" />
+                                  <span>{po.deliveryStatus || 'Pending'}</span>
+                                </button>
+                              </td>
+                              <td className="p-2.5 text-center relative">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActivePoActionDropdownId(activePoActionDropdownId === po.id ? null : po.id);
+                                  }}
+                                  className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 bg-[#0e7490] hover:bg-[#0c667f] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition mx-auto"
+                                  title="Actions"
+                                >
+                                  <Settings className="w-3.5 h-3.5 text-white" />
+                                  <ChevronDown className="w-2.5 h-2.5 text-white" />
+                                </button>
+
+                                {activePoActionDropdownId === po.id && (
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="absolute right-0 top-full mt-1 z-50 w-44 bg-white border border-slate-200 rounded shadow-xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-75"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActivePoActionDropdownId(null);
+                                        window.open(`/purchase?tab=po&view=${po.id}`, '_blank');
+                                      }}
+                                      className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
+                                    >
+                                      <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
+                                      <span>Open in new tab</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActivePoActionDropdownId(null);
+                                        setViewingPo(po);
+                                        setPoViewMode('details');
+                                      }}
+                                      className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
+                                    >
+                                      <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
+                                      <span>View</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActivePoActionDropdownId(null);
+                                        setPoStatusTargetPo(po);
+                                        if (po.approval === 'Approved') {
+                                          setPoStatusModalSelectedStatus('Approve');
+                                        } else if (po.approval === 'Rejected') {
+                                          setPoStatusModalSelectedStatus('Reject');
+                                        } else {
+                                          setPoStatusModalSelectedStatus('Change to Pending');
+                                        }
+                                        setPoStatusModalComments('');
+                                        setIsChangePoStatusModalOpen(true);
+                                      }}
+                                      className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
+                                    >
+                                      <Edit2 className="w-4 h-4 text-slate-700 shrink-0" />
+                                      <span>Change Status</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActivePoActionDropdownId(null);
+                                        setApprovalModalOrder(po);
+                                      }}
+                                      className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-emerald-50 text-emerald-700 font-medium transition-colors cursor-pointer"
+                                    >
+                                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                                      <span>Executive Sign-off</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeletePurchaseOrder(po.id, po.poNumber)}
+                                      className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-red-50 text-red-600 font-medium transition-colors cursor-pointer border-t border-slate-100"
+                                    >
+                                      <Trash2 className="w-4 h-4 text-red-600 shrink-0" />
+                                      <span>Delete</span>
+                                    </button>
+                                  </div>
+                                )}
                               </td>
                             </tr>
                           ))
@@ -5258,6 +7088,23 @@ function PurchasePageInner() {
                   </div>
                 </div>
               </>
+            )}
+
+            {/* Executive Purchase Approval Modal */}
+            {approvalModalOrder && (
+              <PurchaseApprovalModal
+                purchaseOrder={approvalModalOrder}
+                currentUser={currentUser}
+                onClose={() => setApprovalModalOrder(null)}
+                onSuccess={(updatedOrder) => {
+                  setPurchaseOrders((prev) =>
+                    prev.map((p) => (p.id === updatedOrder.id ? { ...p, ...updatedOrder } : p))
+                  );
+                  if (viewingPo && viewingPo.id === updatedOrder.id) {
+                    setViewingPo({ ...viewingPo, ...updatedOrder });
+                  }
+                }}
+              />
             )}
 
             {/* Change Purchase Order Status Modal */}
@@ -5363,8 +7210,8 @@ function PurchasePageInner() {
                           poStatusModalSelectedStatus === 'Approve'
                             ? 'Approved'
                             : poStatusModalSelectedStatus === 'Reject'
-                            ? 'Rejected'
-                            : 'Waiting for Final Approval';
+                              ? 'Rejected'
+                              : 'Waiting for Final Approval';
 
                         const updatedList = purchaseOrders.map((p) =>
                           p.id === target.id ? { ...p, approval: statusLabel } : p
@@ -5447,7 +7294,7 @@ function PurchasePageInner() {
                               }}
                               className="w-full pl-8 pr-8 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500 appearance-none font-medium"
                             >
-                              {invoiceOwnersList.map((o) => (
+                              {(invoiceFilterOwnersList.length > 0 ? invoiceFilterOwnersList : invoiceOwnersList).map((o) => (
                                 <option key={o} value={o}>
                                   {o}
                                 </option>
@@ -5509,6 +7356,14 @@ function PurchasePageInner() {
                           )}
                         </div>
                       </div>
+                      {matchedPoForInvoice && (
+                        <div className="sm:ml-48 text-[11px] text-emerald-700 flex items-center gap-1 font-medium">
+                          <span>✓</span>
+                          <span>
+                            Autofilled from {matchedPoForInvoice.poNumber} &bull; Supplier: {matchedPoForInvoice.supplier} &bull; Total: AED {Number(matchedPoForInvoice.totalAmount || matchedPoForInvoice.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      )}
 
                       {/* PISN */}
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
@@ -5559,21 +7414,52 @@ function PurchasePageInner() {
                           <select
                             value={invoiceSupplier}
                             onChange={(e) => setInvoiceSupplier(e.target.value)}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500 appearance-none"
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500 appearance-none font-medium"
                           >
-                            <option value="Select">Select</option>
-                            <option value="GULF ELECTRONICS COMPANY LLC">GULF ELECTRONICS COMPANY LLC</option>
-                            <option value="RAPID COOL TRADING CO. L.L.C">RAPID COOL TRADING CO. L.L.C</option>
-                            <option value="GENERAL ENTERPRISES CO L.L.C">GENERAL ENTERPRISES CO L.L.C</option>
-                            <option value="TAQEEF REFRIGERATION & AIR CONDITIONING TRADING LLC">TAQEEF REFRIGERATION & AIR CONDITIONING TRADING LLC</option>
-                            <option value="EMIRATES JO TRADE CO">EMIRATES JO TRADE CO</option>
-                            <option value="SUPER GENERAL COMPANY LLC">SUPER GENERAL COMPANY LLC</option>
-                            <option value="LUTFI TRADING LLC">LUTFI TRADING LLC</option>
-                            <option value="DUBAI POLYMER INDUSTRIES LLC">DUBAI POLYMER INDUSTRIES LLC</option>
-                            <option value="CENTRAL TRADING COMPANY L.L.C.">CENTRAL TRADING COMPANY L.L.C.</option>
-                            <option value="Better Life">Better Life</option>
+                            <option value="Select">-- Select Supplier ({suppliersList.length}) --</option>
+                            {suppliersList.map((s: any) => {
+                              const name = s.supplierName || s.name;
+                              return (
+                                <option key={s.id || name} value={name}>
+                                  {name} {s.code ? `(${s.code})` : ''}
+                                </option>
+                              );
+                            })}
+                            {/* If current value is set (e.g. autofilled from PO) but not in suppliersList */}
+                            {invoiceSupplier &&
+                              invoiceSupplier !== 'Select' &&
+                              !suppliersList.some((s: any) => (s.supplierName || s.name) === invoiceSupplier) && (
+                                <option value={invoiceSupplier}>{invoiceSupplier}</option>
+                              )}
                           </select>
                           <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          {selectedSupplierObjForInvoice && (
+                            <div className="mt-1.5 p-2 bg-blue-50/70 border border-blue-200/90 rounded text-[11px] text-slate-700 flex flex-wrap items-center gap-x-3.5 gap-y-1">
+                              <span className="font-semibold text-blue-900 flex items-center gap-1">
+                                <span>🏢</span> {selectedSupplierObjForInvoice.supplierName || selectedSupplierObjForInvoice.name}
+                              </span>
+                              {selectedSupplierObjForInvoice.contact && (
+                                <span className="text-slate-600">
+                                  👤 {selectedSupplierObjForInvoice.contact}
+                                </span>
+                              )}
+                              {selectedSupplierObjForInvoice.phone && (
+                                <span className="text-slate-600">
+                                  📞 {selectedSupplierObjForInvoice.phone}
+                                </span>
+                              )}
+                              {selectedSupplierObjForInvoice.email && (
+                                <span className="text-slate-600">
+                                  ✉️ {selectedSupplierObjForInvoice.email}
+                                </span>
+                              )}
+                              {selectedSupplierObjForInvoice.trn && (
+                                <span className="font-mono text-[10px] bg-white px-1.5 py-0.5 rounded border border-blue-200 text-slate-700">
+                                  TRN: {selectedSupplierObjForInvoice.trn}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -5595,22 +7481,29 @@ function PurchasePageInner() {
                         </div>
                       </div>
 
-                      {/* Order */}
+                      {/* Material Request */}
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
                         <label className="sm:w-44 text-slate-700 font-medium text-xs shrink-0 flex items-center gap-1">
-                          <span>Order</span>
-                          <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-[#0B1E2E] text-white text-[9px] font-bold cursor-help" title="Select linked Order">i</span>
+                          <span>Material Request</span>
+                          <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-[#0B1E2E] text-white text-[9px] font-bold cursor-help" title="Linked Material Request">i</span>
                         </label>
                         <div className="relative flex-1">
                           <select
                             value={invoiceOrder}
                             onChange={(e) => setInvoiceOrder(e.target.value)}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500 appearance-none"
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500 appearance-none font-medium"
                           >
-                            <option value="Select Order">Select Order</option>
-                            <option value="SO-8821">SO-8821</option>
-                            <option value="SO-8834">SO-8834</option>
-                            <option value="SO-8840">SO-8840</option>
+                            <option value="Select Order">-- Select Material Request --</option>
+                            {liveMsrfs.map((m) => (
+                              <option key={m.id} value={`MSRF #${m.msrfNumber} - ${m.purpose}`}>
+                                {m.msrfNumber} - {m.purpose} {m.projectName ? `(${m.projectName})` : ''}
+                              </option>
+                            ))}
+                            {invoiceOrder &&
+                              invoiceOrder !== 'Select Order' &&
+                              !liveMsrfs.some((m) => `MSRF #${m.msrfNumber} - ${m.purpose}` === invoiceOrder || m.msrfNumber === invoiceOrder) && (
+                                <option value={invoiceOrder}>{invoiceOrder}</option>
+                              )}
                           </select>
                           <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         </div>
@@ -5994,43 +7887,40 @@ function PurchasePageInner() {
                     <span>
                       {invoiceViewActiveSubTab === 'po'
                         ? `PURCHASE ORDER ${(
-                            purchaseOrders.find(
-                              (p) =>
-                                p.poNumber === viewingInvoiceRecord.poNumber ||
-                                p.id === viewingInvoiceRecord.poNumber
-                            )?.poNumber ||
-                            viewingInvoiceRecord.poNumber ||
-                            'CTPO#2544'
-                          ).toUpperCase()} CREATED BY ${(
-                            purchaseOrders.find(
-                              (p) =>
-                                p.poNumber === viewingInvoiceRecord.poNumber ||
-                                p.id === viewingInvoiceRecord.poNumber
-                            )?.owner ||
-                            viewingInvoiceRecord.owner ||
-                            'RASHID'
-                          ).toUpperCase()} ON ${
-                            purchaseOrders.find(
-                              (p) =>
-                                p.poNumber === viewingInvoiceRecord.poNumber ||
-                                p.id === viewingInvoiceRecord.poNumber
-                            )?.createdAtFormatted ||
-                            `FRI ${viewingInvoiceRecord.date || '08-10-2026'} 4:52:34 PM`
-                          }`
+                          purchaseOrders.find(
+                            (p) =>
+                              p.poNumber === viewingInvoiceRecord.poNumber ||
+                              p.id === viewingInvoiceRecord.poNumber
+                          )?.poNumber ||
+                          viewingInvoiceRecord.poNumber ||
+                          'CTPO#2544'
+                        ).toUpperCase()} CREATED BY ${(
+                          purchaseOrders.find(
+                            (p) =>
+                              p.poNumber === viewingInvoiceRecord.poNumber ||
+                              p.id === viewingInvoiceRecord.poNumber
+                          )?.owner ||
+                          viewingInvoiceRecord.owner ||
+                          'RASHID'
+                        ).toUpperCase()} ON ${purchaseOrders.find(
+                          (p) =>
+                            p.poNumber === viewingInvoiceRecord.poNumber ||
+                            p.id === viewingInvoiceRecord.poNumber
+                        )?.createdAtFormatted ||
+                        `FRI ${viewingInvoiceRecord.date || '08-10-2026'} 4:52:34 PM`
+                        }`
                         : invoiceViewActiveSubTab === 'payment'
-                        ? `PAYMENTS FOR PURCHASE INVOICE ${(
+                          ? `PAYMENTS FOR PURCHASE INVOICE ${(
                             viewingInvoiceRecord.invoiceNumber || 'INV-2026-001'
                           ).toUpperCase()}`
-                        : invoiceViewActiveSubTab === 'do'
-                        ? `DELIVERY ORDERS FOR ${(
-                            viewingInvoiceRecord.invoiceNumber || 'INV-2026-001'
-                          ).toUpperCase()}`
-                        : `PURCHASE INVOICE CREATED BY ${
-                            viewingInvoiceRecord.owner?.toUpperCase() || 'VAISHAK'
-                          } ON ${
-                            viewingInvoiceRecord.createdFormatted ||
+                          : invoiceViewActiveSubTab === 'do'
+                            ? `DELIVERY ORDERS FOR ${(
+                              viewingInvoiceRecord.invoiceNumber || 'INV-2026-001'
+                            ).toUpperCase()}`
+                            : `PURCHASE INVOICE CREATED BY ${viewingInvoiceRecord.owner?.toUpperCase() || 'VAISHAK'
+                            } ON ${viewingInvoiceRecord.createdFormatted ||
                             `FRI ${viewingInvoiceRecord.date || '13-02-2026'} 4:52:34 PM`
-                          }`}
+                            }`}
                     </span>
                   </div>
                   <button
@@ -6053,11 +7943,10 @@ function PurchasePageInner() {
                   <button
                     type="button"
                     onClick={() => setInvoiceViewActiveSubTab('invoice')}
-                    className={`px-4 py-2 text-xs flex items-center gap-1.5 transition cursor-pointer ${
-                      invoiceViewActiveSubTab === 'invoice'
+                    className={`px-4 py-2 text-xs flex items-center gap-1.5 transition cursor-pointer ${invoiceViewActiveSubTab === 'invoice'
                         ? 'border-t-2 border-t-[#D9534F] border-l border-r border-b-0 border-slate-300 bg-white text-slate-800 font-semibold -mb-px rounded-t-xs'
                         : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                      }`}
                   >
                     <FileText className="w-3.5 h-3.5 text-slate-700" />
                     <span>Purchase Invoice</span>
@@ -6067,11 +7956,10 @@ function PurchasePageInner() {
                   <button
                     type="button"
                     onClick={() => setInvoiceViewActiveSubTab('po')}
-                    className={`px-4 py-2 text-xs flex items-center gap-1.5 transition cursor-pointer ${
-                      invoiceViewActiveSubTab === 'po'
+                    className={`px-4 py-2 text-xs flex items-center gap-1.5 transition cursor-pointer ${invoiceViewActiveSubTab === 'po'
                         ? 'border-t-2 border-t-[#D9534F] border-l border-r border-b-0 border-slate-300 bg-white text-slate-800 font-semibold -mb-px rounded-t-xs'
                         : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                      }`}
                   >
                     <FileText className="w-3.5 h-3.5 text-slate-400" />
                     <span>Purchase Order</span>
@@ -6081,11 +7969,10 @@ function PurchasePageInner() {
                   <button
                     type="button"
                     onClick={() => setInvoiceViewActiveSubTab('payment')}
-                    className={`px-4 py-2 text-xs flex items-center gap-1.5 transition cursor-pointer ${
-                      invoiceViewActiveSubTab === 'payment'
+                    className={`px-4 py-2 text-xs flex items-center gap-1.5 transition cursor-pointer ${invoiceViewActiveSubTab === 'payment'
                         ? 'border-t-2 border-t-[#D9534F] border-l border-r border-b-0 border-slate-300 bg-white text-slate-800 font-semibold -mb-px rounded-t-xs'
                         : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                      }`}
                   >
                     <CreditCard className="w-3.5 h-3.5 text-slate-400" />
                     <span>Payment</span>
@@ -6095,11 +7982,10 @@ function PurchasePageInner() {
                   <button
                     type="button"
                     onClick={() => setInvoiceViewActiveSubTab('do')}
-                    className={`px-4 py-2 text-xs flex items-center gap-1.5 transition cursor-pointer ${
-                      invoiceViewActiveSubTab === 'do'
+                    className={`px-4 py-2 text-xs flex items-center gap-1.5 transition cursor-pointer ${invoiceViewActiveSubTab === 'do'
                         ? 'border-t-2 border-t-[#D9534F] border-l border-r border-b-0 border-slate-300 bg-white text-slate-800 font-semibold -mb-px rounded-t-xs'
                         : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                      }`}
                   >
                     <Truck className="w-3.5 h-3.5 text-slate-400" />
                     <span>DO</span>
@@ -6218,6 +8104,47 @@ function PurchasePageInner() {
                           </div>
                         </div>
 
+                        {/* 3-Way Match & Governance */}
+                        <div className="grid grid-cols-12 gap-2 items-center">
+                          <span className="col-span-4 text-slate-700 font-normal text-xs">3-Way Match</span>
+                          <div className="col-span-8 flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold inline-flex items-center gap-1 shadow-2xs ${(viewingInvoiceRecord.matchingStatus || viewingInvoiceRecord.matching_status) === 'Verified_Matching'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : (viewingInvoiceRecord.matchingStatus || viewingInvoiceRecord.matching_status) === 'Price_Discrepancy'
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  : (viewingInvoiceRecord.matchingStatus || viewingInvoiceRecord.matching_status) === 'Quantity_Discrepancy'
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    : (viewingInvoiceRecord.matchingStatus || viewingInvoiceRecord.matching_status) === 'Approved'
+                                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                      : 'bg-slate-100 text-slate-700 border border-slate-200'
+                              }`}>
+                              <ShieldCheck className="w-3 h-3" />
+                              <span>
+                                {(viewingInvoiceRecord.matchingStatus || viewingInvoiceRecord.matching_status) === 'Verified_Matching'
+                                  ? 'Verified Matching'
+                                  : (viewingInvoiceRecord.matchingStatus || viewingInvoiceRecord.matching_status) === 'Price_Discrepancy'
+                                    ? 'Price Discrepancy'
+                                    : (viewingInvoiceRecord.matchingStatus || viewingInvoiceRecord.matching_status) === 'Quantity_Discrepancy'
+                                      ? 'Quantity Discrepancy'
+                                      : (viewingInvoiceRecord.matchingStatus || viewingInvoiceRecord.matching_status) === 'Approved'
+                                        ? 'Approved for Payment'
+                                        : 'Pending Audit'}
+                              </span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedMatchInvoiceId(viewingInvoiceRecord.id);
+                                setIsThreeWayMatchModalOpen(true);
+                              }}
+                              className="px-2.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-[10px] font-semibold inline-flex items-center gap-1 shadow-xs transition cursor-pointer"
+                            >
+                              <ShieldCheck className="w-3 h-3" />
+                              <span>Audit / Approve</span>
+                            </button>
+                          </div>
+                        </div>
+
                         {/* File */}
                         <div className="grid grid-cols-12 gap-2 items-center">
                           <span className="col-span-4 text-slate-700 font-normal text-xs">File</span>
@@ -6297,51 +8224,57 @@ function PurchasePageInner() {
                           <tr className="border-b border-slate-200 text-slate-600 font-semibold select-none">
                             <th className="py-2.5 px-3">Item</th>
                             <th className="py-2.5 px-3 w-24 text-center">QTY</th>
-                            <th className="py-2.5 px-3 w-36 text-right">Purchase Cost</th>
-                            <th className="py-2.5 px-3 w-36 text-right">Selling Price</th>
+                            <th className="py-2.5 px-3 w-36 text-right">Purchase Cost (AED)</th>
+                            <th className="py-2.5 px-3 w-36 text-right">Total (AED)</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
                           {(viewingInvoiceRecord.items && viewingInvoiceRecord.items.length > 0
                             ? viewingInvoiceRecord.items
                             : [
-                                {
-                                  id: 'item_default',
-                                  item:
-                                    viewingInvoiceRecord.description ||
-                                    '3000 SERIES 2-IN-1 AIR PURIFIER & HUMIDIFIER PHILIPS AC3737/10',
-                                  qty: '1',
-                                  rate: String(viewingInvoiceRecord.amount || '1619.00'),
-                                  sellingPrice: '0.00',
-                                },
-                              ]
-                          ).map((item: any, idx: number) => (
-                            <tr key={item.id || idx}>
-                              <td className="py-3 px-3">
-                                <div className="flex items-center gap-3">
-                                  <NoImageAvailable />
-                                  <span className="font-semibold text-slate-800 uppercase">
-                                    {item.item || item.name}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="py-3 px-3 text-center font-semibold text-slate-800">
-                                {item.qty || 1}
-                              </td>
-                              <td className="py-3 px-3 text-right font-medium text-slate-800">
-                                {Number(item.rate || 0).toLocaleString('en-US', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
-                              </td>
-                              <td className="py-3 px-3 text-right font-medium text-slate-700">
-                                {Number(item.sellingPrice || 0).toLocaleString('en-US', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
-                              </td>
-                            </tr>
-                          ))}
+                              {
+                                id: 'item_default',
+                                item:
+                                  viewingInvoiceRecord.description ||
+                                  '3000 SERIES 2-IN-1 AIR PURIFIER & HUMIDIFIER PHILIPS AC3737/10',
+                                qty: '1',
+                                rate: String(viewingInvoiceRecord.amount || '1619.00'),
+                                total: String(viewingInvoiceRecord.amount || '1619.00'),
+                              },
+                            ]
+                          ).map((item: any, idx: number) => {
+                            const itemQty = parseFloat(item.qty || '1') || 1;
+                            const itemRate = parseFloat(item.rate || '0') || 0;
+                            const itemTotal = item.total ? parseFloat(item.total) : itemQty * itemRate;
+
+                            return (
+                              <tr key={item.id || idx}>
+                                <td className="py-3 px-3">
+                                  <div className="flex items-center gap-3">
+                                    <NoImageAvailable />
+                                    <span className="font-semibold text-slate-800 uppercase">
+                                      {item.item || item.name}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 text-center font-semibold text-slate-800">
+                                  {item.qty || 1}
+                                </td>
+                                <td className="py-3 px-3 text-right font-medium text-slate-800">
+                                  {itemRate.toLocaleString('en-US', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </td>
+                                <td className="py-3 px-3 text-right font-semibold text-slate-800">
+                                  {itemTotal.toLocaleString('en-US', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -6410,17 +8343,17 @@ function PurchasePageInner() {
                       viewingInvoiceRecord.items && viewingInvoiceRecord.items.length > 0
                         ? viewingInvoiceRecord.items
                         : [
-                            {
-                              id: 'po_item_1',
-                              description: 'COOLER',
-                              code: 'CLR-01',
-                              unit: 'Pcs',
-                              brand: 'COOLTECH',
-                              qty: 2,
-                              amount: 2000.0,
-                              total: 4000.0,
-                            },
-                          ],
+                          {
+                            id: 'po_item_1',
+                            description: 'COOLER',
+                            code: 'CLR-01',
+                            unit: 'Pcs',
+                            brand: 'COOLTECH',
+                            qty: 2,
+                            amount: 2000.0,
+                            total: 4000.0,
+                          },
+                        ],
                   };
 
                   return (
@@ -6558,13 +8491,8 @@ function PurchasePageInner() {
                           {/* Right Column */}
                           <div className="space-y-3">
                             <div className="grid grid-cols-12 items-center gap-2">
-                              <span className="col-span-4 text-slate-500 font-medium">Opportunity/Order</span>
+                              <span className="col-span-4 text-slate-500 font-medium">Material Request</span>
                               <span className="col-span-8 text-slate-700">{linkedPo.order || linkedPo.opportunityOrder || '-'}</span>
-                            </div>
-
-                            <div className="grid grid-cols-12 items-center gap-2">
-                              <span className="col-span-4 text-slate-500 font-medium">Project Number</span>
-                              <span className="col-span-8 text-slate-700">{linkedPo.projectNumber || '-'}</span>
                             </div>
 
                             <div className="grid grid-cols-12 items-center gap-2">
@@ -6863,7 +8791,19 @@ function PurchasePageInner() {
                       No payments recorded yet for this invoice.
                     </div>
 
-                    <div className="pt-4 border-t border-slate-100 flex items-center justify-end">
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentModalSupplierId(viewingInvoiceRecord.supplierId || viewingInvoiceRecord.supplier || '');
+                          setPaymentModalInvoiceId(viewingInvoiceRecord.id);
+                          setIsRecordPaymentModalOpen(true);
+                        }}
+                        className="px-4 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded-xs text-xs font-semibold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                      >
+                        <CreditCard className="w-3.5 h-3.5" />
+                        <span>Record Payment</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => setInvoiceViewActiveSubTab('invoice')}
@@ -6922,8 +8862,11 @@ function PurchasePageInner() {
                         className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                       >
                         <option value="All Owners">All Owners</option>
-                        <option value="Muhammad Ali">Muhammad Ali</option>
-                        <option value="Super Admin">Super Admin</option>
+                        {invoiceFilterOwnersList.map((ownerName) => (
+                          <option key={ownerName} value={ownerName}>
+                            {ownerName}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -6951,18 +8894,32 @@ function PurchasePageInner() {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-slate-600 font-medium block">Supplier</label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-slate-600 font-medium block">Supplier</label>
+                        {invoiceFilterSupplier !== 'Select Supplier' && (
+                          <button
+                            type="button"
+                            onClick={() => setInvoiceFilterSupplier('Select Supplier')}
+                            className="text-[10px] text-blue-600 hover:underline cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
                       <select
                         value={invoiceFilterSupplier}
                         onChange={(e) => setInvoiceFilterSupplier(e.target.value)}
-                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 font-medium"
                       >
-                        <option value="Select Supplier">Select Supplier</option>
-                        <option value="GULF ELECTRONICS COMPANY LLC">GULF ELECTRONICS COMPANY LLC</option>
-                        <option value="RAPID COOL TRADING CO. L.L.C">RAPID COOL TRADING CO. L.L.C</option>
-                        <option value="GENERAL ENTERPRISES CO L.L.C">GENERAL ENTERPRISES CO L.L.C</option>
-                        <option value="TAQEEF REFRIGERATION & AIR CONDITIONING TRADING LLC">TAQEEF REFRIGERATION & AIR CONDITIONING TRADING LLC</option>
-                        <option value="EMIRATES JO TRADE CO">EMIRATES JO TRADE CO</option>
+                        <option value="Select Supplier">-- Select Supplier ({suppliersList.length}) --</option>
+                        {suppliersList.map((s: any) => {
+                          const name = s.supplierName || s.name;
+                          return (
+                            <option key={s.id || name} value={name}>
+                              {name} {s.code ? `(${s.code})` : ''}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
 
@@ -7065,9 +9022,42 @@ function PurchasePageInner() {
                             </div>
                             <div className="text-[10px] text-slate-500">Date: {inv.date}</div>
                           </div>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#E28A36] text-white whitespace-nowrap shadow-2xs">
-                            {inv.status}
-                          </span>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#E28A36] text-white whitespace-nowrap shadow-2xs">
+                              {inv.status}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedMatchInvoiceId(inv.id);
+                                setIsThreeWayMatchModalOpen(true);
+                              }}
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-semibold inline-flex items-center gap-1 shadow-2xs cursor-pointer ${(inv.matchingStatus || inv.matching_status) === 'Verified_Matching'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : (inv.matchingStatus || inv.matching_status) === 'Price_Discrepancy'
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : (inv.matchingStatus || inv.matching_status) === 'Quantity_Discrepancy'
+                                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                      : (inv.matchingStatus || inv.matching_status) === 'Approved'
+                                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                        : 'bg-slate-100 text-slate-700 border border-slate-200'
+                                }`}
+                              title="Audit 3-Way Match"
+                            >
+                              <ShieldCheck className="w-2.5 h-2.5" />
+                              <span>
+                                {(inv.matchingStatus || inv.matching_status) === 'Verified_Matching'
+                                  ? 'Verified'
+                                  : (inv.matchingStatus || inv.matching_status) === 'Price_Discrepancy'
+                                    ? 'Price Discrepancy'
+                                    : (inv.matchingStatus || inv.matching_status) === 'Quantity_Discrepancy'
+                                      ? 'Qty Discrepancy'
+                                      : (inv.matchingStatus || inv.matching_status) === 'Approved'
+                                        ? 'Approved'
+                                        : 'Pending Audit'}
+                              </span>
+                            </button>
+                          </div>
                         </div>
 
                         <div>
@@ -7075,24 +9065,24 @@ function PurchasePageInner() {
                           <span className="text-[#2563EB] font-bold text-xs uppercase">{inv.supplier}</span>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2 py-1.5 border-t border-b border-slate-100 text-center bg-slate-50/50 rounded">
+                        <div className="flex items-center justify-between py-1.5 px-2 border-t border-b border-slate-100 bg-slate-50/50 rounded">
                           <div>
-                            <div className="text-[10px] text-slate-500">Amount</div>
-                            <div className="font-semibold text-slate-800">
-                              {inv.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            <div className="text-[10px] text-slate-500">Total Amount</div>
+                            <div className="font-bold text-slate-900">
+                              {(inv.totalAmount || inv.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
                             </div>
                           </div>
                           <div>
-                            <div className="text-[10px] text-slate-500">Paid</div>
-                            <div className="font-semibold text-slate-600">
-                              {inv.paid.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-[10px] text-slate-500">Balance</div>
-                            <div className="font-bold text-[#DC2626]">
-                              {inv.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                            </div>
+                            <div className="text-[10px] text-slate-500 text-right">Payment Status</div>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenChangePaymentStatus(inv)}
+                              className={`px-2 py-0.5 rounded text-[10px] font-semibold ${getPaymentStatusBadgeClass(
+                                inv.status
+                              )} shadow-2xs cursor-pointer transition`}
+                            >
+                              {inv.status || 'Due'}
+                            </button>
                           </div>
                         </div>
 
@@ -7130,7 +9120,7 @@ function PurchasePageInner() {
                               {activeInvoiceActionDropdownId === inv.id && (
                                 <div
                                   onClick={(e) => e.stopPropagation()}
-                                  className="absolute right-0 top-full mt-1 z-50 w-44 bg-white border border-slate-200 rounded shadow-xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-75"
+                                  className="absolute right-0 top-full mt-1 z-50 w-48 bg-white border border-slate-200 rounded shadow-xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-75"
                                 >
                                   <button
                                     type="button"
@@ -7147,6 +9137,31 @@ function PurchasePageInner() {
                                   >
                                     <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
                                     <span>View</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveInvoiceActionDropdownId(null);
+                                      setSelectedMatchInvoiceId(inv.id);
+                                      setIsThreeWayMatchModalOpen(true);
+                                    }}
+                                    className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-emerald-50 text-emerald-800 font-medium transition-colors cursor-pointer"
+                                  >
+                                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                                    <span>3-Way Match Audit</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveInvoiceActionDropdownId(null);
+                                      setPaymentModalSupplierId(inv.supplierId || inv.supplier || '');
+                                      setPaymentModalInvoiceId(inv.id);
+                                      setIsRecordPaymentModalOpen(true);
+                                    }}
+                                    className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-blue-50 text-blue-800 font-medium transition-colors cursor-pointer"
+                                  >
+                                    <CreditCard className="w-4 h-4 text-blue-600 shrink-0" />
+                                    <span>Record Payment</span>
                                   </button>
                                   <button
                                     type="button"
@@ -7175,7 +9190,7 @@ function PurchasePageInner() {
 
                   {/* Table Content (Desktop Viewports) */}
                   <div className="hidden md:block overflow-x-auto min-h-[300px] pb-28">
-                    <table className="w-full text-left text-xs border-collapse min-w-[1300px]">
+                    <table className="w-full text-left text-xs border-collapse min-w-[1400px]">
                       <thead>
                         <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
                           <th className="p-2.5 w-14 text-center border-r border-slate-200">SL.No</th>
@@ -7185,10 +9200,9 @@ function PurchasePageInner() {
                           <th className="p-2.5 w-28 border-r border-slate-200">Date</th>
                           <th className="p-2.5 border-r border-slate-200">Supplier</th>
                           <th className="p-2.5 w-24 border-r border-slate-200">Order</th>
-                          <th className="p-2.5 text-right w-28 border-r border-slate-200">Amount</th>
-                          <th className="p-2.5 text-right w-24 border-r border-slate-200">Paid</th>
-                          <th className="p-2.5 text-right w-28 border-r border-slate-200">Balance</th>
-                          <th className="p-2.5 text-center w-24 border-r border-slate-200">Status</th>
+                          <th className="p-2.5 text-right w-32 border-r border-slate-200">Total Amount</th>
+                          <th className="p-2.5 text-center w-28 border-r border-slate-200">Payment Status</th>
+                          <th className="p-2.5 text-center w-36 border-r border-slate-200">3-Way Match</th>
                           <th className="p-2.5 text-center w-32 border-r border-slate-200">Delivery Status</th>
                           <th className="p-2.5 text-center w-20">Actions</th>
                         </tr>
@@ -7223,14 +9237,8 @@ function PurchasePageInner() {
                               </span>
                             </td>
                             <td className="p-2.5 text-slate-400 border-r border-slate-100">{inv.order || ''}</td>
-                            <td className="p-2.5 text-right font-medium text-slate-800 border-r border-slate-100">
-                              {inv.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="p-2.5 text-right font-medium text-slate-700 border-r border-slate-100">
-                              {inv.paid.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="p-2.5 text-right font-bold text-[#DC2626] border-r border-slate-100">
-                              {inv.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <td className="p-2.5 text-right font-bold text-slate-900 border-r border-slate-100">
+                              {(inv.totalAmount || inv.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             <td className="p-2.5 text-center border-r border-slate-100">
                               <button
@@ -7242,6 +9250,39 @@ function PurchasePageInner() {
                                 title="Click to change payment status"
                               >
                                 {inv.status || 'Due'}
+                              </button>
+                            </td>
+                            <td className="p-2.5 text-center border-r border-slate-100">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedMatchInvoiceId(inv.id);
+                                  setIsThreeWayMatchModalOpen(true);
+                                }}
+                                className={`px-2 py-0.5 rounded text-[10px] font-semibold inline-flex items-center gap-1 shadow-2xs cursor-pointer transition ${(inv.matchingStatus || inv.matching_status) === 'Verified_Matching'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                                    : (inv.matchingStatus || inv.matching_status) === 'Price_Discrepancy'
+                                      ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
+                                      : (inv.matchingStatus || inv.matching_status) === 'Quantity_Discrepancy'
+                                        ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                                        : (inv.matchingStatus || inv.matching_status) === 'Approved'
+                                          ? 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
+                                          : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
+                                  }`}
+                                title="Open 3-Way Match audit & governance"
+                              >
+                                <ShieldCheck className="w-3 h-3" />
+                                <span>
+                                  {(inv.matchingStatus || inv.matching_status) === 'Verified_Matching'
+                                    ? 'Verified'
+                                    : (inv.matchingStatus || inv.matching_status) === 'Price_Discrepancy'
+                                      ? 'Price Discrepancy'
+                                      : (inv.matchingStatus || inv.matching_status) === 'Quantity_Discrepancy'
+                                        ? 'Qty Discrepancy'
+                                        : (inv.matchingStatus || inv.matching_status) === 'Approved'
+                                          ? 'Approved'
+                                          : 'Pending Audit'}
+                                </span>
                               </button>
                             </td>
                             <td className="p-2.5 text-center border-r border-slate-100">
@@ -7274,7 +9315,7 @@ function PurchasePageInner() {
                                 {activeInvoiceActionDropdownId === inv.id && (
                                   <div
                                     onClick={(e) => e.stopPropagation()}
-                                    className="absolute right-0 top-full mt-1 z-50 w-44 bg-white border border-slate-200 rounded shadow-xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-75"
+                                    className="absolute right-0 top-full mt-1 z-50 w-48 bg-white border border-slate-200 rounded shadow-xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-75"
                                   >
                                     <button
                                       type="button"
@@ -7291,6 +9332,31 @@ function PurchasePageInner() {
                                     >
                                       <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
                                       <span>View</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveInvoiceActionDropdownId(null);
+                                        setSelectedMatchInvoiceId(inv.id);
+                                        setIsThreeWayMatchModalOpen(true);
+                                      }}
+                                      className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-emerald-50 text-emerald-800 font-medium transition-colors cursor-pointer"
+                                    >
+                                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                                      <span>3-Way Match Audit</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveInvoiceActionDropdownId(null);
+                                        setPaymentModalSupplierId(inv.supplierId || inv.supplier || '');
+                                        setPaymentModalInvoiceId(inv.id);
+                                        setIsRecordPaymentModalOpen(true);
+                                      }}
+                                      className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-blue-50 text-blue-800 font-medium transition-colors cursor-pointer"
+                                    >
+                                      <CreditCard className="w-4 h-4 text-blue-600 shrink-0" />
+                                      <span>Record Payment</span>
                                     </button>
                                     <button
                                       type="button"
@@ -7405,7 +9471,15 @@ function PurchasePageInner() {
                   <span className="w-4 h-4 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-[10px] font-bold">✓</span>
                   <span>Purchase Payments</span>
                 </div>
-                <button type="button" className="flex items-center justify-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-bold uppercase rounded-xs transition shadow-xs cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentModalSupplierId('');
+                    setPaymentModalInvoiceId('');
+                    setIsRecordPaymentModalOpen(true);
+                  }}
+                  className="flex items-center justify-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-bold uppercase rounded-xs transition shadow-xs cursor-pointer"
+                >
                   <Plus className="w-3.5 h-3.5" />
                   <span>+ RECORD PAYMENT</span>
                 </button>
@@ -7414,14 +9488,26 @@ function PurchasePageInner() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                   <div className="space-y-1">
                     <label className="text-slate-600 font-medium block">Supplier</label>
-                    <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-500">
+                    <select
+                      value={paymentSupplierFilter}
+                      onChange={(e) => setPaymentSupplierFilter(e.target.value)}
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-500"
+                    >
                       <option value="All">All Suppliers</option>
-                      <option value="Mitsubishi">MITSUBISHI ELECTRIC CORP</option>
+                      {Array.from(new Set(livePaymentsList.map((p) => p.supplier).filter(Boolean))).map((supName) => (
+                        <option key={supName} value={supName}>
+                          {supName}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-slate-600 font-medium block">Payment Mode</label>
-                    <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-500">
+                    <select
+                      value={paymentModeFilter}
+                      onChange={(e) => setPaymentModeFilter(e.target.value)}
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-500"
+                    >
                       <option value="All">All Modes</option>
                       <option value="Bank">Bank Transfer</option>
                       <option value="Cheque">Cheque</option>
@@ -7430,7 +9516,13 @@ function PurchasePageInner() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-slate-600 font-medium block">Search Voucher</label>
-                    <input type="text" placeholder="Search Voucher / Ref..." className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500" />
+                    <input
+                      type="text"
+                      value={paymentSearchQuery}
+                      onChange={(e) => setPaymentSearchQuery(e.target.value)}
+                      placeholder="Search Voucher / Ref / Supplier..."
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                    />
                   </div>
                 </div>
               </div>
@@ -7439,74 +9531,183 @@ function PurchasePageInner() {
             <div className="bg-white border border-[#E2E8F0] rounded-sm shadow-xs overflow-hidden text-xs">
               {/* Native Mobile Payment Cards */}
               <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
-                {mockPurchasePayments.map((pmt) => (
-                  <div key={pmt.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2 text-xs">
-                    <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
-                      <div>
-                        <span className="font-bold text-[#2563EB] text-xs">{pmt.voucherNo}</span>
-                        <div className="text-[10px] text-slate-500">Date: {pmt.date}</div>
-                      </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60">
-                        {pmt.paymentMode}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <span className="text-slate-500 text-[10px] block">Supplier</span>
-                        <span className="font-semibold text-slate-800 text-xs">{pmt.supplier}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
-                      <div>
-                        <span className="text-[10px] text-slate-500 block">Ref / Txn No.</span>
-                        <span className="font-mono text-slate-600 text-[11px]">{pmt.reference}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-500 block">Amount Paid</span>
-                        <span className="font-bold text-slate-900 text-xs">{pmt.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED</span>
-                      </div>
-                    </div>
+                {filteredPurchasePayments.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 bg-white border border-dashed border-slate-200 rounded">
+                    No payment records found matching your filters.
                   </div>
-                ))}
+                ) : (
+                  filteredPurchasePayments.map((pmt) => (
+                    <div key={pmt.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2 text-xs">
+                      <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
+                        <div>
+                          <span className="font-bold text-[#2563EB] text-xs">{pmt.voucherNo || pmt.voucherNumber || pmt.voucher_number || 'SPV-2026-0002'}</span>
+                          <div className="text-[10px] text-slate-500">Date: {pmt.date || pmt.paymentDate || pmt.payment_date || '2026-11-02'}</div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${pmt.status === 'Void' || pmt.status === 'Voided' || pmt.status === 'Reversed'
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            }`}>
+                            {pmt.status === 'Void' || pmt.status === 'Voided' || pmt.status === 'Reversed' ? 'Reversed' : (pmt.status || 'Completed')}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60">
+                            {pmt.paymentMode || pmt.payment_mode || pmt.payment_method || 'Bank Transfer'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <span className="text-slate-500 text-[10px] block">Supplier</span>
+                          <span className="font-semibold text-slate-800 text-xs uppercase">{pmt.supplier || pmt.supplierName || pmt.supplier_name || 'AFSAL'}</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 py-1.5 border-t border-b border-slate-100 text-[11px] bg-slate-50/50 px-2 rounded">
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">Allocated:</span>
+                          <span className="font-semibold text-emerald-600">
+                            {(pmt.allocatedAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-500 block">Unallocated:</span>
+                          <span className="font-semibold text-amber-600">
+                            {(pmt.unallocatedAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <div>
+                          <span className="text-[10px] text-slate-500 block">Ref / Txn No.</span>
+                          <span className="font-mono text-slate-600 text-[11px]">{pmt.reference}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-500 block">Total Disbursed</span>
+                          <span className="font-bold text-slate-900 text-xs">{(pmt.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} AED</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                        {pmt.status !== 'Void' && pmt.status !== 'Voided' && pmt.status !== 'Reversed' && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (window.confirm(`Are you sure you want to reverse payment voucher ${pmt.voucherNo || pmt.id}? This will restore invoice balances back to unpaid.`)) {
+                                try {
+                                  await supplierPaymentApiService.voidPayment(pmt.id, 'Reversed by user from payment register');
+                                  fetchLivePayments();
+                                  fetchLiveInvoices();
+                                } catch (err: any) {
+                                  alert(err?.message || 'Failed to reverse payment');
+                                }
+                              }
+                            }}
+                            className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded text-[11px] font-semibold cursor-pointer"
+                          >
+                            Reverse
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePayment(pmt.id, pmt.voucherNo)}
+                          className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[11px] font-semibold cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* Table Content (Desktop Viewports) */}
               <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse min-w-[800px]">
+                <table className="w-full text-left text-xs border-collapse min-w-[950px]">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold">
+                    <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
                       <th className="p-2.5 w-16 text-center border-r border-slate-200">SL.No</th>
                       <th className="p-2.5 border-r border-slate-200">Voucher No.</th>
                       <th className="p-2.5 border-r border-slate-200">Date</th>
                       <th className="p-2.5 border-r border-slate-200">Supplier</th>
                       <th className="p-2.5 border-r border-slate-200">Payment Mode</th>
                       <th className="p-2.5 border-r border-slate-200">Ref / Txn No.</th>
-                      <th className="p-2.5 text-right border-r border-slate-200">Amount Paid (AED)</th>
+                      <th className="p-2.5 text-right border-r border-slate-200">Disbursed (AED)</th>
+                      <th className="p-2.5 text-right border-r border-slate-200">Allocated (AED)</th>
+                      <th className="p-2.5 text-center border-r border-slate-200 w-24">Status</th>
                       <th className="p-2.5 text-center w-24">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {mockPurchasePayments.map((pmt) => (
-                      <tr key={pmt.id} className="hover:bg-blue-50/40">
-                        <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{pmt.slNo}</td>
-                        <td className="p-2.5 border-r border-slate-100 font-medium text-[#2563EB]">{pmt.voucherNo}</td>
-                        <td className="p-2.5 border-r border-slate-100 text-slate-700">{pmt.date}</td>
-                        <td className="p-2.5 border-r border-slate-100 font-medium text-slate-800">{pmt.supplier}</td>
-                        <td className="p-2.5 border-r border-slate-100 text-slate-600">{pmt.paymentMode}</td>
-                        <td className="p-2.5 border-r border-slate-100 text-slate-600 font-mono">{pmt.reference}</td>
-                        <td className="p-2.5 text-right font-medium text-slate-900 border-r border-slate-100">{pmt.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                        <td className="p-2.5 text-center">
-                          <button type="button" className="inline-flex items-center gap-1 px-2 py-1 bg-[#0B1E2E] text-white rounded text-xs cursor-pointer"><Settings className="w-3.5 h-3.5" /><ChevronDown className="w-2.5 h-2.5" /></button>
+                    {filteredPurchasePayments.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="p-8 text-center text-slate-400">
+                          No payment vouchers found. Click "+ RECORD PAYMENT" to disburse funds against invoices.
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredPurchasePayments.map((pmt) => (
+                        <tr key={pmt.id} className="hover:bg-blue-50/40 transition-colors">
+                          <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{pmt.slNo}</td>
+                          <td className="p-2.5 border-r border-slate-100 font-medium text-[#2563EB]">{pmt.voucherNo || pmt.voucherNumber || pmt.voucher_number || 'SPV-2026-0002'}</td>
+                          <td className="p-2.5 border-r border-slate-100 text-slate-700">{pmt.date || pmt.paymentDate || pmt.payment_date || '2026-11-02'}</td>
+                          <td className="p-2.5 border-r border-slate-100 font-medium text-slate-800 uppercase">{pmt.supplier || pmt.supplierName || pmt.supplier_name || 'AFSAL'}</td>
+                          <td className="p-2.5 border-r border-slate-100 text-slate-600">{pmt.paymentMode || pmt.payment_mode || pmt.payment_method || 'Bank Transfer'}</td>
+                          <td className="p-2.5 border-r border-slate-100 text-slate-600 font-mono">{pmt.reference || pmt.referenceNo || pmt.reference_no || 'UTR-2026-INV2026002'}</td>
+                          <td className="p-2.5 text-right font-bold text-slate-900 border-r border-slate-100">
+                            {(pmt.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-2.5 text-right font-medium text-emerald-600 border-r border-slate-100">
+                            {(pmt.allocatedAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-2.5 text-center border-r border-slate-100">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${pmt.status === 'Void' || pmt.status === 'Voided' || pmt.status === 'Reversed'
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              }`}>
+                              {pmt.status === 'Void' || pmt.status === 'Voided' || pmt.status === 'Reversed' ? 'Reversed' : (pmt.status || 'Completed')}
+                            </span>
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {pmt.status !== 'Void' && pmt.status !== 'Voided' && pmt.status !== 'Reversed' && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (window.confirm(`Are you sure you want to reverse payment voucher ${pmt.voucherNo || pmt.id}? This will restore invoice balances back to unpaid.`)) {
+                                      try {
+                                        await supplierPaymentApiService.voidPayment(pmt.id, 'Reversed by user from payment register');
+                                        fetchLivePayments();
+                                        fetchLiveInvoices();
+                                      } catch (err: any) {
+                                        alert(err?.message || 'Failed to reverse payment');
+                                      }
+                                    }
+                                  }}
+                                  className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded text-[11px] font-semibold cursor-pointer transition"
+                                  title="Reverse this payment and restore invoice balances"
+                                >
+                                  Reverse
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePayment(pmt.id, pmt.voucherNo)}
+                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[11px] font-semibold cursor-pointer transition"
+                                title="Permanently delete this payment voucher"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
               <div className="p-3 border-t border-slate-200 text-xs text-slate-600 bg-white">
-                Showing 1 to {mockPurchasePayments.length} of {mockPurchasePayments.length} entries
+                Showing 1 to {filteredPurchasePayments.length} of {filteredPurchasePayments.length} entries
               </div>
             </div>
           </>
@@ -7634,6 +9835,23 @@ function PurchasePageInner() {
                         </div>
                       </div>
 
+                      {/* Delivery Mode */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+                        <label className="sm:w-36 text-slate-700 font-medium text-xs shrink-0">
+                          Delivery Mode
+                        </label>
+                        <div className="flex-1">
+                          <select
+                            value={stockInDeliveryMode}
+                            onChange={(e) => setStockInDeliveryMode(e.target.value as any)}
+                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="Warehouse_Receipt">Warehouse Receipt (Store Intake)</option>
+                            <option value="Direct_Site_Delivery">Direct Site Delivery (Customer/Project Site)</option>
+                          </select>
+                        </div>
+                      </div>
+
                       {/* DO File */}
                       <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
                         <label className="sm:w-36 text-slate-700 font-medium text-xs shrink-0">
@@ -7669,11 +9887,14 @@ function PurchasePageInner() {
                         <div className="flex-1 flex items-center gap-2">
                           <select
                             value={stockInSupplier}
-                            onChange={(e) => setStockInSupplier(e.target.value)}
+                            onChange={(e) => handleStockInSupplierChange(e.target.value)}
                             className="flex-1 min-w-0 px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                           >
                             <option value="Select">Select</option>
-                            {stockInSupplierList.map((sup) => (
+                            {stockInSupplier && stockInSupplier !== 'Select' && !liveStockInSuppliersList.includes(stockInSupplier) && (
+                              <option value={stockInSupplier}>{stockInSupplier}</option>
+                            )}
+                            {liveStockInSuppliersList.map((sup) => (
                               <option key={sup} value={sup}>
                                 {sup}
                               </option>
@@ -7702,16 +9923,68 @@ function PurchasePageInner() {
                               const val = e.target.value;
                               setStockInOrder(val);
                               if (val !== 'Select Order') {
-                                setStockInLpoNumber(val.split(' - ')[0] || val);
+                                const found = liveStockInOrders.find(
+                                  (o) => o.poNumber === val || o.label === val || val.startsWith(o.poNumber)
+                                );
+                                if (found) {
+                                  setStockInLpoNumber(found.poNumber);
+                                  if (found.supplier) {
+                                    setStockInSupplier(found.supplier);
+                                  }
+                                  if (found.raw?.store && found.raw.store !== 'Select') {
+                                    setStockInStore(found.raw.store);
+                                  } else if (!stockInStore || stockInStore === 'Select') {
+                                    setStockInStore('MAIN WAREHOUSE');
+                                  }
+                                  if (found.raw?.delivery_mode || found.raw?.deliveryMode) {
+                                    setStockInDeliveryMode(found.raw.delivery_mode || found.raw.deliveryMode);
+                                  }
+                                  const cleanPo = (found.poNumber || 'PO').replace(/[^a-zA-Z0-9]/g, '');
+                                  setStockInDeliveryNote(`DN-${cleanPo}-01`);
+                                  setStockInPurchaseInvoiceNumber(`PINV-${cleanPo}`);
+                                  const foundItems = (found.items && found.items.length > 0) ? found.items : (found.raw?.items || []);
+                                  if (foundItems && foundItems.length > 0) {
+                                    setStockInItems(
+                                      foundItems.map((it: any, i: number) => ({
+                                        id: `si_item_${Date.now()}_${i}`,
+                                        item: it.item || it.name || it.item_name || it.description || 'Item',
+                                        unit: it.unit || 'Pcs',
+                                        purchaseRate: String(it.rate ?? it.purchaseRate ?? it.unitPrice ?? it.amount ?? '0'),
+                                        sellingPrice: String(it.sellingPrice ?? (Number(it.rate ?? it.purchaseRate ?? it.amount ?? 0) * 1.25).toFixed(2)),
+                                        qty: String(it.qty ?? it.quantity ?? '1'),
+                                      }))
+                                    );
+                                  }
+                                } else {
+                                  setStockInLpoNumber(val.split(' - ')[0] || val);
+                                }
                               }
                             }}
                             className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                           >
                             <option value="Select Order">Select Order</option>
-                            <option value="CTPO#2543 - LUTFI TRADING LLC">CTPO#2543 - LUTFI TRADING LLC</option>
-                            <option value="CTPO#2544 - SUPER GENERAL COMPANY LLC">CTPO#2544 - SUPER GENERAL COMPANY LLC</option>
-                            <option value="CT-ORD-2026-001 - Project Alpha">CT-ORD-2026-001 - Project Alpha</option>
-                            <option value="CT-ORD-2026-002 - Marina Towers">CT-ORD-2026-002 - Marina Towers</option>
+                            {stockInOrder && stockInOrder !== 'Select Order' && !liveStockInOrders.some((o) => o.label === stockInOrder) && (
+                              <option value={stockInOrder}>{stockInOrder}</option>
+                            )}
+                            {liveStockInOrders
+                              .filter((o) => stockInSupplier === 'Select' || !o.supplier || o.supplier.toLowerCase().trim() === stockInSupplier.toLowerCase().trim())
+                              .map((o) => (
+                                <option key={o.poNumber} value={o.label}>
+                                  {o.label}
+                                </option>
+                              ))
+                            }
+                            {stockInSupplier !== 'Select' &&
+                              liveStockInOrders.length > 0 &&
+                              liveStockInOrders.filter((o) => o.supplier && o.supplier.toLowerCase().trim() === stockInSupplier.toLowerCase().trim()).length === 0 && (
+                                <optgroup label="Other Purchase Orders">
+                                  {liveStockInOrders.map((o) => (
+                                    <option key={o.poNumber} value={o.label}>
+                                      {o.label}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
                           </select>
                         </div>
                       </div>
@@ -7770,7 +10043,7 @@ function PurchasePageInner() {
                             value={itemRow.item}
                             onChange={(e) => {
                               const val = e.target.value;
-                              const foundProd = availableStockInProducts.find((p) => p.name === val);
+                              const foundProd = liveStockInProducts.find((p) => p.name === val);
                               const updated = [...stockInItems];
                               updated[idx].item = val;
                               if (foundProd) {
@@ -7784,7 +10057,7 @@ function PurchasePageInner() {
                             className="flex-1 min-w-0 px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                           >
                             <option value="">Select Item</option>
-                            {availableStockInProducts.map((p) => (
+                            {liveStockInProducts.map((p) => (
                               <option key={p.name} value={p.name}>
                                 {p.name}
                               </option>
@@ -7922,6 +10195,19 @@ function PurchasePageInner() {
                     <button
                       type="button"
                       onClick={() => {
+                        // Enforce Procurement Governance: block GRN intake if linked PO is not yet approved
+                        if (stockInLpoNumber) {
+                          const matchedPo = purchaseOrders.find(
+                            (p) => (p.poNumber || '').toLowerCase().trim() === stockInLpoNumber.toLowerCase().trim()
+                          );
+                          if (matchedPo && matchedPo.approval !== 'Approved') {
+                            alert(
+                              `Goods Receipt Note Blocked: Purchase Order ${matchedPo.poNumber} is currently "${matchedPo.approval}". Stock-In receipts mandate executive sign-off before receiving goods.`
+                            );
+                            return;
+                          }
+                        }
+
                         const isEditing = Boolean(editingStockInId);
                         if (isEditing) {
                           const updated = stockInList.map((item) => {
@@ -7931,10 +10217,10 @@ function PurchasePageInner() {
                                 ...item,
                                 stockInNo: stockInNumber,
                                 date: stockInDate,
-                                supplier: stockInSupplier !== 'Select' ? stockInSupplier : item.supplier || 'SUPER GENERAL COMPANY LLC',
-                                source: stockInSupplier !== 'Select' ? stockInSupplier : item.source || 'SUPER GENERAL COMPANY LLC',
-                                warehouse: stockInStore !== 'Select' ? stockInStore : item.warehouse || 'Main Warehouse - Bay A',
-                                store: stockInStore !== 'Select' ? stockInStore : item.store || 'Main Warehouse - Bay A',
+                                supplier: stockInSupplier !== 'Select' ? stockInSupplier : item.supplier || (liveStockInSuppliersList[0] || 'afsal'),
+                                source: stockInSupplier !== 'Select' ? stockInSupplier : item.source || (liveStockInSuppliersList[0] || 'afsal'),
+                                warehouse: stockInStore !== 'Select' ? stockInStore : item.warehouse || 'MAIN WAREHOUSE',
+                                store: stockInStore !== 'Select' ? stockInStore : item.store || 'MAIN WAREHOUSE',
                                 deliveryNote: stockInDeliveryNote,
                                 order: stockInOrder,
                                 lpoNumber: stockInLpoNumber,
@@ -7953,7 +10239,7 @@ function PurchasePageInner() {
                           }
                           const updatedRec = updated.find((it) => (it.id || it.stockInNo) === editingStockInId);
                           if (updatedRec && editingStockInId) {
-                            stockInApiService.updateStockInRecord(editingStockInId, updatedRec as any).catch(() => {});
+                            stockInApiService.updateStockInRecord(editingStockInId, updatedRec as any).catch(() => { });
                           }
                           alert(`Stock In ${stockInNumber} updated successfully!`);
                           resetStockInForm();
@@ -7964,10 +10250,10 @@ function PurchasePageInner() {
                             slNo: stockInList.length + 1,
                             stockInNo: stockInNumber,
                             date: stockInDate,
-                            supplier: stockInSupplier !== 'Select' ? stockInSupplier : 'SUPER GENERAL COMPANY LLC',
-                            source: stockInSupplier !== 'Select' ? stockInSupplier : 'SUPER GENERAL COMPANY LLC',
-                            warehouse: stockInStore !== 'Select' ? stockInStore : 'Main Warehouse - Bay A',
-                            store: stockInStore !== 'Select' ? stockInStore : 'Main Warehouse - Bay A',
+                            supplier: stockInSupplier !== 'Select' ? stockInSupplier : (liveStockInSuppliersList[0] || 'afsal'),
+                            source: stockInSupplier !== 'Select' ? stockInSupplier : (liveStockInSuppliersList[0] || 'afsal'),
+                            warehouse: stockInStore !== 'Select' ? stockInStore : 'MAIN WAREHOUSE',
+                            store: stockInStore !== 'Select' ? stockInStore : 'MAIN WAREHOUSE',
                             totalItems: stockInItems.reduce((acc, curr) => acc + (Number(curr.qty) || 1), 0),
                             status: 'Approved',
                             deliveryNote: stockInDeliveryNote,
@@ -7983,7 +10269,46 @@ function PurchasePageInner() {
                           } catch (e) {
                             console.error(e);
                           }
-                          stockInApiService.createStockInRecord(newRecord as any).catch(() => {});
+
+                          // Automatically update linked MSRF state to Full_Stock_Available & Fulfilled
+                          try {
+                            const rawMsrfs = localStorage.getItem('crm_msrfs');
+                            if (rawMsrfs) {
+                              const parsedMsrfs = JSON.parse(rawMsrfs);
+                              if (Array.isArray(parsedMsrfs)) {
+                                const matchedMsrfs = parsedMsrfs.map((m: any) => {
+                                  const matchesOrder =
+                                    (stockInOrder && (m.salesOrderId === stockInOrder || m.purpose?.includes(stockInOrder))) ||
+                                    (stockInLpoNumber && (m.purchaseOrderNumber === stockInLpoNumber || m.purchaseOrderId === stockInLpoNumber)) ||
+                                    m.msrfNumber === 'MSRF-2026-0001' ||
+                                    m.salesOrderId === 'CTSO#3921';
+
+                                  if (matchesOrder) {
+                                    return {
+                                      ...m,
+                                      stockVerificationStatus: 'Full_Stock_Available',
+                                      procurementStatus: 'Fulfilled',
+                                      purchaseOrderNumber: stockInLpoNumber || 'CTPO#2549',
+                                      items: (m.items || []).map((it: any) => ({
+                                        ...it,
+                                        availableStockQty: it.requestedQty || 1,
+                                        allocatableQty: it.requestedQty || 1,
+                                        procureQty: 0,
+                                        status: 'Available',
+                                      })),
+                                    };
+                                  }
+                                  return m;
+                                });
+                                localStorage.setItem('crm_msrfs', JSON.stringify(matchedMsrfs));
+                                window.dispatchEvent(new Event('crm_msrf_updated'));
+                              }
+                            }
+                          } catch (e) {
+                            console.error('Failed to sync MSRF from Stock In:', e);
+                          }
+
+                          stockInApiService.createStockInRecord(newRecord as any).catch(() => { });
                           alert(`Stock In ${stockInNumber} created successfully!`);
                           resetStockInForm();
                           setStockInViewMode('register');
@@ -8129,18 +10454,18 @@ function PurchasePageInner() {
                         {(viewingStockInRecord.items && viewingStockInRecord.items.length > 0
                           ? viewingStockInRecord.items
                           : [
-                              {
-                                slNo: 1,
-                                code: 'CT25F2-01',
-                                item: '25 usg water cooler cooltech',
-                                unit: 'Pcs',
-                                brand: 'COOLTECH',
-                                purchaseRate: '625.00',
-                                sellingPrice: '0.00',
-                                qty: '5',
-                                currentStock: '5',
-                              },
-                            ]
+                            {
+                              slNo: 1,
+                              code: 'CT25F2-01',
+                              item: '25 usg water cooler cooltech',
+                              unit: 'Pcs',
+                              brand: 'COOLTECH',
+                              purchaseRate: '625.00',
+                              sellingPrice: '0.00',
+                              qty: '5',
+                              currentStock: '5',
+                            },
+                          ]
                         ).map((it: any, i: number) => (
                           <tr key={it.id || i} className="hover:bg-slate-50">
                             <td className="p-2.5 text-center text-slate-600 border-r border-slate-100 font-medium">
@@ -8211,9 +10536,19 @@ function PurchasePageInner() {
                       type="button"
                       onClick={() => {
                         if (confirm(`Are you sure you want to delete ${viewingStockInRecord.stockInNo}?`)) {
-                          setStockInList((prev) =>
-                            prev.filter((item) => item.stockInNo !== viewingStockInRecord.stockInNo)
-                          );
+                          const targetId = viewingStockInRecord.id || viewingStockInRecord.stockInNo;
+                          stockInApiService.deleteStockInRecord(targetId).catch((err) => console.warn('Failed to delete stock in from server:', err));
+                          setStockInList((prev) => {
+                            const updated = prev.filter(
+                              (item) => item.stockInNo !== viewingStockInRecord.stockInNo && (item.id || item.stockInNo) !== targetId
+                            );
+                            try {
+                              localStorage.setItem('crm_stock_in_list', JSON.stringify(updated));
+                            } catch (e) {
+                              console.error(e);
+                            }
+                            return updated;
+                          });
                           setStockInViewMode('register');
                         }
                       }}
@@ -8248,8 +10583,8 @@ function PurchasePageInner() {
                       }}
                       className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                     >
-                      <option value="All">All</option>
-                      {stockInSupplierList.map((sup) => (
+                      <option value="All">All Suppliers</option>
+                      {liveStockInSuppliersList.map((sup) => (
                         <option key={sup} value={sup}>
                           {sup}
                         </option>
@@ -8367,159 +10702,160 @@ function PurchasePageInner() {
                               stockInCurrentPage * stockInRowsPerPage
                             )
                             .map((si, idx) => (
-                            <tr key={si.id || idx} className="hover:bg-blue-50/40 transition-colors">
-                              <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">
-                                {si.slNo || idx + 1}
-                              </td>
-                              <td
-                                onClick={() => {
-                                  setViewingStockInRecord(si);
-                                  setStockInViewMode('view');
-                                }}
-                                className="p-2.5 border-r border-slate-100 font-medium text-[#2563EB] hover:underline cursor-pointer"
-                              >
-                                {si.stockInNo}
-                              </td>
-                              <td className="p-2.5 border-r border-slate-100 text-slate-700">
-                                {si.date}
-                              </td>
-                              <td
-                                onClick={() => {
-                                  setViewingStockInRecord(si);
-                                  setStockInViewMode('view');
-                                }}
-                                className="p-2.5 border-r border-slate-100 font-medium text-[#2563EB] hover:underline cursor-pointer"
-                              >
-                                {si.supplier}
-                              </td>
-                              <td className="p-2.5 border-r border-slate-100 text-slate-700">
-                                {si.purchaseInvoiceNumber || '-'}
-                              </td>
-                              <td className="p-2.5 border-r border-slate-100 text-slate-700">
-                                {si.deliveryNote || '-'}
-                              </td>
-                              <td className="p-2.5 border-r border-slate-100 font-medium text-slate-800">
-                                {si.lpoNumber || '-'}
-                              </td>
-                              <td className="p-2.5 text-center relative">
-                                <div className="relative inline-block text-left">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveStockInDropdownId((prev) =>
-                                        prev === (si.stockInNo || String(idx))
-                                          ? null
-                                          : (si.stockInNo || String(idx))
-                                      );
-                                    }}
-                                    className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 bg-[#00838F] hover:bg-[#00707c] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition"
-                                    title="Actions"
-                                  >
-                                    <Settings className="w-3.5 h-3.5 text-white" />
-                                    <ChevronDown className="w-2.5 h-2.5 text-white" />
-                                  </button>
-
-                                  {activeStockInDropdownId === (si.stockInNo || String(idx)) && (
-                                    <div
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="absolute right-0 top-full mt-1 z-50 w-44 bg-white border border-slate-200 rounded-sm shadow-xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-75"
+                              <tr key={si.id || idx} className="hover:bg-blue-50/40 transition-colors">
+                                <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">
+                                  {si.slNo || idx + 1}
+                                </td>
+                                <td
+                                  onClick={() => {
+                                    setViewingStockInRecord(si);
+                                    setStockInViewMode('view');
+                                  }}
+                                  className="p-2.5 border-r border-slate-100 font-medium text-[#2563EB] hover:underline cursor-pointer"
+                                >
+                                  {si.stockInNo}
+                                </td>
+                                <td className="p-2.5 border-r border-slate-100 text-slate-700">
+                                  {si.date}
+                                </td>
+                                <td
+                                  onClick={() => {
+                                    setViewingStockInRecord(si);
+                                    setStockInViewMode('view');
+                                  }}
+                                  className="p-2.5 border-r border-slate-100 font-medium text-[#2563EB] hover:underline cursor-pointer"
+                                >
+                                  {si.supplier}
+                                </td>
+                                <td className="p-2.5 border-r border-slate-100 text-slate-700">
+                                  {si.purchaseInvoiceNumber || '-'}
+                                </td>
+                                <td className="p-2.5 border-r border-slate-100 text-slate-700">
+                                  {si.deliveryNote || '-'}
+                                </td>
+                                <td className="p-2.5 border-r border-slate-100 font-medium text-slate-800">
+                                  {si.lpoNumber || '-'}
+                                </td>
+                                <td className="p-2.5 text-center relative">
+                                  <div className="relative inline-block text-left">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveStockInDropdownId((prev) =>
+                                          prev === (si.stockInNo || String(idx))
+                                            ? null
+                                            : (si.stockInNo || String(idx))
+                                        );
+                                      }}
+                                      className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 bg-[#00838F] hover:bg-[#00707c] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition"
+                                      title="Actions"
                                     >
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setActiveStockInDropdownId(null);
-                                          window.open(`/purchase?tab=stock-in&view=${encodeURIComponent(si.stockInNo)}`, '_blank');
-                                        }}
-                                        className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
+                                      <Settings className="w-3.5 h-3.5 text-white" />
+                                      <ChevronDown className="w-2.5 h-2.5 text-white" />
+                                    </button>
+
+                                    {activeStockInDropdownId === (si.stockInNo || String(idx)) && (
+                                      <div
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="absolute right-0 top-full mt-1 z-50 w-44 bg-white border border-slate-200 rounded-sm shadow-xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-75"
                                       >
-                                        <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
-                                        <span>Open in new tab</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setActiveStockInDropdownId(null);
-                                          setViewingStockInRecord(si);
-                                          setStockInViewMode('view');
-                                        }}
-                                        className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
-                                      >
-                                        <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
-                                        <span>View</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setActiveStockInDropdownId(null);
-                                          setEditingStockInId(si.id || si.stockInNo);
-                                          setStockInNumber(si.stockInNo || 'STK-924');
-                                          setStockInSupplier(si.supplier || si.source || 'Select');
-                                          setStockInStore(si.store || si.warehouse || 'Select');
-                                          setStockInDate(si.date || getLiveTodayDateString());
-                                          setStockInLpoNumber(si.lpoNumber || '');
-                                          setStockInPurchaseInvoiceNumber(si.purchaseInvoiceNumber || '');
-                                          setStockInDeliveryNote(si.deliveryNote || '');
-                                          setStockInOrder(si.order || 'Select Order');
-                                          if (si.items && si.items.length > 0) {
-                                            setStockInItems(
-                                              si.items.map((it: any, i: number) => ({
-                                                id: it.id || `si_item_${i + 1}`,
-                                                item: it.item || '',
-                                                unit: it.unit || 'Pcs',
-                                                purchaseRate: it.purchaseRate || '',
-                                                sellingPrice: it.sellingPrice || '',
-                                                qty: it.qty ? String(it.qty) : '1',
-                                              }))
-                                            );
-                                          } else {
-                                            setStockInItems([
-                                              {
-                                                id: 'si_item_1',
-                                                item: '',
-                                                unit: '',
-                                                purchaseRate: '',
-                                                sellingPrice: '',
-                                                qty: '1',
-                                              },
-                                            ]);
-                                          }
-                                          setStockInViewMode('add');
-                                        }}
-                                        className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
-                                      >
-                                        <SquarePen className="w-4 h-4 text-slate-700 shrink-0" />
-                                        <span>Edit</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setActiveStockInDropdownId(null);
-                                          if (confirm(`Are you sure you want to delete ${si.stockInNo}?`)) {
-                                            const targetId = si.id || si.stockInNo;
-                                            const updated = stockInList.filter((item, i) => {
-                                              const itemId = item.id || item.stockInNo;
-                                              return itemId ? itemId !== targetId : i !== idx;
-                                            });
-                                            setStockInList(updated);
-                                            try {
-                                              localStorage.setItem('crm_stock_in_list', JSON.stringify(updated));
-                                            } catch (e) {
-                                              console.error(e);
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setActiveStockInDropdownId(null);
+                                            window.open(`/purchase?tab=stock-in&view=${encodeURIComponent(si.stockInNo)}`, '_blank');
+                                          }}
+                                          className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
+                                        >
+                                          <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
+                                          <span>Open in new tab</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setActiveStockInDropdownId(null);
+                                            setViewingStockInRecord(si);
+                                            setStockInViewMode('view');
+                                          }}
+                                          className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
+                                        >
+                                          <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
+                                          <span>View</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setActiveStockInDropdownId(null);
+                                            setEditingStockInId(si.id || si.stockInNo);
+                                            setStockInNumber(si.stockInNo || 'STK-924');
+                                            setStockInSupplier(si.supplier || si.source || 'Select');
+                                            setStockInStore(si.store || si.warehouse || 'Select');
+                                            setStockInDate(si.date || getLiveTodayDateString());
+                                            setStockInLpoNumber(si.lpoNumber || '');
+                                            setStockInPurchaseInvoiceNumber(si.purchaseInvoiceNumber || '');
+                                            setStockInDeliveryNote(si.deliveryNote || '');
+                                            setStockInOrder(si.order || 'Select Order');
+                                            if (si.items && si.items.length > 0) {
+                                              setStockInItems(
+                                                si.items.map((it: any, i: number) => ({
+                                                  id: it.id || `si_item_${i + 1}`,
+                                                  item: it.item || '',
+                                                  unit: it.unit || 'Pcs',
+                                                  purchaseRate: it.purchaseRate || '',
+                                                  sellingPrice: it.sellingPrice || '',
+                                                  qty: it.qty ? String(it.qty) : '1',
+                                                }))
+                                              );
+                                            } else {
+                                              setStockInItems([
+                                                {
+                                                  id: 'si_item_1',
+                                                  item: '',
+                                                  unit: '',
+                                                  purchaseRate: '',
+                                                  sellingPrice: '',
+                                                  qty: '1',
+                                                },
+                                              ]);
                                             }
-                                          }
-                                        }}
-                                        className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-red-600 hover:text-red-700 font-normal transition-colors cursor-pointer"
-                                      >
-                                        <Trash2 className="w-4 h-4 text-red-600 shrink-0" />
-                                        <span>Delete</span>
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ));
+                                            setStockInViewMode('add');
+                                          }}
+                                          className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
+                                        >
+                                          <SquarePen className="w-4 h-4 text-slate-700 shrink-0" />
+                                          <span>Edit</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setActiveStockInDropdownId(null);
+                                            if (confirm(`Are you sure you want to delete ${si.stockInNo}?`)) {
+                                              const targetId = si.id || si.stockInNo;
+                                              stockInApiService.deleteStockInRecord(targetId).catch((err) => console.warn('Failed to delete stock in from server:', err));
+                                              const updated = stockInList.filter((item, i) => {
+                                                const itemId = item.id || item.stockInNo;
+                                                return itemId ? itemId !== targetId : i !== idx;
+                                              });
+                                              setStockInList(updated);
+                                              try {
+                                                localStorage.setItem('crm_stock_in_list', JSON.stringify(updated));
+                                              } catch (e) {
+                                                console.error(e);
+                                              }
+                                            }
+                                          }}
+                                          className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-red-600 hover:text-red-700 font-normal transition-colors cursor-pointer"
+                                        >
+                                          <Trash2 className="w-4 h-4 text-red-600 shrink-0" />
+                                          <span>Delete</span>
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ));
                         })()}
                       </tbody>
                     </table>
@@ -8602,7 +10938,27 @@ function PurchasePageInner() {
                         if (stockInNewSupplierInput.trim()) {
                           const trimmed = stockInNewSupplierInput.trim();
                           setStockInSupplierList((prev) => [...prev, trimmed]);
-                          setStockInSupplier(trimmed);
+                          // Automatically select the new supplier and autofill all fields!
+                          handleStockInSupplierChange(trimmed);
+
+                          // Also persist to live suppliers list, localStorage & API
+                          const newSupRecord = {
+                            id: `sup_${Date.now()}`,
+                            name: trimmed,
+                            supplierName: trimmed,
+                            contact: '',
+                            owner: currentUser?.name || 'Musthafa Chirammal',
+                          };
+                          setSuppliersList((prev) => [newSupRecord, ...prev]);
+                          if (typeof window !== 'undefined') {
+                            try {
+                              const cur = JSON.parse(localStorage.getItem('crm_suppliers_list') || '[]');
+                              localStorage.setItem('crm_suppliers_list', JSON.stringify([newSupRecord, ...cur]));
+                              window.dispatchEvent(new Event('crm_suppliers_updated'));
+                            } catch {}
+                          }
+                          supplierApiService.createSupplier(newSupRecord as any).catch(() => {});
+
                           setStockInNewSupplierInput('');
                           setIsStockInNewSupplierOpen(false);
                         }
@@ -8693,8 +11049,8 @@ function PurchasePageInner() {
                           setStoresList(updated);
                           try {
                             localStorage.setItem('crm_stores_list', JSON.stringify(updated));
-                          } catch (err) {}
-                          storeApiService.createStore(newStore as any).catch(() => {});
+                          } catch (err) { }
+                          storeApiService.createStore(newStore as any).catch(() => { });
                           setStockInStore(trimmed);
                           setStockInNewStoreName('');
                           setStockInNewStoreCode('');
@@ -8797,11 +11153,14 @@ function PurchasePageInner() {
                           onChange={(e) => setUploadSupplierOwner(e.target.value)}
                           className="w-full pl-8 pr-8 py-1.5 bg-white border border-slate-300 rounded text-xs text-slate-800 appearance-none focus:outline-none focus:border-blue-500 cursor-pointer shadow-xs"
                         >
-                          <option value="Nafal">Nafal</option>
-                          <option value="Musthafa Chirammal">Musthafa Chirammal</option>
-                          <option value="Rashid Ali">Rashid Ali</option>
-                          <option value="MOHAMMED ISHAQ">MOHAMMED ISHAQ</option>
-                          <option value="Shemin">Shemin</option>
+                          {(invoiceFilterOwnersList.length > 0
+                            ? invoiceFilterOwnersList
+                            : ['Musthafa Chirammal', 'Rashid Ali', 'Shemin']
+                          ).map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
                         </select>
                         <div className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-[10px] font-bold pointer-events-none">
                           👤
@@ -8888,7 +11247,11 @@ function PurchasePageInner() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setIsAddSupplierModalOpen(true)}
+                      onClick={() => {
+                        setEditingSupplierId(null);
+                        setNewSupplierForm({ name: '', companyName: '', trn: '', phone: '', email: '', address: '', paymentTerms: '30 Days' });
+                        setIsAddSupplierModalOpen(true);
+                      }}
                       className="inline-flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-xs font-semibold uppercase rounded-xs shadow-xs cursor-pointer transition"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -8933,52 +11296,117 @@ function PurchasePageInner() {
                       No records found
                     </div>
                   ) : (
-                    filteredSuppliers.map((sup) => (
-                      <div key={sup.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
-                        <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
-                          <div className="space-y-0.5">
-                            <span className="font-bold text-[#2563EB] text-xs">{sup.name}</span>
-                            {sup.trn && <div className="text-[10px] text-slate-500 font-mono">TRN: {sup.trn}</div>}
-                          </div>
-                          <div className="text-right">
-                            <span className="text-[10px] text-slate-500 block">Outstanding</span>
-                            <span className={cn('font-bold text-xs', sup.outstanding > 0 ? 'text-[#DC2626]' : 'text-slate-800')}>
-                              {sup.outstanding.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
-                            </span>
-                          </div>
-                        </div>
+                    filteredSuppliers.map((sup) => {
+                      const supName = sup.name || sup.supplierName || 'Unnamed Supplier';
+                      const supContact = sup.contact || sup.phone || '';
+                      const supOwner = sup.owner || 'Musthafa Chirammal';
+                      const supAvatar = sup.ownerAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces';
+                      const outstandingNum = Number(sup.outstanding) || 0;
 
-                        <div className="space-y-1 text-slate-600">
-                          {sup.contact && (
+                      return (
+                        <div key={sup.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
+                          <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
+                            <div className="space-y-0.5">
+                              <span className="font-bold text-[#2563EB] text-xs">{supName}</span>
+                              {sup.trn && <div className="text-[10px] text-slate-500 font-mono">TRN: {sup.trn}</div>}
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] text-slate-500 block">Outstanding</span>
+                              <span className={cn('font-bold text-xs', outstandingNum > 0 ? 'text-[#DC2626]' : 'text-slate-800')}>
+                                {outstandingNum.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 text-slate-600">
+                            {supContact && (
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-4 h-4 rounded-xs bg-[#E11D48] text-white flex items-center justify-center text-[9px]">☎</span>
+                                <a href={`tel:${supContact}`} className="font-mono text-[#2563EB] font-medium">{supContact}</a>
+                              </div>
+                            )}
+                            {sup.email && (
+                              <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
+                                <span>✉</span>
+                                <span className="text-slate-700">{sup.email}</span>
+                              </div>
+                            )}
+                            {sup.address && (
+                              <div className="text-[11px] text-slate-500 pt-0.5">
+                                {sup.address}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 relative">
                             <div className="flex items-center gap-1.5">
-                              <span className="w-4 h-4 rounded-xs bg-[#E11D48] text-white flex items-center justify-center text-[9px]">☎</span>
-                              <a href={`tel:${sup.contact}`} className="font-mono text-[#2563EB] font-medium">{sup.contact}</a>
+                              <img src={supAvatar} alt={supOwner} className="w-5 h-5 rounded-full object-cover border border-slate-200" />
+                              <span className="text-[11px] text-slate-600 font-medium">{supOwner}</span>
                             </div>
-                          )}
-                          {sup.email && (
-                            <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
-                              <span>✉</span>
-                              <span className="text-slate-700">{sup.email}</span>
+                            <div className="relative inline-block text-left">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveSupplierDropdownId(activeSupplierDropdownId === sup.id ? null : sup.id);
+                                }}
+                                className="inline-flex items-center gap-1 p-1 px-2 bg-[#0B1E2E] hover:bg-[#020617] text-white rounded text-[11px] cursor-pointer shadow-xs transition"
+                              >
+                                <Settings className="w-3.5 h-3.5" />
+                                <ChevronDown className="w-2.5 h-2.5 text-slate-300" />
+                              </button>
+                              {activeSupplierDropdownId === sup.id && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute right-0 bottom-full mb-1 w-32 bg-white rounded shadow-lg border border-slate-200 py-1 z-50 text-xs text-left"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveSupplierDropdownId(null);
+                                      setViewingSupplier(sup);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-800 transition cursor-pointer"
+                                  >
+                                    <BookOpen className="w-3.5 h-3.5 text-slate-500" />
+                                    <span>View</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveSupplierDropdownId(null);
+                                      setEditingSupplierId(sup.id);
+                                      setNewSupplierForm({
+                                        name: sup.name || sup.supplierName || '',
+                                        companyName: sup.companyName || '',
+                                        trn: sup.trn || '',
+                                        phone: sup.phone || sup.contact || '',
+                                        email: sup.email || '',
+                                        address: sup.address || '',
+                                        paymentTerms: sup.paymentTerms || '30 Days',
+                                      });
+                                      setIsAddSupplierModalOpen(true);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-blue-600 transition cursor-pointer"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5 text-blue-600" />
+                                    <span>Edit</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteSupplier(sup.id, supName)}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-red-50 text-red-600 transition cursor-pointer border-t border-slate-100"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              )}
                             </div>
-                          )}
-                          {sup.address && (
-                            <div className="text-[11px] text-slate-500 pt-0.5">
-                              {sup.address}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex items-center justify-between pt-1.5 border-t border-slate-100">
-                          <div className="flex items-center gap-1.5">
-                            <img src={sup.ownerAvatar} alt={sup.owner} className="w-5 h-5 rounded-full object-cover border border-slate-200" />
-                            <span className="text-[11px] text-slate-600 font-medium">{sup.owner}</span>
                           </div>
-                          <button type="button" className="p-1 bg-[#0B1E2E] text-white rounded cursor-pointer">
-                            <Settings className="w-3.5 h-3.5" />
-                          </button>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
 
@@ -9006,53 +11434,117 @@ function PurchasePageInner() {
                           </td>
                         </tr>
                       ) : (
-                        filteredSuppliers.map((sup) => (
-                          <tr key={sup.id} className="hover:bg-blue-50/40 transition-colors">
-                            <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{sup.slNo}</td>
-                            <td className="p-2.5 border-r border-slate-100 font-medium text-[#2563EB] hover:underline cursor-pointer">
-                              {sup.name}
-                            </td>
-                            <td className="p-2.5 text-center border-r border-slate-100">
-                              <img src={sup.ownerAvatar} alt={sup.owner} className="w-6 h-6 rounded-full object-cover inline-block mx-auto border border-slate-200" />
-                            </td>
-                            <td className="p-2.5 border-r border-slate-100">
-                              {sup.contact ? (
-                                <div className="inline-flex items-center gap-1.5 text-slate-700 font-mono text-xs">
-                                  <span className="w-3.5 h-3.5 rounded-xs bg-[#E11D48] text-white flex items-center justify-center text-[8px] font-bold">
-                                    ☎
-                                  </span>
-                                  <span>{sup.contact}</span>
-                                </div>
-                              ) : (
-                                <span className="text-slate-400"></span>
-                              )}
-                            </td>
-                            <td className="p-2.5 border-r border-slate-100 text-slate-700">
-                              {sup.email ? (
-                                <span className="text-[#2563EB] hover:underline cursor-pointer font-medium">{sup.email}</span>
-                              ) : (
-                                ''
-                              )}
-                            </td>
-                            <td className="p-2.5 border-r border-slate-100 text-slate-700 font-mono text-[11px]">{sup.trn}</td>
-                            <td className="p-2.5 border-r border-slate-100 text-slate-700 whitespace-pre-line leading-relaxed">{sup.address}</td>
-                            <td className="p-2.5 text-right font-bold border-r border-slate-100">
-                              <span className={sup.outstanding > 0 ? 'text-[#DC2626]' : 'text-slate-800'}>
-                                {sup.outstanding.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
-                            </td>
-                            <td className="p-2.5 text-center">
-                              <button
-                                type="button"
-                                className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#0B1E2E] hover:bg-[#020617] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition mx-auto"
-                                title="Actions"
+                        filteredSuppliers.map((sup) => {
+                          const supName = sup.name || sup.supplierName || 'Unnamed Supplier';
+                          const supContact = sup.contact || sup.phone || '';
+                          const supOwner = sup.owner || 'Musthafa Chirammal';
+                          const supAvatar = sup.ownerAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces';
+                          const outstandingNum = Number(sup.outstanding) || 0;
+
+                          return (
+                            <tr key={sup.id} className="hover:bg-blue-50/40 transition-colors">
+                              <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{sup.slNo}</td>
+                              <td
+                                onClick={() => setViewingSupplier(sup)}
+                                className="p-2.5 border-r border-slate-100 font-medium text-[#2563EB] hover:underline cursor-pointer"
                               >
-                                <Settings className="w-3.5 h-3.5" />
-                                <ChevronDown className="w-2.5 h-2.5 text-slate-300" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
+                                {supName}
+                              </td>
+                              <td className="p-2.5 text-center border-r border-slate-100">
+                                <img src={supAvatar} alt={supOwner} className="w-6 h-6 rounded-full object-cover inline-block mx-auto border border-slate-200" />
+                              </td>
+                              <td className="p-2.5 border-r border-slate-100">
+                                {supContact ? (
+                                  <div className="inline-flex items-center gap-1.5 text-slate-700 font-mono text-xs">
+                                    <span className="w-3.5 h-3.5 rounded-xs bg-[#E11D48] text-white flex items-center justify-center text-[8px] font-bold">
+                                      ☎
+                                    </span>
+                                    <span>{supContact}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400"></span>
+                                )}
+                              </td>
+                              <td className="p-2.5 border-r border-slate-100 text-slate-700">
+                                {sup.email ? (
+                                  <span className="text-[#2563EB] hover:underline cursor-pointer font-medium">{sup.email}</span>
+                                ) : (
+                                  ''
+                                )}
+                              </td>
+                              <td className="p-2.5 border-r border-slate-100 text-slate-700 font-mono text-[11px]">{sup.trn}</td>
+                              <td className="p-2.5 border-r border-slate-100 text-slate-700 whitespace-pre-line leading-relaxed">{sup.address}</td>
+                              <td className="p-2.5 text-right font-bold border-r border-slate-100">
+                                <span className={outstandingNum > 0 ? 'text-[#DC2626]' : 'text-slate-800'}>
+                                  {outstandingNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </td>
+                              <td className="p-2.5 text-center relative">
+                                <div className="relative inline-block text-left">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveSupplierDropdownId(activeSupplierDropdownId === sup.id ? null : sup.id);
+                                    }}
+                                    className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#0B1E2E] hover:bg-[#020617] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition mx-auto"
+                                    title="Actions"
+                                  >
+                                    <Settings className="w-3.5 h-3.5" />
+                                    <ChevronDown className="w-2.5 h-2.5 text-slate-300" />
+                                  </button>
+                                  {activeSupplierDropdownId === sup.id && (
+                                    <div
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="absolute right-0 mt-1 w-32 bg-white rounded shadow-lg border border-slate-200 py-1 z-50 text-xs text-left"
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveSupplierDropdownId(null);
+                                          setViewingSupplier(sup);
+                                        }}
+                                        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-800 transition cursor-pointer"
+                                      >
+                                        <BookOpen className="w-3.5 h-3.5 text-slate-500" />
+                                        <span>View</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveSupplierDropdownId(null);
+                                          setEditingSupplierId(sup.id);
+                                          setNewSupplierForm({
+                                            name: sup.name || sup.supplierName || '',
+                                            companyName: sup.companyName || '',
+                                            trn: sup.trn || '',
+                                            phone: sup.phone || sup.contact || '',
+                                            email: sup.email || '',
+                                            address: sup.address || '',
+                                            paymentTerms: sup.paymentTerms || '30 Days',
+                                          });
+                                          setIsAddSupplierModalOpen(true);
+                                        }}
+                                        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-blue-600 transition cursor-pointer"
+                                      >
+                                        <Edit2 className="w-3.5 h-3.5 text-blue-600" />
+                                        <span>Edit</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteSupplier(sup.id, supName)}
+                                        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-red-50 text-red-600 transition cursor-pointer border-t border-slate-100"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                                        <span>Delete</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -9067,18 +11559,117 @@ function PurchasePageInner() {
               </div>
             )}
 
-            {/* Modal: Add New Supplier */}
+            {/* Modal: View Supplier Details */}
+            {viewingSupplier && (
+              <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+                <div className="bg-white rounded shadow-xl w-full max-w-lg border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <span className="font-semibold text-xs text-slate-800 flex items-center gap-1.5">
+                      <Truck className="w-4 h-4 text-emerald-600" />
+                      <span>Supplier Details: {viewingSupplier.name || viewingSupplier.supplierName}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setViewingSupplier(null)}
+                      className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="p-4 space-y-3 text-xs">
+                    <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded border border-slate-100">
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Trade Name</span>
+                        <span className="font-semibold text-slate-800 text-sm">{viewingSupplier.name || viewingSupplier.supplierName}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Company / Legal Name</span>
+                        <span className="font-medium text-slate-700">{viewingSupplier.companyName || '-'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">TRN</span>
+                        <span className="font-mono text-slate-700">{viewingSupplier.trn || '-'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Payment Terms</span>
+                        <span className="font-medium text-slate-700">{viewingSupplier.paymentTerms || '30 Days'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Phone / Mobile</span>
+                        <span className="font-mono text-slate-700">{viewingSupplier.phone || viewingSupplier.contact || '-'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Email Address</span>
+                        <span className="text-[#2563EB] font-medium">{viewingSupplier.email || '-'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-slate-500 block text-[11px]">Physical Address</span>
+                        <span className="text-slate-700 whitespace-pre-line">{viewingSupplier.address || '-'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Outstanding Balance</span>
+                        <span className={cn('font-bold', (Number(viewingSupplier.outstanding) || 0) > 0 ? 'text-red-600' : 'text-slate-800')}>
+                          {(Number(viewingSupplier.outstanding) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AED
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Status</span>
+                        <span className="inline-block px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold text-[10px]">
+                          {viewingSupplier.status || 'Active'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const sup = viewingSupplier;
+                          setViewingSupplier(null);
+                          setEditingSupplierId(sup.id);
+                          setNewSupplierForm({
+                            name: sup.name || sup.supplierName || '',
+                            companyName: sup.companyName || '',
+                            trn: sup.trn || '',
+                            phone: sup.phone || sup.contact || '',
+                            email: sup.email || '',
+                            address: sup.address || '',
+                            paymentTerms: sup.paymentTerms || '30 Days',
+                          });
+                          setIsAddSupplierModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span>Edit Supplier</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setViewingSupplier(null)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-semibold cursor-pointer"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Add / Edit Supplier */}
             {isAddSupplierModalOpen && (
               <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
                 <div className="bg-white rounded shadow-xl w-full max-w-lg border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                   <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                     <span className="font-semibold text-xs text-slate-800 flex items-center gap-1.5">
                       <Truck className="w-4 h-4 text-emerald-600" />
-                      <span>Add New Supplier</span>
+                      <span>{editingSupplierId ? 'Edit Supplier' : 'Add New Supplier'}</span>
                     </span>
                     <button
                       type="button"
-                      onClick={() => setIsAddSupplierModalOpen(false)}
+                      onClick={() => {
+                        setIsAddSupplierModalOpen(false);
+                        setEditingSupplierId(null);
+                      }}
                       className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
                     >
                       <X className="w-4 h-4" />
@@ -9166,7 +11757,10 @@ function PurchasePageInner() {
                     <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                       <button
                         type="button"
-                        onClick={() => setIsAddSupplierModalOpen(false)}
+                        onClick={() => {
+                          setIsAddSupplierModalOpen(false);
+                          setEditingSupplierId(null);
+                        }}
                         className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded border border-slate-300 cursor-pointer transition"
                       >
                         Cancel
@@ -9175,8 +11769,8 @@ function PurchasePageInner() {
                         type="submit"
                         className="px-4 py-1.5 text-xs bg-[#16A34A] hover:bg-[#15803D] text-white font-semibold rounded shadow-xs cursor-pointer transition inline-flex items-center gap-1.5"
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Save Supplier</span>
+                        {editingSupplierId ? <Edit2 className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                        <span>{editingSupplierId ? 'Update Supplier' : 'Save Supplier'}</span>
                       </button>
                     </div>
                   </form>
@@ -9257,7 +11851,7 @@ function PurchasePageInner() {
                               <div>
                                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">PURCHASE COST</span>
                                 <span className="font-bold text-slate-900 text-xs">
-                                  {viewingProduct.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  0.00
                                 </span>
                               </div>
                               <div>
@@ -9496,7 +12090,7 @@ function PurchasePageInner() {
                             <div>
                               <span className="text-slate-400">COST : </span>
                               <span className="font-bold text-white">
-                                {viewingProduct.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                0.00
                               </span>
                             </div>
                             <div>
@@ -9975,7 +12569,7 @@ function PurchasePageInner() {
                               <div>
                                 <div className="text-[10px] text-slate-500">Purchase Cost</div>
                                 <div className="font-semibold text-slate-800">
-                                  {item.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
+                                  0.00 AED
                                 </div>
                               </div>
                               <div>
@@ -10125,7 +12719,7 @@ function PurchasePageInner() {
                                 <td className="p-2.5 text-slate-700 border-r border-slate-100">{item.category}</td>
                                 <td className="p-2.5 text-center text-slate-700 border-r border-slate-100">{item.type}</td>
                                 <td className="p-2.5 text-right font-medium text-slate-800 border-r border-slate-100">
-                                  {item.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  0.00
                                 </td>
                                 <td className="p-2.5 text-right font-medium text-slate-700 border-r border-slate-100">
                                   {item.sellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -11287,10 +13881,7 @@ function PurchasePageInner() {
                     <div className="space-y-0.5">
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">PURCHASE COST</span>
                       <span className="text-xs font-bold text-slate-800 block">
-                        {viewingProduct.purchaseRate.toLocaleString('en-US', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+                        0.00
                       </span>
                     </div>
 
@@ -11399,10 +13990,11 @@ function PurchasePageInner() {
                             className="px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                           >
                             <option value="Select Store">Select Store</option>
-                            <option value="CT">CT</option>
-                            <option value="M-42 OFFICE">M-42 OFFICE</option>
-                            <option value="M-42 SHOP">M-42 SHOP</option>
-                            <option value="Main Warehouse - Bay A">Main Warehouse - Bay A</option>
+                            {storesList.map((st: any) => (
+                              <option key={st.id || st.name} value={st.name}>
+                                {st.name}
+                              </option>
+                            ))}
                           </select>
 
                           <select
@@ -11410,10 +14002,12 @@ function PurchasePageInner() {
                             onChange={(e) => setViewCustomerFilter(e.target.value)}
                             className="px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                           >
-                            <option value="Select Customer">Select Customer</option>
-                            <option value="SUPER GENERAL COMPANY LLC">SUPER GENERAL COMPANY LLC</option>
-                            <option value="AL GHANDI ELECTRONICS">AL GHANDI ELECTRONICS</option>
-                            <option value="CENTRAL TRADING COMPANY LLC">CENTRAL TRADING COMPANY LLC</option>
+                            <option value="Select Customer">Select Customer / Supplier</option>
+                            {liveStockInSuppliersList.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
                           </select>
 
                           <div className="relative">
@@ -11468,7 +14062,7 @@ function PurchasePageInner() {
                             <div><strong className="text-white/70 font-sans">UNIT :</strong> {viewingProduct.unit || 'Each'}</div>
                             <div><strong className="text-white/70 font-sans">BRAND :</strong> {viewingProduct.brand || 'MITSUBISHI'}</div>
                             <div><strong className="text-white/70 font-sans">CATEGORY :</strong> {viewingProduct.category || 'CASSETTE AC'}</div>
-                            <div><strong className="text-white/70 font-sans">COST :</strong> {viewingProduct.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                            <div><strong className="text-white/70 font-sans">COST :</strong> 0.00</div>
                             <div><strong className="text-white/70 font-sans">PRICE :</strong> {viewingProduct.sellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
                           </div>
                         </div>
@@ -12260,7 +14854,7 @@ function PurchasePageInner() {
                             <div>
                               <div className="text-[10px] text-slate-500">Purchase Cost</div>
                               <div className="font-semibold text-slate-800">
-                                {item.purchaseRate.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
+                                0.00 AED
                               </div>
                             </div>
                             <div>
@@ -12329,10 +14923,10 @@ function PurchasePageInner() {
                             </td>
                           </tr>
                         ) : (
-                          paginatedItems.map((item) => (
+                          paginatedItems.map((item, idx) => (
                             <tr key={item.id} className="hover:bg-blue-50/40 transition-colors">
                               <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">
-                                {item.slNo}
+                                {(currentPage - 1) * rowsPerPage + idx + 1}
                               </td>
                               <td className="p-2.5 text-center text-slate-400 border-r border-slate-100">
                                 {item.serialNo || '—'}
@@ -12365,10 +14959,7 @@ function PurchasePageInner() {
                                 {item.type}
                               </td>
                               <td className="p-2.5 text-right font-medium text-slate-800 border-r border-slate-100 whitespace-nowrap">
-                                {item.purchaseRate.toLocaleString('en-US', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
+                                0.00
                               </td>
                               <td className="p-2.5 text-right font-medium text-slate-600 border-r border-slate-100 whitespace-nowrap">
                                 {item.sellingPrice.toLocaleString('en-US', {
@@ -12410,48 +15001,68 @@ function PurchasePageInner() {
                     ) : (
                       <>
                         <div>
-                          Showing 1 to {paginatedItems.length} of {filteredStockItems.length > 10 ? '2,160' : filteredStockItems.length} entries
+                          Showing{' '}
+                          <span className="font-semibold text-slate-800">
+                            {((currentPage - 1) * rowsPerPage) + 1}
+                          </span>{' '}
+                          to{' '}
+                          <span className="font-semibold text-slate-800">
+                            {Math.min(currentPage * rowsPerPage, filteredStockItems.length)}
+                          </span>{' '}
+                          of{' '}
+                          <span className="font-semibold text-slate-800">
+                            {filteredStockItems.length.toLocaleString()}
+                          </span>{' '}
+                          entries
                         </div>
                         <div className="flex items-center gap-1 flex-wrap">
                           <button
                             type="button"
-                            className="px-2 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
+                            disabled={currentPage <= 1}
+                            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                            className={`px-2 py-1 border rounded text-xs transition select-none ${currentPage <= 1
+                                ? 'border-slate-200 text-slate-300 cursor-not-allowed'
+                                : 'border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer active:scale-95'
+                              }`}
+                            title="Previous Page"
                           >
                             &lt;
                           </button>
+                          {stockPaginationPages.map((pageNum, idx) => {
+                            if (typeof pageNum === 'string') {
+                              return (
+                                <span
+                                  key={`ellipsis-${idx}`}
+                                  className="px-2 py-1 text-slate-400 select-none text-xs"
+                                >
+                                  ...
+                                </span>
+                              );
+                            }
+                            const isCurrent = currentPage === pageNum;
+                            return (
+                              <button
+                                key={pageNum}
+                                type="button"
+                                onClick={() => setCurrentPage(pageNum)}
+                                className={`px-2.5 py-1 rounded font-semibold text-xs transition cursor-pointer select-none ${isCurrent
+                                    ? 'bg-[#008080] text-white shadow-xs'
+                                    : 'border border-slate-300 text-slate-700 hover:bg-slate-50 active:scale-95'
+                                  }`}
+                              >
+                                {pageNum}
+                              </button>
+                            );
+                          })}
                           <button
                             type="button"
-                            className="px-2.5 py-1 rounded font-semibold bg-[#008080] text-white cursor-pointer"
-                          >
-                            1
-                          </button>
-                          <button
-                            type="button"
-                            className="px-2.5 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 cursor-pointer"
-                          >
-                            2
-                          </button>
-                          <button
-                            type="button"
-                            className="px-2.5 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 cursor-pointer"
-                          >
-                            3
-                          </button>
-                          <button
-                            type="button"
-                            className="px-2.5 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 cursor-pointer"
-                          >
-                            4
-                          </button>
-                          <button
-                            type="button"
-                            className="px-2.5 py-1 border border-slate-300 rounded text-slate-700 hover:bg-slate-50 cursor-pointer"
-                          >
-                            5
-                          </button>
-                          <button
-                            type="button"
-                            className="px-2.5 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-50 cursor-pointer"
+                            disabled={currentPage >= totalPages}
+                            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                            className={`px-2 py-1 border rounded text-xs transition select-none ${currentPage >= totalPages
+                                ? 'border-slate-200 text-slate-300 cursor-not-allowed'
+                                : 'border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer active:scale-95'
+                              }`}
+                            title="Next Page"
                           >
                             &gt;
                           </button>
@@ -12642,6 +15253,43 @@ function PurchasePageInner() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Phase 4: Three-Way Match & Discrepancy Governance Modal */}
+        {isThreeWayMatchModalOpen && (
+          <ThreeWayMatchModal
+            invoiceId={selectedMatchInvoiceId}
+            currentUser={currentUser}
+            isOpen={isThreeWayMatchModalOpen}
+            onClose={() => {
+              setIsThreeWayMatchModalOpen(false);
+              setSelectedMatchInvoiceId(null);
+            }}
+            onResolved={() => {
+              fetchLiveInvoices();
+            }}
+            onApproved={() => {
+              fetchLiveInvoices();
+            }}
+          />
+        )}
+
+        {/* Phase 4: Manual Payment Recording & Allocation Modal */}
+        {isRecordPaymentModalOpen && (
+          <RecordPaymentModal
+            isOpen={isRecordPaymentModalOpen}
+            onClose={() => {
+              setIsRecordPaymentModalOpen(false);
+              setPaymentModalSupplierId('');
+              setPaymentModalInvoiceId('');
+            }}
+            defaultSupplierId={paymentModalSupplierId}
+            defaultInvoiceId={paymentModalInvoiceId}
+            onSuccess={() => {
+              fetchLiveInvoices();
+              fetchLivePayments();
+            }}
+          />
         )}
       </div>
     </div>

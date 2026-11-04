@@ -54,6 +54,20 @@ export default function DashboardPage() {
   const [repFilter, setRepFilter] = useState('all');
   const [allRegisteredUsers, setAllRegisteredUsers] = useState<Array<{ id: string; name: string; role?: string; department?: string }>>([]);
 
+  const currentMonthLabel = React.useMemo(() => {
+    return new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  }, []);
+
+  const currentQuarterLabel = React.useMemo(() => {
+    const d = new Date();
+    const q = Math.floor(d.getMonth() / 3) + 1;
+    return `Q${q} ${d.getFullYear()}`;
+  }, []);
+
+  const currentYearLabel = React.useMemo(() => {
+    return `Year to Date (${new Date().getFullYear()})`;
+  }, []);
+
   const [isRedirecting, setIsRedirecting] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       const user = authMockService.getCurrentUser();
@@ -427,9 +441,10 @@ export default function DashboardPage() {
               onChange={(e) => setDateFilter(e.target.value)}
               className="bg-transparent text-slate-700 font-medium focus:outline-none cursor-pointer"
             >
-              <option value="month">Current Month (Sep 2026)</option>
-              <option value="quarter">Q3 2026</option>
-              <option value="year">Year to Date (2026)</option>
+              <option value="month">Current Month ({currentMonthLabel})</option>
+              <option value="quarter">{currentQuarterLabel}</option>
+              <option value="year">{currentYearLabel}</option>
+              <option value="all">All Time</option>
             </select>
           </div>
 

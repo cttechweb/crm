@@ -158,7 +158,7 @@ function TasksContent() {
   const [changeStatusForm, setChangeStatusForm] = useState({
     status: 'Pending',
     dueDate: '',
-    dueTime: '06:00 PM',
+    dueTime: '10:00 AM',
     priority: 'Mid',
     comments: '',
     addNote: false,
@@ -173,7 +173,7 @@ function TasksContent() {
     taskUnder: 'CTEQ#1041 770KG ICE MACHINE / FOCUS EMC KITCHENS LLC',
     taskType: 'Follow-up' as TaskType,
     dueDate: new Date().toISOString().split('T')[0],
-    dueTime: '06:00 PM',
+    dueTime: '10:00 AM',
     priority: 'High' as TaskPriority,
     status: 'Pending' as TaskStatus,
     createdBy: defaultUser,
@@ -205,6 +205,8 @@ function TasksContent() {
   const [isAddCustomerTaskOpen, setIsAddCustomerTaskOpen] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [customerTemplate, setCustomerTemplate] = useState('');
+  const [customerTaskDate, setCustomerTaskDate] = useState('');
+  const [customerTaskTime, setCustomerTaskTime] = useState('10:00 AM');
   const [isAddOppTaskOpen, setIsAddOppTaskOpen] = useState(false);
   const [selectedOppId, setSelectedOppId] = useState('');
   const [oppTemplate, setOppTemplate] = useState('');
@@ -1271,7 +1273,7 @@ function TasksContent() {
       taskUnder: 'CTEQ#1041 770KG ICE MACHINE / FOCUS EMC KITCHENS LLC',
       taskType: 'Follow-up',
       dueDate: new Date().toISOString().split('T')[0],
-      dueTime: '06:00 PM',
+      dueTime: '10:00 AM',
       priority: 'High',
       status: 'Pending',
       createdBy: defaultUser,
@@ -1469,7 +1471,7 @@ function TasksContent() {
     setChangeStatusForm({
       status: mappedStatus,
       dueDate: task.dueDate || new Date().toISOString().split('T')[0],
-      dueTime: task.dueTime || '06:00 PM',
+      dueTime: task.dueTime || '10:00 AM',
       priority: mappedPriority,
       comments: task.description || '',
       addNote: false,
@@ -2284,7 +2286,7 @@ function TasksContent() {
                     <div className="relative flex items-center">
                       <input
                         type="text"
-                        value={editingTask.dueTime || '06:00 PM'}
+                        value={editingTask.dueTime || '10:00 AM'}
                         onChange={(e) => setEditingTask({ ...editingTask, dueTime: e.target.value })}
                         className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 shadow-2xs pr-8"
                       />
@@ -2567,7 +2569,7 @@ function TasksContent() {
                         Time
                       </td>
                       <td className="py-2.5 px-3.5 font-bold text-slate-900">
-                        {viewingTaskInfo.dueTime || '06:00 PM'}
+                        {viewingTaskInfo.dueTime || '10:00 AM'}
                       </td>
                     </tr>
 
@@ -2831,7 +2833,7 @@ function TasksContent() {
                 taskUnder: 'GENERIC TASK / GENERAL ASSIGNMENT',
                 taskType: 'Follow-up',
                 dueDate: new Date().toISOString().split('T')[0],
-                dueTime: '06:00 PM',
+                dueTime: '10:00 AM',
                 priority: 'Medium',
                 status: 'Pending',
                 assignee: { name: defaultUser },
@@ -2947,7 +2949,7 @@ function TasksContent() {
                 taskUnder: `LEAD / ${leadName}`,
                 taskType: 'Lead',
                 dueDate: new Date().toISOString().split('T')[0],
-                dueTime: '06:00 PM',
+                dueTime: '10:00 AM',
                 priority: 'High',
                 status: 'Pending',
                 assignee: { name: defaultUser },
@@ -3109,21 +3111,26 @@ function TasksContent() {
                 (c) => c.id === selectedCustomerId || String(c.slNo) === selectedCustomerId
               );
               const custName = matchedCustomer ? matchedCustomer.customerName : selectedCustomerId;
+              const isShemin = Boolean(defaultUser && defaultUser.toLowerCase().includes('shemin'));
               addTask({
                 title: `${customerTemplate ? customerTemplate.toUpperCase() : 'CUSTOMER TASK'} - ${custName}`,
                 taskDetails: `Customer task for ${custName} using ${customerTemplate || 'Follow-up Template'}`,
                 taskUnder: `CUSTOMER / ${custName}`,
                 taskType: 'Customer',
-                dueDate: new Date().toISOString().split('T')[0],
-                dueTime: '06:00 PM',
+                dueDate: customerTaskDate || new Date().toISOString().split('T')[0],
+                dueTime: customerTaskTime || '10:00 AM',
                 priority: 'High',
                 status: 'Pending',
                 assignee: { name: defaultUser },
                 createdBy: defaultUser,
+                assignedBy: defaultUser,
+                department: isShemin ? 'Executive' : 'Operations Desk',
               });
               alert('Customer task created successfully!');
               setSelectedCustomerId('');
               setCustomerTemplate('');
+              setCustomerTaskDate('');
+              setCustomerTaskTime('10:00 AM');
               setIsAddCustomerTaskOpen(false);
             }}
             className="p-6 text-xs text-slate-700"
@@ -3219,6 +3226,45 @@ function TasksContent() {
                   </button>
                 </div>
               </div>
+
+              {/* Due Date Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-28 text-xs font-medium text-slate-700 shrink-0">
+                  Due Date
+                </label>
+                <div className="flex-1">
+                  <input
+                    type="date"
+                    value={customerTaskDate || new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setCustomerTaskDate(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Due Time Field */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <label className="sm:w-28 text-xs font-medium text-slate-700 shrink-0">
+                  Due Time
+                </label>
+                <div className="flex-1">
+                  <select
+                    value={customerTaskTime || '10:00 AM'}
+                    onChange={(e) => setCustomerTaskTime(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="09:00 AM">09:00 AM (Morning)</option>
+                    <option value="10:00 AM">10:00 AM (Standard Daytime)</option>
+                    <option value="11:00 AM">11:00 AM</option>
+                    <option value="12:00 PM">12:00 PM (Noon)</option>
+                    <option value="02:00 PM">02:00 PM (Afternoon)</option>
+                    <option value="03:00 PM">03:00 PM</option>
+                    <option value="04:00 PM">04:00 PM</option>
+                    <option value="05:00 PM">05:00 PM</option>
+                    <option value="06:00 PM">06:00 PM</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
             {/* Bottom Footer Buttons */}
@@ -3285,7 +3331,7 @@ function TasksContent() {
                 taskUnder: `OPPORTUNITY / ${oppTitle}`,
                 taskType: 'Opportunity',
                 dueDate: new Date().toISOString().split('T')[0],
-                dueTime: '06:00 PM',
+                dueTime: '10:00 AM',
                 priority: 'High',
                 status: 'Pending',
                 assignee: { name: defaultUser },
@@ -3451,7 +3497,7 @@ function TasksContent() {
                 taskUnder: `CONTACT / ${contactName}`,
                 taskType: 'Call',
                 dueDate: new Date().toISOString().split('T')[0],
-                dueTime: '06:00 PM',
+                dueTime: '10:00 AM',
                 priority: 'Medium',
                 status: 'Pending',
                 assignee: { name: defaultUser },
@@ -3621,7 +3667,7 @@ function TasksContent() {
                 taskUnder: `CAMPAIGN / ${cmpName}`,
                 taskType: 'Campaign',
                 dueDate: new Date().toISOString().split('T')[0],
-                dueTime: '06:00 PM',
+                dueTime: '10:00 AM',
                 priority: 'Medium',
                 status: 'Pending',
                 assignee: { name: defaultUser },
@@ -3792,7 +3838,7 @@ function TasksContent() {
                 taskUnder: `INVOICE / ${invTitle}`,
                 taskType: 'Follow-up',
                 dueDate: new Date().toISOString().split('T')[0],
-                dueTime: '06:00 PM',
+                dueTime: '10:00 AM',
                 priority: 'High',
                 status: 'Pending',
                 assignee: { name: defaultUser },
@@ -5313,7 +5359,7 @@ function TasksContent() {
               <Input
                 label="Due Time"
                 type="time"
-                value={formData.dueTime || '18:00'}
+                value={formData.dueTime || '10:00'}
                 onChange={(e) => setFormData({ ...formData, dueTime: e.target.value })}
               />
             </div>

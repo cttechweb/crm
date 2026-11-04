@@ -2,26 +2,78 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Search,
   Bell,
   Plus,
   ChevronDown,
   LogOut,
+  FileText,
+  ShoppingBag,
+  Truck,
+  Lock,
+  AlertTriangle,
+  CheckCircle2,
+  MessageSquare,
 } from 'lucide-react';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { UserRole } from '@/types/enterprise-crm';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
+import { useCrmNotifications } from '@/services/notificationService';
 
 import { EnterpriseNavbar } from '@/components/layout/EnterpriseNavbar';
 
+function formatRelativeTime(dateString?: string): string {
+  if (!dateString) return 'Just now';
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    // If created within the last 3 minutes or negative due to minor clock offset, display "Just now"
+    if (diffSeconds < 180) return 'Just now';
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  } catch {
+    return 'Just now';
+  }
+}
+
+function getNotificationIcon(type?: string) {
+  switch (type) {
+    case 'msrf':
+      return <FileText className="w-3.5 h-3.5 text-blue-600" />;
+    case 'stock_available':
+      return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />;
+    case 'shortage':
+      return <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />;
+    case 'po':
+      return <ShoppingBag className="w-3.5 h-3.5 text-purple-600" />;
+    case 'grn':
+      return <Truck className="w-3.5 h-3.5 text-emerald-600" />;
+    case 'closure':
+      return <Lock className="w-3.5 h-3.5 text-slate-600" />;
+    case 'chat':
+      return <MessageSquare className="w-3.5 h-3.5 text-blue-600" />;
+    default:
+      return <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />;
+  }
+}
+
 export function EnterpriseTopHeader() {
+  const router = useRouter();
   const { currentRole, setCurrentRole, globalSearch, setGlobalSearch } = useEnterpriseCrm();
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [currentUser, setCurrentUser] = useState<MockAuthUser | null>(null);
   const [avatarError, setAvatarError] = useState(false);
+
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useCrmNotifications(currentUser);
 
   React.useEffect(() => {
     setAvatarError(false);
@@ -246,30 +298,96 @@ export function EnterpriseTopHeader() {
                 onClick={() => setShowNotifications(!showNotifications)}
                 className="relative p-1.5 sm:p-2 rounded-md text-slate-600 hover:text-[#2563EB] hover:bg-blue-50 transition-colors cursor-pointer"
                 title="Notifications"
+                aria-label="System Notifications"
               >
                 <Bell className="w-4 h-4 text-[#2563EB]" />
-                <span className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 w-2 h-2 rounded-full bg-[#DC2626]" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#DC2626] text-white text-[10px] font-black flex items-center justify-center ring-2 ring-white shadow-xs animate-in zoom-in-50">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
               </button>
 
               {showNotifications && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
-                  <div className="absolute right-0 mt-1.5 w-72 sm:w-80 bg-white border border-[#E2E8F0] rounded-md shadow-xl z-50 p-3 space-y-2 animate-in fade-in duration-150">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <span className="text-xs font-bold text-slate-900">System Notifications</span>
-                      <span className="text-[10px] text-[#2563EB] font-semibold cursor-pointer">Mark all read</span>
+                  <div className="absolute right-0 mt-1.5 w-80 sm:w-96 bg-white border border-[#E2E8F0] rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-50 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900">Notifications</span>
+                        {unreadCount > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
+                            {unreadCount} new
+                          </span>
+                        )}
+                      </div>
+                      {unreadCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => markAllAsRead()}
+                          className="text-[11px] text-[#2563EB] hover:underline font-semibold cursor-pointer"
+                        >
+                          Mark all read
+                        </button>
+                      )}
                     </div>
-                    <div className="space-y-2 max-h-64 overflow-y-auto text-xs text-slate-600 divide-y divide-slate-100">
-                      <div className="pt-2">
-                        <p className="font-semibold text-slate-900">New high-priority lead assigned</p>
-                        <p className="text-[11px] text-slate-500">Acme Corporation requested enterprise SLA</p>
-                        <span className="text-[10px] text-slate-400">10 mins ago</span>
-                      </div>
-                      <div className="pt-2">
-                        <p className="font-semibold text-slate-900">Quotation approved</p>
-                        <p className="text-[11px] text-slate-500">Lumina Health Systems quote $110,000</p>
-                        <span className="text-[10px] text-slate-400">1 hour ago</span>
-                      </div>
+
+                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                      {notifications.length === 0 ? (
+                        <div className="py-8 px-4 text-center text-slate-400">
+                          <Bell className="w-8 h-8 mx-auto mb-2 text-slate-300 stroke-[1.5]" />
+                          <p className="text-xs font-semibold text-slate-600">No Notifications</p>
+                          <p className="text-[11px] text-slate-400">All workflow requests are up to date</p>
+                        </div>
+                      ) : (
+                        notifications.map((n) => (
+                          <div
+                            key={n.id}
+                            onClick={() => {
+                              markAsRead(n.id);
+                              if (n.linkUrl) {
+                                setShowNotifications(false);
+                                router.push(n.linkUrl);
+                              }
+                            }}
+                            className={`p-3 text-left transition-colors flex items-start gap-2.5 cursor-pointer hover:bg-slate-50 ${
+                              !n.isRead ? 'bg-blue-50/50' : 'bg-white'
+                            }`}
+                          >
+                            <div className="mt-0.5 p-1.5 rounded-lg bg-white border border-slate-200/80 shadow-2xs flex-shrink-0">
+                              {getNotificationIcon(n.type)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-1 mb-0.5">
+                                <p className={`text-xs truncate ${!n.isRead ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'}`}>
+                                  {n.title}
+                                </p>
+                                {!n.isRead && (
+                                  <span className="w-2 h-2 rounded-full bg-blue-600 flex-shrink-0" />
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-600 leading-snug line-clamp-2">
+                                {n.message}
+                              </p>
+                              <div className="mt-1 flex items-center justify-between text-[10px]">
+                                {formatRelativeTime(n.createdAt) === 'Just now' ? (
+                                  <span className="font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center gap-1 border border-emerald-200">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    Just now
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">{formatRelativeTime(n.createdAt)}</span>
+                                )}
+                                {n.linkUrl && (
+                                  <span className="text-[#2563EB] font-semibold flex items-center gap-0.5">
+                                    View &rarr;
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </>

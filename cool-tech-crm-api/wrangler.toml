@@ -16,3 +16,12 @@ database_id = "a3791fcd-94fd-4a4b-8d36-27312842226c"
 [[services]]
 binding = "ECOMMERCE_SERVICE"
 service = "cooltech-api-worker"
+
+[durable_objects]
+bindings = [
+  { name = "CHAT_ROOM", class_name = "ChatRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ChatRoom"]

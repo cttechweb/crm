@@ -60,7 +60,7 @@ const INITIAL_ADMINS: AdminAccount[] = [
     organizationId: 'org_cool_tech_001',
     organizationName: 'Cool Technologies LLC',
     status: 'Active',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+    avatar: '/avatars/shemin.jpg',
     designation: 'Managing Director / Business Admin',
     department: 'Executive Operations',
     createdAt: '2026-01-15',

@@ -69,6 +69,12 @@ function createProcurementDatabase() {
   const procMigration = fs.readFileSync(path.resolve(__dirname, '../migrations/0007_create_procurement_and_inventory.sql'), 'utf8');
   sqlite.exec(procMigration);
 
+  const userPermsMigration = fs.readFileSync(path.resolve(__dirname, '../migrations/0009_user_profile_and_permissions.sql'), 'utf8');
+  sqlite.exec(userPermsMigration);
+
+  const procGovMigration = fs.readFileSync(path.resolve(__dirname, '../migrations/0010_procurement_governance_core.sql'), 'utf8');
+  sqlite.exec(procGovMigration);
+
   const mockD1 = {
     prepare(sql) {
       return {
@@ -183,11 +189,11 @@ describe('Procurement and Inventory Test Suite', () => {
 
     // Seed staff profiles
     sqlite.exec(`
-      INSERT INTO users (id, firebase_uid, email, full_name, role, department) VALUES
-      ('usr_admin_p', 'firebase_admin_proc', 'admin.proc@cooltech.com', 'Admin User', 'ADMIN', 'Executive Operations'),
-      ('usr_manager_p', 'firebase_manager_proc', 'purchasemanager@gmail.com', 'Rashid Ali', 'MANAGER', 'Purchase'),
-      ('usr_emp1_p', 'firebase_emp1_proc', 'musthafa@cooltech.com', 'MUSTHAFA CHIRAMMAL', 'EMPLOYEE', 'Purchase'),
-      ('usr_emp2_p', 'firebase_emp2_proc', 'shaheer.proc@cooltech.com', 'Shaheer', 'EMPLOYEE', 'Sales');
+      INSERT INTO users (id, firebase_uid, email, full_name, role, department, designation) VALUES
+      ('usr_admin_p', 'firebase_admin_proc', 'admin.proc@cooltech.com', 'Admin User', 'ADMIN', 'Executive Operations', 'Operations Director'),
+      ('usr_manager_p', 'firebase_manager_proc', 'purchasemanager@gmail.com', 'Rashid Ali', 'MANAGER', 'Purchase', 'Finance Controller'),
+      ('usr_emp1_p', 'firebase_emp1_proc', 'musthafa@cooltech.com', 'MUSTHAFA CHIRAMMAL', 'EMPLOYEE', 'Purchase', 'Procurement Specialist'),
+      ('usr_emp2_p', 'firebase_emp2_proc', 'shaheer.proc@cooltech.com', 'Shaheer', 'EMPLOYEE', 'Sales', 'Sales Executive');
     `);
   });
 
@@ -538,8 +544,8 @@ describe('Procurement and Inventory Test Suite', () => {
     );
     const po = (await createRes.json()).order;
 
-    // Manager updates approval to Approved and deliveryStatus to Delivered
-    const patchRes = await app.request(
+    // 1. Attempting to bypass gatekeeper via status patch is strictly blocked (400)
+    const bypassRes = await app.request(
       `/api/purchase-orders/${po.id}/status`,
       {
         method: 'PATCH',
@@ -549,6 +555,42 @@ describe('Procurement and Inventory Test Suite', () => {
         },
         body: JSON.stringify({
           approval: 'Approved',
+        }),
+      },
+      getEnv()
+    );
+    assert.equal(bypassRes.status, 400);
+
+    // 2. Verified Finance Controller approves PO via dedicated gatekeeper endpoint
+    const approveRes = await app.request(
+      `/api/purchase-orders/${po.id}/approve`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${managerToken}`,
+        },
+        body: JSON.stringify({
+          action: 'Approve',
+          remarks: 'Standard budget verified',
+        }),
+      },
+      getEnv()
+    );
+    assert.equal(approveRes.status, 200);
+    const approveBody = await approveRes.json();
+    assert.equal(approveBody.order.approval, 'Approved');
+
+    // 3. Status endpoint updates deliveryStatus and paymentStatus
+    const patchRes = await app.request(
+      `/api/purchase-orders/${po.id}/status`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${managerToken}`,
+        },
+        body: JSON.stringify({
           deliveryStatus: 'Delivered',
           paymentStatus: 'Paid',
         }),

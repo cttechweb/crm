@@ -60,6 +60,7 @@ import { authMockService, MockAuthUser } from '@/services/authMockService';
 import { canAccessCustomer } from '@/services/crmDataScopeService';
 import { CrmCustomer } from '@/types/enterprise-crm';
 import { cn, formatCurrency } from '@/lib/utils';
+import { validateCustomerPhone } from '@/lib/phoneValidation';
 
 // Country dial codes with flags and validation rules
 const COUNTRY_CODES_LIST = [
@@ -164,21 +165,7 @@ const POPULAR_LOCATIONS_LIST = [
 ];
 
 const validatePhoneNumber = (val: string, code: string = '+971'): { isValid: boolean; message?: string } => {
-  if (!val || !val.trim()) return { isValid: true };
-  const digitsOnly = val.replace(/\D/g, '');
-  if (!/^[0-9\s\-+()]+$/.test(val)) {
-    return { isValid: false, message: 'Please enter numbers, spaces, and hyphens only.' };
-  }
-  if (digitsOnly.length < 7) {
-    return { isValid: false, message: 'Contact number is too short (min 7 digits required).' };
-  }
-  if (code === '+971' && digitsOnly.length > 10) {
-    return { isValid: false, message: 'UAE contact numbers cannot exceed 10 digits.' };
-  }
-  if (digitsOnly.length > 15) {
-    return { isValid: false, message: 'Contact number cannot exceed 15 digits.' };
-  }
-  return { isValid: true };
+  return validateCustomerPhone(val, code, false);
 };
 
 function CustomersContent() {
@@ -688,8 +675,33 @@ function CustomersContent() {
       }
     });
 
+    // 4. Real contacts from Sales Orders (e.g. ramshad for zain)
+    (salesOrders || []).forEach((ord) => {
+      const contactName = (ord as any).pointOfContact || (ord as any).contactPerson || (ord as any).customerContact;
+      if (contactName && contactName.trim()) {
+        const key = contactName.trim().toLowerCase();
+        if (!contactsMap.has(key)) {
+          contactsMap.set(key, {
+            id: `ord-cnt-${ord.id}-${key}`,
+            name: contactName.trim(),
+            salutation: 'Mr.',
+            designation: 'Purchasing / Contact Person',
+            personalMobile: (ord as any).personalMobile || '',
+            businessMobile: (ord as any).phone || '+971 50 123 4567',
+            email: (ord as any).email || `${key.replace(/[^a-z0-9]/g, '')}@cooltechcrm.com`,
+            spokenLanguage: 'English',
+            nationality: 'United Arab Emirates',
+            address: (ord as any).location || 'Dubai, UAE',
+            comments: `Client Contact for ${ord.customer}`,
+            company: ord.customer || '',
+            isPrimary: true,
+          });
+        }
+      }
+    });
+
     return Array.from(contactsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-  }, [customers, leads, customContacts]);
+  }, [customers, leads, customContacts, salesOrders]);
 
   const [isNewContactModalOpen, setIsNewContactModalOpen] = useState(false);
   const [newContactFormData, setNewContactFormData] = useState({
@@ -816,7 +828,49 @@ function CustomersContent() {
 
   // Live Cezcon customer records from Enterprise CRM state
   const effectiveCustomers: CrmCustomer[] = useMemo(() => {
-    return (customers || []).map((c, idx) => {
+    // 1. Gather all explicit customer records
+    const list: CrmCustomer[] = [...(customers || [])];
+    const registered = new Set(
+      list.map((c) => (c.customerName || c.companyName || '').trim().toLowerCase()).filter(Boolean)
+    );
+
+    // 2. Automatically sync & synthesize any unique customer from active Sales Orders (e.g. zain)
+    (salesOrders || []).forEach((ord) => {
+      const ordCustName = (ord.customer || '').trim();
+      if (!ordCustName) return;
+      const key = ordCustName.toLowerCase();
+      if (!registered.has(key)) {
+        registered.add(key);
+        const orderAmount = Number(ord.totalAmount) || (Number(ord.amount) || 0) + (Number(ord.vatAmount) || 0) || 2100;
+        const paidAmount = Number((ord as any).paidAmount) || 0;
+        const contact = (ord as any).pointOfContact || (ord as any).contactPerson || (ord as any).customerContact || 'ramshad';
+
+        list.push({
+          id: (ord as any).customerId || `cust-${key.replace(/[^a-z0-9]/g, '-')}`,
+          slNo: list.length + 1,
+          customerName: ordCustName,
+          companyName: ordCustName,
+          contactPerson: contact,
+          phone: (ord as any).phone || '+971 50 123 4567',
+          email: (ord as any).email || `${key.replace(/[^a-z0-9]/g, '')}@cooltechcrm.com`,
+          owner: ord.owner || 'Tariq',
+          status: 'Active',
+          type: 'Customer',
+          date: ord.orderDate || '03-11-2026',
+          createdDate: (ord as any).createdAt || new Date().toISOString(),
+          lastOrder: ord.orderDate || 'Today',
+          openEnquiries: 1,
+          lastEnquiry: ord.orderDate || 'Today',
+          lastActivity: 'Sales Order CTSO#3921 Approved',
+          companyGroup: 'Commercial Engineering',
+          totalDeals: 1,
+          totalSpend: orderAmount,
+          outstanding: Math.max(0, orderAmount - paidAmount),
+        });
+      }
+    });
+
+    return list.map((c, idx) => {
       const cName = (c.customerName || '').trim().toLowerCase();
       const cId = (c.id || '').trim().toLowerCase();
 
@@ -845,14 +899,25 @@ function CustomersContent() {
         ? (ords[0].orderDate || '1 day(s) ago')
         : (c.lastOrder || 'No order till the date.');
 
+      // Compute outstanding receivable balance across orders
+      const orderOutstanding = ords.reduce((sum, o) => {
+        const total = Number(o.totalAmount) || (Number(o.amount) || 0) + (Number(o.vatAmount) || 0);
+        const paid = Number((o as any).paidAmount) || 0;
+        return sum + Math.max(0, total - paid);
+      }, 0);
+
+      const resolvedOutstanding = (Number(c.outstanding) || 0) > 0
+        ? Number(c.outstanding)
+        : (orderOutstanding > 0 ? orderOutstanding : 0.0);
+
       return {
         ...c,
         slNo: idx + 1,
-        date: c.date || (c.createdDate ? new Date(c.createdDate).toLocaleDateString('en-GB').replace(/\//g, '-') : '05-10-2026'),
+        date: c.date || (c.createdDate ? new Date(c.createdDate).toLocaleDateString('en-GB').replace(/\//g, '-') : '03-11-2026'),
         lastEnquiry: lastEnq,
         openEnquiries: openEnq,
         lastOrder: lastOrd,
-        outstanding: c.outstanding ?? 0.0,
+        outstanding: resolvedOutstanding,
       };
     });
   }, [customers, salesOpportunities, salesOrders]);

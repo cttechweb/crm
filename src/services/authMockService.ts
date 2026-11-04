@@ -80,7 +80,7 @@ export const POSITION_HIERARCHY_CONFIG: Record<
   string,
   {
     crmRole: 'Super Admin' | 'Admin' | 'Manager' | 'Employee';
-    department: 'Executive' | 'Management' | 'Sales' | 'Purchase';
+    department: 'Executive' | 'Management' | 'Sales' | 'Purchase' | 'Finance' | 'Operations' | string;
     reportsToPositions: string[];
   }
 > = {
@@ -128,6 +128,16 @@ export const POSITION_HIERARCHY_CONFIG: Record<
     crmRole: 'Employee',
     department: 'Purchase',
     reportsToPositions: ['Purchase Manager', 'CPO'],
+  },
+  'Finance Controller': {
+    crmRole: 'Manager',
+    department: 'Finance',
+    reportsToPositions: ['COO', 'CEO'],
+  },
+  'Operation Manager': {
+    crmRole: 'Manager',
+    department: 'Operations',
+    reportsToPositions: ['COO', 'CEO'],
   },
 };
 
@@ -399,7 +409,7 @@ export function resolveDefaultPermissions(
         users: false,
         settings: true,
       },
-      actionPermissions: { canCreate: true, canEdit: true, canDelete: false, canExport: true, canView: true, canPrint: true },
+      actionPermissions: { canCreate: true, canEdit: true, canDelete: false, canExport: true, canView: true, canPrint: true, canApprove: true },
       dataScope: 'team' as const,
     };
   }
@@ -530,6 +540,7 @@ const MOCK_CREDENTIALS: Array<{
         department: 'Executive',
         organizationId: 'org_platform_root',
         organizationName: 'Platform Central',
+        avatar: '/avatars/shemin.jpg',
         designation: 'CEO / Super Admin',
       },
     },
@@ -562,7 +573,7 @@ const MOCK_CREDENTIALS: Array<{
         position: 'COO',
         organizationId: 'org_cool_tech_001',
         organizationName: 'Cool Technologies LLC',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+        avatar: '/avatars/shemin.jpg',
         designation: 'COO / Business Admin',
         profileType: 'Admin',
         department: 'Management',
@@ -598,6 +609,7 @@ const MOCK_CREDENTIALS: Array<{
         department: 'Executive',
         organizationId: 'org_platform_root',
         organizationName: 'Platform Central',
+        avatar: '/avatars/shemin.jpg',
         designation: 'CEO / Super Admin',
       },
     },
@@ -725,6 +737,84 @@ const MOCK_CREDENTIALS: Array<{
         profileType: 'Manager',
         managerType: 'Sales Manager',
         department: 'Sales',
+      },
+    },
+    {
+      email: 'arafath@cooltechuae.com',
+      password: 'cool@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'usr_arafath_001',
+        name: 'Arafath',
+        email: 'arafath@cooltechuae.com',
+        role: 'manager',
+        position: 'Sales Manager',
+        department: 'Sales',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+        designation: 'Sales Manager',
+        profileType: 'Manager',
+        managerType: 'Sales Manager',
+      },
+    },
+    {
+      email: 'arafath@gmail.com',
+      password: 'cool@123',
+      redirectUrl: '/manager/dashboard',
+      user: {
+        id: 'usr_arafath_001',
+        name: 'Arafath',
+        email: 'arafath@gmail.com',
+        role: 'manager',
+        position: 'Sales Manager',
+        department: 'Sales',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+        designation: 'Sales Manager',
+        profileType: 'Manager',
+        managerType: 'Sales Manager',
+      },
+    },
+    {
+      email: 'tariq@cooltechuae.com',
+      password: 'cool@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'usr_1792753099441',
+        name: 'Tariq',
+        email: 'tariq@cooltechuae.com',
+        role: 'employee',
+        position: 'Sales Executive',
+        department: 'Sales',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: '/avatars/tariq.jpg',
+        designation: 'Sales Executive',
+        profileType: 'Employee',
+        employeeType: 'Sales Executive',
+        managerId: 'usr_arafath_001',
+      },
+    },
+    {
+      email: 'tariq@gmail.com',
+      password: 'cool@123',
+      redirectUrl: '/worker/dashboard',
+      user: {
+        id: 'usr_1792753099441',
+        name: 'Tariq',
+        email: 'tariq@gmail.com',
+        role: 'employee',
+        position: 'Sales Executive',
+        department: 'Sales',
+        organizationId: 'org_cool_tech_001',
+        organizationName: 'Cool Technologies LLC',
+        avatar: '/avatars/tariq.jpg',
+        designation: 'Sales Executive',
+        profileType: 'Employee',
+        employeeType: 'Sales Executive',
+        managerId: 'usr_arafath_001',
       },
     },
     {
@@ -1806,7 +1896,15 @@ export const authMockService = {
         redirectUrl: finalRedirectUrl,
       };
     } catch (firebaseErr: any) {
-      // If Firebase authentication failed, check offline/demo fallback credentials
+      const fbCode = String(firebaseErr?.code || '');
+      // If Firebase explicitly rejected the password, stop immediately with an error
+      if (fbCode === 'auth/wrong-password' || fbCode === 'auth/invalid-credential') {
+        return {
+          success: false,
+          error: 'Invalid email or password. Please check your credentials.',
+        };
+      }
+      // If user not registered in Firebase or offline demo, check local accounts below
     }
 
     // 2. Direct match against pre-configured system credentials (e.g. afsal@gmail.com, shibil@gmail.com, superadmin@gmail.com)
@@ -1880,10 +1978,18 @@ export const authMockService = {
                 };
               }
               const storedPwd = (matchedUser.password || '').trim();
-              if (storedPwd === trimmedPassword || !storedPwd) {
-                const targetEmail = (matchedUser.email || (matchedUser.username?.includes('@') ? matchedUser.username : '') || trimmedEmail).trim().toLowerCase();
-                let serverUserResult: { user: MockAuthUser; redirectUrl: string } | null = null;
-                let realFbUid: string | null = matchedUser.firebaseUid || null;
+              const targetEmail = (matchedUser.email || (matchedUser.username?.includes('@') ? matchedUser.username : '') || trimmedEmail).trim().toLowerCase();
+              let serverUserResult: { user: MockAuthUser; redirectUrl: string } | null = null;
+              let realFbUid: string | null = matchedUser.firebaseUid || null;
+
+              if (storedPwd) {
+                if (storedPwd !== trimmedPassword) {
+                  return {
+                    success: false,
+                    error: 'Invalid email or password. Please check your credentials.',
+                  };
+                }
+              } else {
                 try {
                   const cred = await signInWithEmailAndPassword(auth, targetEmail, trimmedPassword);
                   if (cred.user) {
@@ -1891,32 +1997,35 @@ export const authMockService = {
                     serverUserResult = await fetchBackendUserProfile(cred.user);
                   }
                 } catch (fbErr) {
-                  // Non-blocking fallback
+                  return {
+                    success: false,
+                    error: 'Invalid email or password. Please check your credentials.',
+                  };
                 }
-
-                const resolved = resolveCrmUserByEmail(targetEmail, realFbUid || undefined);
-                const isServerVerified = Boolean(serverUserResult);
-                const finalUser: MockAuthUser = serverUserResult
-                  ? serverUserResult.user
-                  : { ...resolved.user, isServerVerified: false };
-                const finalRedirectUrl = serverUserResult?.redirectUrl || resolved.redirectUrl;
-
-                const sessionData = {
-                  authenticated: true,
-                  user: finalUser,
-                  role: finalUser.role,
-                  firebaseUid: realFbUid || `crm_${resolved.user.id}`,
-                  isServerVerified,
-                  rememberMe,
-                  timestamp: Date.now(),
-                };
-                localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
-                return {
-                  success: true,
-                  user: finalUser,
-                  redirectUrl: finalRedirectUrl,
-                };
               }
+
+              const resolved = resolveCrmUserByEmail(targetEmail, realFbUid || undefined);
+              const isServerVerified = Boolean(serverUserResult);
+              const finalUser: MockAuthUser = serverUserResult
+                ? serverUserResult.user
+                : { ...resolved.user, isServerVerified: false };
+              const finalRedirectUrl = serverUserResult?.redirectUrl || resolved.redirectUrl;
+
+              const sessionData = {
+                authenticated: true,
+                user: finalUser,
+                role: finalUser.role,
+                firebaseUid: realFbUid || `crm_${resolved.user.id}`,
+                isServerVerified,
+                rememberMe,
+                timestamp: Date.now(),
+              };
+              localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
+              return {
+                success: true,
+                user: finalUser,
+                redirectUrl: finalRedirectUrl,
+              };
             }
           }
         }
@@ -1940,10 +2049,18 @@ export const authMockService = {
                 };
               }
               const storedPwd = (matchedAdmin.password || '').trim();
-              if (storedPwd === trimmedPassword || !storedPwd) {
-                const targetEmail = (matchedAdmin.email || (matchedAdmin.username?.includes('@') ? matchedAdmin.username : '') || trimmedEmail).trim().toLowerCase();
-                let serverUserResult: { user: MockAuthUser; redirectUrl: string } | null = null;
-                let realFbUid: string | null = null;
+              const targetEmail = (matchedAdmin.email || (matchedAdmin.username?.includes('@') ? matchedAdmin.username : '') || trimmedEmail).trim().toLowerCase();
+              let serverUserResult: { user: MockAuthUser; redirectUrl: string } | null = null;
+              let realFbUid: string | null = null;
+
+              if (storedPwd) {
+                if (storedPwd !== trimmedPassword) {
+                  return {
+                    success: false,
+                    error: 'Invalid email or password. Please check your credentials.',
+                  };
+                }
+              } else {
                 try {
                   const cred = await signInWithEmailAndPassword(auth, targetEmail, trimmedPassword);
                   if (cred.user) {
@@ -1951,32 +2068,35 @@ export const authMockService = {
                     serverUserResult = await fetchBackendUserProfile(cred.user);
                   }
                 } catch (fbErr) {
-                  // Non-blocking fallback
+                  return {
+                    success: false,
+                    error: 'Invalid email or password. Please check your credentials.',
+                  };
                 }
-
-                const resolved = resolveCrmUserByEmail(targetEmail, realFbUid || undefined);
-                const isServerVerified = Boolean(serverUserResult);
-                const finalUser: MockAuthUser = serverUserResult
-                  ? serverUserResult.user
-                  : { ...resolved.user, isServerVerified: false };
-                const finalRedirectUrl = serverUserResult?.redirectUrl || resolved.redirectUrl;
-
-                const sessionData = {
-                  authenticated: true,
-                  user: finalUser,
-                  role: finalUser.role,
-                  firebaseUid: realFbUid || `crm_${resolved.user.id}`,
-                  isServerVerified,
-                  rememberMe,
-                  timestamp: Date.now(),
-                };
-                localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
-                return {
-                  success: true,
-                  user: finalUser,
-                  redirectUrl: finalRedirectUrl,
-                };
               }
+
+              const resolved = resolveCrmUserByEmail(targetEmail, realFbUid || undefined);
+              const isServerVerified = Boolean(serverUserResult);
+              const finalUser: MockAuthUser = serverUserResult
+                ? serverUserResult.user
+                : { ...resolved.user, isServerVerified: false };
+              const finalRedirectUrl = serverUserResult?.redirectUrl || resolved.redirectUrl;
+
+              const sessionData = {
+                authenticated: true,
+                user: finalUser,
+                role: finalUser.role,
+                firebaseUid: realFbUid || `crm_${resolved.user.id}`,
+                isServerVerified,
+                rememberMe,
+                timestamp: Date.now(),
+              };
+              localStorage.setItem('cool_crm_auth', JSON.stringify(sessionData));
+              return {
+                success: true,
+                user: finalUser,
+                redirectUrl: finalRedirectUrl,
+              };
             }
           }
         }

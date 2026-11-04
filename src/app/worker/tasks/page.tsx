@@ -26,6 +26,7 @@ import {
   Sparkles,
   RefreshCw,
   UserCheck,
+  Eye,
 } from 'lucide-react';
 import { WorkerShell } from '@/components/layout/WorkerShell';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
@@ -37,7 +38,7 @@ function WorkerTasksContent() {
   const initialStatus = searchParams.get('status') || 'All';
   const initialSelectedId = searchParams.get('selected');
 
-  const { tasks: rawTasks, acceptTask, startTask, completeTask, updateTaskStatusWorkflow, deleteTask } = useEnterpriseCrm();
+  const { tasks: rawTasks, users, acceptTask, startTask, completeTask, updateTaskStatusWorkflow, deleteTask } = useEnterpriseCrm();
   const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
   const [priorityFilter, setPriorityFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -128,11 +129,33 @@ function WorkerTasksContent() {
     });
 
     return validRaw.map((t) => {
-      const managerName = t.assignedBy || t.createdBy || 'Operations Manager';
-      const scheduledTime = t.dueTime || '04:00 PM';
+      const rawAssigner = (t.assignedBy || t.createdBy || '').trim();
+      const managerName = rawAssigner || 'shemin';
+      const isShemin = managerName.toLowerCase().includes('shemin');
+
+      const matchedUser = users?.find((u) => {
+        const uName = (u.name || '').trim().toLowerCase();
+        const uEmail = (u.email || '').trim().toLowerCase();
+        const uUsername = ((u as any).username || '').trim().toLowerCase();
+        const m = managerName.toLowerCase();
+        return uName === m || uEmail === m || uUsername === m || (isShemin && (uName.includes('shemin') || uEmail.includes('shemin')));
+      });
+
+      const assignedRole = isShemin
+        ? 'CEO'
+        : (matchedUser?.designation || matchedUser?.position || matchedUser?.role || 'Manager');
+
+      const deptName = isShemin
+        ? (t.department && t.department !== 'Operations' && t.department !== 'Operations Desk' ? t.department : (matchedUser?.department || 'Executive'))
+        : (t.department || matchedUser?.department || 'Operations Desk');
+
+      // Schedule Time: If it was saved as late evening 06:00 PM or missing, provide appropriate business daytime hour (10:00 AM)
+      const scheduledTime = (t.dueTime === '06:00 PM' || t.dueTime === '18:00' || !t.dueTime)
+        ? '10:00 AM'
+        : t.dueTime;
+
       const assignedTime = t.createdAt || 'Today';
       const scheduledDate = t.dueDate || 'Today';
-      const deptName = t.department || 'Operations Desk';
       const taskTitle = t.taskDetails || t.title || `Task #${t.id}`;
       const client = t.customer || t.taskUnder || 'Client Facility';
       const location = t.location || t.siteLocation || t.description || 'Job Site Location';
@@ -156,7 +179,7 @@ function WorkerTasksContent() {
         estimatedHours: 2.0,
         actualHoursSpent: 1.0,
         assignedManager: managerName,
-        assignedManagerRole: 'Manager',
+        assignedManagerRole: assignedRole,
         department: deptName,
         description: t.description || t.taskDetails || taskTitle,
         checklist: [
@@ -168,7 +191,7 @@ function WorkerTasksContent() {
         technicianNotes: t.comments?.[0]?.text || '',
       };
     });
-  }, [rawTasks, currentUser]);
+  }, [rawTasks, users, currentUser]);
 
   useEffect(() => {
     if (initialSelectedId) {
@@ -243,11 +266,11 @@ function WorkerTasksContent() {
               My Assigned Tasks & Work Orders
             </h1>
             <span className="px-2 py-0.5 rounded-full bg-blue-50 text-[#2563EB] text-[11px] font-bold border border-blue-200">
-              Manager Certified
+              Verified Assignments
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Operational tasks and service orders assigned by your department manager.
+            Operational tasks and service orders assigned by leadership & management.
           </p>
         </div>
 
@@ -438,7 +461,7 @@ function WorkerTasksContent() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                   <th className="py-3 px-4">Task Info</th>
-                  <th className="py-3 px-4">Assigned by Manager</th>
+                  <th className="py-3 px-4">Assigned By</th>
                   <th className="py-3 px-4">Due Date & Time</th>
                   <th className="py-3 px-4">Customer & Location</th>
                   <th className="py-3 px-4">Status</th>
@@ -469,9 +492,17 @@ function WorkerTasksContent() {
                     >
                       {/* Task Info */}
                       <td className="py-3.5 px-4">
-                        <div className="space-y-1 max-w-sm">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTask(task);
+                            setIsDetailModalOpen(true);
+                          }}
+                          className="space-y-1 max-w-sm text-left group cursor-pointer block"
+                          title="Click to view full details"
+                        >
                           <div className="flex items-center gap-1.5">
-                            <span className="font-black text-[#2563EB] bg-blue-50 px-1.5 py-0.5 rounded text-[10px] border border-blue-200">
+                            <span className="font-black text-[#2563EB] bg-blue-50 group-hover:bg-blue-100 px-1.5 py-0.5 rounded text-[10px] border border-blue-200 transition-colors">
                               #{task.taskNumber}
                             </span>
                             <span
@@ -489,25 +520,34 @@ function WorkerTasksContent() {
                               {task.serviceType}
                             </span>
                           </div>
-                          <div className="font-bold text-slate-900 text-xs sm:text-sm leading-snug">
+                          <div className="font-bold text-slate-900 text-xs sm:text-sm leading-snug group-hover:text-[#2563EB] transition-colors">
                             {task.title}
                           </div>
-                        </div>
+                        </button>
                       </td>
 
-                      {/* Assigned by Manager */}
+                      {/* Assigned By */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-full bg-[#002B49] text-white flex items-center justify-center text-[10px] font-black flex-shrink-0">
-                            {managerInitials || 'MG'}
+                            {managerInitials || 'EX'}
                           </div>
                           <div>
-                            <div className="font-bold text-slate-900 leading-tight flex items-center gap-1">
+                            <div className="font-bold text-slate-900 leading-tight flex items-center gap-1.5 flex-wrap">
                               <span>{task.assignedManager}</span>
-                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                              {task.assignedManagerRole && (
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                                  task.assignedManagerRole === 'CEO'
+                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                    : 'bg-blue-50 text-blue-700 border-blue-200'
+                                }`}>
+                                  {task.assignedManagerRole}
+                                </span>
+                              )}
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                             </div>
                             <div className="text-[10px] text-slate-400 font-semibold leading-tight mt-0.5">
-                              {task.department || 'Operations'}
+                              {task.department || (task.assignedManagerRole === 'CEO' ? 'Executive' : 'Operations')}
                             </div>
                           </div>
                         </div>
@@ -577,10 +617,11 @@ function WorkerTasksContent() {
                               setSelectedTask(task);
                               setIsDetailModalOpen(true);
                             }}
-                            className="p-1.5 text-slate-500 hover:text-[#2563EB] hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                            title="View Full Details"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-bold transition cursor-pointer border border-slate-200"
+                            title="View Full Task Details"
                           >
-                            <ExternalLink className="w-4 h-4" />
+                            <Eye className="w-3.5 h-3.5 text-slate-600" />
+                            <span>View</span>
                           </button>
 
                           {isCurrentActive ? (
@@ -729,20 +770,23 @@ function WorkerTasksContent() {
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="w-7 h-7 rounded-full bg-[#002B49] text-white flex items-center justify-center text-[10px] font-black flex-shrink-0">
-                        {managerInitials || 'MG'}
+                        {managerInitials || 'EX'}
                       </div>
                       <div className="min-w-0">
                         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
-                          Assigned by Manager
+                          {task.assignedManagerRole === 'CEO' ? 'Assigned by CEO' : 'Assigned By'}
                         </span>
                         <div className="text-xs font-bold text-slate-900 truncate leading-tight flex items-center gap-1">
                           <span>{task.assignedManager}</span>
-                          <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                          {task.assignedManagerRole && (
+                            <span className="text-[9px] text-purple-700 font-bold">({task.assignedManagerRole})</span>
+                          )}
+                          <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />
                         </div>
                       </div>
                     </div>
                     <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 flex-shrink-0">
-                      {task.department || 'Operations'}
+                      {task.department || (task.assignedManagerRole === 'CEO' ? 'Executive' : 'Operations')}
                     </span>
                   </div>
 
@@ -785,10 +829,10 @@ function WorkerTasksContent() {
                       setSelectedTask(task);
                       setIsDetailModalOpen(true);
                     }}
-                    className="text-xs font-bold text-slate-600 hover:text-[#2563EB] cursor-pointer flex items-center gap-1 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-bold transition cursor-pointer border border-slate-200"
                   >
-                    <span>Details</span>
-                    <ExternalLink className="w-3 h-3" />
+                    <Eye className="w-3.5 h-3.5 text-slate-600" />
+                    <span>View</span>
                   </button>
 
                   <div className="flex items-center gap-1.5">
@@ -882,13 +926,28 @@ function WorkerTasksContent() {
               {/* Manager & Timeline Details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Assigned by Manager</span>
-                  <div className="font-bold text-slate-900 text-sm mt-0.5 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                    {selectedTask.assignedManagerRole === 'CEO'
+                      ? 'Assigned by CEO'
+                      : selectedTask.assignedManagerRole?.toLowerCase().includes('manager')
+                      ? 'Assigned by Manager'
+                      : `Assigned by ${selectedTask.assignedManagerRole || 'Executive'}`}
+                  </span>
+                  <div className="font-bold text-slate-900 text-sm mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span>{selectedTask.assignedManager}</span>
+                    {selectedTask.assignedManagerRole && (
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                        selectedTask.assignedManagerRole === 'CEO'
+                          ? 'bg-purple-50 text-purple-700 border-purple-200'
+                          : 'bg-blue-50 text-blue-700 border-blue-200'
+                      }`}>
+                        {selectedTask.assignedManagerRole}
+                      </span>
+                    )}
                   </div>
-                  <div className="text-slate-500 text-[11px] mt-0.5">
-                    Department: {selectedTask.department || 'Operations'}
+                  <div className="text-slate-500 text-[11px] mt-0.5 font-medium">
+                    Department: {selectedTask.department || (selectedTask.assignedManagerRole === 'CEO' ? 'Executive' : 'Operations')}
                   </div>
                 </div>
 

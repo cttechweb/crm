@@ -61,6 +61,18 @@ const ALL_ORGANIZATIONAL_POSITIONS = [
   'CPO',
   'Purchase Manager',
   'Purchase Employee',
+  'Finance Controller',
+  'Operation Manager',
+];
+
+const INITIAL_DEPARTMENTS = [
+  'Finance',
+  'Operations',
+  'Sales',
+  'Purchase',
+  'Management',
+  'Executive',
+  'General',
 ];
 
 const COUNTRY_CODES = [
@@ -95,7 +107,7 @@ const CORE_DATABASE_STAFF: CezconUserItem[] = [
     isServerRecord: true,
     loginPermission: 'Web & Mobile',
     avatarBg: 'bg-purple-600',
-    avatarImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+    avatarImage: '/avatars/shemin.jpg',
     reportsTo: null,
     managerId: null,
   },
@@ -209,6 +221,7 @@ export function UsersTab({
   const [isSavingUserToDb, setIsSavingUserToDb] = useState(false);
   const [userCreationError, setUserCreationError] = useState<string | null>(null);
   const [pendingFirebaseUid, setPendingFirebaseUid] = useState<string | null>(null);
+  const [pendingFirebaseEmail, setPendingFirebaseEmail] = useState<string | null>(null);
 
   const [workerFormData, setWorkerFormData] = useState({
     workerCode: '',
@@ -291,6 +304,10 @@ export function UsersTab({
   const [designationSearchQuery, setDesignationSearchQuery] = useState('');
   const [isAddingNewDesignation, setIsAddingNewDesignation] = useState(false);
   const [newDesignationInput, setNewDesignationInput] = useState('');
+
+  const [departmentsList, setDepartmentsList] = useState<string[]>(INITIAL_DEPARTMENTS);
+  const [isAddingNewDepartment, setIsAddingNewDepartment] = useState(false);
+  const [newDepartmentInput, setNewDepartmentInput] = useState('');
 
   const INITIAL_MODULE_OPTIONS = [
     { key: 'dashboard', label: 'Dashboard' },
@@ -1236,6 +1253,9 @@ export function UsersTab({
 
   const resetUserForm = () => {
     setEditingUserId(null);
+    setPendingFirebaseUid(null);
+    setPendingFirebaseEmail(null);
+    setUserCreationError(null);
     setUserFormData({
       name: '',
       email: '',
@@ -1291,6 +1311,7 @@ export function UsersTab({
     setEditingUserId(user.id);
     setUserCreationError(null);
     setPendingFirebaseUid(user.firebaseUid || null);
+    setPendingFirebaseEmail(user.email || null);
 
     const isSuper = user.role === 'Super Admin' || (user.profileType || '').toLowerCase().includes('super');
     const defaults = resolveDefaultPermissions(
@@ -1313,6 +1334,22 @@ export function UsersTab({
     const savedActionPermissions = user.permissions?.actions || user.actionPermissions;
     const savedDataScope = user.permissions?.dataScope || user.dataScope;
 
+    let userDept = user.department || '';
+    if (!userDept) {
+      if (user.position && POSITION_HIERARCHY_CONFIG[user.position]?.department) {
+        userDept = POSITION_HIERARCHY_CONFIG[user.position].department;
+      } else if ((user.position || '').toLowerCase().includes('finance') || (user.profileType || '').toLowerCase().includes('finance')) {
+        userDept = 'Finance';
+      } else if ((user.position || '').toLowerCase().includes('operation')) {
+        userDept = 'Operations';
+      } else if (isSuper) {
+        userDept = 'Executive';
+      }
+    }
+    if (userDept && !departmentsList.includes(userDept)) {
+      setDepartmentsList((prev) => [...prev, userDept]);
+    }
+
     setUserFormData({
       name: user.name || '',
       email: user.email || '',
@@ -1323,7 +1360,7 @@ export function UsersTab({
       mobileNumber: mobileNum,
       dob: user.dob || '',
       position: user.position || (isSuper ? 'CEO' : ''),
-      department: user.department || (isSuper ? 'Executive Operations' : ''),
+      department: userDept,
       profile: isSuper ? 'Super Admin' : (user.profileType || 'Select Profile'),
       managerType: user.managerType || 'Sales Manager',
       employeeType: user.employeeType || 'Sales Executive',
@@ -1475,12 +1512,19 @@ export function UsersTab({
     }
 
     // Automatically create or link user in Firebase Auth
-    let firebaseUid: string | undefined = pendingFirebaseUid || undefined;
-    if (editingUserId && !firebaseUid) {
+    let firebaseUid: string | undefined = undefined;
+    if (editingUserId) {
       const existingUser = cezconUsersList.find((u) => String(u.id) === String(editingUserId));
-      if (existingUser?.firebaseUid) {
-        firebaseUid = existingUser.firebaseUid;
-      }
+      firebaseUid = pendingFirebaseUid || existingUser?.firebaseUid || undefined;
+    } else if (
+      pendingFirebaseUid &&
+      pendingFirebaseEmail &&
+      pendingFirebaseEmail.trim().toLowerCase() === userEmail.trim().toLowerCase()
+    ) {
+      firebaseUid = pendingFirebaseUid;
+    } else {
+      setPendingFirebaseUid(null);
+      setPendingFirebaseEmail(null);
     }
 
     if (!firebaseUid && !editingUserId) {
@@ -1501,10 +1545,12 @@ export function UsersTab({
         if (fbResult.uid) {
           firebaseUid = fbResult.uid;
           setPendingFirebaseUid(firebaseUid);
+          setPendingFirebaseEmail(userEmail);
         } else if (fbResult.alreadyExists) {
           if (fbResult.uid) {
             firebaseUid = fbResult.uid;
             setPendingFirebaseUid(firebaseUid);
+            setPendingFirebaseEmail(userEmail);
           } else {
             setUserCreationError('This email is already registered in Firebase Authentication. Please verify the email address or manage the existing account.');
             setIsCreatingFirebaseUser(false);
@@ -1751,6 +1797,7 @@ export function UsersTab({
 
         // Clear pending UID once confirmed saved in D1
         setPendingFirebaseUid(null);
+        setPendingFirebaseEmail(null);
       } catch (err: unknown) {
         console.error('[UsersTab] Failed to save staff profile to CRM database:', err);
         let msg = 'Failed to persist staff profile to CRM database.';
@@ -1759,7 +1806,13 @@ export function UsersTab({
         } else if (err instanceof Error) {
           msg = err.message;
         }
-        setUserCreationError(`Authentication account registered in Firebase, but database save failed: ${msg}. Click "Retry Database Save" to complete registration.`);
+        if (msg.toLowerCase().includes('firebase uid already exists')) {
+          setPendingFirebaseUid(null);
+          setPendingFirebaseEmail(null);
+          setUserCreationError(`Firebase account conflict: ${msg}. Please submit again to establish a unique account.`);
+        } else {
+          setUserCreationError(`Authentication account registered in Firebase, but database save failed: ${msg}. Click "Retry Database Save" to complete registration.`);
+        }
         setIsSavingUserToDb(false);
         return;
       } finally {
@@ -2045,7 +2098,10 @@ export function UsersTab({
             </div>
             <button
               type="button"
-              onClick={() => setIsAddUserModalOpen(false)}
+              onClick={() => {
+                setIsAddUserModalOpen(false);
+                resetUserForm();
+              }}
               className="w-5 h-5 bg-[#D9534F] hover:bg-[#C9302C] text-white flex items-center justify-center rounded text-xs font-bold transition-colors cursor-pointer"
               title="Close"
             >
@@ -2103,7 +2159,15 @@ export function UsersTab({
                     name="new_admin_user_email_id"
                     autoComplete="new-password"
                     value={userFormData.email}
-                    onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
+                    onChange={(e) => {
+                      const newEmail = e.target.value;
+                      setUserFormData((prev) => ({ ...prev, email: newEmail }));
+                      if (!editingUserId) {
+                        setPendingFirebaseUid(null);
+                        setPendingFirebaseEmail(null);
+                        if (userCreationError) setUserCreationError(null);
+                      }
+                    }}
                     placeholder="user@example.com"
                     className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
                   />
@@ -2454,6 +2518,16 @@ export function UsersTab({
                     onChange={(e) => {
                       const pos = e.target.value;
                       const config = POSITION_HIERARCHY_CONFIG[pos];
+                      let autoDept = config ? config.department : '';
+                      if (!autoDept) {
+                        const lower = pos.toLowerCase();
+                        if (lower.includes('finance') || lower.includes('account')) autoDept = 'Finance';
+                        else if (lower.includes('operation')) autoDept = 'Operations';
+                        else if (lower.includes('purchase')) autoDept = 'Purchase';
+                        else if (lower.includes('sales')) autoDept = 'Sales';
+                        else if (lower.includes('ceo')) autoDept = 'Executive';
+                        else if (lower.includes('coo')) autoDept = 'Management';
+                      }
                       if (config) {
                         const defaults = resolveDefaultPermissions(
                           config.crmRole,
@@ -2464,7 +2538,7 @@ export function UsersTab({
                           ...prev,
                           position: pos,
                           profile: config.crmRole,
-                          department: config.department,
+                          department: autoDept || prev.department,
                           designation: pos,
                           managerType: config.crmRole === 'Manager' ? pos : prev.managerType,
                           employeeType: config.crmRole === 'Employee' ? pos : prev.employeeType,
@@ -2477,6 +2551,8 @@ export function UsersTab({
                         setUserFormData((prev) => ({
                           ...prev,
                           position: pos,
+                          department: autoDept || prev.department,
+                          designation: prev.designation || pos,
                         }));
                       }
                     }}
@@ -2650,9 +2726,19 @@ export function UsersTab({
                                     isMgr ? 'manager' : isEmp ? 'employee' : undefined,
                                     isMgr ? userFormData.managerType : isEmp ? userFormData.employeeType : undefined
                                   );
+                                  let autoDept = userFormData.department;
+                                  const optLower = opt.toLowerCase();
+                                  if (!autoDept || autoDept === 'Sales' || autoDept === 'General') {
+                                    if (optLower.includes('finance')) autoDept = 'Finance';
+                                    else if (optLower.includes('operation')) autoDept = 'Operations';
+                                    else if (optLower.includes('purchase')) autoDept = 'Purchase';
+                                    else if (optLower.includes('sales')) autoDept = 'Sales';
+                                    else if (optLower.includes('admin')) autoDept = 'Management';
+                                  }
                                   setUserFormData({
                                     ...userFormData,
                                     profile: opt,
+                                    department: autoDept,
                                     designation: isMgr
                                       ? userFormData.managerType
                                       : isEmp
@@ -2780,6 +2866,95 @@ export function UsersTab({
                     </div>
                   </div>
                 )}
+
+                {/* Department Field */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Department <span className="text-red-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingNewDepartment(true);
+                        setNewDepartmentInput('');
+                      }}
+                      className="text-xs text-[#1677FF] hover:underline font-semibold cursor-pointer flex items-center gap-0.5"
+                    >
+                      + Add New
+                    </button>
+                  </div>
+
+                  {isAddingNewDepartment && (
+                    <div className="mb-2 p-2 bg-slate-50 border border-slate-300 rounded text-xs space-y-1.5 animate-in fade-in">
+                      <span className="text-[11px] font-semibold text-slate-700">Add New Department:</span>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={newDepartmentInput}
+                          onChange={(e) => setNewDepartmentInput(e.target.value)}
+                          placeholder="e.g. Accounts & Finance"
+                          className="flex-1 bg-white border border-slate-300 rounded px-2 py-1 text-xs text-slate-900 focus:outline-none focus:border-sky-500"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (newDepartmentInput.trim()) {
+                                const val = newDepartmentInput.trim();
+                                if (!departmentsList.includes(val)) {
+                                  setDepartmentsList([...departmentsList, val]);
+                                }
+                                setUserFormData({ ...userFormData, department: val });
+                                setIsAddingNewDepartment(false);
+                                setNewDepartmentInput('');
+                              }
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newDepartmentInput.trim()) {
+                              const val = newDepartmentInput.trim();
+                              if (!departmentsList.includes(val)) {
+                                setDepartmentsList([...departmentsList, val]);
+                              }
+                              setUserFormData({ ...userFormData, department: val });
+                              setIsAddingNewDepartment(false);
+                              setNewDepartmentInput('');
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-[#1677FF] hover:bg-[#0958d9] text-white rounded font-semibold text-xs transition-colors cursor-pointer"
+                        >
+                          Add
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingNewDepartment(false);
+                            setNewDepartmentInput('');
+                          }}
+                          className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <select
+                    value={userFormData.department}
+                    onChange={(e) => setUserFormData({ ...userFormData, department: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-sky-500 cursor-pointer shadow-2xs"
+                  >
+                    <option value="">-- Select Department --</option>
+                    {departmentsList.map((dept) => (
+                      <option key={dept} value={dept}>
+                        {dept}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
@@ -3364,7 +3539,7 @@ export function UsersTab({
                       <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       <span>Saving to CRM Database...</span>
                     </>
-                  ) : pendingFirebaseUid ? (
+                  ) : pendingFirebaseUid && pendingFirebaseEmail && pendingFirebaseEmail.trim().toLowerCase() === userFormData.email.trim().toLowerCase() ? (
                     <span>Retry Database Save</span>
                   ) : (
                     <span>{editingUserId ? 'Save Changes' : 'Submit'}</span>
@@ -3374,8 +3549,7 @@ export function UsersTab({
                   type="button"
                   onClick={() => {
                     setIsAddUserModalOpen(false);
-                    setUserCreationError(null);
-                    setPendingFirebaseUid(null);
+                    resetUserForm();
                   }}
                   className="px-4 py-1.5 rounded bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                 >
@@ -3777,7 +3951,11 @@ export function UsersTab({
                         </span>
                       </td>
                       <td className="py-3 px-3 text-center text-slate-700 font-medium text-[11px]">
-                        {u.department || (u.position && POSITION_HIERARCHY_CONFIG[u.position]?.department) || 'Sales'}
+                        {u.department ||
+                          (u.position && POSITION_HIERARCHY_CONFIG[u.position]?.department) ||
+                          ((u.position || '').toLowerCase().includes('finance') ? 'Finance' : '') ||
+                          ((u.position || '').toLowerCase().includes('operation') ? 'Operations' : '') ||
+                          (u.profileType && !['All', 'Staff', 'Employee'].includes(u.profileType) ? u.profileType : 'General')}
                       </td>
                       <td className="py-3 px-3 text-center text-slate-600 text-[11px]">
                         {resolveManagerLabel(

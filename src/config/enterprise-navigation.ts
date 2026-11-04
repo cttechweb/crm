@@ -83,8 +83,10 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
     id: 'purchase',
     label: 'Purchase',
     iconName: 'Package',
-    path: '/purchase',
+    path: '/purchase?tab=msrf',
     children: [
+      { label: 'Material Requests', href: '/purchase?tab=msrf', iconName: 'FileText' },
+      { label: 'Supplier Quotes', href: '/purchase?tab=quotations', iconName: 'FileSpreadsheet' },
       { label: 'Stock', href: '/purchase?tab=stock', iconName: 'Boxes' },
       { label: 'Purchase Order', href: '/purchase?tab=po', iconName: 'FilePlus' },
       { label: 'Purchase Invoice', href: '/purchase?tab=invoice', iconName: 'FileCheck' },

@@ -76,7 +76,9 @@ const SCHEDULED_EVENTS: ScheduledEvent[] = [
 ];
 
 export default function EmployeeCalendarPage() {
-  const [selectedDay, setSelectedDay] = useState('Today (25 Sep 2026)');
+  const [selectedDay, setSelectedDay] = useState(() => {
+    return 'Today (' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ')';
+  });
 
   return (
     <WorkerShell
