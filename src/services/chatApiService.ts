@@ -357,29 +357,6 @@ function getLocalStoredConversations(): ChatConversation[] {
       };
     }
 
-    // Auto-link / migrate any legacy non-deterministic direct chat IDs if present
-    if (msgs.length === 0 && typeof window !== 'undefined') {
-      try {
-        const raw = localStorage.getItem('cooltech_chat_conversations');
-        if (raw) {
-          const list = JSON.parse(raw);
-          const legacy = list.find(
-            (c: any) =>
-              c.type === 'direct' &&
-              (c.other_user?.id === colleague.id ||
-                c.title?.toLowerCase() === colleague.name.toLowerCase())
-          );
-          if (legacy && legacy.id && legacy.id !== dmId) {
-            const legacyMsgs = getLocalStoredMessages(legacy.id);
-            if (legacyMsgs.length > 0) {
-              saveLocalMessages(dmId, legacyMsgs);
-              msgs = legacyMsgs;
-            }
-          }
-        }
-      } catch {}
-    }
-
     const lastRead =
       (typeof window !== 'undefined' &&
         localStorage.getItem(`cooltech_chat_last_read_${currentUser.id}_${dmId}`)) ||
@@ -538,20 +515,74 @@ function enrichMessageSender(msg: ChatMessage): ChatMessage {
   };
 }
 
+// Purge legacy dummy seed messages from localStorage once
+if (typeof window !== 'undefined') {
+  try {
+    const isPurged = localStorage.getItem('cooltech_chat_seed_purged_v2');
+    if (!isPurged) {
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('cooltech_chat_messages_')) {
+          const raw = localStorage.getItem(key);
+          if (raw && (raw.includes('msg_seed_') || raw.includes('You completed the sales?'))) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                const cleaned = parsed.filter(
+                  (m: any) =>
+                    !String(m.id || '').startsWith('msg_seed_') &&
+                    m.message_text !== 'Hi\n\nYou completed the sales?' &&
+                    !(m.message_text === 'Yes' && m.sender_name === 'Tariq')
+                );
+                if (cleaned.length === 0) {
+                  localStorage.removeItem(key);
+                } else {
+                  localStorage.setItem(key, JSON.stringify(cleaned));
+                }
+              }
+            } catch {}
+          }
+        }
+        if (key === 'cooltech_chat_conversations' || key.startsWith('cooltech_chat_conversations_')) {
+          const raw = localStorage.getItem(key);
+          if (raw && raw.includes('You completed the sales?')) {
+            try {
+              const list = JSON.parse(raw);
+              if (Array.isArray(list)) {
+                const updated = list.map((c: any) => {
+                  if (c.last_message_text === 'Yes' || c.last_message_text?.includes('completed the sales')) {
+                    return {
+                      ...c,
+                      last_message_text: null,
+                      last_message_at: c.created_at,
+                      last_message_sender_id: null,
+                      last_message_sender_name: null,
+                      unread_count: 0,
+                    };
+                  }
+                  return c;
+                });
+                localStorage.setItem(key, JSON.stringify(updated));
+              }
+            } catch {}
+          }
+        }
+      });
+      localStorage.setItem('cooltech_chat_seed_purged_v2', 'true');
+    }
+  } catch {}
+}
+
 function getLocalStoredMessages(conversationId: string): ChatMessage[] {
   if (typeof window === 'undefined') return [];
   try {
-    const isSheminTariqDm =
-      conversationId === 'conv_dm_1792753099441_superadmin_001' ||
-      (conversationId.includes('1792753099441') && conversationId.includes('superadmin_001')) ||
-      (conversationId.toLowerCase().includes('shemin') && conversationId.toLowerCase().includes('tariq'));
-
     const raw = localStorage.getItem(`cooltech_chat_messages_${conversationId}`);
     if (raw) {
       const list = JSON.parse(raw);
       if (Array.isArray(list) && list.length > 0) {
-        // Clean up consecutive duplicate 'Yes' messages created by the previous overwriting bug
+        // Clean up legacy seed messages and consecutive duplicate 'Yes'
         const cleaned = list.filter((m: any, idx: number) => {
+          if (m.id && String(m.id).startsWith('msg_seed_')) return false;
+          if (m.message_text === 'Hi\n\nYou completed the sales?' || (m.message_text === 'Yes' && m.sender_name === 'Tariq' && idx <= 1)) return false;
           if (idx === 0) return true;
           const prev = list[idx - 1];
           return !(m.sender_id === prev.sender_id && m.message_text === 'Yes' && prev.message_text === 'Yes');
@@ -561,45 +592,6 @@ function getLocalStoredMessages(conversationId: string): ChatMessage[] {
         }
         return cleaned.map(enrichMessageSender);
       }
-    }
-
-    // Default Seed for Shemin (CEO) <-> Tariq (Sales Executive) Direct Message (ONLY when no messages exist)
-    if (isSheminTariqDm) {
-      const sheminTime = new Date(Date.now() - 6 * 60 * 1000).toISOString();
-      const tariqTime = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-
-      const seedMessages: ChatMessage[] = [
-        {
-          id: 'msg_seed_shemin_tariq_01',
-          conversation_id: conversationId,
-          sender_id: 'usr_superadmin_001',
-          sender_name: 'shemin',
-          sender_role: 'CEO',
-          sender_avatar: getLiveUserAvatar('shemin'),
-          message_text: 'Hi\n\nYou completed the sales?',
-          message_type: 'text',
-          is_edited: false,
-          is_deleted: false,
-          created_at: sheminTime,
-          updated_at: sheminTime,
-        },
-        {
-          id: 'msg_seed_shemin_tariq_02',
-          conversation_id: conversationId,
-          sender_id: 'usr_1792753099441',
-          sender_name: 'Tariq',
-          sender_role: 'Sales Executive',
-          sender_avatar: getLiveUserAvatar('Tariq') || null,
-          message_text: 'Yes',
-          message_type: 'text',
-          is_edited: false,
-          is_deleted: false,
-          created_at: tariqTime,
-          updated_at: tariqTime,
-        },
-      ];
-      saveLocalMessages(conversationId, seedMessages);
-      return seedMessages.map(enrichMessageSender);
     }
   } catch {}
   return [];
