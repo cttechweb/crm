@@ -80,6 +80,24 @@ const DEFAULT_COLLEAGUES: ChatUser[] = [
     is_active: 1,
   },
   {
+    id: 'usr_1793801091972',
+    name: 'murshid',
+    email: 'murshid@cooltechuae.com',
+    role: 'Operation Manager',
+    department: 'Operations',
+    avatar: null,
+    is_active: 1,
+  },
+  {
+    id: 'usr_1792683751144',
+    name: 'Muhammed shemin',
+    email: 'shemin123@gmail.com',
+    role: 'COO',
+    department: 'Management',
+    avatar: null,
+    is_active: 1,
+  },
+  {
     id: 'usr_arafath_001',
     name: 'Arafath',
     email: 'arafath@cooltechuae.com',
@@ -107,6 +125,51 @@ const DEFAULT_COLLEAGUES: ChatUser[] = [
     is_active: 1,
   },
   {
+    id: 'usr_nihal_001',
+    name: 'Nihal',
+    email: 'nihal@cooltechuae.com',
+    role: 'Procurement Executive',
+    department: 'Purchase',
+    avatar: null,
+    is_active: 1,
+  },
+  {
+    id: 'usr_afsal_001',
+    name: 'Afsal',
+    email: 'afsal@gmail.com',
+    role: 'Store & Inventory Manager',
+    department: 'Operations',
+    avatar: null,
+    is_active: 1,
+  },
+  {
+    id: 'usr_1792753099442',
+    name: 'Nishad',
+    email: 'nishad@cooltechuae.com',
+    role: 'Operations Executive',
+    department: 'Operations',
+    avatar: null,
+    is_active: 1,
+  },
+  {
+    id: 'usr_fahad_001',
+    name: 'Fahad',
+    email: 'fahad@cooltechuae.com',
+    role: 'Technical Engineer',
+    department: 'Technical',
+    avatar: null,
+    is_active: 1,
+  },
+  {
+    id: 'usr_rashid_001',
+    name: 'Rashid Ali',
+    email: 'purchasemanager@gmail.com',
+    role: 'Purchase Manager',
+    department: 'Purchase',
+    avatar: null,
+    is_active: 1,
+  },
+  {
     id: 'usr_1792054787769',
     name: 'Rithul',
     email: 'rithul@gmail.com',
@@ -121,17 +184,100 @@ const DEFAULT_COLLEAGUES: ChatUser[] = [
     email: 'arshad@gmail.com',
     role: 'Sales Officer',
     department: 'Sales',
+    avatar: null,
     is_active: 1,
   },
   {
-    id: 'usr_1792753099442',
-    name: 'Nishad',
-    email: 'nishad@cooltechuae.com',
-    role: 'Operations Executive',
-    department: 'Operations',
+    id: 'mgr_1',
+    name: 'Muhammed Shibil',
+    email: 'shibil@gmail.com',
+    role: 'Sales Manager',
+    department: 'Sales',
+    avatar: null,
     is_active: 1,
   },
 ];
+
+/**
+ * Retrieve all colleagues combining static defaults with the live CRM staff database (cezcon_crm_users_list)
+ */
+export function getAllCrmColleagues(): ChatUser[] {
+  const colleaguesMap = new Map<string, ChatUser>();
+
+  // 1. Seed with default known colleagues
+  DEFAULT_COLLEAGUES.forEach((c) => {
+    colleaguesMap.set(c.id, { ...c });
+  });
+
+  // 2. Hydrate from live CRM users catalog (cezcon_crm_users_list)
+  if (typeof window !== 'undefined') {
+    try {
+      const storedUsersRaw = localStorage.getItem('cezcon_crm_users_list');
+      if (storedUsersRaw) {
+        const parsed = JSON.parse(storedUsersRaw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((u: any) => {
+            if (!u) return;
+            // Respect inactive flag if explicitly marked inactive
+            if (u.status === 'Inactive' || u.isActive === false) return;
+
+            const rawId = String(u.id || '').trim();
+            const id = rawId.startsWith('usr_') || rawId.startsWith('conv_') || rawId.startsWith('mgr_')
+              ? rawId
+              : `usr_${rawId || u.username || u.name}`;
+            const name = String(u.name || u.username || 'Team Member').trim();
+            const email = String(u.email || '').trim();
+            const role = String(u.position || u.designation || u.role || u.profileType || 'Staff').trim();
+            const department = String(u.department || 'General').trim();
+            const rawAvatar = u.avatarImage || u.avatarUrl || u.avatar || null;
+            const validAvatar = rawAvatar && !rawAvatar.includes('unsplash.com') && !rawAvatar.includes('photo-') ? rawAvatar : null;
+
+            // Check if already in map by ID or email
+            let existingKey: string | null = null;
+            for (const [key, existing] of colleaguesMap.entries()) {
+              const cleanExistingId = existing.id.replace(/^usr_/, '').toLowerCase();
+              const cleanNewId = id.replace(/^usr_/, '').toLowerCase();
+              if (
+                cleanExistingId === cleanNewId ||
+                (email && existing.email && existing.email.toLowerCase() === email.toLowerCase()) ||
+                (name && existing.name && existing.name.toLowerCase() === name.toLowerCase())
+              ) {
+                existingKey = key;
+                break;
+              }
+            }
+
+            if (existingKey) {
+              const prev = colleaguesMap.get(existingKey)!;
+              colleaguesMap.set(existingKey, {
+                ...prev,
+                name: name || prev.name,
+                email: email || prev.email,
+                role: role || prev.role,
+                department: department || prev.department,
+                avatar: validAvatar || prev.avatar,
+              });
+            } else {
+              colleaguesMap.set(id, {
+                id,
+                name,
+                email,
+                role,
+                department,
+                avatar: validAvatar,
+                is_active: 1,
+              });
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Could not read cezcon_crm_users_list for chat:', e);
+    }
+  }
+
+  return Array.from(colleaguesMap.values());
+}
 
 export function getDirectConversationId(userId1: string, userId2: string): string {
   const clean1 = String(userId1 || '').replace(/^usr_/, '');
@@ -155,35 +301,24 @@ export function isExecutive(roleOrPos?: string, dept?: string): boolean {
 }
 
 export function getScopedColleagues(currentUser: { id: string; name: string; role: string; department?: string; email?: string }): ChatUser[] {
-  const isExec = isExecutive(currentUser.role, currentUser.department);
-  const userDept = (currentUser.department || '').toLowerCase();
-  const cleanCurrentId = currentUser.id.replace(/^usr_/, '');
+  const cleanCurrentId = (currentUser.id || '').replace(/^usr_/, '').toLowerCase();
+  const currentName = (currentUser.name || '').toLowerCase().trim();
+  const currentEmail = (currentUser.email || '').toLowerCase().trim();
 
-  const filtered = DEFAULT_COLLEAGUES.filter((c) => {
-    const cleanCId = c.id.replace(/^usr_/, '');
+  const allColleagues = getAllCrmColleagues();
+
+  const filtered = allColleagues.filter((c) => {
+    const cleanCId = (c.id || '').replace(/^usr_/, '').toLowerCase();
+    const cName = (c.name || '').toLowerCase().trim();
+    const cEmail = (c.email || '').toLowerCase().trim();
 
     // 1. NEVER include self in colleagues list
-    if (
-      cleanCId === cleanCurrentId ||
-      (currentUser.email && c.email.toLowerCase() === currentUser.email.toLowerCase()) ||
-      (currentUser.name && c.name.toLowerCase() === currentUser.name.toLowerCase())
-    ) {
-      return false;
-    }
+    if (cleanCurrentId && cleanCId === cleanCurrentId) return false;
+    if (currentEmail && cEmail && currentEmail === cEmail) return false;
+    if (currentName && cName && currentName === cName) return false;
 
-    // 2. Executive (CEO / COO) sees all colleagues
-    if (isExec) return true;
-
-    // 3. Any employee/manager can always direct-message the Executive (CEO/COO)
-    if (isExecutive(c.role, c.department)) return true;
-
-    // 4. Colleagues in the same department (e.g. Sales Manager <-> Sales Executive)
-    const colDept = (c.department || '').toLowerCase();
-    if (userDept && colDept && (userDept.includes(colDept) || colDept.includes(userDept))) {
-      return true;
-    }
-
-    return false;
+    // In production company chat, every team member can search and direct-message any colleague across the organization
+    return true;
   });
 
   return filtered.map((c) => {
@@ -191,7 +326,7 @@ export function getScopedColleagues(currentUser: { id: string; name: string; rol
     const validPhoto = live && !live.includes('unsplash.com') && !live.includes('photo-') ? live : null;
     return {
       ...c,
-      avatar: validPhoto,
+      avatar: validPhoto || c.avatar,
     };
   });
 }
@@ -491,16 +626,20 @@ export function getLiveUserAvatar(name?: string, email?: string, id?: string): s
 
 function enrichMessageSender(msg: ChatMessage): ChatMessage {
   if (!msg) return msg;
-  const sId = String(msg.sender_id || '').toLowerCase();
-  const matched = DEFAULT_COLLEAGUES.find(
-    (c) =>
-      c.id.toLowerCase() === sId ||
-      `usr_${c.id}`.toLowerCase() === sId ||
-      c.id.toLowerCase() === `usr_${sId}` ||
+  const sId = String(msg.sender_id || '').toLowerCase().replace(/^usr_/, '');
+  const allColleagues = getAllCrmColleagues();
+  const matched = allColleagues.find((c) => {
+    const cleanCId = String(c.id || '').toLowerCase().replace(/^usr_/, '');
+    return (
+      cleanCId === sId ||
+      c.id.toLowerCase() === String(msg.sender_id || '').toLowerCase() ||
+      (msg.sender_name && c.name.toLowerCase() === msg.sender_name.toLowerCase()) ||
       (sId.includes('superadmin') && c.id.includes('superadmin')) ||
       (sId.includes('arafath') && c.id.includes('arafath')) ||
-      (sId.includes('1792753099441') && c.id.includes('1792753099441'))
-  );
+      (sId.includes('1792753099441') && c.id.includes('1792753099441')) ||
+      (sId.includes('1793801091972') && c.id.includes('1793801091972'))
+    );
+  });
   const senderName = msg.sender_name || matched?.name || 'CRM Staff';
   const liveAvatar = getLiveUserAvatar(senderName, matched?.email, matched?.id);
 
@@ -624,7 +763,8 @@ function getLocalCurrentUser(): {
         const uEmail = String(u.email || '').toLowerCase();
         const uId = String(u.id || u.uid || '');
 
-        const matched = DEFAULT_COLLEAGUES.find(
+        const allColleagues = getAllCrmColleagues();
+        const matched = allColleagues.find(
           (c) =>
             (uId && (c.id === uId || `usr_${c.id}` === uId || c.id === `usr_${uId}`)) ||
             (uEmail && c.email.toLowerCase() === uEmail) ||
@@ -726,10 +866,14 @@ export const chatApiService = {
 
     // Prevent duplicate direct conversations locally
     if (data.type === 'direct' && data.target_user_id) {
+      const targetId = data.target_user_id;
+      const cleanTarget = String(targetId).replace(/^usr_/, '');
       const existing = localList.find(
         (c) =>
           c.type === 'direct' &&
-          c.other_user?.id === data.target_user_id
+          (c.other_user?.id === targetId ||
+            c.other_user?.id?.replace(/^usr_/, '') === cleanTarget ||
+            c.id === getDirectConversationId(currentUser.id, targetId))
       );
       if (existing) {
         return { conversation: existing, isExisting: true };
@@ -740,7 +884,11 @@ export const chatApiService = {
     let otherUser: ChatUser | null = null;
     if (data.type === 'direct' && data.target_user_id) {
       const allUsers = await this.getAvailableUsers();
-      otherUser = allUsers.find((u) => u.id === data.target_user_id) || null;
+      const cleanTarget = String(data.target_user_id).replace(/^usr_/, '');
+      otherUser =
+        allUsers.find(
+          (u) => u.id === data.target_user_id || u.id.replace(/^usr_/, '') === cleanTarget
+        ) || null;
     }
 
     const newId =
