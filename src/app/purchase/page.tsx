@@ -10270,6 +10270,43 @@ function PurchasePageInner() {
                             console.error(e);
                           }
 
+                          // Increment live product catalog inventory
+                          try {
+                            const rawProds = localStorage.getItem('cezcon_products_master_live');
+                            if (rawProds) {
+                              const prodList = JSON.parse(rawProds);
+                              if (Array.isArray(prodList) && Array.isArray(stockInItems)) {
+                                const updatedProds = prodList.map((p: any) => {
+                                  const pCode = String(p.code || p.sku || '').trim().toLowerCase();
+                                  const pName = String(p.name || '').trim().toLowerCase();
+                                  const matchingItem = stockInItems.find((it: any) => {
+                                    const itCode = String(it.code || it.itemCode || it.sku || '').trim().toLowerCase();
+                                    const itName = String(it.item || it.name || it.description || '').trim().toLowerCase();
+                                    return (
+                                      (pCode && itCode && (pCode === itCode || pCode.includes(itCode) || itCode.includes(pCode))) ||
+                                      (pName && itName && (pName === itName || pName.includes(itName) || itName.includes(pName)))
+                                    );
+                                  });
+                                  if (matchingItem) {
+                                    const addedQty = Number(matchingItem.qty || (matchingItem as any).quantity || 1);
+                                    const current = Number(p.currentStock ?? p.stock ?? 0);
+                                    return {
+                                      ...p,
+                                      currentStock: current + addedQty,
+                                      stock: current + addedQty,
+                                      status: 'In Stock',
+                                    };
+                                  }
+                                  return p;
+                                });
+                                localStorage.setItem('cezcon_products_master_live', JSON.stringify(updatedProds));
+                                window.dispatchEvent(new Event('crm_products_updated'));
+                              }
+                            }
+                          } catch (e) {
+                            console.error('Failed to update product master live stock:', e);
+                          }
+
                           // Automatically update linked MSRF state to Full_Stock_Available & Fulfilled
                           try {
                             const rawMsrfs = localStorage.getItem('crm_msrfs');
@@ -10283,7 +10320,20 @@ function PurchasePageInner() {
                                     m.msrfNumber === 'MSRF-2026-0001' ||
                                     m.salesOrderId === 'CTSO#3921';
 
-                                  if (matchesOrder) {
+                                  const hasMatchingItem = Array.isArray(m.items) && m.items.some((reqIt: any) => {
+                                    const reqCode = String(reqIt.itemCode || '').trim().toLowerCase();
+                                    const reqDesc = String(reqIt.description || '').trim().toLowerCase();
+                                    return stockInItems.some((sIt: any) => {
+                                      const sCode = String(sIt.code || sIt.itemCode || sIt.sku || '').trim().toLowerCase();
+                                      const sDesc = String(sIt.item || sIt.name || sIt.description || '').trim().toLowerCase();
+                                      return (
+                                        (reqCode && sCode && (reqCode === sCode || sCode.includes(reqCode) || reqCode.includes(sCode))) ||
+                                        (reqDesc && sDesc && (reqDesc === sDesc || sDesc.includes(reqDesc) || reqDesc.includes(sDesc)))
+                                      );
+                                    });
+                                  });
+
+                                  if (matchesOrder || hasMatchingItem) {
                                     return {
                                       ...m,
                                       stockVerificationStatus: 'Full_Stock_Available',

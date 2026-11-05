@@ -691,20 +691,103 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
     }
   };
 
+// Helper to look up live warehouse inventory & GRN intake for any product code or name
+const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): number => {
+  if (typeof window === 'undefined') return 0;
+  let totalStock = 0;
+  const cleanCode = (itemCode || '').trim().toLowerCase();
+  const cleanDesc = (description || '').trim().toLowerCase();
+  if (!cleanCode && !cleanDesc) return 0;
+
+  // 1. Check Product Master / Stock Inventory (cezcon_products_master_live & crm_stocks_data)
+  try {
+    const rawInv = localStorage.getItem('cezcon_products_master_live') || localStorage.getItem('crm_stocks_data');
+    if (rawInv) {
+      const invList = JSON.parse(rawInv);
+      if (Array.isArray(invList)) {
+        invList.forEach((p: any) => {
+          const pCode = String(p.code || p.sku || '').trim().toLowerCase();
+          const pName = String(p.name || '').trim().toLowerCase();
+          const isMatch =
+            (cleanCode && pCode && (pCode === cleanCode || pCode.includes(cleanCode) || cleanCode.includes(pCode))) ||
+            (cleanDesc && pName && (pName === cleanDesc || pName.includes(cleanDesc) || cleanDesc.includes(pName)));
+          if (isMatch) {
+            const qty = Number(p.currentStock ?? p.stock ?? p.quantity ?? 0);
+            if (!isNaN(qty) && qty > 0) {
+              totalStock += qty;
+            }
+          }
+        });
+      }
+    }
+  } catch {}
+
+  // 2. Check Completed Stock In Vouchers (crm_stock_in_list & cooltech_crm_stock_in_vouchers)
+  try {
+    const rawSi =
+      localStorage.getItem('crm_stock_in_list') ||
+      localStorage.getItem('cooltech_crm_stock_in_vouchers') ||
+      localStorage.getItem('crm_stock_in_vouchers');
+    if (rawSi) {
+      const siList = JSON.parse(rawSi);
+      if (Array.isArray(siList)) {
+        siList.forEach((v: any) => {
+          if (Array.isArray(v.items)) {
+            v.items.forEach((it: any) => {
+              const itCode = String(it.code || it.itemCode || it.sku || '').trim().toLowerCase();
+              const itName = String(it.item || it.name || it.description || it.productName || '').trim().toLowerCase();
+              const isMatch =
+                (cleanCode && itCode && (itCode === cleanCode || itCode.includes(cleanCode) || cleanCode.includes(itCode))) ||
+                (cleanDesc && itName && (itName === cleanDesc || itName.includes(cleanDesc) || cleanDesc.includes(itName)));
+              if (isMatch) {
+                const qty = Number(it.qty || it.received_qty || it.quantity || 1);
+                if (!isNaN(qty) && qty > 0) {
+                  totalStock += qty;
+                }
+              }
+            });
+          }
+        });
+      }
+    }
+  } catch {}
+
+  return totalStock;
+};
+
   // Stock Verification & Warehouse Allocation (Supports Automatic and Manual Decisions)
   const handleVerifyStock = async (manualOverride?: 'No_Stock_Available' | 'Full_Stock_Available') => {
     if (!selectedMsrf) return;
     try {
       setVerifyingStock(true);
 
+      // 1. Calculate live warehouse stock for each line item
+      const itemBreakdown = (selectedMsrf.items || []).map((it) => {
+        const reqQty = Number(it.requestedQty || 1);
+        const liveStock = getLiveWarehouseStockForItem(it.itemCode, it.description);
+        return {
+          ...it,
+          reqQty,
+          liveStock,
+          hasFullStock: liveStock >= reqQty,
+          hasPartialStock: liveStock > 0 && liveStock < reqQty,
+        };
+      });
+
+      const allItemsHaveStock = itemBreakdown.length > 0 && itemBreakdown.every((it) => it.hasFullStock);
+      const someItemsHaveStock = itemBreakdown.some((it) => it.liveStock > 0);
+
       // Check whether physical warehouse stock exists for THIS specific requisition
       const curId = String(selectedMsrf.id || '').toLowerCase();
       const curMsrfNo = String(selectedMsrf.msrfNumber || '').toLowerCase();
       const curPoNo = String((selectedMsrf as any).purchaseOrderNumber || '').toLowerCase();
+      const curSo = String((selectedMsrf as any).salesOrderId || (selectedMsrf as any).salesOrderNumber || '').toLowerCase();
       const isLegacyDemo = curMsrfNo === 'msrf-2026-0001' || curId.includes('1793597292876');
 
       const detectedWarehouseStockAvailable = Boolean(
-        isStockInFulfilled || (() => {
+        isStockInFulfilled ||
+        allItemsHaveStock ||
+        (() => {
           try {
             const raw =
               localStorage.getItem('crm_stock_in_list') ||
@@ -725,10 +808,28 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
                     return true;
                   }
 
+                  // Check if voucher items match requisition line items
+                  if (Array.isArray(v.items) && Array.isArray(selectedMsrf.items)) {
+                    const hasItemMatch = selectedMsrf.items.some((reqIt) => {
+                      const reqCode = String(reqIt.itemCode || '').trim().toLowerCase();
+                      const reqDesc = String(reqIt.description || '').trim().toLowerCase();
+                      return v.items.some((vIt: any) => {
+                        const vCode = String(vIt.code || vIt.itemCode || vIt.sku || '').trim().toLowerCase();
+                        const vDesc = String(vIt.item || vIt.description || vIt.name || '').trim().toLowerCase();
+                        return (
+                          (reqCode && vCode && (reqCode === vCode || vCode.includes(reqCode))) ||
+                          (reqDesc && vDesc && (reqDesc === vDesc || vDesc.includes(reqDesc) || reqDesc.includes(vDesc)))
+                        );
+                      });
+                    });
+                    if (hasItemMatch) return true;
+                  }
+
                   return (
                     (curPoNo && poRef.length > 0 && poRef.includes(curPoNo)) ||
                     (curMsrfNo && mRef.length > 0 && mRef.includes(curMsrfNo)) ||
-                    (curId && mRef.length > 0 && mRef.includes(curId))
+                    (curId && mRef.length > 0 && mRef.includes(curId)) ||
+                    (curSo && poRef.length > 0 && poRef.includes(curSo))
                   );
                 });
               }
@@ -738,31 +839,39 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
         })()
       );
 
-      // When performing Auto DB Check (manualOverride is undefined), auto-resolve to Full Stock only if warehouse genuinely has the goods
+      // When performing Auto DB Check (manualOverride is undefined), auto-resolve according to genuine live stock
       const resolvedManualStatus = manualOverride !== undefined
         ? manualOverride
-        : (detectedWarehouseStockAvailable ? 'Full_Stock_Available' : 'No_Stock_Available');
+        : (detectedWarehouseStockAvailable
+            ? 'Full_Stock_Available'
+            : (someItemsHaveStock ? 'Partial_Stock_Available' : 'No_Stock_Available'));
 
       let res: any = null;
       try {
         res = await msrfApiService.verifyStock(
           selectedMsrf.id,
-          resolvedManualStatus ? { manualStatus: resolvedManualStatus } : undefined
+          { manualStatus: resolvedManualStatus }
         );
       } catch (netErr) {
         console.warn('API verifyStock error, using client-side update:', netErr);
-        const finalStatus = resolvedManualStatus || (detectedWarehouseStockAvailable ? 'Full_Stock_Available' : 'No_Stock_Available');
+        const finalStatus = resolvedManualStatus;
         const updated = {
           ...selectedMsrf,
           stockVerificationStatus: finalStatus,
           procurementStatus: finalStatus === 'No_Stock_Available' ? 'Sourcing' : (finalStatus === 'Full_Stock_Available' ? 'Fulfilled' : selectedMsrf.procurementStatus),
-          items: selectedMsrf.items?.map((it) => ({
-            ...it,
-            availableStockQty: finalStatus === 'Full_Stock_Available' ? it.requestedQty : 0,
-            allocatableQty: finalStatus === 'Full_Stock_Available' ? it.requestedQty : 0,
-            procureQty: finalStatus === 'Full_Stock_Available' ? 0 : it.requestedQty,
-            status: finalStatus === 'Full_Stock_Available' ? 'Available' : 'Shortage',
-          })),
+          items: selectedMsrf.items?.map((it) => {
+            const liveStock = getLiveWarehouseStockForItem(it.itemCode, it.description);
+            const reqQty = it.requestedQty || 1;
+            const avail = finalStatus === 'Full_Stock_Available' ? Math.max(reqQty, liveStock) : (finalStatus === 'No_Stock_Available' ? 0 : liveStock);
+            const alloc = Math.min(reqQty, avail);
+            return {
+              ...it,
+              availableStockQty: avail,
+              allocatableQty: alloc,
+              procureQty: Math.max(0, reqQty - alloc),
+              status: alloc >= reqQty ? 'Available' : (avail > 0 ? 'Partial' : 'Shortage'),
+            };
+          }),
         };
         res = {
           success: true,
@@ -772,35 +881,64 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
       }
 
       if (res && res.success && res.request) {
-        const finalStatus = manualOverride !== undefined ? manualOverride : (res.stockVerificationStatus || resolvedManualStatus);
+        const finalStatus = manualOverride !== undefined
+          ? manualOverride
+          : (detectedWarehouseStockAvailable ? 'Full_Stock_Available' : (res.stockVerificationStatus || resolvedManualStatus));
 
-        // Update items to accurately reflect full stock or complete shortage
-        if (finalStatus === 'Full_Stock_Available') {
-          res.request = {
-            ...res.request,
-            stockVerificationStatus: 'Full_Stock_Available',
-            items: (res.request.items || selectedMsrf.items || []).map((it: any) => ({
+        const updatedItems = (res.request.items || selectedMsrf.items || []).map((it: any) => {
+          const reqQty = Number(it.requestedQty || 1);
+          const liveStock = getLiveWarehouseStockForItem(it.itemCode, it.description);
+
+          if (finalStatus === 'Full_Stock_Available') {
+            const avail = Math.max(reqQty, liveStock);
+            return {
               ...it,
-              availableStockQty: it.requestedQty || 1,
-              allocatableQty: it.requestedQty || 1,
+              availableStockQty: avail,
+              allocatableQty: reqQty,
               procureQty: 0,
               status: 'Available',
-            })),
-          };
-        } else if (finalStatus === 'No_Stock_Available') {
-          res.request = {
-            ...res.request,
-            stockVerificationStatus: 'No_Stock_Available',
-            procurementStatus: 'Sourcing',
-            items: (res.request.items || selectedMsrf.items || []).map((it: any) => ({
+            };
+          } else if (finalStatus === 'No_Stock_Available') {
+            if (liveStock >= reqQty && manualOverride === undefined) {
+              return {
+                ...it,
+                availableStockQty: liveStock,
+                allocatableQty: reqQty,
+                procureQty: 0,
+                status: 'Available',
+              };
+            }
+            return {
               ...it,
               availableStockQty: 0,
               allocatableQty: 0,
-              procureQty: it.requestedQty || 1,
+              procureQty: reqQty,
               status: 'Shortage',
-            })),
-          };
-        }
+            };
+          } else {
+            const avail = Math.min(reqQty, liveStock);
+            return {
+              ...it,
+              availableStockQty: liveStock,
+              allocatableQty: avail,
+              procureQty: Math.max(0, reqQty - avail),
+              status: avail >= reqQty ? 'Available' : (avail > 0 ? 'Partial' : 'Shortage'),
+            };
+          }
+        });
+
+        const actualFinalStatus = updatedItems.every((it: any) => it.status === 'Available')
+          ? 'Full_Stock_Available'
+          : updatedItems.some((it: any) => it.allocatableQty > 0)
+          ? 'Partial_Stock_Available'
+          : finalStatus;
+
+        res.request = {
+          ...res.request,
+          stockVerificationStatus: actualFinalStatus,
+          procurementStatus: actualFinalStatus === 'Full_Stock_Available' ? 'Fulfilled' : (actualFinalStatus === 'Partial_Stock_Available' ? 'Sourcing' : res.request.procurementStatus),
+          items: updatedItems,
+        };
 
         setSelectedMsrf(res.request);
         setRequests((prev) => prev.map((r) => (r.id === res.request.id ? res.request : r)));
@@ -1083,12 +1221,21 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
   };
 
   const isStockInFulfilled = Boolean(
-    selectedMsrf &&
-    selectedMsrf.stockVerificationStatus !== 'No_Stock_Available' && (
+    selectedMsrf && (
       (selectedMsrf as any).purchaseOrderId ||
       (selectedMsrf.procurementStatus as any) === 'PO_Created' ||
       (typeof window !== 'undefined' && (() => {
         try {
+          // 1. Direct item-level stock detection: if all items have live stock in warehouse
+          if (Array.isArray(selectedMsrf.items) && selectedMsrf.items.length > 0) {
+            const allItemsHaveStock = selectedMsrf.items.every((it) => {
+              const stock = getLiveWarehouseStockForItem(it.itemCode, it.description);
+              return stock >= (Number(it.requestedQty) || 1);
+            });
+            if (allItemsHaveStock) return true;
+          }
+
+          // 2. Order/PO/MSRF specific matching from GRN list
           const raw =
             localStorage.getItem('crm_stock_in_list') ||
             localStorage.getItem('cooltech_crm_stock_in_vouchers') ||
@@ -1099,6 +1246,7 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
               const curId = String(selectedMsrf.id || '').toLowerCase();
               const curMsrfNo = String(selectedMsrf.msrfNumber || '').toLowerCase();
               const curPoNo = String((selectedMsrf as any).purchaseOrderNumber || '').toLowerCase();
+              const curSo = String((selectedMsrf as any).salesOrderId || (selectedMsrf as any).salesOrderNumber || '').toLowerCase();
               const isLegacyDemo = curMsrfNo === 'msrf-2026-0001' || curId.includes('1793597292876');
 
               return list.some((v: any) => {
@@ -1110,6 +1258,23 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
                 // Physical warehouse intake verified via Stock In (GRN STK-993 / CTPO#2549) - ONLY for legacy demo
                 if (isLegacyDemo && (stkNo.includes('stk-993') || poRef.includes('2549') || (hasCooler && (poRef.includes('ctpo') || stkNo.includes('stk'))))) {
                   return true;
+                }
+
+                // Match items inside the stock-in voucher directly
+                if (Array.isArray(v.items) && Array.isArray(selectedMsrf.items)) {
+                  const hasItemMatch = selectedMsrf.items.some((reqIt) => {
+                    const reqCode = String(reqIt.itemCode || '').trim().toLowerCase();
+                    const reqDesc = String(reqIt.description || '').trim().toLowerCase();
+                    return v.items.some((vIt: any) => {
+                      const vCode = String(vIt.code || vIt.itemCode || vIt.sku || '').trim().toLowerCase();
+                      const vDesc = String(vIt.item || vIt.description || vIt.name || '').trim().toLowerCase();
+                      return (
+                        (reqCode && vCode && (reqCode === vCode || vCode.includes(reqCode) || reqCode.includes(vCode))) ||
+                        (reqDesc && vDesc && (reqDesc === vDesc || vDesc.includes(reqDesc) || reqDesc.includes(vDesc)))
+                      );
+                    });
+                  });
+                  if (hasItemMatch) return true;
                 }
 
                 // Specific legacy bindings for demo requisition MSRF-2026-0001 only
@@ -1124,7 +1289,8 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
                 return (
                   (curPoNo && poRef.length > 0 && poRef.includes(curPoNo)) ||
                   (curMsrfNo && mRef.length > 0 && mRef.includes(curMsrfNo)) ||
-                  (curId && mRef.length > 0 && mRef.includes(curId))
+                  (curId && mRef.length > 0 && mRef.includes(curId)) ||
+                  (curSo && poRef.length > 0 && poRef.includes(curSo))
                 );
               });
             }
@@ -1856,26 +2022,36 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
                   <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Requested Line Items ({selectedMsrf.items?.length || 0})
                   </h4>
-                  {selectedMsrf.stockVerificationStatus && (
-                    <span className="text-xs font-medium text-slate-600">
-                      Stock Status:{' '}
-                      <span className={`font-semibold ${
-                        selectedMsrf.stockVerificationStatus === 'No_Stock_Available'
-                          ? 'text-rose-600'
-                          : isStockInFulfilled || selectedMsrf.stockVerificationStatus === 'Full_Stock_Available'
-                          ? 'text-emerald-600'
-                          : 'text-indigo-600'
-                      }`}>
-                        {selectedMsrf.stockVerificationStatus === 'No_Stock_Available'
-                          ? 'No Stock Available (Out of Stock)'
-                          : isStockInFulfilled
-                          ? 'Fulfilled & In Stock (GRN Received)'
-                          : selectedMsrf.stockVerificationStatus === 'Full_Stock_Available'
-                          ? 'Full Stock Available (In Stock)'
-                          : selectedMsrf.stockVerificationStatus.replace(/_/g, ' ')}
+                  {selectedMsrf.stockVerificationStatus && (() => {
+                    const liveHasStock = Boolean(
+                      Array.isArray(selectedMsrf.items) &&
+                      selectedMsrf.items.length > 0 &&
+                      selectedMsrf.items.every((it) => getLiveWarehouseStockForItem(it.itemCode, it.description) >= (Number(it.requestedQty) || 1))
+                    );
+                    const isStockAvailable = isStockInFulfilled || selectedMsrf.stockVerificationStatus === 'Full_Stock_Available' || liveHasStock;
+                    const isNoStockOverall = selectedMsrf.stockVerificationStatus === 'No_Stock_Available' && !liveHasStock;
+
+                    return (
+                      <span className="text-xs font-medium text-slate-600">
+                        Stock Status:{' '}
+                        <span className={`font-semibold ${
+                          isNoStockOverall
+                            ? 'text-rose-600'
+                            : isStockAvailable
+                            ? 'text-emerald-600'
+                            : 'text-indigo-600'
+                        }`}>
+                          {isNoStockOverall
+                            ? 'No Stock Available (Out of Stock)'
+                            : isStockInFulfilled
+                            ? 'Fulfilled & In Stock (GRN Received)'
+                            : isStockAvailable
+                            ? 'Full Stock Available (In Stock)'
+                            : selectedMsrf.stockVerificationStatus.replace(/_/g, ' ')}
+                        </span>
                       </span>
-                    </span>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -1897,12 +2073,14 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
                     <tbody className="divide-y divide-slate-100">
                       {selectedMsrf.items?.map((it, idx) => {
                         const reqQty = Number(it.requestedQty || 0);
-                        const isNoStock = selectedMsrf.stockVerificationStatus === 'No_Stock_Available';
-                        const isFulfilled = !isNoStock && (isStockInFulfilled || selectedMsrf.stockVerificationStatus === 'Full_Stock_Available');
-                        const availQty = isNoStock ? 0 : (isFulfilled ? reqQty : Number(it.availableStockQty || 0));
-                        const allocatable = isNoStock ? 0 : (isFulfilled ? reqQty : Math.min(reqQty, availQty));
-                        const shortage = isNoStock ? reqQty : (isFulfilled ? 0 : (it.procureQty !== undefined ? it.procureQty : Math.max(0, reqQty - availQty)));
-                        const isVerified = Boolean(selectedMsrf.stockVerificationStatus && selectedMsrf.stockVerificationStatus !== 'Unverified');
+                        const liveStock = getLiveWarehouseStockForItem(it.itemCode, it.description);
+                        const isVerifiedFull = selectedMsrf.stockVerificationStatus === 'Full_Stock_Available' || isStockInFulfilled || liveStock >= reqQty;
+                        const isNoStock = selectedMsrf.stockVerificationStatus === 'No_Stock_Available' && liveStock === 0;
+                        const isFulfilled = isVerifiedFull;
+                        const availQty = isNoStock ? 0 : Math.max(liveStock, isFulfilled ? reqQty : Number(it.availableStockQty || 0));
+                        const allocatable = isNoStock ? 0 : Math.min(reqQty, availQty);
+                        const shortage = isNoStock ? reqQty : Math.max(0, reqQty - allocatable);
+                        const isVerified = Boolean(selectedMsrf.stockVerificationStatus && selectedMsrf.stockVerificationStatus !== 'Unverified') || liveStock > 0;
                         return (
                           <tr key={it.id || idx} className="hover:bg-slate-50/60">
                             <td className="py-2.5 px-3 text-slate-400 font-mono text-xs">{idx + 1}</td>
@@ -2185,15 +2363,15 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
 
                       <div className="flex items-center gap-2">
                         <span className={`px-2.5 py-1 rounded text-xs font-bold ${
-                          selectedMsrf.stockVerificationStatus === 'No_Stock_Available'
+                          (selectedMsrf.stockVerificationStatus === 'No_Stock_Available' && !isStockInFulfilled)
                             ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                            : isStockInFulfilled || selectedMsrf.stockVerificationStatus === 'Full_Stock_Available'
+                            : (isStockInFulfilled || selectedMsrf.stockVerificationStatus === 'Full_Stock_Available')
                             ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                             : selectedMsrf.stockVerificationStatus === 'Partial_Stock_Available'
                             ? 'bg-amber-100 text-amber-800 border border-amber-300'
                             : 'bg-slate-100 text-slate-600 border border-slate-300'
                         }`}>
-                          {selectedMsrf.stockVerificationStatus === 'No_Stock_Available'
+                          {(selectedMsrf.stockVerificationStatus === 'No_Stock_Available' && !isStockInFulfilled)
                             ? 'No Stock Available (Out of Stock)'
                             : isStockInFulfilled
                             ? 'Fulfilled (GRN Received & In Stock)'
@@ -2248,7 +2426,7 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
                     </div>
 
                     {/* Stock Status Guidance & Action Buttons */}
-                    {selectedMsrf.stockVerificationStatus === 'Full_Stock_Available' && (
+                    {(selectedMsrf.stockVerificationStatus === 'Full_Stock_Available' || isStockInFulfilled) && (
                       <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-xs text-emerald-900">
                         <div>
                           <strong className="text-emerald-950 font-bold block">100% Stock Available in CRM Warehouse</strong>
@@ -2306,7 +2484,7 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
                       </div>
                     )}
 
-                    {selectedMsrf.stockVerificationStatus === 'No_Stock_Available' && (
+                    {(selectedMsrf.stockVerificationStatus === 'No_Stock_Available' && !isStockInFulfilled) && (
                       <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-3 text-xs text-rose-900 shadow-sm">
                         <div className="flex items-start justify-between">
                           <div>
