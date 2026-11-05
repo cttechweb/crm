@@ -12,3 +12,4 @@ VALUES ('usr_mustafa_001', 'uid_mustafa_001', 'mustafa@gmail.com', 'Mustafa', 'M
 
 INSERT OR IGNORE INTO users (id, firebase_uid, email, full_name, role, position, department, is_active)
 VALUES ('usr_mustafa_002', 'uid_mustafa_002', 'im@cooltechuae.com', 'Mustafa', 'MANAGER', 'Procurement Manager', 'Purchase', 1);
+

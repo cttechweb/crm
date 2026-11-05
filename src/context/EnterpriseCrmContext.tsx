@@ -834,6 +834,30 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
                     ];
                   }
                 }
+                // CTSO#3936 / CTINV#15609 (Al nassr - Rotary Compressor 2.0 Ton)
+                else if (inv.invoiceNumber === 'CTINV#15609' || inv.opportunityOrderRef?.includes('3936')) {
+                  correctedCustomer = inv.customer || 'Al nassr';
+                  correctedAttention = inv.attention || inv.contactPerson || 'riswan';
+                  correctedOpp = 'CTSO#3936 / AC';
+                  const hasWaterCooler = Array.isArray(inv.items) && inv.items.some((it: any) => it.code === 'CT25F2' || it.description?.toLowerCase().includes('water cooler'));
+                  if (!Array.isArray(inv.items) || inv.items.length === 0 || hasWaterCooler || inv.amount === 12432 || inv.amount === 12432.0) {
+                    correctedAmount = 682.50;
+                    correctedSubtotal = 650.00;
+                    correctedVatAmount = 32.50;
+                    correctedItems = [
+                      {
+                        id: 'item-3936-1',
+                        description: 'Rotary Compressor 2.0 Ton',
+                        code: 'CQ4N-XMI14S',
+                        unit: 'Pcs',
+                        brand: 'DAIKIN',
+                        qty: 1,
+                        price: 650,
+                        total: 650,
+                      },
+                    ];
+                  }
+                }
 
                 const currentPaid = Number(inv.paidAmount) || 0;
                 const currentBalance = Math.max(0, correctedAmount - currentPaid);
