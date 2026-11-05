@@ -495,6 +495,22 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
         setIntakeNotes('');
         setSelectedMsrf(currentReq);
         await loadRequests();
+
+        // Notify Salesman that buyer has accepted intake
+        notificationService.addLocalNotification({
+          recipientId: msrf.requestorId || msrf.requestorName || 'tariq',
+          recipientRole: 'sales',
+          title: 'Material Request Intake Accepted',
+          message: `Material Request ${msrf.msrfNumber} accepted by Procurement Buyer (${currentUser?.name || 'Nihal'}). Stock verification underway.`,
+          type: 'info',
+          linkUrl: `/purchase?tab=msrf&msrfId=${msrf.id}`,
+          metadata: { msrfId: msrf.id, msrfNumber: msrf.msrfNumber },
+        });
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('crm_msrf_updated'));
+          window.dispatchEvent(new Event('crm_notification_updated'));
+        }
         setTimeout(() => setActionSuccess(null), 4000);
       }
     } catch (err: any) {
@@ -635,13 +651,42 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
       if (editingMsrf) {
         await msrfApiService.updateMSRF(editingMsrf.id, payload);
       } else {
-        await msrfApiService.createMSRF(payload);
+        const createRes = await msrfApiService.createMSRF(payload);
+        const createdReq = createRes?.request;
+        const msrfNo = createdReq?.msrfNumber || createdReq?.id || 'MSRF';
+        const soNo = formSalesOrderNumber.trim() || 'Sales Order';
+        const projName = formProjectName.trim() || soNo;
+
+        // 1. Notify Salesman (Tariq / Order Creator)
+        notificationService.addLocalNotification({
+          recipientId: currentUser?.id || 'tariq',
+          recipientRole: 'sales',
+          title: 'Material Request Created',
+          message: `Material Request ${msrfNo} has been created for ${soNo} (${projName}). Sent to Procurement & Warehouse for fulfillment.`,
+          type: 'msrf',
+          linkUrl: `/purchase?tab=msrf&msrfId=${createdReq?.id || ''}`,
+          metadata: { msrfId: createdReq?.id, msrfNumber: msrfNo, salesOrderNumber: soNo },
+        });
+
+        // 2. Notify Procurement (Nihal)
+        notificationService.addLocalNotification({
+          recipientId: 'nihal',
+          recipientRole: 'purchase',
+          title: 'New Material Request Awaiting Intake',
+          message: `New Material Request ${msrfNo} submitted for ${soNo} (${projName}). Please review and accept intake.`,
+          type: 'msrf',
+          linkUrl: `/purchase?tab=msrf&msrfId=${createdReq?.id || ''}`,
+          metadata: { msrfId: createdReq?.id, msrfNumber: msrfNo, salesOrderNumber: soNo },
+        });
       }
 
       setIsFormOpen(false);
       setEditingMsrf(null);
       await loadRequests();
-      if (typeof window !== 'undefined') window.dispatchEvent(new Event('crm_msrf_updated'));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('crm_msrf_updated'));
+        window.dispatchEvent(new Event('crm_notification_updated'));
+      }
     } catch (err: any) {
       alert(err?.message || 'Failed to save Material Request');
     } finally {
@@ -682,7 +727,23 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
         setSelectedMsrf(res.request);
         setHeadDecisionRemarks('');
         await loadRequests();
-        if (typeof window !== 'undefined') window.dispatchEvent(new Event('crm_msrf_updated'));
+
+        if (decision === 'Approved') {
+          notificationService.addLocalNotification({
+            recipientId: selectedMsrf.requestorId || selectedMsrf.requestorName || 'tariq',
+            recipientRole: 'sales',
+            title: 'Material Request Approved',
+            message: `Material Request ${selectedMsrf.msrfNumber} for ${selectedMsrf.projectName || (selectedMsrf as any).salesOrderNumber || 'Order'} has been approved by Reporting Head. Advanced to Procurement Intake.`,
+            type: 'approval',
+            linkUrl: `/purchase?tab=msrf&msrfId=${selectedMsrf.id}`,
+            metadata: { msrfId: selectedMsrf.id, msrfNumber: selectedMsrf.msrfNumber },
+          });
+        }
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('crm_msrf_updated'));
+          window.dispatchEvent(new Event('crm_notification_updated'));
+        }
       }
     } catch (err: any) {
       alert(err?.message || `Failed to record decision`);
@@ -975,7 +1036,7 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
             recipientId: selectedMsrf.requestorId || selectedMsrf.requestorName || 'tariq',
             recipientRole: 'sales',
             title: 'Warehouse Stock Available',
-            message: `Full stock available in Main Warehouse for ${selectedMsrf.msrfNumber}. Materials are allocated and ready for client delivery.`,
+            message: `Full stock available in Main Warehouse for ${selectedMsrf.msrfNumber} (${selectedMsrf.projectName || (selectedMsrf as any).salesOrderNumber || 'Order'}). Materials are allocated and ready for client delivery.`,
             type: 'stock_available',
             linkUrl: `/purchase?tab=msrf&msrfId=${selectedMsrf.id}`,
             metadata: { msrfId: selectedMsrf.id, msrfNumber: selectedMsrf.msrfNumber },
@@ -1003,6 +1064,17 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
       setReservingStock(true);
       const res = await msrfApiService.reserveStock(selectedMsrf.id);
       if (res.success) {
+        // Dispatch Notification to Salesman (Tariq / Order Creator)
+        notificationService.addLocalNotification({
+          recipientId: selectedMsrf.requestorId || selectedMsrf.requestorName || 'tariq',
+          recipientRole: 'sales',
+          title: 'Warehouse Stock Reserved',
+          message: `Warehouse stock has been reserved for ${selectedMsrf.msrfNumber} (${selectedMsrf.projectName || (selectedMsrf as any).salesOrderNumber || 'Order'}). Ready for scheduled dispatch.`,
+          type: 'stock_available',
+          linkUrl: `/purchase?tab=msrf&msrfId=${selectedMsrf.id}`,
+          metadata: { msrfId: selectedMsrf.id, msrfNumber: selectedMsrf.msrfNumber },
+        });
+
         alert(res.message || 'Stock successfully reserved.');
         if (res.request) setSelectedMsrf({ ...res.request, stockReservedAt: new Date().toISOString() } as any);
         await loadRequests();
@@ -1032,6 +1104,18 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
 
       if (res && res.success) {
         const updatedReq = res.request || selectedMsrf;
+
+        // Notify Salesman (Tariq / Requester)
+        notificationService.addLocalNotification({
+          recipientId: selectedMsrf.requestorId || selectedMsrf.requestorName || 'tariq',
+          recipientRole: 'sales',
+          title: 'Materials Dispatched to Site',
+          message: `Warehouse stock successfully issued for ${selectedMsrf.msrfNumber}. Materials dispatched to client site for ${selectedMsrf.projectName || (selectedMsrf as any).salesOrderNumber || 'Client'}.`,
+          type: 'stock_available',
+          linkUrl: `/purchase?tab=msrf&msrfId=${selectedMsrf.id}`,
+          metadata: { msrfId: selectedMsrf.id, msrfNumber: selectedMsrf.msrfNumber },
+        });
+
         alert(`Stock successfully issued from warehouse! Materials dispatched to client site. Requester (${selectedMsrf.requestorName || 'Tariq'}) has been notified to verify customer site delivery.`);
         setSelectedMsrf(updatedReq);
         await loadRequests();
