@@ -598,6 +598,8 @@ export interface CrmCezconStock {
   minimumStock?: number;
   store?: string;
   status?: string;
+  supplier?: string;
+  supplierId?: string;
   createdBy?: string;
   createdByRole?: string;
   createdById?: string;

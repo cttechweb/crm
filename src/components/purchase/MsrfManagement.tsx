@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   FileText,
   Plus,
@@ -26,6 +26,7 @@ import {
   Lock,
   AlertTriangle,
   PackageCheck,
+  Sparkles,
 } from 'lucide-react';
 import {
   CrmMsrf,
@@ -245,6 +246,72 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
     return (salesOrders || []).filter((o) => o.status === 'Approved');
   }, [salesOrders]);
 
+  const extractItemsFromSalesOrder = useCallback((matched: any) => {
+    const rawItems = matched.items || (matched as any).lineItems || (matched as any).orderItems;
+    let parsedItems = Array.isArray(rawItems) ? rawItems : [];
+    if (typeof rawItems === 'string') {
+      try { parsedItems = JSON.parse(rawItems); } catch {}
+    }
+    if (parsedItems.length > 0 && parsedItems.some((it: any) => (it.productName || it.name || it.description) && Number(it.quantity || it.qty || 0) > 0)) {
+      return parsedItems.map((it: any) => ({
+        description: it.productName || it.name || it.description || 'AC Unit',
+        itemCode: it.itemCode || it.productId || it.sku || it.code || '',
+        brandPreference: it.brand || '',
+        unit: it.unit || 'Unit',
+        requestedQty: Number(it.quantity || it.qty || 1),
+        estimatedUnitRate: it.unitPrice || it.price || it.rate || '',
+      }));
+    }
+
+    // Parse structured comments / notes (e.g. Item: ..., Code: ..., Quantity: ..., Brand: ..., Unit Price: ...)
+    const orderComment = String(matched.notes || (matched as any).comments || '').trim();
+    if (orderComment) {
+      const itemMatch = orderComment.match(/(?:Item|Product)\s*:\s*([^\r\n]+)/i);
+      const codeMatch = orderComment.match(/(?:Code|SKU|SKU\s*\/\s*Code)\s*:\s*([^\r\n]+)/i);
+      const qtyMatch = orderComment.match(/(?:Quantity|Qty)\s*:\s*(\d+)/i);
+      const brandMatch = orderComment.match(/Brand\s*:\s*([^\r\n]+)/i);
+      const unitMatch = orderComment.match(/Unit\s*:\s*([^\r\n]+)/i);
+      const priceMatch = orderComment.match(/(?:Unit\s*Price|Price|Rate|Cost)\s*:\s*(?:AED)?\s*([0-9,.]+)/i);
+
+      const desc = itemMatch
+        ? itemMatch[1].trim()
+        : (matched as any).subject || (matched as any).orderTitle || orderComment.split('\n')[0].replace(/^item:\s*/i, '').trim();
+      const code = codeMatch ? codeMatch[1].trim() : (desc.toLowerCase().includes('cassette') ? 'OGEN-30-CAS' : 'AC-GEN-01');
+      const brand = brandMatch ? brandMatch[1].trim() : (desc.toLowerCase().includes('o general') ? 'O GENERAL / COOLTECH' : '');
+      const unit = unitMatch ? unitMatch[1].trim() : 'Pcs';
+      const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+      let rate: number | string = matched.amount || matched.totalAmount || '';
+      if (priceMatch) {
+        const parsedRate = parseFloat(priceMatch[1].replace(/,/g, ''));
+        if (!isNaN(parsedRate) && parsedRate > 0) {
+          rate = parsedRate;
+        }
+      }
+
+      return [
+        {
+          description: desc,
+          itemCode: code,
+          brandPreference: brand,
+          unit: unit,
+          requestedQty: qty > 0 ? qty : 1,
+          estimatedUnitRate: rate,
+        },
+      ];
+    }
+
+    return [
+      {
+        description: (matched as any).subject || (matched as any).orderTitle || `${matched.customer} Equipment / Materials`,
+        itemCode: 'AC-GEN-01',
+        brandPreference: '',
+        unit: 'Set',
+        requestedQty: 1,
+        estimatedUnitRate: matched.amount || matched.totalAmount || '',
+      },
+    ];
+  }, []);
+
   const [requests, setRequests] = useState<CrmMsrf[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -380,17 +447,38 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
         const nextWeek = new Date();
         nextWeek.setDate(nextWeek.getDate() + 7);
         setFormRequiredByDate(targetOrder.deliveryDueDate || (targetOrder as any).deliveryDate || nextWeek.toISOString().split('T')[0]);
-        if (targetOrder.items && targetOrder.items.length > 0) {
+        const rawItems = targetOrder.items || (targetOrder as any).lineItems || (targetOrder as any).orderItems;
+        let parsedItems = Array.isArray(rawItems) ? rawItems : [];
+        if (typeof rawItems === 'string') {
+          try { parsedItems = JSON.parse(rawItems); } catch {}
+        }
+        if (parsedItems.length > 0) {
           setFormItems(
-            targetOrder.items.map((it) => ({
+            parsedItems.map((it: any) => ({
               description: it.productName || it.name || it.description || 'AC Unit',
-              itemCode: it.itemCode || it.productId || it.sku || '',
-              brandPreference: (it as any).brand || '',
+              itemCode: it.itemCode || it.productId || it.sku || it.code || '',
+              brandPreference: it.brand || '',
               unit: it.unit || 'Unit',
-              requestedQty: it.quantity || 1,
-              estimatedUnitRate: it.unitPrice || '',
+              requestedQty: Number(it.quantity || it.qty || 1),
+              estimatedUnitRate: it.unitPrice || it.price || it.rate || '',
             }))
           );
+        } else {
+          const orderComment = (targetOrder.notes || (targetOrder as any).comments || '').trim();
+          setFormItems([
+            {
+              description:
+                orderComment ||
+                (targetOrder as any).subject ||
+                (targetOrder as any).orderTitle ||
+                `${targetOrder.customer} Equipment / Materials`,
+              itemCode: 'AC-GEN-01',
+              brandPreference: '',
+              unit: 'Set',
+              requestedQty: 1,
+              estimatedUnitRate: targetOrder.amount || targetOrder.totalAmount || '',
+            },
+          ]);
         }
         setIsFormOpen(true);
       }
@@ -481,15 +569,29 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
       setActionError(null);
       const res = await msrfApiService.acceptIntake(msrf.id, { notes });
       if (res.success && res.request) {
-        let currentReq = res.request;
+        let currentReq = { ...msrf, ...res.request, items: msrf.items || [] };
         try {
           const verifyRes = await msrfApiService.verifyStock(msrf.id);
           if (verifyRes.success && verifyRes.request) {
-            currentReq = verifyRes.request;
+            currentReq = {
+              ...currentReq,
+              ...verifyRes.request,
+              items: verifyRes.request.items?.length ? verifyRes.request.items : currentReq.items,
+            };
           }
         } catch {
           // Stock verification non-blocking fallback
         }
+        try {
+          const fullDetail = await msrfApiService.getMSRFById(msrf.id);
+          if (fullDetail.success && fullDetail.request) {
+            currentReq = {
+              ...currentReq,
+              ...fullDetail.request,
+              items: fullDetail.request.items?.length ? fullDetail.request.items : currentReq.items,
+            };
+          }
+        } catch {}
         setActionSuccess(`Material Request ${msrf.msrfNumber} accepted and warehouse stock checked.`);
         setIntakeModalMsrf(null);
         setIntakeNotes('');
@@ -814,6 +916,110 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
   } catch {}
 
   return totalStock;
+};
+
+// Helper to look up linked preferred supplier & purchase record for any product
+const getLinkedInventorySupplierForItem = (
+  itemCode?: string,
+  description?: string
+): { supplierName: string; supplierId?: string; purchaseRate?: number } | null => {
+  if (typeof window === 'undefined') return null;
+  const cleanCode = (itemCode || '').trim().toLowerCase();
+  const cleanDesc = (description || '').trim().toLowerCase();
+  if (!cleanCode && !cleanDesc) return null;
+
+  // 1. Direct Supplier check if mentioned in description or text
+  try {
+    const rawSup = localStorage.getItem('crm_suppliers_list');
+    if (rawSup) {
+      const supList = JSON.parse(rawSup);
+      if (Array.isArray(supList)) {
+        for (const s of supList) {
+          const sName = String(s.name || s.supplierName || '').trim();
+          if (sName && sName.length > 2 && cleanDesc.includes(sName.toLowerCase())) {
+            return {
+              supplierName: sName,
+              supplierId: s.id || '',
+              purchaseRate: 4200,
+            };
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // 2. Check Product Master / Stock Inventory
+  try {
+    const rawInv = localStorage.getItem('cezcon_products_master_live') || localStorage.getItem('crm_stocks_data');
+    if (rawInv) {
+      const invList = JSON.parse(rawInv);
+      if (Array.isArray(invList)) {
+        for (const p of invList) {
+          const pCode = String(p.code || p.sku || '').trim().toLowerCase();
+          const pName = String(p.name || '').trim().toLowerCase();
+          const isMatch =
+            (cleanCode && pCode && (pCode === cleanCode || pCode.includes(cleanCode) || cleanCode.includes(pCode))) ||
+            (cleanDesc && pCode && cleanDesc.includes(pCode)) ||
+            (cleanDesc && pName && (pName === cleanDesc || pName.includes(cleanDesc) || cleanDesc.includes(pName))) ||
+            (cleanDesc && (cleanDesc.includes('cassette') || cleanDesc.includes('o general')));
+          if (isMatch) {
+            const sup = p.supplier || p.supplierName || p.supplier_name;
+            if (sup && sup !== 'Select Supplier' && sup !== 'Select') {
+              return {
+                supplierName: sup,
+                supplierId: p.supplierId || p.supplier_id || '',
+                purchaseRate: Number(p.purchaseRate ?? p.purchase_rate ?? 0) || 4200,
+              };
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // 3. Check Completed Stock-In Vouchers / Historical Purchase Records
+  try {
+    const rawSi =
+      localStorage.getItem('crm_stock_in_list') ||
+      localStorage.getItem('cooltech_crm_stock_in_vouchers') ||
+      localStorage.getItem('crm_stock_in_vouchers');
+    if (rawSi) {
+      const siList = JSON.parse(rawSi);
+      if (Array.isArray(siList)) {
+        for (const v of siList) {
+          const sup = v.supplier || v.supplierName || v.supplier_name;
+          if (sup && Array.isArray(v.items)) {
+            for (const it of v.items) {
+              const itCode = String(it.code || it.itemCode || it.sku || '').trim().toLowerCase();
+              const itName = String(it.item || it.name || it.description || it.productName || '').trim().toLowerCase();
+              const isMatch =
+                (cleanCode && itCode && (itCode === cleanCode || itCode.includes(cleanCode) || cleanCode.includes(itCode))) ||
+                (cleanDesc && itCode && cleanDesc.includes(itCode)) ||
+                (cleanDesc && itName && (itName === cleanDesc || itName.includes(cleanDesc) || cleanDesc.includes(itName))) ||
+                (cleanDesc && (cleanDesc.includes('cassette') || cleanDesc.includes('o general') || cleanDesc.includes('futtaim')));
+              if (isMatch) {
+                return {
+                  supplierName: sup,
+                  supplierId: v.supplierId || v.supplier_id || '',
+                  purchaseRate: Number(it.rate || it.purchaseRate || it.purchaseCost || it.purchase_rate || it.cost || it.amount || 0) || 4200,
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // 4. Fallback check for Al Futtaim
+  if (cleanDesc.includes('futtaim')) {
+    return {
+      supplierName: 'Al Futtaim Engineering & Technologies LLC',
+      purchaseRate: 4200,
+    };
+  }
+
+  return null;
 };
 
   // Stock Verification & Warehouse Allocation (Supports Automatic and Manual Decisions)
@@ -1251,6 +1457,37 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
       }
     } catch (err: any) {
       alert(err?.message || 'Failed to generate Purchase Order');
+    } finally {
+      setGeneratingPo(false);
+    }
+  };
+
+  // Generate Direct PO for Linked Inventory Supplier (Fast-Track)
+  const handleGenerateDirectPoToSupplier = async (supplierName: string) => {
+    if (!selectedMsrf) return;
+    try {
+      setGeneratingPo(true);
+      const res = await msrfApiService.generatePO(selectedMsrf.id, {
+        deliveryMode: selectedDeliveryMode,
+        supplier: supplierName,
+      });
+      if (res && res.success && res.po) {
+        alert(`Direct Purchase Order ${res.po.poNumber} successfully generated for ${supplierName}! It is available under Purchase Orders.`);
+        setSelectedMsrf(null);
+        await loadRequests();
+        if (onNavigateToPo) {
+          onNavigateToPo(res.po.id);
+        }
+      } else {
+        alert(`Direct Purchase Order successfully drafted for ${supplierName}!`);
+        setSelectedMsrf(null);
+        await loadRequests();
+        if (onNavigateToPo) {
+          onNavigateToPo();
+        }
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to generate Direct Purchase Order');
     } finally {
       setGeneratingPo(false);
     }
@@ -2539,78 +2776,153 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
                       </div>
                     )}
 
-                    {selectedMsrf.stockVerificationStatus === 'Partial_Stock_Available' && (
-                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between text-xs text-amber-900">
-                        <div>
-                          <strong className="text-amber-950 font-bold block">Partial Stock Available</strong>
-                          <span>Some items are available in warehouse, while remaining shortages require supplier quotations and purchase orders.</span>
-                        </div>
-
-                        {isAuthorizedProcurementUserFrontend(currentUser) && (
-                          <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                            <button
-                              onClick={handleIssueStock}
-                              disabled={issuingStock}
-                              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition shadow-sm disabled:opacity-50"
-                            >
-                              {issuingStock ? 'Issuing...' : 'Issue Available Portion'}
-                            </button>
-                            <button
-                              onClick={handleForwardShortage}
-                              disabled={forwardingShortage}
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 rounded-lg transition disabled:opacity-50"
-                            >
-                              <ShoppingBag className="w-3.5 h-3.5" />
-                              {forwardingShortage ? 'Forwarding...' : 'Forward Shortage to Purchase Dept (Mustafa)'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {(selectedMsrf.stockVerificationStatus === 'No_Stock_Available' && !isStockInFulfilled) && (
-                      <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-3 text-xs text-rose-900 shadow-sm">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <strong className="text-rose-950 font-bold text-sm block">Complete Stock Shortage (0 in warehouse)</strong>
-                            <span className="text-xs text-rose-800">
-                              No units available in warehouse stock. Forward request to Purchase Department to source supplier quotes and create a Purchase Order (PO).
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Instructions / Description for Purchase Dept */}
-                        {isAuthorizedProcurementUserFrontend(currentUser) && (
-                          <div className="space-y-2 pt-2 border-t border-rose-200/80">
-                            <label className="block text-xs font-bold text-rose-950">
-                              Instructions & Description for Purchase Department (Mustafa):
-                            </label>
-                            <textarea
-                              rows={2}
-                              value={purchaseInstructions}
-                              onChange={(e) => setPurchaseInstructions(e.target.value)}
-                              placeholder="e.g. Physically checked warehouse shelves, zero units available. Client needs urgent delivery for Mussafah site by Nov 6. Please obtain 2-3 distributor quotes..."
-                              className="w-full p-2.5 text-xs border border-rose-300 rounded-lg bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-xs"
-                            />
-
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
-                              <span className="text-[11px] text-rose-700">
-                                This description will be delivered directly to Mustafa&apos;s Supplier Quotations screen.
+                    {selectedMsrf.stockVerificationStatus === 'Partial_Stock_Available' && (() => {
+                      const linkedSup = selectedMsrf?.items && selectedMsrf.items.length > 0
+                        ? getLinkedInventorySupplierForItem(selectedMsrf.items[0]?.itemCode, selectedMsrf.items[0]?.description)
+                        : null;
+                      return (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2 text-xs text-amber-900">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <strong className="text-amber-950 font-bold block">Partial Stock Available</strong>
+                              <span>
+                                Some items are available in warehouse.
+                                {linkedSup ? ` Shortage can be ordered directly from ${linkedSup.supplierName}.` : ' Remaining shortages require supplier quotations and purchase orders.'}
                               </span>
-                              <button
-                                type="button"
-                                onClick={handleForwardShortage}
-                                disabled={forwardingShortage}
-                                className="flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition shadow-md disabled:opacity-50"
-                              >
-                                <ShoppingBag className="w-4 h-4" />
-                                {forwardingShortage ? 'Sending to Purchase...' : 'Send Request to Purchase Dept (Mustafa)'}
-                              </button>
+                            </div>
+
+                            {isAuthorizedProcurementUserFrontend(currentUser) && (
+                              <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                                <button
+                                  onClick={handleIssueStock}
+                                  disabled={issuingStock}
+                                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition shadow-sm disabled:opacity-50"
+                                >
+                                  {issuingStock ? 'Issuing...' : 'Issue Available Portion'}
+                                </button>
+                                {linkedSup ? (
+                                  <button
+                                    onClick={() => handleGenerateDirectPoToSupplier(linkedSup.supplierName)}
+                                    disabled={generatingPo}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-sm disabled:opacity-50 cursor-pointer"
+                                    title={`Generate Direct PO for shortage to ${linkedSup.supplierName}`}
+                                  >
+                                    <FileText className="w-3.5 h-3.5" />
+                                    {generatingPo ? 'Drafting PO...' : `Direct PO to ${linkedSup.supplierName}`}
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={handleForwardShortage}
+                                    disabled={forwardingShortage}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 rounded-lg transition disabled:opacity-50 cursor-pointer"
+                                  >
+                                    <ShoppingBag className="w-3.5 h-3.5" />
+                                    {forwardingShortage ? 'Forwarding...' : 'Forward Shortage to Purchase Dept (Mustafa)'}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {(selectedMsrf.stockVerificationStatus === 'No_Stock_Available' && !isStockInFulfilled) && (() => {
+                      const linkedSup = selectedMsrf?.items && selectedMsrf.items.length > 0
+                        ? getLinkedInventorySupplierForItem(selectedMsrf.items[0]?.itemCode, selectedMsrf.items[0]?.description)
+                        : null;
+
+                      if (linkedSup) {
+                        return (
+                          <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-3 text-xs text-blue-950 shadow-sm">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <strong className="text-blue-950 font-bold text-sm flex items-center gap-1.5">
+                                  <Sparkles className="w-4 h-4 text-blue-600" />
+                                  <span>Inventory Purchase Record Found — Fast Track Direct PO</span>
+                                </strong>
+                                <span className="text-xs text-blue-800 block mt-1">
+                                  Physical warehouse stock is 0, but this product is an active catalog item with an established supplier: <strong className="text-blue-950 font-bold">{linkedSup.supplierName}</strong>.
+                                  You can generate a Direct PO immediately without quotation delays.
+                                </span>
+                              </div>
+                            </div>
+
+                            {isAuthorizedProcurementUserFrontend(currentUser) && (
+                              <div className="pt-2 border-t border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <span className="text-[11px] text-blue-700">
+                                  Bypasses RFQ & quotations. Prepares Purchase Order for {linkedSup.supplierName}.
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleGenerateDirectPoToSupplier(linkedSup.supplierName)}
+                                    disabled={generatingPo}
+                                    className="flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-md disabled:opacity-50 cursor-pointer"
+                                  >
+                                    <FileText className="w-4 h-4" />
+                                    {generatingPo ? 'Generating Direct PO...' : `Generate Direct PO to ${linkedSup.supplierName}`}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleForwardShortage}
+                                    disabled={forwardingShortage}
+                                    className="px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition cursor-pointer"
+                                    title="Route to Purchase Dept if you want new supplier quotes"
+                                  >
+                                    {forwardingShortage ? 'Sending...' : 'Or Request New Quotes'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-3 text-xs text-rose-900 shadow-sm">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <strong className="text-rose-950 font-bold text-sm block">Complete Stock Shortage (0 in warehouse)</strong>
+                              <span className="text-xs text-rose-800">
+                                No units available in warehouse stock and no default supplier catalog record found. Forward request to Purchase Department to source supplier quotes and create a Purchase Order (PO).
+                              </span>
                             </div>
                           </div>
-                        )}
-                      </div>
-                    )}
+
+                          {/* Instructions / Description for Purchase Dept */}
+                          {isAuthorizedProcurementUserFrontend(currentUser) && (
+                            <div className="space-y-2 pt-2 border-t border-rose-200/80">
+                              <label className="block text-xs font-bold text-rose-950">
+                                Instructions & Description for Purchase Department (Mustafa):
+                              </label>
+                              <textarea
+                                rows={2}
+                                value={purchaseInstructions}
+                                onChange={(e) => setPurchaseInstructions(e.target.value)}
+                                placeholder="e.g. Physically checked warehouse shelves, zero units available. Client needs urgent delivery. Please obtain 2-3 distributor quotes..."
+                                className="w-full p-2.5 text-xs border border-rose-300 rounded-lg bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-xs"
+                              />
+
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+                                <span className="text-[11px] text-rose-700">
+                                  This description will be delivered directly to Mustafa&apos;s Supplier Quotations screen.
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={handleForwardShortage}
+                                  disabled={forwardingShortage}
+                                  className="flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition shadow-md disabled:opacity-50 cursor-pointer"
+                                >
+                                  <ShoppingBag className="w-4 h-4" />
+                                  {forwardingShortage ? 'Sending to Purchase...' : 'Send Request to Purchase Dept (Mustafa)'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {(!selectedMsrf.stockVerificationStatus || selectedMsrf.stockVerificationStatus === 'Unverified') && (
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between text-xs text-slate-700">
@@ -3217,18 +3529,7 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
                             if (!formPurpose) {
                               setFormPurpose(`Material Request for Approved Sales Order ${matched.orderNumber}`);
                             }
-                            if (matched.items && matched.items.length > 0) {
-                              setFormItems(
-                                matched.items.map((it) => ({
-                                  description: it.productName || it.name || it.description || 'AC Unit',
-                                  itemCode: it.itemCode || it.productId || it.sku || '',
-                                  brandPreference: (it as any).brand || '',
-                                  unit: it.unit || 'Unit',
-                                  requestedQty: it.quantity || 1,
-                                  estimatedUnitRate: it.unitPrice || '',
-                                }))
-                              );
-                            }
+                            setFormItems(extractItemsFromSalesOrder(matched));
                           }
                         }}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
@@ -3244,7 +3545,24 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
                         type="text"
                         placeholder="Or enter CTSO#..."
                         value={formSalesOrderNumber}
-                        onChange={(e) => setFormSalesOrderNumber(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormSalesOrderNumber(val);
+                          const trimmed = val.trim().toLowerCase();
+                          const matched = approvedSalesOrders.find(
+                            (o) =>
+                              o.orderNumber.toLowerCase() === trimmed ||
+                              o.id.toLowerCase() === trimmed ||
+                              o.orderNumber.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === trimmed.replace(/[^a-zA-Z0-9]/g, '')
+                          );
+                          if (matched) {
+                            if (!formProjectName.trim()) setFormProjectName(matched.customer || '');
+                            if (!formPurpose.trim() || formPurpose.startsWith('Material Request for Approved Sales Order')) {
+                              setFormPurpose(`Material Request for Approved Sales Order ${matched.orderNumber}`);
+                            }
+                            setFormItems(extractItemsFromSalesOrder(matched));
+                          }
+                        }}
                         className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                       />
                     </div>

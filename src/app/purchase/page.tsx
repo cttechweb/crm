@@ -889,14 +889,13 @@ function PurchasePageInner() {
   useEffect(() => {
     const viewId = searchParams.get('view');
     if (mainTab === 'po' && viewId) {
+      setPoFilterSupplier('Select Supplier');
+      setPoFilterOwner('All Owners');
       const found = purchaseOrders.find(
         (p) => String(p.id) === String(viewId) || String(p.poNumber).toLowerCase() === String(viewId).toLowerCase()
       );
       if (found) {
         setViewingPo(found);
-        setPoViewMode('details');
-      } else if (purchaseOrders.length > 0) {
-        setViewingPo(purchaseOrders[0]);
         setPoViewMode('details');
       }
     }
@@ -1424,7 +1423,7 @@ function PurchasePageInner() {
 
   const [stockInDate, setStockInDate] = useState<string>(getLiveTodayDateString());
   const [stockInNumber, setStockInNumber] = useState<string>('STK-924');
-  const [stockInStore, setStockInStore] = useState<string>('Select');
+  const [stockInStore, setStockInStore] = useState<string>('MAIN WAREHOUSE');
   const [stockInDeliveryNote, setStockInDeliveryNote] = useState<string>('');
   const [stockInDoFileName, setStockInDoFileName] = useState<string>('');
   const [stockInSupplier, setStockInSupplier] = useState<string>('Select');
@@ -1516,6 +1515,8 @@ function PurchasePageInner() {
       purchaseRate: string;
       sellingPrice: string;
       qty: string;
+      code?: string;
+      serialNo?: string;
     }>
   >([
     {
@@ -1579,12 +1580,20 @@ function PurchasePageInner() {
               items: r.items || [],
               files: [],
             }));
-          setStockInList(serverRecords);
-          try {
-            localStorage.setItem('crm_stock_in_list', JSON.stringify(serverRecords));
-          } catch (e) {
-            console.error(e);
-          }
+          setStockInList((prev) => {
+            const serverIds = new Set(serverRecords.map((s: any) => s.id || s.stockInNo));
+            const serverNos = new Set(serverRecords.map((s: any) => s.stockInNo));
+            const localOnly = (prev || []).filter(
+              (p: any) => !serverIds.has(p.id) && !serverNos.has(p.stockInNo) && !serverIds.has(p.stockInNo)
+            );
+            const combined = [...localOnly, ...serverRecords];
+            try {
+              localStorage.setItem('crm_stock_in_list', JSON.stringify(combined));
+            } catch (e) {
+              console.error(e);
+            }
+            return combined;
+          });
         }
       })
       .catch(() => { });
@@ -1594,7 +1603,7 @@ function PurchasePageInner() {
     setEditingStockInId(null);
     setStockInDate(getLiveTodayDateString());
     setStockInNumber(`STK-${Math.floor(900 + Math.random() * 100)}`);
-    setStockInStore('Select');
+    setStockInStore('MAIN WAREHOUSE');
     setStockInDeliveryNote('');
     setStockInDoFileName('');
     setStockInSupplier('Select');
@@ -2981,7 +2990,7 @@ function PurchasePageInner() {
 
   // Live Dynamic Products/Stock Items for Stock In line items
   const liveStockInProducts = useMemo(() => {
-    const productsMap = new Map<string, { name: string; unit: string; purchaseRate: string; sellingPrice: string }>();
+    const productsMap = new Map<string, { name: string; unit: string; purchaseRate: string; sellingPrice: string; supplier?: string; store?: string; code?: string }>();
 
     (stockItems || []).forEach((p: any) => {
       const name = (p.name || '').trim();
@@ -2991,6 +3000,9 @@ function PurchasePageInner() {
           unit: p.unit || 'Pcs',
           purchaseRate: String(p.purchaseRate || '0.00'),
           sellingPrice: String(p.sellingPrice || '0.00'),
+          supplier: p.supplier || '',
+          store: p.store || '',
+          code: p.code || p.sku || '',
         });
       }
     });
@@ -3003,6 +3015,9 @@ function PurchasePageInner() {
           unit: p.unit || 'Pcs',
           purchaseRate: String(p.purchaseRate || '0.00'),
           sellingPrice: String(p.sellingPrice || '0.00'),
+          supplier: p.supplier || '',
+          store: p.store || '',
+          code: p.code || p.sku || '',
         });
       }
     });
@@ -3287,6 +3302,8 @@ function PurchasePageInner() {
     type: 'Product',
     imagesCountText: '',
     brand: 'Select Brand',
+    supplier: 'Select Supplier',
+    supplierId: '',
     additionalDescription: '',
     wordCount: 0,
   });
@@ -3423,7 +3440,7 @@ function PurchasePageInner() {
       id: String(targetId),
       slNo: existingProduct?.slNo || stockItems.length + 1,
       serialNo: productFormData.serialNumber || '',
-      code: productFormData.code || (existingProduct?.code || `CQ4N-XMI${Math.floor(10 + Math.random() * 90)}S`),
+      code: productFormData.code.trim() || (existingProduct?.code || `CQ4N-XMI${Math.floor(10 + Math.random() * 90)}S`),
       name: productFormData.name || 'New Product',
       image: existingProduct?.image || '',
       unit: productFormData.unit !== 'Select Unit' ? productFormData.unit : (existingProduct?.unit || 'Pcs'),
@@ -3434,6 +3451,8 @@ function PurchasePageInner() {
       sellingPrice: Number(productFormData.sellingPrice) || 0,
       status: existingProduct?.status || 'Active',
       store: productFormData.store !== 'Select Store' ? productFormData.store : (existingProduct?.store || 'Main Warehouse - Bay A'),
+      supplier: productFormData.supplier !== 'Select Supplier' ? productFormData.supplier : (existingProduct?.supplier || ''),
+      supplierId: productFormData.supplierId || existingProduct?.supplierId || '',
       stock: Number(productFormData.currentStock) || 0,
       currentStock: Number(productFormData.currentStock) || 0,
       minimumStock: Number(productFormData.minimumStock) || 0,
@@ -3467,6 +3486,8 @@ function PurchasePageInner() {
         basePrice: savedProduct.sellingPrice,
         status: true,
         store: savedProduct.store,
+        supplier: savedProduct.supplier,
+        supplierId: savedProduct.supplierId,
         currentStock: savedProduct.currentStock,
         minStock: savedProduct.minimumStock,
         additionalDescription: productFormData.additionalDescription,
@@ -3517,9 +3538,31 @@ function PurchasePageInner() {
           purchaseRate: String(savedProduct.purchaseRate),
           sellingPrice: String(savedProduct.sellingPrice),
           qty: updated[currentStockInItemIndex].qty || '1',
+          code: savedProduct.code,
+          serialNo: savedProduct.serialNo,
         };
         setStockInItems(updated);
       }
+
+      // Automatically update Supplier in Stock In Form
+      if (savedProduct.supplier && savedProduct.supplier !== 'Select Supplier' && savedProduct.supplier !== 'Select') {
+        const supName = String(savedProduct.supplier);
+        setStockInSupplier(supName);
+        setStockInSupplierList((prev) => Array.from(new Set([...prev, supName])));
+      }
+
+      // Automatically update Store in Stock In Form
+      const storeTarget = savedProduct.store && savedProduct.store !== 'Select Store' && savedProduct.store !== 'Select'
+        ? savedProduct.store
+        : 'MAIN WAREHOUSE';
+
+      const matchedStore = storesList.find(
+        (s: any) => (s.name || '').toLowerCase() === storeTarget.toLowerCase() ||
+                    (s.name || '').toLowerCase().includes(storeTarget.toLowerCase()) ||
+                    storeTarget.toLowerCase().includes((s.name || '').toLowerCase())
+      );
+      setStockInStore(matchedStore ? matchedStore.name : storeTarget);
+
       setIsStockInAddingNewProductFullPage(false);
     } else {
       setProductViewMode('list');
@@ -3541,6 +3584,8 @@ function PurchasePageInner() {
       type: 'Product',
       imagesCountText: '',
       brand: 'Select Brand',
+      supplier: 'Select Supplier',
+      supplierId: '',
       additionalDescription: '',
       wordCount: 0,
     });
@@ -3653,7 +3698,7 @@ function PurchasePageInner() {
               <div className="sm:col-span-2">
                 <input
                   type="text"
-                  placeholder="Item / Product Code (e.g. CQ4N-XMI48S)"
+                  placeholder="Enter custom product code (e.g. CARR-40-DUCT)"
                   value={productFormData.code}
                   onChange={(e) => setProductFormData({ ...productFormData, code: e.target.value })}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400 font-mono"
@@ -3726,6 +3771,36 @@ function PurchasePageInner() {
                 >
                   + New
                 </button>
+              </div>
+            </div>
+
+            {/* Preferred Supplier */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+              <label className="text-slate-700 font-medium text-xs">Preferred Supplier</label>
+              <div className="sm:col-span-2">
+                <select
+                  value={productFormData.supplier}
+                  onChange={(e) => {
+                    const selSup = e.target.value;
+                    const matched = suppliersList.find((s) => (s.name || s.supplierName || s.supplier_name) === selSup);
+                    setProductFormData({
+                      ...productFormData,
+                      supplier: selSup,
+                      supplierId: matched?.id || '',
+                    });
+                  }}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
+                >
+                  <option value="Select Supplier">Select Supplier</option>
+                  {suppliersList.map((sup: any) => {
+                    const sName = sup.name || sup.supplierName || sup.supplier_name || 'Supplier';
+                    return (
+                      <option key={sup.id || sName} value={sName}>
+                        {sName}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
             </div>
           </div>
@@ -4517,7 +4592,12 @@ function PurchasePageInner() {
           <MsrfManagement
             currentUser={currentUser}
             onNavigateToQuotes={(msrfId) => router.push(`/purchase?tab=quotations&msrfId=${msrfId}`)}
-            onNavigateToPo={(poId) => router.push(`/purchase?tab=po${poId ? `&viewId=${poId}` : ''}`)}
+            onNavigateToPo={() => {
+              setPoViewMode('list');
+              setPoFilterSupplier('Select Supplier');
+              setPoFilterOwner('All Owners');
+              router.push('/purchase?tab=po');
+            }}
           />
         )}
 
@@ -9803,6 +9883,9 @@ function PurchasePageInner() {
                             className="flex-1 min-w-0 px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                           >
                             <option value="Select">Select</option>
+                            {stockInStore && stockInStore !== 'Select' && !storesList.some((st: any) => (st.name || '').toLowerCase() === stockInStore.toLowerCase()) && (
+                              <option value={stockInStore}>{stockInStore}</option>
+                            )}
                             {storesList.map((st: any) => (
                               <option key={st.id || st.name} value={st.name}>
                                 {st.name} {st.code ? `(${st.code})` : ''}
@@ -10051,6 +10134,14 @@ function PurchasePageInner() {
                                 updated[idx].purchaseRate = foundProd.purchaseRate;
                                 updated[idx].sellingPrice = foundProd.sellingPrice;
                                 if (!updated[idx].qty) updated[idx].qty = '1';
+                                if (foundProd.code) updated[idx].code = foundProd.code;
+                                if (foundProd.supplier && (stockInSupplier === 'Select' || !stockInSupplier)) {
+                                  setStockInSupplier(foundProd.supplier);
+                                  setStockInSupplierList((prev) => Array.from(new Set([...prev, foundProd.supplier!])));
+                                }
+                                if (foundProd.store && (stockInStore === 'Select' || !stockInStore)) {
+                                  setStockInStore(foundProd.store);
+                                }
                               }
                               setStockInItems(updated);
                             }}
@@ -10069,7 +10160,7 @@ function PurchasePageInner() {
                               setCurrentStockInItemIndex(idx);
                               setProductFormData({
                                 serialNumber: '',
-                                code: `CQ4N-XMI${Math.floor(10 + Math.random() * 90)}S`,
+                                code: '',
                                 name: '',
                                 thumbnailName: '',
                                 unit: 'Pcs',
@@ -10082,6 +10173,8 @@ function PurchasePageInner() {
                                 type: 'Product',
                                 imagesCountText: '',
                                 brand: 'Select Brand',
+                                supplier: 'Select Supplier',
+                                supplierId: '',
                                 additionalDescription: '',
                                 wordCount: 0,
                               });
@@ -10245,15 +10338,17 @@ function PurchasePageInner() {
                           resetStockInForm();
                           setStockInViewMode('register');
                         } else {
+                          const finalSupplier = stockInSupplier !== 'Select' ? stockInSupplier : (liveStockInSuppliersList[0] || 'Mueller Middle East FZE');
+                          const finalStore = stockInStore !== 'Select' ? stockInStore : (storesList[0]?.name || 'MAIN WAREHOUSE');
                           const newRecord = {
                             id: `si_${Date.now()}`,
                             slNo: stockInList.length + 1,
                             stockInNo: stockInNumber,
                             date: stockInDate,
-                            supplier: stockInSupplier !== 'Select' ? stockInSupplier : (liveStockInSuppliersList[0] || 'afsal'),
-                            source: stockInSupplier !== 'Select' ? stockInSupplier : (liveStockInSuppliersList[0] || 'afsal'),
-                            warehouse: stockInStore !== 'Select' ? stockInStore : 'MAIN WAREHOUSE',
-                            store: stockInStore !== 'Select' ? stockInStore : 'MAIN WAREHOUSE',
+                            supplier: finalSupplier,
+                            source: finalSupplier,
+                            warehouse: finalStore,
+                            store: finalStore,
                             totalItems: stockInItems.reduce((acc, curr) => acc + (Number(curr.qty) || 1), 0),
                             status: 'Approved',
                             deliveryNote: stockInDeliveryNote,
@@ -10300,6 +10395,31 @@ function PurchasePageInner() {
                                   return p;
                                 });
                                 localStorage.setItem('cezcon_products_master_live', JSON.stringify(updatedProds));
+                                setStockItems((prevItems) => {
+                                  return prevItems.map((p) => {
+                                    const pCode = String(p.code || (p as any).sku || '').trim().toLowerCase();
+                                    const pName = String(p.name || '').trim().toLowerCase();
+                                    const matchingItem = stockInItems.find((it: any) => {
+                                      const itCode = String(it.code || it.itemCode || it.sku || '').trim().toLowerCase();
+                                      const itName = String(it.item || it.name || it.description || '').trim().toLowerCase();
+                                      return (
+                                        (pCode && itCode && (pCode === itCode || pCode.includes(itCode) || itCode.includes(pCode))) ||
+                                        (pName && itName && (pName === itName || pName.includes(itName) || itName.includes(pName)))
+                                      );
+                                    });
+                                    if (matchingItem) {
+                                      const addedQty = Number(matchingItem.qty || (matchingItem as any).quantity || 1);
+                                      const current = Number(p.currentStock ?? p.stock ?? 0);
+                                      return {
+                                        ...p,
+                                        currentStock: current + addedQty,
+                                        stock: current + addedQty,
+                                        status: 'In Stock' as const,
+                                      };
+                                    }
+                                    return p;
+                                  });
+                                });
                                 window.dispatchEvent(new Event('crm_products_updated'));
                               }
                             }
@@ -10361,6 +10481,9 @@ function PurchasePageInner() {
                           stockInApiService.createStockInRecord(newRecord as any).catch(() => { });
                           alert(`Stock In ${stockInNumber} created successfully!`);
                           resetStockInForm();
+                          setStockInSupplierFilter('All');
+                          setStockInSearch('');
+                          setStockInCurrentPage(1);
                           setStockInViewMode('register');
                         }
                       }}
@@ -11970,6 +12093,8 @@ function PurchasePageInner() {
                                 type: viewingProduct.type || 'Product',
                                 imagesCountText: '',
                                 brand: viewingProduct.brand || 'Select Brand',
+                                supplier: viewingProduct.supplier || 'Select Supplier',
+                                supplierId: viewingProduct.supplierId || '',
                                 additionalDescription: '',
                                 wordCount: 0,
                               });
@@ -12451,6 +12576,8 @@ function PurchasePageInner() {
                                 type: 'Product',
                                 imagesCountText: '',
                                 brand: 'Select Brand',
+                                supplier: 'Select Supplier',
+                                supplierId: '',
                                 additionalDescription: '',
                                 wordCount: 0,
                               });
@@ -12683,6 +12810,8 @@ function PurchasePageInner() {
                                           type: item.type || 'Product',
                                           imagesCountText: '',
                                           brand: item.brand || 'Select Brand',
+                                          supplier: item.supplier || 'Select Supplier',
+                                          supplierId: item.supplierId || '',
                                           additionalDescription: '',
                                           wordCount: 0,
                                         });
@@ -12740,6 +12869,7 @@ function PurchasePageInner() {
                               <th className="p-2.5 w-16 text-center border-r border-slate-200">Unit</th>
                               <th className="p-2.5 w-24 border-r border-slate-200">Brand</th>
                               <th className="p-2.5 w-32 border-r border-slate-200">Category</th>
+                              <th className="p-2.5 w-36 border-r border-slate-200">Preferred Supplier</th>
                               <th className="p-2.5 w-20 text-center border-r border-slate-200">
                                 <span className="inline-flex items-center gap-0.5">
                                   Type
@@ -12767,6 +12897,15 @@ function PurchasePageInner() {
                                 <td className="p-2.5 text-center text-slate-700 border-r border-slate-100">{item.unit}</td>
                                 <td className="p-2.5 text-slate-700 border-r border-slate-100">{item.brand}</td>
                                 <td className="p-2.5 text-slate-700 border-r border-slate-100">{item.category}</td>
+                                <td className="p-2.5 text-slate-700 border-r border-slate-100 font-medium">
+                                  {item.supplier ? (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                                      {item.supplier}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 italic text-[11px]">None</span>
+                                  )}
+                                </td>
                                 <td className="p-2.5 text-center text-slate-700 border-r border-slate-100">{item.type}</td>
                                 <td className="p-2.5 text-right font-medium text-slate-800 border-r border-slate-100">
                                   0.00
@@ -12863,6 +13002,8 @@ function PurchasePageInner() {
                                               type: item.type || 'Product',
                                               imagesCountText: '',
                                               brand: item.brand || 'Select Brand',
+                                              supplier: item.supplier || 'Select Supplier',
+                                              supplierId: item.supplierId || '',
                                               additionalDescription: '',
                                               wordCount: 0,
                                             });

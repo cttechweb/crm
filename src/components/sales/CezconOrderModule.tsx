@@ -122,6 +122,7 @@ export function CezconOrderModule() {
     addOpportunity,
     users,
     leads,
+    quotations,
   } = useEnterpriseCrm();
 
   const currentUser = typeof window !== 'undefined' ? authMockService.getCurrentUser() : null;
@@ -509,6 +510,7 @@ export function CezconOrderModule() {
   const [pointOfContact, setPointOfContact] = useState('Select Customer First');
   const [sourceName, setSourceName] = useState('');
   const [orderNumber, setOrderNumber] = useState(`CTSO#${Math.floor(3900 + Math.random() * 100)}`);
+  const [commercialOfferNumber, setCommercialOfferNumber] = useState('');
   const [opportunityNumber, setOpportunityNumber] = useState('');
   const [leadNumber, setLeadNumber] = useState('');
   const [discountPercent, setDiscountPercent] = useState<number>(0);
@@ -754,6 +756,7 @@ export function CezconOrderModule() {
     setPointOfContact('Select Customer First');
     setSourceName('');
     setOrderNumber(`CTSO#${Math.floor(3900 + Math.random() * 100)}`);
+    setCommercialOfferNumber('');
     setOpportunityNumber('');
     setLeadNumber('');
     setDiscountPercent(0);
@@ -807,6 +810,8 @@ export function CezconOrderModule() {
     setLpoDate((order as any).lpoDate || '');
     setLocation((order as any).location || order.shippingAddress || order.billingAddress || '');
     setDeliveryMethod((order as any).deliveryMethod || '');
+    setCommercialOfferNumber((order as any).quotationRef || (order as any).commercialOfferNumber || '');
+    setOpportunityNumber(order.opportunityRef || '');
     setBusinessOpportunity((order as any).businessOpportunity || order.opportunityRef || 'Select Business Opportunity');
     setOrderTags((order as any).orderTags || '');
     setComments(order.notes || (order as any).comments || '');
@@ -962,6 +967,149 @@ export function CezconOrderModule() {
     setLineItems(lineItems.filter((_, i) => i !== index));
   };
 
+  // Live dynamic Commercial Offers / Quotations from Context + LocalStorage
+  const liveQuotations = useMemo(() => {
+    let localQuotes: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('crm_quotations_data');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) localQuotes = parsed;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    const map = new Map<string, any>();
+    (quotations || []).forEach((q) => {
+      const key = q.quotationNumber || q.id;
+      if (key) map.set(key, q);
+    });
+    localQuotes.forEach((q) => {
+      const key = q.quotationNumber || q.id;
+      if (key && !map.has(key)) {
+        map.set(key, q);
+      }
+    });
+    return Array.from(map.values());
+  }, [quotations]);
+
+  // Commercial Offer Selection and Full Auto-Fill Engine
+  const handleCommercialOfferSelect = (val: string) => {
+    setCommercialOfferNumber(val);
+    if (!val || val === 'None (Direct Order)') {
+      setOpportunityNumber('');
+      return;
+    }
+
+    // 1. Look for matching Commercial Offer (Quotation)
+    const quote = liveQuotations.find(
+      (q: any) => q.quotationNumber === val || q.id === val || (q.code && q.code === val)
+    );
+
+    if (quote) {
+      // 1. Auto-fill Customer Name
+      if (quote.customer) {
+        setCustomerName(quote.customer);
+      }
+
+      // 2. Auto-fill Point of Contact / Contact Person
+      const contactVal = quote.contactPerson || quote.contactName || quote.customer;
+      if (contactVal) {
+        setPointOfContact(contactVal);
+        setContactPerson(quote.contactPerson || contactVal);
+        if (!customContacts.includes(contactVal)) {
+          setCustomContacts((prev) => [...prev, contactVal]);
+        }
+      }
+
+      // 3. Auto-fill Order Title
+      const title = quote.subject || quote.title || (quote as any).projectTitle || `Sales Order - ${quote.customer}`;
+      setOrderTitle(title);
+
+      // 4. Opportunity & Lead References
+      if (quote.opportunityCode || quote.opportunityId) {
+        setOpportunityNumber(quote.opportunityCode || quote.opportunityId || '');
+        setBusinessOpportunity(quote.opportunityCode || '');
+      } else {
+        setOpportunityNumber(val);
+        setBusinessOpportunity(val);
+      }
+      if (quote.leadNumber || (quote as any).leadId) {
+        setLeadNumber(quote.leadNumber || (quote as any).leadId || '');
+      }
+
+      // 5. Commercial Financials
+      const sub = Number(quote.subtotal || quote.grossAmount || (Number(quote.totalAmount || 0) / 1.05)) || 0;
+      const disc = Number(quote.discountAmount || quote.discountTotal || 0);
+      const vat = Number(quote.vatAmount || (sub * 0.05)) || 0;
+      const tot = Number(quote.totalAmount || (sub - disc + vat)) || 0;
+
+      setManualAmount(sub > 0 ? sub.toFixed(2) : '');
+      setDiscountPercent(quote.discountPercent ? Number(quote.discountPercent) : 0);
+      setManualDiscountAmount(disc > 0 ? disc.toFixed(2) : '');
+      setVatRate(quote.vatRate ? Number(quote.vatRate) : 5);
+      setVatType('With VAT');
+      if ((quote as any).adjustment) {
+        setAdjustment(String((quote as any).adjustment));
+      }
+
+      // 6. Owner
+      if (quote.owner) {
+        setOrderOwner(quote.owner);
+      }
+
+      // 7. Terms & Conditions
+      if (quote.termsAndConditions || quote.notes) {
+        setTermsContent(quote.termsAndConditions || quote.notes || '');
+      }
+
+      // 8. Auto-fill Quoted Line Items & Product Details
+      const rawItems: any[] = quote.items || (quote as any).lineItems || [];
+      if (rawItems && rawItems.length > 0) {
+        const formattedItems: OrderItemRow[] = rawItems.map((it: any, idx: number) => {
+          const qty = Number(it.quantity || it.qty || 1);
+          const price = Number(it.unitPrice || it.rate || it.price || 0);
+          const code = it.itemCode || it.sku || it.code || `PROD-${idx + 1}`;
+          const brand = it.brand || '';
+          const desc = it.name || it.productName || it.description || it.item || 'HVAC Equipment';
+          return {
+            id: `item_${Date.now()}_${idx}`,
+            description: desc,
+            additionalDescription: it.additionalDescription || it.specifications || '',
+            showAdditional: false,
+            code: code,
+            unit: it.unit || 'Pcs',
+            brand: brand,
+            qty: qty,
+            price: price,
+            total: Number(it.totalAmount || it.lineTotal || it.total || (qty * price)),
+          };
+        });
+
+        setLineItems(formattedItems);
+        setIsOrderFormActive(true);
+
+        const productDetailsSummary = formattedItems
+          .map(
+            (it) =>
+              `Item: ${it.description}\nCode: ${it.code}\nQuantity: ${it.qty}\nBrand: ${it.brand || 'Standard'}\nUnit Price: ${it.price.toFixed(2)}`
+          )
+          .join('\n\n');
+        setComments(productDetailsSummary);
+      } else if (quote.notes) {
+        setComments(quote.notes);
+      }
+
+      showToast(`Commercial Offer ${quote.quotationNumber} selected! Details populated.`);
+      return;
+    }
+
+    // 2. Fallback to Opportunity selection if user chose an Opportunity directly
+    handleOpportunitySelect(val);
+  };
+
   // Opportunity selection and auto-fill engine
   const handleOpportunitySelect = (oppVal: string) => {
     setOpportunityNumber(oppVal);
@@ -1102,10 +1250,14 @@ export function CezconOrderModule() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
+      const quoteParam = params.get('quotationNumber') || params.get('quoteId') || params.get('quoteNumber') || params.get('offer');
       const oppParam = params.get('oppId') || params.get('opportunityId') || params.get('oppCode');
       const leadParam = params.get('leadNumber') || params.get('leadId');
 
-      if (oppParam && salesOpportunities && salesOpportunities.length > 0) {
+      if (quoteParam && liveQuotations.length > 0) {
+        handleCommercialOfferSelect(quoteParam);
+        setViewMode('create');
+      } else if (oppParam && salesOpportunities && salesOpportunities.length > 0) {
         handleOpportunitySelect(oppParam);
         setViewMode('create');
       } else if (leadParam && leads && leads.length > 0) {
@@ -1128,9 +1280,53 @@ export function CezconOrderModule() {
       return;
     }
 
+    let parsedItemsFromComments: any[] | undefined = undefined;
+    if (!isOrderFormActive && comments.trim()) {
+      const itemMatch = comments.match(/(?:Item|Product)\s*:\s*([^\r\n]+)/i);
+      const codeMatch = comments.match(/(?:Code|SKU|SKU\s*\/\s*Code)\s*:\s*([^\r\n]+)/i);
+      const qtyMatch = comments.match(/(?:Quantity|Qty)\s*:\s*(\d+)/i);
+      const brandMatch = comments.match(/Brand\s*:\s*([^\r\n]+)/i);
+      const unitMatch = comments.match(/Unit\s*:\s*([^\r\n]+)/i);
+      const priceMatch = comments.match(/(?:Unit\s*Price|Price|Rate|Cost)\s*:\s*(?:AED)?\s*([0-9,.]+)/i);
+
+      if (itemMatch || codeMatch) {
+        const desc = itemMatch ? itemMatch[1].trim() : (orderTitle.trim() || comments.split('\n')[0].replace(/^item:\s*/i, '').trim());
+        const code = codeMatch ? codeMatch[1].trim() : (desc.toLowerCase().includes('cassette') ? 'OGEN-30-CAS' : 'AC-GEN-01');
+        const brand = brandMatch ? brandMatch[1].trim() : (desc.toLowerCase().includes('o general') ? 'O GENERAL / COOLTECH' : '');
+        const unit = unitMatch ? unitMatch[1].trim() : 'Pcs';
+        const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
+        let unitRate = Number(effectiveAmount) || 0;
+        if (priceMatch) {
+          const parsedRate = parseFloat(priceMatch[1].replace(/,/g, ''));
+          if (!isNaN(parsedRate) && parsedRate > 0) {
+            unitRate = parsedRate;
+          }
+        }
+        parsedItemsFromComments = [
+          {
+            id: `item_${Date.now()}`,
+            productId: code,
+            itemCode: code,
+            sku: code,
+            name: desc,
+            productName: desc,
+            description: desc,
+            brand: brand,
+            quantity: qty > 0 ? qty : 1,
+            unit: unit,
+            unitPrice: unitRate,
+            taxRate: 5,
+            taxAmount: (unitRate * qty * 5) / 100,
+            totalAmount: unitRate * qty,
+          },
+        ];
+      }
+    }
+
     const orderData: Partial<CrmSalesOrder> = {
       orderNumber,
       opportunityRef: opportunityNumber,
+      quotationRef: commercialOfferNumber || (orderToEdit as any)?.quotationRef || '',
       leadNumber,
       subject: orderTitle.trim(),
       customer: customerName,
@@ -1162,7 +1358,7 @@ export function CezconOrderModule() {
             taxAmount: (i.total * 5) / 100,
             totalAmount: i.total,
           }))
-        : undefined,
+        : parsedItemsFromComments,
     };
 
     (orderData as any).deliveryDate = deliveryDate;
@@ -1901,37 +2097,35 @@ export function CezconOrderModule() {
                   </div>
                 </div>
 
-                {/* Opportunity Number */}
+                {/* Commercial Offer Number */}
                 <div className="flex items-center gap-2">
-                  <label className="w-28 font-semibold text-slate-700 shrink-0">
-                    Opportunity Number
+                  <label className="w-28 font-semibold text-slate-700 shrink-0 text-xs">
+                    Commercial Offer Number
                   </label>
                   <div className="flex-1 flex items-center gap-1.5">
                     <select
-                      value={opportunityNumber}
-                      onChange={(e) => handleOpportunitySelect(e.target.value)}
+                      value={commercialOfferNumber}
+                      onChange={(e) => handleCommercialOfferSelect(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded px-2 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
                     >
                       <option value="">None (Direct Order)</option>
-                      {opportunityNumber && !salesOpportunities?.some((o) => o.opportunityCode === opportunityNumber || o.id === opportunityNumber) && (
-                        <option value={opportunityNumber}>{opportunityNumber}</option>
-                      )}
-                      {salesOpportunities?.map((opp) => (
-                        <option key={opp.id} value={opp.opportunityCode || opp.id}>
-                          {opp.opportunityCode} - {opp.title} ({opp.customer})
+                      {commercialOfferNumber &&
+                        !liveQuotations.some((q: any) => q.quotationNumber === commercialOfferNumber || q.id === commercialOfferNumber) && (
+                          <option value={commercialOfferNumber}>{commercialOfferNumber}</option>
+                        )}
+                      {liveQuotations.map((q: any) => (
+                        <option key={q.id || q.quotationNumber} value={q.quotationNumber || q.id}>
+                          {q.quotationNumber} — {q.customer} {q.totalAmount ? `(AED ${Number(q.totalAmount).toLocaleString()})` : ''}
                         </option>
                       ))}
                     </select>
                     <button
                       type="button"
                       onClick={() => {
-                        setNewBizOppTitle('');
-                        setNewBizOppCustomer(customerName || '');
-                        setNewBizOppAmount('');
-                        setIsQuickAddBizOppOpen(true);
+                        window.open('/sales?tab=quotations&action=create', '_blank');
                       }}
                       className="text-[#2563EB] hover:text-[#1D4ED8] hover:underline text-xs font-semibold shrink-0 cursor-pointer flex items-center gap-0.5 transition-colors px-1 whitespace-nowrap"
-                      title="Add New Opportunity"
+                      title="Create New Commercial Offer"
                     >
                       <span>+ New</span>
                     </button>
@@ -2064,15 +2258,16 @@ export function CezconOrderModule() {
                 </div>
               </div>
 
-              {/* Comments */}
+              {/* Product Details / Comments */}
               <div className="flex flex-col sm:flex-row sm:items-start gap-2">
                 <label className="sm:w-36 font-semibold text-slate-700 shrink-0 pt-1">
-                  Comments
+                  Product Details
                 </label>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={comments}
                   onChange={(e) => setComments(e.target.value)}
+                  placeholder="Enter product details (e.g. Item: Carrier 4.0 Ton Ducted Split AC, Code: CARR-40-DUCT, Quantity: 5, Brand: Carrier, Unit Price: 4500)"
                   className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
                 />
               </div>

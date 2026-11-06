@@ -1386,7 +1386,7 @@ export const msrfApiService = {
     };
   },
 
-  async generatePO(id: string, payload?: { deliveryMode?: string; expectedDeliveryDate?: string }) {
+  async generatePO(id: string, payload?: { deliveryMode?: string; expectedDeliveryDate?: string; supplier?: string }) {
     const res = await apiClient.post<{ success: boolean; po: BackendPurchaseOrderRow; message?: string }>(
       `/api/msrf/${encodeURIComponent(id)}/generate-po`,
       payload || {},

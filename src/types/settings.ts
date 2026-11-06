@@ -297,6 +297,8 @@ export interface ProductSettingItem {
   basePrice?: number;
   status?: boolean;
   store?: string;
+  supplier?: string;
+  supplierId?: string;
   currentStock?: number;
   minStock?: number;
   inStock?: boolean;
