@@ -863,6 +863,7 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
   if (!cleanCode && !cleanDesc) return 0;
 
   // 1. Check Product Master / Stock Inventory (cezcon_products_master_live & crm_stocks_data)
+  let foundInMaster = false;
   try {
     const rawInv = localStorage.getItem('cezcon_products_master_live') || localStorage.getItem('crm_stocks_data');
     if (rawInv) {
@@ -875,8 +876,9 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
             (cleanCode && pCode && (pCode === cleanCode || pCode.includes(cleanCode) || cleanCode.includes(pCode))) ||
             (cleanDesc && pName && (pName === cleanDesc || pName.includes(cleanDesc) || cleanDesc.includes(pName)));
           if (isMatch) {
+            foundInMaster = true;
             const qty = Number(p.currentStock ?? p.stock ?? p.quantity ?? 0);
-            if (!isNaN(qty) && qty > 0) {
+            if (!isNaN(qty)) {
               totalStock += qty;
             }
           }
@@ -885,35 +887,37 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
     }
   } catch {}
 
-  // 2. Check Completed Stock In Vouchers (crm_stock_in_list & cooltech_crm_stock_in_vouchers)
-  try {
-    const rawSi =
-      localStorage.getItem('crm_stock_in_list') ||
-      localStorage.getItem('cooltech_crm_stock_in_vouchers') ||
-      localStorage.getItem('crm_stock_in_vouchers');
-    if (rawSi) {
-      const siList = JSON.parse(rawSi);
-      if (Array.isArray(siList)) {
-        siList.forEach((v: any) => {
-          if (Array.isArray(v.items)) {
-            v.items.forEach((it: any) => {
-              const itCode = String(it.code || it.itemCode || it.sku || '').trim().toLowerCase();
-              const itName = String(it.item || it.name || it.description || it.productName || '').trim().toLowerCase();
-              const isMatch =
-                (cleanCode && itCode && (itCode === cleanCode || itCode.includes(cleanCode) || cleanCode.includes(itCode))) ||
-                (cleanDesc && itName && (itName === cleanDesc || itName.includes(cleanDesc) || cleanDesc.includes(itName)));
-              if (isMatch) {
-                const qty = Number(it.qty || it.received_qty || it.quantity || 1);
-                if (!isNaN(qty) && qty > 0) {
-                  totalStock += qty;
+  // 2. Check Completed Stock In Vouchers only if not registered in master inventory
+  if (!foundInMaster) {
+    try {
+      const rawSi =
+        localStorage.getItem('crm_stock_in_list') ||
+        localStorage.getItem('cooltech_crm_stock_in_vouchers') ||
+        localStorage.getItem('crm_stock_in_vouchers');
+      if (rawSi) {
+        const siList = JSON.parse(rawSi);
+        if (Array.isArray(siList)) {
+          siList.forEach((v: any) => {
+            if (Array.isArray(v.items)) {
+              v.items.forEach((it: any) => {
+                const itCode = String(it.code || it.itemCode || it.sku || '').trim().toLowerCase();
+                const itName = String(it.item || it.name || it.description || it.productName || '').trim().toLowerCase();
+                const isMatch =
+                  (cleanCode && itCode && (itCode === cleanCode || itCode.includes(cleanCode) || cleanCode.includes(itCode))) ||
+                  (cleanDesc && itName && (itName === cleanDesc || itName.includes(cleanDesc) || cleanDesc.includes(itName)));
+                if (isMatch) {
+                  const qty = Number(it.qty || it.received_qty || it.quantity || 1);
+                  if (!isNaN(qty) && qty > 0) {
+                    totalStock += qty;
+                  }
                 }
-              }
-            });
-          }
-        });
+              });
+            }
+          });
+        }
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   return totalStock;
 };
@@ -1071,33 +1075,18 @@ const getLinkedInventorySupplierForItem = (
                     Array.isArray(v.items) &&
                     v.items.some((it: any) => String(it.item || it.description || '').toLowerCase().includes('cooler'));
                   
+                  const isOrderMatched = Boolean(
+                    (curPoNo && poRef.length > 0 && (poRef.includes(curPoNo) || curPoNo.includes(poRef))) ||
+                    (curMsrfNo && mRef.length > 0 && (mRef.includes(curMsrfNo) || curMsrfNo.includes(mRef))) ||
+                    (curId && mRef.length > 0 && (mRef.includes(curId) || curId.includes(mRef))) ||
+                    (curSo && (poRef.includes(curSo) || (v.order && String(v.order).toLowerCase().includes(curSo))))
+                  );
+
                   if (isLegacyDemo && (stkNo.includes('stk-993') || poRef.includes('2549') || hasCooler)) {
                     return true;
                   }
 
-                  // Check if voucher items match requisition line items
-                  if (Array.isArray(v.items) && Array.isArray(selectedMsrf.items)) {
-                    const hasItemMatch = selectedMsrf.items.some((reqIt) => {
-                      const reqCode = String(reqIt.itemCode || '').trim().toLowerCase();
-                      const reqDesc = String(reqIt.description || '').trim().toLowerCase();
-                      return v.items.some((vIt: any) => {
-                        const vCode = String(vIt.code || vIt.itemCode || vIt.sku || '').trim().toLowerCase();
-                        const vDesc = String(vIt.item || vIt.description || vIt.name || '').trim().toLowerCase();
-                        return (
-                          (reqCode && vCode && (reqCode === vCode || vCode.includes(reqCode))) ||
-                          (reqDesc && vDesc && (reqDesc === vDesc || vDesc.includes(reqDesc) || reqDesc.includes(vDesc)))
-                        );
-                      });
-                    });
-                    if (hasItemMatch) return true;
-                  }
-
-                  return (
-                    (curPoNo && poRef.length > 0 && poRef.includes(curPoNo)) ||
-                    (curMsrfNo && mRef.length > 0 && mRef.includes(curMsrfNo)) ||
-                    (curId && mRef.length > 0 && mRef.includes(curId)) ||
-                    (curSo && poRef.length > 0 && poRef.includes(curSo))
-                  );
+                  return isOrderMatched;
                 });
               }
             }
@@ -1581,23 +1570,6 @@ const getLinkedInventorySupplierForItem = (
                   return true;
                 }
 
-                // Match items inside the stock-in voucher directly
-                if (Array.isArray(v.items) && Array.isArray(selectedMsrf.items)) {
-                  const hasItemMatch = selectedMsrf.items.some((reqIt) => {
-                    const reqCode = String(reqIt.itemCode || '').trim().toLowerCase();
-                    const reqDesc = String(reqIt.description || '').trim().toLowerCase();
-                    return v.items.some((vIt: any) => {
-                      const vCode = String(vIt.code || vIt.itemCode || vIt.sku || '').trim().toLowerCase();
-                      const vDesc = String(vIt.item || vIt.description || vIt.name || '').trim().toLowerCase();
-                      return (
-                        (reqCode && vCode && (reqCode === vCode || vCode.includes(reqCode) || reqCode.includes(vCode))) ||
-                        (reqDesc && vDesc && (reqDesc === vDesc || vDesc.includes(reqDesc) || reqDesc.includes(vDesc)))
-                      );
-                    });
-                  });
-                  if (hasItemMatch) return true;
-                }
-
                 // Specific legacy bindings for demo requisition MSRF-2026-0001 only
                 if (isLegacyDemo && (
                   poRef.includes('ctpo#2547') ||
@@ -1607,12 +1579,14 @@ const getLinkedInventorySupplierForItem = (
                   return true;
                 }
 
-                return (
-                  (curPoNo && poRef.length > 0 && poRef.includes(curPoNo)) ||
-                  (curMsrfNo && mRef.length > 0 && mRef.includes(curMsrfNo)) ||
-                  (curId && mRef.length > 0 && mRef.includes(curId)) ||
-                  (curSo && poRef.length > 0 && poRef.includes(curSo))
+                const isOrderMatched = Boolean(
+                  (curPoNo && poRef.length > 0 && (poRef.includes(curPoNo) || curPoNo.includes(poRef))) ||
+                  (curMsrfNo && mRef.length > 0 && (mRef.includes(curMsrfNo) || curMsrfNo.includes(mRef))) ||
+                  (curId && mRef.length > 0 && (mRef.includes(curId) || curId.includes(mRef))) ||
+                  (curSo && (poRef.includes(curSo) || (v.order && String(v.order).toLowerCase().includes(curSo))))
                 );
+
+                return isOrderMatched;
               });
             }
           }
@@ -2366,6 +2340,8 @@ const getLinkedInventorySupplierForItem = (
                             ? 'No Stock Available (Out of Stock)'
                             : isStockInFulfilled
                             ? 'Fulfilled & In Stock (GRN Received)'
+                            : selectedMsrf.stockVerificationStatus === 'Partial_Stock_Available'
+                            ? 'Partial Stock Available'
                             : isStockAvailable
                             ? 'Full Stock Available (In Stock)'
                             : selectedMsrf.stockVerificationStatus.replace(/_/g, ' ')}
@@ -2395,10 +2371,14 @@ const getLinkedInventorySupplierForItem = (
                       {selectedMsrf.items?.map((it, idx) => {
                         const reqQty = Number(it.requestedQty || 0);
                         const liveStock = getLiveWarehouseStockForItem(it.itemCode, it.description);
-                        const isVerifiedFull = selectedMsrf.stockVerificationStatus === 'Full_Stock_Available' || isStockInFulfilled || liveStock >= reqQty;
+                        const isVerifiedFull = (selectedMsrf.stockVerificationStatus === 'Full_Stock_Available' || isStockInFulfilled) && (liveStock >= reqQty || isStockInFulfilled);
                         const isNoStock = selectedMsrf.stockVerificationStatus === 'No_Stock_Available' && liveStock === 0;
                         const isFulfilled = isVerifiedFull;
-                        const availQty = isNoStock ? 0 : Math.max(liveStock, isFulfilled ? reqQty : Number(it.availableStockQty || 0));
+                        const availQty = isNoStock
+                          ? 0
+                          : isStockInFulfilled
+                          ? Math.max(liveStock, reqQty)
+                          : (it.availableStockQty !== undefined ? Number(it.availableStockQty) : liveStock);
                         const allocatable = isNoStock ? 0 : Math.min(reqQty, availQty);
                         const shortage = isNoStock ? reqQty : Math.max(0, reqQty - allocatable);
                         const isVerified = Boolean(selectedMsrf.stockVerificationStatus && selectedMsrf.stockVerificationStatus !== 'Unverified') || liveStock > 0;
