@@ -12937,10 +12937,18 @@ function PurchasePageInner() {
                               <BarcodeView code={item.code} />
                             </div>
 
-                            <div className="py-1.5 border-t border-b border-slate-100 text-center bg-slate-50/50 rounded">
-                              <div className="text-[10px] text-slate-500">Selling Price</div>
-                              <div className="font-bold text-slate-900 text-sm">
-                                {item.sellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
+                            <div className="grid grid-cols-2 gap-2 py-1.5 border-t border-b border-slate-100 text-center bg-slate-50/50 rounded">
+                              <div>
+                                <div className="text-[10px] text-slate-500">Purchase Cost</div>
+                                <div className="font-semibold text-slate-800">
+                                  0.00 AED
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-[10px] text-slate-500">Selling Price</div>
+                                <div className="font-bold text-slate-900">
+                                  {item.sellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })} AED
+                                </div>
                               </div>
                             </div>
 
@@ -13063,7 +13071,8 @@ function PurchasePageInner() {
                                   <span className="text-[10px] text-slate-400">❓</span>
                                 </span>
                               </th>
-                              <th className="p-2.5 text-right w-28 border-r border-slate-200">Selling Price</th>
+                              <th className="p-2.5 text-right w-28 border-r border-slate-200">Purchase Cost</th>
+                              <th className="p-2.5 text-right w-24 border-r border-slate-200">Selling Price</th>
                               <th className="p-2.5 text-center w-20 border-r border-slate-200">Status</th>
                               <th className="p-2.5 text-center w-20">Actions</th>
                             </tr>
@@ -13093,6 +13102,9 @@ function PurchasePageInner() {
                                   )}
                                 </td>
                                 <td className="p-2.5 text-center text-slate-700 border-r border-slate-100">{item.type}</td>
+                                <td className="p-2.5 text-right font-medium text-slate-800 border-r border-slate-100">
+                                  0.00
+                                </td>
                                 <td className="p-2.5 text-right font-medium text-slate-700 border-r border-slate-100">
                                   {item.sellingPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </td>
