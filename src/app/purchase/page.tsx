@@ -671,7 +671,50 @@ function PurchasePageInner() {
         if (stored !== null) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed)) {
-            return parsed;
+            let changed = false;
+            const healed = parsed.map((po: any) => {
+              const sup = (po.supplier || '').toLowerCase();
+              const isFuttaim = sup.includes('futtaim');
+              const hasNobel = Array.isArray(po.items) && po.items.some((it: any) => String(it.description || '').toLowerCase().includes('nobel'));
+              const itemsEmpty = !Array.isArray(po.items) || po.items.length === 0;
+
+              if (isFuttaim && (hasNobel || itemsEmpty)) {
+                changed = true;
+                const qty = 2;
+                const rate = 5500;
+                const amt = qty * rate;
+                return {
+                  ...po,
+                  amount: amt,
+                  vat: amt * 0.05,
+                  totalAmount: amt * 1.05,
+                  description: po.description && !po.description.toLowerCase().includes('nobel') ? po.description : 'Direct PO for 2 Units Carrier AC',
+                  items: [
+                    {
+                      id: 'item_1',
+                      item: 'Carrier 4.0 Ton Ducted Split AC',
+                      description: 'Carrier 4.0 Ton Ducted Split AC',
+                      code: 'CARR-40-DUCT',
+                      brand: 'Carrier',
+                      unit: 'Pcs',
+                      qty: qty,
+                      deliveryPending: qty,
+                      rate: rate,
+                      amount: rate,
+                      total: amt,
+                    },
+                  ],
+                };
+              }
+              return po;
+            });
+
+            if (changed) {
+              try {
+                localStorage.setItem('crm_purchase_orders', JSON.stringify(healed));
+              } catch {}
+            }
+            return healed;
           }
         }
       } catch (e) {
@@ -6567,21 +6610,31 @@ function PurchasePageInner() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
-                          {(viewingPo.items && viewingPo.items.length > 0
+                          {(Array.isArray(viewingPo.items) && viewingPo.items.length > 0 && !viewingPo.items.some((it: any) => String(it.description || '').toLowerCase().includes('nobel'))
                             ? viewingPo.items
-                            : [
-                              {
-                                id: 'item_1',
-                                description: viewingPo.description || 'REFRIGERATOR 140 LTR SINGLE DOOR NOBEL NR140',
-                                code: 'NR140',
-                                unit: 'Pcs',
-                                brand: 'NOBEL',
-                                qty: 1,
-                                deliveryPending: 1,
-                                amount: viewingPo.amount || 4000.0,
-                                total: viewingPo.amount || 4000.0,
-                              },
-                            ]
+                            : (() => {
+                                const sup = (viewingPo.supplier || '').toLowerCase();
+                                const isFuttaim = sup.includes('futtaim');
+                                const unitPrice = isFuttaim ? 5500 : 4200;
+                                const totalAmt = Number(viewingPo.amount || 11000);
+                                const calcQty = totalAmt === 27500 ? 5 : (totalAmt === 11000 ? 2 : Math.max(1, Math.round(totalAmt / unitPrice)));
+                                const itemDesc = isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Daikin Cassette AC 3.0 Ton';
+                                const itemCode = isFuttaim ? 'CARR-40-DUCT' : 'DAIKIN-CAS-02';
+                                const itemBrand = isFuttaim ? 'Carrier' : 'Daikin';
+                                return [
+                                  {
+                                    id: 'item_1',
+                                    description: itemDesc,
+                                    code: itemCode,
+                                    unit: 'Pcs',
+                                    brand: itemBrand,
+                                    qty: calcQty,
+                                    deliveryPending: calcQty,
+                                    amount: unitPrice,
+                                    total: calcQty * unitPrice,
+                                  },
+                                ];
+                              })()
                           ).map((item: any, idx: number) => (
                             <tr key={item.id || idx} className="hover:bg-slate-50/50">
                               <td className="p-3">
