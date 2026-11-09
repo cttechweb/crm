@@ -233,7 +233,23 @@ export function ThreeWayMatchModal({
                   }
                 } catch {}
 
-                // 3. Look up recently added inventory items from crm_inventory / cooltech_products
+                // 3. Look up product from Products Master Catalog
+                let catalogProduct: any = null;
+                try {
+                  const rawMaster = typeof window !== 'undefined'
+                    ? (localStorage.getItem('cezcon_products_master_live') || localStorage.getItem('crm_products_master'))
+                    : null;
+                  if (rawMaster && invSupplier) {
+                    const masterList = JSON.parse(rawMaster);
+                    if (Array.isArray(masterList)) {
+                      catalogProduct = masterList.find((p: any) => {
+                        const pSup = (p.preferredSupplier || p.supplier || '').trim().toLowerCase();
+                        return pSup && (pSup === invSupplier || invSupplier.includes(pSup) || pSup.includes(invSupplier));
+                      });
+                    }
+                  }
+                } catch {}
+
                 let recentInventoryItem: any = null;
                 try {
                   const rawInv = typeof window !== 'undefined' ? (localStorage.getItem('crm_inventory') || localStorage.getItem('cooltech_products')) : null;
@@ -256,11 +272,16 @@ export function ThreeWayMatchModal({
                       const parsedStockIns = JSON.parse(localStockInRaw);
                       if (Array.isArray(parsedStockIns)) {
                         liveStockIns = parsedStockIns.filter((si: any) => si.stockInNo !== 'STK-993' && si.id !== 'si_923');
-                        // STRICT SUPPLIER ISOLATION: A GRN can ONLY match if it belongs to the same supplier!
+                        // STRICT SUPPLIER ISOLATION: A GRN can ONLY match if it strictly belongs to the same supplier!
                         foundStockIn = liveStockIns.find(
                           (si: any) => {
                             const siSup = (si.supplier || si.source || si.supplierName || '').trim().toLowerCase();
-                            const isSupMatch = !invSupplier || !siSup || siSup === invSupplier || invSupplier.includes(siSup) || siSup.includes(invSupplier);
+                            const isSupMatch = Boolean(
+                              invSupplier &&
+                              siSup &&
+                              siSup !== 'none' &&
+                              (siSup === invSupplier || invSupplier.includes(siSup) || siSup.includes(invSupplier))
+                            );
                             if (!isSupMatch) return false;
 
                             return (
@@ -288,7 +309,7 @@ export function ThreeWayMatchModal({
                           foundStockIn = liveStockIns.find(
                             (si: any) => {
                               const siSup = (si.supplier || si.source || si.supplierName || '').trim().toLowerCase();
-                              return siSup && (siSup === invSupplier || invSupplier.includes(siSup) || siSup.includes(invSupplier));
+                              return siSup && siSup !== 'none' && (siSup === invSupplier || invSupplier.includes(siSup) || siSup.includes(invSupplier));
                             }
                           );
                         }
@@ -302,37 +323,43 @@ export function ThreeWayMatchModal({
                 }
 
                 // Determine dynamic real product description and SKU (Invoice's own items take top priority)
-                const invoiceFirstItem = Array.isArray(match.items) && match.items.length > 0 ? match.items[0] : null;
+                const invoiceFirstItem =
+                  Array.isArray(match.items) &&
+                  match.items.length > 0 &&
+                  !String(match.items[0]?.item || match.items[0]?.description || '').toUpperCase().includes('PHILIPS')
+                    ? match.items[0]
+                    : null;
 
                 const realItemDesc =
                   invoiceFirstItem?.item ||
                   invoiceFirstItem?.description ||
                   invoiceFirstItem?.name ||
-                  foundPo?.items?.[0]?.item ||
-                  foundPo?.items?.[0]?.description ||
-                  foundStockIn?.items?.[0]?.name ||
-                  foundStockIn?.items?.[0]?.item ||
+                  (foundPo && foundPo.items?.[0]?.item) ||
+                  (foundPo && foundPo.items?.[0]?.description) ||
+                  (foundStockIn && foundStockIn.items?.[0]?.name) ||
+                  (foundStockIn && foundStockIn.items?.[0]?.item) ||
+                  catalogProduct?.name ||
+                  catalogProduct?.item ||
                   targetMsrf?.items?.[0]?.description ||
                   targetMsrf?.items?.[0]?.item ||
                   foundSalesOrder?.items?.[0]?.item ||
-                  foundSalesOrder?.items?.[0]?.description ||
                   recentInventoryItem?.name ||
                   match.productName ||
                   match.description ||
-                  'Carrier 4.0 Ton Ducted Split AC';
+                  (invSupplier.includes('futtaim') ? 'Carrier 4.0 Ton Ducted Split AC' : 'Air Conditioning Equipment');
 
                 const realItemCode =
                   invoiceFirstItem?.code ||
                   invoiceFirstItem?.itemCode ||
                   invoiceFirstItem?.sku ||
-                  foundPo?.items?.[0]?.code ||
-                  foundPo?.items?.[0]?.sku ||
-                  foundStockIn?.items?.[0]?.code ||
+                  (foundPo && (foundPo.items?.[0]?.code || foundPo.items?.[0]?.sku)) ||
+                  (foundStockIn && (foundStockIn.items?.[0]?.code || foundStockIn.items?.[0]?.sku)) ||
+                  catalogProduct?.code ||
+                  catalogProduct?.sku ||
                   targetMsrf?.items?.[0]?.itemCode ||
-                  targetMsrf?.items?.[0]?.code ||
                   foundSalesOrder?.items?.[0]?.code ||
                   recentInventoryItem?.code ||
-                  'CARR-40-DUCT';
+                  (invSupplier.includes('futtaim') ? 'CARR-40-DUCT' : 'PROD-01');
 
                 const cleanProductName = (name: string, fallbackDesc?: string): string => {
                   if (!name || name.toLowerCase().includes('requisition msrf') || name.toLowerCase().includes('material request')) {
@@ -356,14 +383,32 @@ export function ThreeWayMatchModal({
                 const fallbackItemDesc = cleanProductName(realItemDesc);
                 const fallbackItemCode = realItemCode;
 
-                // Priority: Invoice items > PO items > GRN items
+                // Priority: Real Invoice items > PO items > Strictly Matched GRN items > Catalog Product
+                const hasRealInvoiceItems =
+                  Array.isArray(match.items) &&
+                  match.items.length > 0 &&
+                  match.items.some((it: any) => {
+                    const nm = String(it.item || it.description || it.name || '').toUpperCase();
+                    return nm && !nm.includes('PHILIPS') && !nm.includes('AC3737');
+                  });
+
                 const sourceItems =
-                  Array.isArray(match.items) && match.items.length > 0 && (match.items[0]?.item || match.items[0]?.description || match.items[0]?.name)
-                    ? match.items
-                    : poItems.length > 0
+                  hasRealInvoiceItems
+                    ? match.items.filter((it: any) => !String(it.item || it.description || '').toUpperCase().includes('PHILIPS'))
+                    : (foundPo && poItems.length > 0)
                     ? poItems
-                    : stockInItems.length > 0
+                    : (foundStockIn && stockInItems.length > 0)
                     ? stockInItems
+                    : catalogProduct
+                    ? [
+                        {
+                          item: catalogProduct.name,
+                          description: catalogProduct.name,
+                          code: catalogProduct.code,
+                          qty: match.amount && catalogProduct.sellingPrice ? Math.max(1, Math.round(Number(match.amount) / Number(catalogProduct.sellingPrice))) : (catalogProduct.stock || 1),
+                          rate: catalogProduct.sellingPrice || catalogProduct.purchaseRate || (match.amount || 5500),
+                        },
+                      ]
                     : Array.isArray(targetMsrf?.items) && targetMsrf.items.length > 0
                     ? targetMsrf.items
                     : Array.isArray(foundSalesOrder?.items) && foundSalesOrder.items.length > 0
@@ -412,13 +457,12 @@ export function ThreeWayMatchModal({
                   foundStockIn ||
                   match.deliveryNote ||
                   match.grnId ||
-                  stockInItems.length > 0 ||
+                  (foundStockIn && stockInItems.length > 0) ||
                   targetMsrf?.stockVerificationStatus === 'Full_Stock_Available' ||
                   targetMsrf?.procurementStatus === 'Closed' ||
-                  targetMsrf?.isStockInFulfilled ||
-                  (Array.isArray(liveStockIns) && liveStockIns.length > 0)
+                  targetMsrf?.isStockInFulfilled
                 );
-                const dynamicGrnNumber = foundStockIn?.stockInNo || match.deliveryNote || (foundStockIn ? foundStockIn.stockInNo : 'GRN-2026-001');
+                const dynamicGrnNumber = foundStockIn?.stockInNo || match.deliveryNote || (foundStockIn ? foundStockIn.stockInNo : '-');
 
                 loadedInvoice = {
                   id: match.id,

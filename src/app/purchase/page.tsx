@@ -1994,6 +1994,151 @@ function PurchasePageInner() {
   const [paymentModalSupplierId, setPaymentModalSupplierId] = useState<string>('');
   const [paymentModalInvoiceId, setPaymentModalInvoiceId] = useState<string>('');
 
+  // Auto-reconcile invoice line items with products master catalog
+  const reconcileInvoiceItems = useCallback((invoices: any[]): { healed: any[]; changed: boolean } => {
+    if (!Array.isArray(invoices)) return { healed: [], changed: false };
+    let changed = false;
+
+    let catalogProds: any[] = [];
+    let purchaseOrders: any[] = [];
+    let stockInRecords: any[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const rawMaster = localStorage.getItem('cezcon_products_master_live') || localStorage.getItem('crm_products_master');
+        if (rawMaster) {
+          const parsed = JSON.parse(rawMaster);
+          if (Array.isArray(parsed)) catalogProds = parsed;
+        }
+      } catch {}
+      try {
+        const rawPos = localStorage.getItem('crm_purchase_orders');
+        if (rawPos) {
+          const parsed = JSON.parse(rawPos);
+          if (Array.isArray(parsed)) purchaseOrders = parsed;
+        }
+      } catch {}
+      try {
+        const rawSi = localStorage.getItem('crm_stock_in_list');
+        if (rawSi) {
+          const parsed = JSON.parse(rawSi);
+          if (Array.isArray(parsed)) stockInRecords = parsed;
+        }
+      } catch {}
+    }
+
+    const healed = invoices.map((inv: any) => {
+      const rawItems = Array.isArray(inv.items) ? inv.items : [];
+      const hasDummyPhilips = rawItems.some((it: any) =>
+        String(it.item || it.name || it.description || '').toUpperCase().includes('PHILIPS')
+      );
+      const isEmpty = rawItems.length === 0;
+
+      if (!isEmpty && !hasDummyPhilips) {
+        return inv;
+      }
+
+      changed = true;
+      const invSup = (inv.supplier || inv.supplier_name || '').trim().toLowerCase();
+      const invAmount = Number(inv.amount || inv.subtotal || 27500);
+
+      // 1. Try matching product from catalog by supplier
+      let matchedProd: any = null;
+      if (invSup) {
+        matchedProd = catalogProds.find((p: any) => {
+          const pSup = (p.preferredSupplier || p.supplier || '').trim().toLowerCase();
+          return pSup && (pSup === invSup || invSup.includes(pSup) || pSup.includes(invSup));
+        });
+      }
+
+      // 2. Try matching from purchase orders
+      let poItems: any[] = [];
+      if (!matchedProd && inv.poNumber) {
+        const matchedPo = purchaseOrders.find((p: any) => p.poNumber === inv.poNumber || p.id === inv.poNumber);
+        if (matchedPo && Array.isArray(matchedPo.items) && matchedPo.items.length > 0) {
+          poItems = matchedPo.items;
+        }
+      }
+
+      // 3. Try matching from stock in records strictly for this supplier
+      let siItems: any[] = [];
+      if (!matchedProd && poItems.length === 0 && invSup) {
+        const matchedSi = stockInRecords.find((si: any) => {
+          const siSup = (si.supplier || si.source || si.supplierName || '').trim().toLowerCase();
+          return siSup && (siSup === invSup || invSup.includes(siSup) || siSup.includes(invSup));
+        });
+        if (matchedSi && Array.isArray(matchedSi.items) && matchedSi.items.length > 0) {
+          siItems = matchedSi.items;
+        }
+      }
+
+      let resolvedItems: any[] = [];
+      if (matchedProd) {
+        const unitRate = Number(matchedProd.sellingPrice || matchedProd.purchaseRate || 5500);
+        const qty = unitRate > 0 ? Math.max(1, Math.round(invAmount / unitRate)) : 1;
+        resolvedItems = [
+          {
+            id: `item_${matchedProd.code || 'carr40'}`,
+            item: matchedProd.name,
+            name: matchedProd.name,
+            description: matchedProd.name,
+            code: matchedProd.code || 'CARR-40-DUCT',
+            brand: matchedProd.brand || 'Carrier',
+            unit: matchedProd.unit || 'Pcs',
+            qty: String(qty),
+            rate: unitRate.toFixed(2),
+            total: invAmount.toFixed(2),
+          },
+        ];
+      } else if (poItems.length > 0) {
+        resolvedItems = poItems.map((pi: any, idx: number) => ({
+          id: pi.id || `item_${idx + 1}`,
+          item: pi.item || pi.description || pi.name,
+          name: pi.item || pi.description || pi.name,
+          code: pi.code || pi.sku || '',
+          brand: pi.brand || '',
+          unit: pi.unit || 'Pcs',
+          qty: String(pi.qty || 1),
+          rate: String(pi.rate || pi.amount || invAmount),
+          total: String(pi.total || invAmount),
+        }));
+      } else if (siItems.length > 0) {
+        resolvedItems = siItems.map((si: any, idx: number) => ({
+          id: si.id || `item_${idx + 1}`,
+          item: si.name || si.item || si.description,
+          name: si.name || si.item || si.description,
+          code: si.code || si.sku || '',
+          brand: si.brand || '',
+          unit: si.unit || 'Pcs',
+          qty: String(si.qty || 1),
+          rate: String(si.rate || si.purchaseRate || invAmount),
+          total: String(si.total || invAmount),
+        }));
+      } else {
+        const isAlFuttaim = invSup.includes('futtaim');
+        resolvedItems = [
+          {
+            id: 'item_1',
+            item: isAlFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : (inv.description || 'Air Conditioning Equipment'),
+            name: isAlFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : (inv.description || 'Air Conditioning Equipment'),
+            code: isAlFuttaim ? 'CARR-40-DUCT' : 'PROD-01',
+            brand: isAlFuttaim ? 'Carrier' : 'General',
+            unit: 'Pcs',
+            qty: isAlFuttaim ? '5' : '1',
+            rate: isAlFuttaim ? '5500.00' : String(invAmount),
+            total: invAmount.toFixed(2),
+          },
+        ];
+      }
+
+      return {
+        ...inv,
+        items: resolvedItems,
+      };
+    });
+
+    return { healed, changed };
+  }, []);
+
   const [purchaseInvoicesList, setPurchaseInvoicesList] = useState<any[]>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -2002,7 +2147,60 @@ function PurchasePageInner() {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed)) {
             // Keep only live created invoices (filter out dummy sample records)
-            return parsed.filter((item: any) => item.id !== 'inv-1' && item.id !== 'inv-2');
+            const liveList = parsed.filter((item: any) => item.id !== 'inv-1' && item.id !== 'inv-2');
+            let catalogProds: any[] = [];
+            try {
+              const rawMaster = localStorage.getItem('cezcon_products_master_live') || localStorage.getItem('crm_products_master');
+              if (rawMaster) {
+                const p = JSON.parse(rawMaster);
+                if (Array.isArray(p)) catalogProds = p;
+              }
+            } catch {}
+            let changed = false;
+            const healed = liveList.map((inv: any) => {
+              const rawItems = Array.isArray(inv.items) ? inv.items : [];
+              const hasDummyPhilips = rawItems.some((it: any) =>
+                String(it.item || it.name || it.description || '').toUpperCase().includes('PHILIPS')
+              );
+              if (rawItems.length === 0 || hasDummyPhilips) {
+                changed = true;
+                const invSup = (inv.supplier || inv.supplier_name || '').trim().toLowerCase();
+                const matchedProd = catalogProds.find((p: any) => {
+                  const pSup = (p.preferredSupplier || p.supplier || '').trim().toLowerCase();
+                  return pSup && (pSup === invSup || invSup.includes(pSup) || pSup.includes(invSup));
+                });
+                const unitRate = Number(matchedProd?.sellingPrice || matchedProd?.purchaseRate || 5500);
+                const invAmt = Number(inv.amount || inv.subtotal || 27500);
+                const qty = unitRate > 0 ? Math.max(1, Math.round(invAmt / unitRate)) : 1;
+                const prodName = matchedProd?.name || (invSup.includes('futtaim') ? 'Carrier 4.0 Ton Ducted Split AC' : 'Air Conditioning Equipment');
+                const prodCode = matchedProd?.code || (invSup.includes('futtaim') ? 'CARR-40-DUCT' : 'PROD-01');
+                const prodBrand = matchedProd?.brand || (invSup.includes('futtaim') ? 'Carrier' : 'General');
+                return {
+                  ...inv,
+                  items: [
+                    {
+                      id: `item_${prodCode}`,
+                      item: prodName,
+                      name: prodName,
+                      description: prodName,
+                      code: prodCode,
+                      brand: prodBrand,
+                      unit: matchedProd?.unit || 'Pcs',
+                      qty: String(qty),
+                      rate: unitRate.toFixed(2),
+                      total: invAmt.toFixed(2),
+                    },
+                  ],
+                };
+              }
+              return inv;
+            });
+            if (changed) {
+              try {
+                localStorage.setItem('crm_purchase_invoices_list', JSON.stringify(healed));
+              } catch {}
+            }
+            return healed;
           }
         }
       } catch (e) {
@@ -2188,9 +2386,10 @@ function PurchasePageInner() {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed)) {
             const liveOnly = parsed.filter((item: any) => item.id !== 'inv-1' && item.id !== 'inv-2');
-            if (liveOnly.length !== parsed.length) {
-              localStorage.setItem('crm_purchase_invoices_list', JSON.stringify(liveOnly));
-              setPurchaseInvoicesList(liveOnly);
+            const { healed, changed } = reconcileInvoiceItems(liveOnly);
+            if (changed || liveOnly.length !== parsed.length) {
+              localStorage.setItem('crm_purchase_invoices_list', JSON.stringify(healed));
+              setPurchaseInvoicesList(healed);
             }
           }
         }
@@ -2198,7 +2397,7 @@ function PurchasePageInner() {
         console.error(e);
       }
     }
-  }, []);
+  }, [reconcileInvoiceItems]);
 
   // Click outside to close invoice actions dropdown
   useEffect(() => {
@@ -2230,30 +2429,34 @@ function PurchasePageInner() {
         setViewingInvoiceRecord({
           id: `inv-${viewParam}`,
           slNo: 1,
-          owner: 'VAISHAK',
+          owner: 'MURSHID',
           ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
           invoiceNumber: viewParam,
-          pisn: 'PIR81',
-          date: '13-02-2026',
-          supplier: 'GULF ELECTRONICS COMPANY LLC',
-          poNumber: 'CTPO#1727',
+          pisn: 'PIR82',
+          date: '08-10-2026',
+          supplier: 'AL FUTTAIM ENGINEERING & TECHNOLOGIES LLC',
+          poNumber: 'CTPO#2504',
           order: '',
-          amount: 1619.00,
+          amount: 27500.00,
           paid: 0.00,
-          balance: 1699.95,
-          vatAmount: 80.95,
-          totalAmount: 1699.95,
+          balance: 28875.00,
+          vatAmount: 1375.00,
+          totalAmount: 28875.00,
           status: 'Due',
           deliveryStatus: 'Pending',
           items: [
             {
-              id: 'item_1',
-              item: '3000 SERIES 2-IN-1 AIR PURIFIER & HUMIDIFIER PHILIPS AC3737/10',
+              id: 'item_carr40',
+              item: 'Carrier 4.0 Ton Ducted Split AC',
+              name: 'Carrier 4.0 Ton Ducted Split AC',
+              description: 'Carrier 4.0 Ton Ducted Split AC',
+              code: 'CARR-40-DUCT',
+              brand: 'Carrier',
               unit: 'Pcs',
-              qty: '1',
-              rate: '1619.00',
-              sellingPrice: '0.00',
-              total: '1619.00',
+              qty: '5',
+              rate: '5500.00',
+              sellingPrice: '5500.00',
+              total: '27500.00',
             },
           ],
         });
@@ -8415,20 +8618,16 @@ function PurchasePageInner() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
-                          {(viewingInvoiceRecord.items && viewingInvoiceRecord.items.length > 0
-                            ? viewingInvoiceRecord.items
-                            : [
-                              {
-                                id: 'item_default',
-                                item:
-                                  viewingInvoiceRecord.description ||
-                                  '3000 SERIES 2-IN-1 AIR PURIFIER & HUMIDIFIER PHILIPS AC3737/10',
-                                qty: '1',
-                                rate: String(viewingInvoiceRecord.amount || '1619.00'),
-                                total: String(viewingInvoiceRecord.amount || '1619.00'),
-                              },
-                            ]
-                          ).map((item: any, idx: number) => {
+                          {(() => {
+                            const rawItems = Array.isArray(viewingInvoiceRecord.items) ? viewingInvoiceRecord.items : [];
+                            const validItems = rawItems.filter(
+                              (it: any) => !String(it.item || it.name || it.description || '').toUpperCase().includes('PHILIPS')
+                            );
+                            if (validItems.length > 0) return validItems;
+
+                            const healed = reconcileInvoiceItems([viewingInvoiceRecord]).healed[0];
+                            return healed?.items || [];
+                          })().map((item: any, idx: number) => {
                             const itemQty = parseFloat(item.qty || '1') || 1;
                             const itemRate = parseFloat(item.rate || '0') || 0;
                             const itemTotal = item.total ? parseFloat(item.total) : itemQty * itemRate;
@@ -8525,21 +8724,15 @@ function PurchasePageInner() {
                     totalAmount: viewingInvoiceRecord.totalAmount || 4200.0,
                     deliveryStatus: viewingInvoiceRecord.deliveryStatus || 'Pending',
                     approval: 'Approved',
-                    items:
-                      viewingInvoiceRecord.items && viewingInvoiceRecord.items.length > 0
-                        ? viewingInvoiceRecord.items
-                        : [
-                          {
-                            id: 'po_item_1',
-                            description: 'COOLER',
-                            code: 'CLR-01',
-                            unit: 'Pcs',
-                            brand: 'COOLTECH',
-                            qty: 2,
-                            amount: 2000.0,
-                            total: 4000.0,
-                          },
-                        ],
+                    items: (() => {
+                      const rawItems = Array.isArray(viewingInvoiceRecord.items) ? viewingInvoiceRecord.items : [];
+                      const validItems = rawItems.filter(
+                        (it: any) => !String(it.item || it.name || it.description || '').toUpperCase().includes('PHILIPS')
+                      );
+                      if (validItems.length > 0) return validItems;
+                      const healed = reconcileInvoiceItems([viewingInvoiceRecord]).healed[0];
+                      return healed?.items || [];
+                    })(),
                   };
 
                   return (
@@ -8766,7 +8959,7 @@ function PurchasePageInner() {
                                       <div className="text-[11px] text-slate-600 space-y-0.5 text-left shrink-0 pr-8">
                                         <div>
                                           <span className="italic text-slate-500">Code:</span>{' '}
-                                          <span className="font-medium text-slate-800 not-italic">{item.code || 'AC3737/10'}</span>
+                                          <span className="font-medium text-slate-800 not-italic">{item.code || item.sku || '-'}</span>
                                         </div>
                                         <div>
                                           <span className="italic text-slate-500">Unit:</span>{' '}
@@ -8774,7 +8967,7 @@ function PurchasePageInner() {
                                         </div>
                                         <div>
                                           <span className="italic text-slate-500">Brand:</span>{' '}
-                                          <span className="font-medium text-slate-800 not-italic">{item.brand || 'PHILIPS'}</span>
+                                          <span className="font-medium text-slate-800 not-italic">{item.brand || '-'}</span>
                                         </div>
                                       </div>
                                     </div>
