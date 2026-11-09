@@ -1323,6 +1323,13 @@ export function CezconOrderModule() {
       }
     }
 
+    const parsedSubtotal = parsedItemsFromComments && parsedItemsFromComments.length > 0
+      ? parsedItemsFromComments.reduce((acc, it) => acc + (Number(it.totalAmount) || 0), 0)
+      : 0;
+    const finalAmountToSave = effectiveAmount > 0 ? effectiveAmount : parsedSubtotal;
+    const finalVatToSave = effectiveAmount > 0 ? calculatedVatAmount : (parsedSubtotal * 0.05);
+    const finalGrandTotalToSave = effectiveAmount > 0 ? grandTotalAmount : (parsedSubtotal * 1.05);
+
     const orderData: Partial<CrmSalesOrder> = {
       orderNumber,
       opportunityRef: opportunityNumber,
@@ -1335,10 +1342,10 @@ export function CezconOrderModule() {
       category: orderType !== 'Select Type' ? orderType : 'Supply And Installation',
       owner: orderOwner,
       status: orderStatus,
-      amount: effectiveAmount,
-      vatAmount: calculatedVatAmount,
-      totalAmount: grandTotalAmount,
-      receivable: grandTotalAmount,
+      amount: finalAmountToSave,
+      vatAmount: finalVatToSave,
+      totalAmount: finalGrandTotalToSave,
+      receivable: finalGrandTotalToSave,
       poReference: lpoNumber,
       paymentTerms: termsContent,
       notes: comments,
@@ -1788,20 +1795,48 @@ export function CezconOrderModule() {
               </div>
 
               {/* Amount */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:items-center gap-2">
                 <label className="sm:w-36 font-semibold text-slate-700 shrink-0">Amount</label>
-                <input
-                  type={isOrderFormActive ? 'text' : 'number'}
-                  step="any"
-                  readOnly={isOrderFormActive}
-                  placeholder="0.00"
-                  value={isOrderFormActive ? itemsTotalAmount.toFixed(2) : manualAmount}
-                  onChange={(e) => setManualAmount(e.target.value)}
-                  className={cn(
-                    'flex-1 border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium',
-                    isOrderFormActive ? 'bg-slate-50 font-medium text-slate-700' : 'bg-white'
-                  )}
-                />
+                <div className="flex-1 space-y-1">
+                  <input
+                    type={isOrderFormActive ? 'text' : 'number'}
+                    step="any"
+                    readOnly={isOrderFormActive}
+                    placeholder="0.00"
+                    value={isOrderFormActive ? itemsTotalAmount.toFixed(2) : manualAmount}
+                    onChange={(e) => setManualAmount(e.target.value)}
+                    className={cn(
+                      'w-full border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 font-medium',
+                      isOrderFormActive ? 'bg-slate-50 font-medium text-slate-700' : 'bg-white'
+                    )}
+                  />
+                  {!isOrderFormActive && comments && (!manualAmount || Number(manualAmount) === 0) && (() => {
+                    const qMatch = comments.match(/(?:Quantity|Qty)\s*:\s*(\d+)/i);
+                    const pMatch = comments.match(/(?:Unit\s*Price|Price|Rate|Cost)\s*:\s*(?:AED)?\s*([0-9,.]+)/i);
+                    if (qMatch && pMatch) {
+                      const q = parseInt(qMatch[1], 10);
+                      const p = parseFloat(pMatch[1].replace(/,/g, ''));
+                      if (!isNaN(q) && !isNaN(p) && q > 0 && p > 0) {
+                        const calculated = (q * p).toFixed(2);
+                        return (
+                          <div className="flex items-center gap-2 pt-0.5">
+                            <span className="text-[11px] text-emerald-700 font-medium">
+                              Detected: {q} × {p.toLocaleString()} = AED {Number(calculated).toLocaleString()}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setManualAmount(calculated)}
+                              className="text-[11px] text-blue-600 underline font-semibold hover:text-blue-800 cursor-pointer"
+                            >
+                              Apply AED {calculated}
+                            </button>
+                          </div>
+                        );
+                      }
+                    }
+                    return null;
+                  })()}
+                </div>
               </div>
 
               {/* VAT Type */}
@@ -2263,13 +2298,39 @@ export function CezconOrderModule() {
                 <label className="sm:w-36 font-semibold text-slate-700 shrink-0 pt-1">
                   Product Details
                 </label>
-                <textarea
-                  rows={3}
-                  value={comments}
-                  onChange={(e) => setComments(e.target.value)}
-                  placeholder="Enter product details (e.g. Item: Carrier 4.0 Ton Ducted Split AC, Code: CARR-40-DUCT, Quantity: 5, Brand: Carrier, Unit Price: 4500)"
-                  className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
-                />
+                <div className="flex-1 space-y-1">
+                  <textarea
+                    rows={3}
+                    value={comments}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setComments(val);
+                      if (!isOrderFormActive && (!manualAmount || Number(manualAmount) === 0)) {
+                        const qMatch = val.match(/(?:Quantity|Qty)\s*:\s*(\d+)/i);
+                        const pMatch = val.match(/(?:Unit\s*Price|Price|Rate|Cost)\s*:\s*(?:AED)?\s*([0-9,.]+)/i);
+                        if (qMatch && pMatch) {
+                          const q = parseInt(qMatch[1], 10);
+                          const p = parseFloat(pMatch[1].replace(/,/g, ''));
+                          if (!isNaN(q) && !isNaN(p) && q > 0 && p > 0) {
+                            setManualAmount((q * p).toFixed(2));
+                          }
+                        }
+                      }
+                    }}
+                    placeholder="Enter product details (e.g. Item: Carrier 4.0 Ton Ducted Split AC, Code: CARR-40-DUCT, Quantity: 5, Brand: Carrier, Unit Price: 4500)"
+                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span>💡 Tip: Specify <strong>Quantity</strong> and <strong>Unit Price</strong> above to auto-calculate Amount.</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsOrderFormActive(true)}
+                      className="text-blue-600 hover:underline font-semibold cursor-pointer"
+                    >
+                      Need Item Rows? Open Order Form
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Order Status */}

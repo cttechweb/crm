@@ -687,7 +687,7 @@ function PurchasePageInner() {
   const [poDetailActiveTab, setPoDetailActiveTab] = useState<'details' | 'invoice' | 'do' | 'history'>('details');
 
   useEffect(() => {
-    if (contextPurchaseOrders) {
+    if (contextPurchaseOrders && contextPurchaseOrders.length > 0) {
       setPurchaseOrders(contextPurchaseOrders);
     }
   }, [contextPurchaseOrders]);
@@ -1398,6 +1398,15 @@ function PurchasePageInner() {
     const quoteParam = searchParams.get('quoteId');
     const actionParam = searchParams.get('action');
     if (mainTab === 'po') {
+      try {
+        const stored = localStorage.getItem('crm_purchase_orders');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setPurchaseOrders(parsed);
+          }
+        }
+      } catch (e) {}
       const combinedKey = `${msrfParam || ''}_${quoteParam || ''}_${actionParam || ''}`;
       if ((actionParam === 'add' || msrfParam) && processedMsrfParamRef.current !== combinedKey) {
         processedMsrfParamRef.current = combinedKey;
@@ -4901,10 +4910,26 @@ function PurchasePageInner() {
           <MsrfManagement
             currentUser={currentUser}
             onNavigateToQuotes={(msrfId) => router.push(`/purchase?tab=quotations&msrfId=${msrfId}`)}
-            onNavigateToPo={() => {
+            onNavigateToPo={(poId) => {
               setPoViewMode('list');
               setPoFilterSupplier('Select Supplier');
               setPoFilterOwner('All Owners');
+              setPoFilterMsrf('All Material Requests');
+              setPoFilterType('All Types');
+              setPoSearch('');
+              if (typeof window !== 'undefined') {
+                try {
+                  const raw = localStorage.getItem('crm_purchase_orders');
+                  if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                      setPurchaseOrders(parsed);
+                    }
+                  }
+                } catch (e) {
+                  console.error(e);
+                }
+              }
               router.push('/purchase?tab=po');
             }}
           />
