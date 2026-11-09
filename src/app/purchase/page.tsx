@@ -3198,10 +3198,10 @@ function PurchasePageInner() {
     // If no direct PO exists for this supplier:
     // Generate clean identifiers & autofill line items
     const cleanCode = selectedSup.slice(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'SUP';
-    setStockInOrder(`PO-${cleanCode}-2026-001 - ${selectedSup}`);
-    setStockInLpoNumber(`CTPO#${Math.floor(2540 + Math.random() * 20)}`);
+    setStockInOrder(`Direct Intake - ${selectedSup}`);
+    setStockInLpoNumber('');
     setStockInDeliveryNote(`DN-${cleanCode}-928`);
-    setStockInPurchaseInvoiceNumber(`PINV-${cleanCode}-2026`);
+    setStockInPurchaseInvoiceNumber('');
 
     // Auto-fill line items from available products catalog
     const defaultProduct = (liveStockInProducts || []).find((p) => p.name) || {

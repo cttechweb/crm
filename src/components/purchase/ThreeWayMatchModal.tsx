@@ -112,26 +112,35 @@ export function ThreeWayMatchModal({
                 let linkedPoNumber = match.poNumber || match.purchase_order_no || '';
                 let foundPo: any = null;
 
+                const invSupplier = (match.supplier || match.supplier_name || '').trim().toLowerCase();
+
                 if (typeof window !== 'undefined') {
                   try {
                     const localPosRaw = localStorage.getItem('crm_purchase_orders');
                     if (localPosRaw) {
                       const parsedPos = JSON.parse(localPosRaw);
                       if (Array.isArray(parsedPos)) {
-                        // 1. Try matching PO Number or PO ID
+                        // 1. Try matching PO Number or PO ID WITH strict supplier scoping
                         if (linkedPoNumber) {
                           foundPo = parsedPos.find(
-                            (p: any) =>
-                              p.poNumber === linkedPoNumber ||
-                              p.id === linkedPoNumber ||
-                              (p.poNumber && p.poNumber.toLowerCase().includes(linkedPoNumber.toLowerCase())) ||
-                              (typeof linkedPoNumber === 'string' && linkedPoNumber.toLowerCase().includes((p.poNumber || '').toLowerCase()))
+                            (p: any) => {
+                              const poSup = (p.supplier || p.supplier_name || '').trim().toLowerCase();
+                              const isSupMatch = !invSupplier || !poSup || poSup === invSupplier || invSupplier.includes(poSup) || poSup.includes(invSupplier);
+                              const isNumMatch =
+                                p.poNumber === linkedPoNumber ||
+                                p.id === linkedPoNumber ||
+                                (p.poNumber && p.poNumber.toLowerCase().includes(linkedPoNumber.toLowerCase())) ||
+                                (typeof linkedPoNumber === 'string' && linkedPoNumber.toLowerCase().includes((p.poNumber || '').toLowerCase()));
+                              return isNumMatch && isSupMatch;
+                            }
                           );
                         }
                         // 2. Try matching by supplier if not matched by number
-                        if (!foundPo && (match.supplier || match.supplier_name)) {
-                          const supName = (match.supplier || match.supplier_name || '').toLowerCase();
-                          foundPo = parsedPos.find((p: any) => p.supplier && p.supplier.toLowerCase() === supName);
+                        if (!foundPo && invSupplier) {
+                          foundPo = parsedPos.find((p: any) => {
+                            const poSup = (p.supplier || p.supplier_name || '').trim().toLowerCase();
+                            return poSup && (poSup === invSupplier || invSupplier.includes(poSup) || poSup.includes(invSupplier));
+                          });
                         }
 
                         if (foundPo) {
@@ -247,30 +256,40 @@ export function ThreeWayMatchModal({
                       const parsedStockIns = JSON.parse(localStockInRaw);
                       if (Array.isArray(parsedStockIns)) {
                         liveStockIns = parsedStockIns.filter((si: any) => si.stockInNo !== 'STK-993' && si.id !== 'si_923');
+                        // STRICT SUPPLIER ISOLATION: A GRN can ONLY match if it belongs to the same supplier!
                         foundStockIn = liveStockIns.find(
-                          (si: any) =>
-                            (linkedPoNumber && (
-                              si.lpoNumber === linkedPoNumber ||
-                              (typeof si.lpoNumber === 'string' && si.lpoNumber.includes(linkedPoNumber)) ||
-                              (typeof linkedPoNumber === 'string' && linkedPoNumber.includes(si.lpoNumber)) ||
-                              si.poNumber === linkedPoNumber ||
-                              (typeof si.poNumber === 'string' && si.poNumber.includes(linkedPoNumber))
-                            )) ||
-                            (si.order && linkedPoNumber && (
-                              si.order === linkedPoNumber ||
-                              (typeof si.order === 'string' && si.order.includes(linkedPoNumber)) ||
-                              (typeof linkedPoNumber === 'string' && linkedPoNumber.includes(si.order))
-                            )) ||
-                            (match.deliveryNote && (si.deliveryNote === match.deliveryNote || si.stockInNo === match.deliveryNote)) ||
-                            (si.purchaseInvoiceNumber && match.invoiceNumber && si.purchaseInvoiceNumber === match.invoiceNumber) ||
-                            (targetMsrf && (si.msrfNumber === targetMsrf.msrfNumber || si.msrfId === targetMsrf.id))
+                          (si: any) => {
+                            const siSup = (si.supplier || si.source || si.supplierName || '').trim().toLowerCase();
+                            const isSupMatch = !invSupplier || !siSup || siSup === invSupplier || invSupplier.includes(siSup) || siSup.includes(invSupplier);
+                            if (!isSupMatch) return false;
+
+                            return (
+                              (linkedPoNumber && (
+                                si.lpoNumber === linkedPoNumber ||
+                                (typeof si.lpoNumber === 'string' && si.lpoNumber.includes(linkedPoNumber)) ||
+                                (typeof linkedPoNumber === 'string' && linkedPoNumber.includes(si.lpoNumber)) ||
+                                si.poNumber === linkedPoNumber ||
+                                (typeof si.poNumber === 'string' && si.poNumber.includes(linkedPoNumber))
+                              )) ||
+                              (si.order && linkedPoNumber && (
+                                si.order === linkedPoNumber ||
+                                (typeof si.order === 'string' && si.order.includes(linkedPoNumber)) ||
+                                (typeof linkedPoNumber === 'string' && linkedPoNumber.includes(si.order))
+                              )) ||
+                              (match.deliveryNote && (si.deliveryNote === match.deliveryNote || si.stockInNo === match.deliveryNote)) ||
+                              (si.purchaseInvoiceNumber && match.invoiceNumber && si.purchaseInvoiceNumber === match.invoiceNumber) ||
+                              (targetMsrf && (si.msrfNumber === targetMsrf.msrfNumber || si.msrfId === targetMsrf.id))
+                            );
+                          }
                         );
 
                         // If not found by PO number, match by supplier from live stock entries
-                        if (!foundStockIn && (match.supplier || match.supplier_name)) {
-                          const supName = (match.supplier || match.supplier_name || '').toLowerCase();
+                        if (!foundStockIn && invSupplier) {
                           foundStockIn = liveStockIns.find(
-                            (si: any) => (si.supplier && si.supplier.toLowerCase() === supName) || (si.source && si.source.toLowerCase() === supName)
+                            (si: any) => {
+                              const siSup = (si.supplier || si.source || si.supplierName || '').trim().toLowerCase();
+                              return siSup && (siSup === invSupplier || invSupplier.includes(siSup) || siSup.includes(invSupplier));
+                            }
                           );
                         }
 
@@ -282,32 +301,38 @@ export function ThreeWayMatchModal({
                   } catch {}
                 }
 
-                // Determine dynamic real product description and SKU (never hardcoded 1.5-ton fallback)
+                // Determine dynamic real product description and SKU (Invoice's own items take top priority)
+                const invoiceFirstItem = Array.isArray(match.items) && match.items.length > 0 ? match.items[0] : null;
+
                 const realItemDesc =
+                  invoiceFirstItem?.item ||
+                  invoiceFirstItem?.description ||
+                  invoiceFirstItem?.name ||
                   foundPo?.items?.[0]?.item ||
                   foundPo?.items?.[0]?.description ||
+                  foundStockIn?.items?.[0]?.name ||
+                  foundStockIn?.items?.[0]?.item ||
                   targetMsrf?.items?.[0]?.description ||
                   targetMsrf?.items?.[0]?.item ||
                   foundSalesOrder?.items?.[0]?.item ||
                   foundSalesOrder?.items?.[0]?.description ||
-                  foundStockIn?.items?.[0]?.name ||
-                  foundStockIn?.items?.[0]?.item ||
                   recentInventoryItem?.name ||
                   match.productName ||
                   match.description ||
-                  'Rotary Compressor 2.0 Ton';
+                  'Carrier 4.0 Ton Ducted Split AC';
 
                 const realItemCode =
+                  invoiceFirstItem?.code ||
+                  invoiceFirstItem?.itemCode ||
+                  invoiceFirstItem?.sku ||
                   foundPo?.items?.[0]?.code ||
                   foundPo?.items?.[0]?.sku ||
+                  foundStockIn?.items?.[0]?.code ||
                   targetMsrf?.items?.[0]?.itemCode ||
-                  targetMsrf?.items?.[0]?.item_code ||
                   targetMsrf?.items?.[0]?.code ||
                   foundSalesOrder?.items?.[0]?.code ||
-                  foundSalesOrder?.items?.[0]?.sku ||
-                  foundStockIn?.items?.[0]?.code ||
                   recentInventoryItem?.code ||
-                  'CQ4N-XMI14S';
+                  'CARR-40-DUCT';
 
                 const cleanProductName = (name: string, fallbackDesc?: string): string => {
                   if (!name || name.toLowerCase().includes('requisition msrf') || name.toLowerCase().includes('material request')) {
@@ -331,17 +356,18 @@ export function ThreeWayMatchModal({
                 const fallbackItemDesc = cleanProductName(realItemDesc);
                 const fallbackItemCode = realItemCode;
 
+                // Priority: Invoice items > PO items > GRN items
                 const sourceItems =
-                  poItems.length > 0
-                    ? poItems
-                    : Array.isArray(match.items) && match.items.length > 0
+                  Array.isArray(match.items) && match.items.length > 0 && (match.items[0]?.item || match.items[0]?.description || match.items[0]?.name)
                     ? match.items
+                    : poItems.length > 0
+                    ? poItems
+                    : stockInItems.length > 0
+                    ? stockInItems
                     : Array.isArray(targetMsrf?.items) && targetMsrf.items.length > 0
                     ? targetMsrf.items
                     : Array.isArray(foundSalesOrder?.items) && foundSalesOrder.items.length > 0
                     ? foundSalesOrder.items
-                    : stockInItems.length > 0
-                    ? stockInItems
                     : [
                         {
                           item: fallbackItemDesc,
