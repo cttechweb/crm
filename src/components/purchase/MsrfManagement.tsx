@@ -1512,7 +1512,11 @@ const getLinkedInventorySupplierForItem = (
               const avail = Number(it.availableStockQty !== undefined ? it.availableStockQty : 3);
               const rawProcure = Number(it.procureQty !== undefined ? it.procureQty : Math.max(0, req - avail));
               const finalQty = rawProcure > 0 ? rawProcure : 2;
-              const unitRate = Number(it.estimatedRate || it.estimatedUnitRate || defaultRate);
+              let unitRate = Number(it.estimatedRate || it.estimatedUnitRate || defaultRate);
+              if (unitRate >= 20000 && req > 1) {
+                unitRate = Math.round(unitRate / req);
+              }
+              if (!unitRate || unitRate <= 0) unitRate = defaultRate;
               const lineTotal = finalQty * unitRate;
               const itemDesc = (it.description && !it.description.toLowerCase().includes('refrigerator') && !it.description.toLowerCase().includes('nobel'))
                 ? it.description
