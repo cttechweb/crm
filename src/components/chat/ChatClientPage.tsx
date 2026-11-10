@@ -52,7 +52,7 @@ function ChatContent() {
       const list = await chatApiService.getConversations();
       setConversations(list);
 
-      // If active conversation is not selected yet, pick from query param or default to #general or first
+      // If active conversation is not selected yet, pick from query param or default to department channel or user's active direct chat
       setActiveConversationId((prevActive) => {
         if (prevActive && list.some((c) => c.id === prevActive && !c.is_deleted_by_user)) {
           return prevActive;
@@ -60,6 +60,31 @@ function ChatContent() {
         if (conversationParam && list.some((c) => c.id === conversationParam && !c.is_deleted_by_user)) {
           return conversationParam;
         }
+
+        const user = authMockService.getCurrentUser();
+        const roleOrDept = (user?.department || user?.position || user?.designation || user?.role || '').toLowerCase();
+        const name = (user?.name || '').toLowerCase();
+
+        // 1. If user is in Operations (e.g. Murshid), open #operations by default!
+        if (roleOrDept.includes('operation') || name.includes('murshid')) {
+          const ops = list.find((c) => c.slug === 'operations');
+          if (ops) return ops.id;
+        }
+        // 2. If user is in Sales (e.g. Tariq), open #sales by default!
+        if (roleOrDept.includes('sales') || name.includes('tariq')) {
+          const sales = list.find((c) => c.slug === 'sales');
+          if (sales) return sales.id;
+        }
+        // 3. If user is in Purchase / Procurement (e.g. Mustafa), open #purchase by default!
+        if (roleOrDept.includes('purchase') || roleOrDept.includes('procurement') || name.includes('mustafa')) {
+          const purch = list.find((c) => c.slug === 'purchase');
+          if (purch) return purch.id;
+        }
+
+        // 4. If user has active direct messages with colleagues, open the latest active DM!
+        const latestDm = list.find((c) => c.type === 'direct' && Boolean(c.last_message_text) && !c.is_deleted_by_user);
+        if (latestDm) return latestDm.id;
+
         const general = list.find((c) => c.slug === 'general');
         if (general) return general.id;
         return list[0]?.id || null;

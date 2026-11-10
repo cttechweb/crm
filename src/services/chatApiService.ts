@@ -654,59 +654,55 @@ function enrichMessageSender(msg: ChatMessage): ChatMessage {
   };
 }
 
-// Purge legacy dummy seed messages from localStorage once
+// Purge legacy dummy seed messages and test chatter from general channel
 if (typeof window !== 'undefined') {
   try {
-    const isPurged = localStorage.getItem('cooltech_chat_seed_purged_v2');
+    const isPurged = localStorage.getItem('cooltech_chat_clean_general_v4');
     if (!isPurged) {
+      localStorage.removeItem('cooltech_chat_messages_conv_general');
+      localStorage.removeItem('cooltech_chat_messages_general');
       Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith('cooltech_chat_messages_')) {
+        if (key.includes('conv_general') || key.includes('messages_general')) {
           const raw = localStorage.getItem(key);
-          if (raw && (raw.includes('msg_seed_') || raw.includes('You completed the sales?'))) {
+          if (raw && (raw.includes('hlo') || raw.includes('"message_text":"hi"'))) {
             try {
               const parsed = JSON.parse(raw);
               if (Array.isArray(parsed)) {
-                const cleaned = parsed.filter(
+                const filtered = parsed.filter(
                   (m: any) =>
-                    !String(m.id || '').startsWith('msg_seed_') &&
-                    m.message_text !== 'Hi\n\nYou completed the sales?' &&
-                    !(m.message_text === 'Yes' && m.sender_name === 'Tariq')
+                    m.message_text !== 'hlo' &&
+                    m.message_text !== 'hi' &&
+                    m.message_text !== 'hlo\n' &&
+                    m.message_text !== 'hi\n'
                 );
-                if (cleaned.length === 0) {
-                  localStorage.removeItem(key);
-                } else {
-                  localStorage.setItem(key, JSON.stringify(cleaned));
-                }
+                localStorage.setItem(key, JSON.stringify(filtered));
               }
             } catch {}
           }
         }
-        if (key === 'cooltech_chat_conversations' || key.startsWith('cooltech_chat_conversations_')) {
+        if (key.includes('conversations')) {
           const raw = localStorage.getItem(key);
-          if (raw && raw.includes('You completed the sales?')) {
+          if (raw && (raw.includes('hlo') || raw.includes('"hi"'))) {
             try {
               const list = JSON.parse(raw);
               if (Array.isArray(list)) {
-                const updated = list.map((c: any) => {
-                  if (c.last_message_text === 'Yes' || c.last_message_text?.includes('completed the sales')) {
+                const cleaned = list.map((c: any) => {
+                  if (c.slug === 'general' || c.id === 'conv_general') {
                     return {
                       ...c,
-                      last_message_text: null,
-                      last_message_at: c.created_at,
-                      last_message_sender_id: null,
-                      last_message_sender_name: null,
+                      last_message_text: 'Company-wide announcements and team discussions',
                       unread_count: 0,
                     };
                   }
                   return c;
                 });
-                localStorage.setItem(key, JSON.stringify(updated));
+                localStorage.setItem(key, JSON.stringify(cleaned));
               }
             } catch {}
           }
         }
       });
-      localStorage.setItem('cooltech_chat_seed_purged_v2', 'true');
+      localStorage.setItem('cooltech_chat_clean_general_v4', 'true');
     }
   } catch {}
 }
@@ -718,10 +714,16 @@ function getLocalStoredMessages(conversationId: string): ChatMessage[] {
     if (raw) {
       const list = JSON.parse(raw);
       if (Array.isArray(list) && list.length > 0) {
-        // Clean up legacy seed messages and consecutive duplicate 'Yes'
+        // Clean up legacy seed messages and casual test chatter in general
         const cleaned = list.filter((m: any, idx: number) => {
           if (m.id && String(m.id).startsWith('msg_seed_')) return false;
           if (m.message_text === 'Hi\n\nYou completed the sales?' || (m.message_text === 'Yes' && m.sender_name === 'Tariq' && idx <= 1)) return false;
+          if (
+            (conversationId === 'conv_general' || conversationId === 'general') &&
+            (m.message_text === 'hlo' || m.message_text === 'hi' || m.message_text === 'hlo\n' || m.message_text === 'hi\n')
+          ) {
+            return false;
+          }
           if (idx === 0) return true;
           const prev = list[idx - 1];
           return !(m.sender_id === prev.sender_id && m.message_text === 'Yes' && prev.message_text === 'Yes');
