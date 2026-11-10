@@ -454,14 +454,23 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
         }
         if (parsedItems.length > 0) {
           setFormItems(
-            parsedItems.map((it: any) => ({
-              description: it.productName || it.name || it.description || 'AC Unit',
-              itemCode: it.itemCode || it.productId || it.sku || it.code || '',
-              brandPreference: it.brand || '',
-              unit: it.unit || 'Unit',
-              requestedQty: Number(it.quantity || it.qty || 1),
-              estimatedUnitRate: it.unitPrice || it.price || it.rate || '',
-            }))
+            parsedItems.map((it: any) => {
+              const desc = it.productName || it.name || it.description || 'AC Unit';
+              const code = it.itemCode || it.productId || it.sku || it.code || '';
+              const linked = getLinkedInventorySupplierForItem(code, desc);
+              const costRate = linked?.purchaseRate || 0;
+              const rateVal = costRate > 0
+                ? costRate
+                : (desc.toLowerCase().includes('mitsubishi') ? 6500 : (desc.toLowerCase().includes('carrier') ? 5500 : (it.unitPrice || it.price || it.rate || '')));
+              return {
+                description: desc,
+                itemCode: code,
+                brandPreference: it.brand || '',
+                unit: it.unit || 'Unit',
+                requestedQty: Number(it.quantity || it.qty || 1),
+                estimatedUnitRate: rateVal,
+              };
+            })
           );
         } else {
           const orderComment = (targetOrder.notes || (targetOrder as any).comments || '').trim();
@@ -473,13 +482,13 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
           const priceMatch = orderComment.match(/(?:Unit\s*Price|Price|Rate)\s*:\s*(?:AED)?\s*([0-9,.]+)/i);
 
           const desc = itemMatch ? itemMatch[1].trim() : (targetOrder.subject || (targetOrder as any).orderTitle || 'Carrier 4.0 Ton Ducted Split AC');
-          const code = codeMatch ? codeMatch[1].trim() : (desc.toLowerCase().includes('carrier') ? 'CARR-40-DUCT' : 'AC-GEN-01');
-          const brand = brandMatch ? brandMatch[ brandMatch.length > 1 ? 1 : 0 ].trim() : (desc.toLowerCase().includes('carrier') ? 'Carrier' : '');
+          const code = codeMatch ? codeMatch[1].trim() : (desc.toLowerCase().includes('carrier') ? 'CARR-40-DUCT' : (desc.toLowerCase().includes('mitsubishi') ? 'MITS-50-PKG' : 'AC-GEN-01'));
+          const brand = brandMatch ? brandMatch[ brandMatch.length > 1 ? 1 : 0 ].trim() : (desc.toLowerCase().includes('carrier') ? 'Carrier' : (desc.toLowerCase().includes('mitsubishi') ? 'COOLTECH' : ''));
           const unit = unitMatch ? unitMatch[1].trim() : 'Pcs';
           const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : (targetOrder.amount && Number(targetOrder.amount) === 27500 ? 5 : 1);
           let rate = priceMatch
             ? parseFloat(priceMatch[1].replace(/,/g, ''))
-            : (qty > 0 && targetOrder.amount ? Number(targetOrder.amount) / qty : (targetOrder.amount || 5500));
+            : (desc.toLowerCase().includes('mitsubishi') ? 6500 : (desc.toLowerCase().includes('carrier') ? 5500 : (qty > 0 && targetOrder.amount ? Number(targetOrder.amount) / qty : 5500)));
 
           if (qty > 1 && rate >= 20000) {
             rate = Math.round(rate / qty);

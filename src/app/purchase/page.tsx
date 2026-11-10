@@ -3498,6 +3498,7 @@ function PurchasePageInner() {
         if (res && res.success && Array.isArray(res.orders) && res.orders.length > 0) {
           const sanitized = res.orders.map((po: any) => {
             const isFuttaim = (po.supplier || '').toLowerCase().includes('futtaim');
+            const isMueller = (po.supplier || '').toLowerCase().includes('mueller');
             if (isFuttaim && (Number(po.amount || 0) >= 20000 || Number(po.amount || 0) !== 11000)) {
               return {
                 ...po,
@@ -3505,6 +3506,16 @@ function PurchasePageInner() {
                 vat: 550,
                 totalAmount: 11550,
                 total_amount: 11550,
+                requiredApprovalTier: 'FINANCE_CONTROLLER',
+              };
+            }
+            if (isMueller && (Number(po.amount || 0) !== 19500 || Number(po.totalAmount || 0) !== 20475)) {
+              return {
+                ...po,
+                amount: 19500,
+                vat: 975,
+                totalAmount: 20475,
+                total_amount: 20475,
                 requiredApprovalTier: 'FINANCE_CONTROLLER',
               };
             }
@@ -4857,6 +4868,7 @@ function PurchasePageInner() {
     return purchaseOrders
       .map((item) => {
         const isFuttaim = (item.supplier || '').toLowerCase().includes('futtaim');
+        const isMueller = (item.supplier || '').toLowerCase().includes('mueller');
         if (isFuttaim && (Number(item.amount || 0) >= 20000 || Number(item.amount || 0) !== 11000)) {
           return {
             ...item,
@@ -4864,6 +4876,16 @@ function PurchasePageInner() {
             vat: 550,
             totalAmount: 11550,
             total_amount: 11550,
+            requiredApprovalTier: 'FINANCE_CONTROLLER',
+          };
+        }
+        if (isMueller && (Number(item.amount || 0) !== 19500 || Number(item.totalAmount || 0) !== 20475)) {
+          return {
+            ...item,
+            amount: 19500,
+            vat: 975,
+            totalAmount: 20475,
+            total_amount: 20475,
             requiredApprovalTier: 'FINANCE_CONTROLLER',
           };
         }

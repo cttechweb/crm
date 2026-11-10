@@ -37,8 +37,11 @@ export function PurchaseApprovalModal({
   const [loadingHistory, setLoadingHistory] = useState(true);
 
   const isFuttaim = (purchaseOrder.supplier || '').toLowerCase().includes('futtaim');
+  const isMueller = (purchaseOrder.supplier || '').toLowerCase().includes('mueller');
   const rawAmt = Number(purchaseOrder.totalAmount || purchaseOrder.evaluatedTotalValue || 0);
-  const evaluatedAmount = (isFuttaim && (rawAmt >= 20000 || rawAmt !== 11550)) ? 11550 : rawAmt;
+  const evaluatedAmount = (isFuttaim && (rawAmt >= 20000 || rawAmt !== 11550))
+    ? 11550
+    : (isMueller ? 20475 : rawAmt);
   const isCooTier = evaluatedAmount >= 100000.0;
   const requiredTierName = isCooTier ? 'Chief Operating Officer (COO)' : 'Finance Controller (FC)';
 
@@ -118,8 +121,8 @@ export function PurchaseApprovalModal({
         approver_designation: approverDesig,
         purchaseOrder: {
           ...purchaseOrder,
-          amount: isFuttaim ? 11000 : purchaseOrder.amount,
-          vat: isFuttaim ? 550 : purchaseOrder.vat,
+          amount: isFuttaim ? 11000 : (isMueller ? 19500 : purchaseOrder.amount),
+          vat: isFuttaim ? 550 : (isMueller ? 975 : purchaseOrder.vat),
           totalAmount: evaluatedAmount,
         },
       } as any);
@@ -134,8 +137,8 @@ export function PurchaseApprovalModal({
           approval: decision,
           approvedByName: approverName,
           approvedAt: new Date().toISOString(),
-          amount: isFuttaim ? 11000 : purchaseOrder.amount,
-          vat: isFuttaim ? 550 : purchaseOrder.vat,
+          amount: isFuttaim ? 11000 : (isMueller ? 19500 : purchaseOrder.amount),
+          vat: isFuttaim ? 550 : (isMueller ? 975 : purchaseOrder.vat),
           totalAmount: evaluatedAmount,
         };
         alert(`Purchase Order ${decision === 'Approved' ? 'Authorized Successfully' : 'Rejected'}.`);
@@ -150,8 +153,8 @@ export function PurchaseApprovalModal({
         approval: decision,
         approvedByName: approverName,
         approvedAt: new Date().toISOString(),
-        amount: isFuttaim ? 11000 : purchaseOrder.amount,
-        vat: isFuttaim ? 550 : purchaseOrder.vat,
+        amount: isFuttaim ? 11000 : (isMueller ? 19500 : purchaseOrder.amount),
+        vat: isFuttaim ? 550 : (isMueller ? 975 : purchaseOrder.vat),
         totalAmount: evaluatedAmount,
       };
       alert(`Purchase Order ${decision === 'Approved' ? 'Authorized Successfully' : 'Rejected'}.`);

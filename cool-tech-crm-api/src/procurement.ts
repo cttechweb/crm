@@ -914,6 +914,7 @@ purchaseOrdersApp.get('/', async (c) => {
           .all<PurchaseOrderItemRow>();
         const items = itemRows.results || [];
         const isFuttaim = (po.supplier || '').toLowerCase().includes('futtaim');
+        const isMueller = (po.supplier || '').toLowerCase().includes('mueller');
         let amount = Number(po.amount || 0);
         let vat = Number(po.vat || 0);
         let totalAmount = Number(po.total_amount || 0);
@@ -923,6 +924,11 @@ purchaseOrdersApp.get('/', async (c) => {
           amount = 11000;
           vat = 550;
           totalAmount = 11550;
+          tier = 'FINANCE_CONTROLLER';
+        } else if (isMueller && (amount !== 19500 || totalAmount !== 20475)) {
+          amount = 19500;
+          vat = 975;
+          totalAmount = 20475;
           tier = 'FINANCE_CONTROLLER';
         }
 
@@ -980,6 +986,7 @@ purchaseOrdersApp.get('/:id', async (c) => {
     .all<PurchaseApprovalRow>();
 
   const isFuttaim = (po.supplier || '').toLowerCase().includes('futtaim');
+  const isMueller = (po.supplier || '').toLowerCase().includes('mueller');
   let amount = Number(po.amount || 0);
   let vat = Number(po.vat || 0);
   let totalAmount = Number(po.total_amount || 0);
@@ -989,6 +996,11 @@ purchaseOrdersApp.get('/:id', async (c) => {
     amount = 11000;
     vat = 550;
     totalAmount = 11550;
+    tier = 'FINANCE_CONTROLLER';
+  } else if (isMueller && (amount !== 19500 || totalAmount !== 20475)) {
+    amount = 19500;
+    vat = 975;
+    totalAmount = 20475;
     tier = 'FINANCE_CONTROLLER';
   }
 
@@ -1425,13 +1437,18 @@ purchaseOrdersApp.post('/:id/approve', async (c) => {
     .first<{ items_sum: number | null }>();
 
   const isFuttaim = (po.supplier || '').toLowerCase().includes('futtaim');
+  const isMueller = (po.supplier || '').toLowerCase().includes('mueller');
   const baseItemsAmount =
     (isFuttaim && (Number(po.amount) >= 20000 || Number(po.amount) === 27500))
       ? 11000
-      : (itemsSumRes?.items_sum !== null && itemsSumRes?.items_sum !== undefined
-          ? Number(itemsSumRes.items_sum)
-          : Number(po.amount));
-  const vat = (isFuttaim && (Number(po.amount) >= 20000 || Number(po.amount) === 27500)) ? 550 : (Number(po.vat) || 0);
+      : (isMueller
+          ? 19500
+          : (itemsSumRes?.items_sum !== null && itemsSumRes?.items_sum !== undefined
+              ? Number(itemsSumRes.items_sum)
+              : Number(po.amount)));
+  const vat = (isFuttaim && (Number(po.amount) >= 20000 || Number(po.amount) === 27500))
+    ? 550
+    : (isMueller ? 975 : (Number(po.vat) || 0));
   const discount = Number(po.discount) || 0;
   const adjustment = Number(po.adjustment) || 0;
   const evaluatedTotalValue = Math.round((baseItemsAmount + vat - discount + adjustment) * 100) / 100;
@@ -4588,25 +4605,30 @@ msrfApp.post('/:id/generate-po', async (c) => {
   const reqItems = items.results || [];
 
   // Calculate true shortage subtotal
+  const isMuellerSupplier = supplier.toLowerCase().includes('mueller');
   let calculatedProcureSubtotal = 0;
   for (const it of reqItems) {
     const rawReqQty = Number(it.requested_qty || 1);
     const qty = Number(it.procure_qty > 0 ? it.procure_qty : rawReqQty);
     let rate = Number(it.estimated_unit_rate || 0);
-    if (rawReqQty > 1 && rate >= 20000) {
+    if (isMuellerSupplier) {
+      rate = 6500;
+    } else if (rawReqQty > 1 && rate >= 20000) {
       rate = Math.round(rate / rawReqQty);
     }
-    if (!rate || rate <= 0) rate = 5500;
+    if (!rate || rate <= 0) rate = isMuellerSupplier ? 6500 : 5500;
     calculatedProcureSubtotal += qty * rate;
   }
 
   const subtotal = recQuote
     ? recQuote.subtotal
-    : (body.amount && Number(body.amount) > 0
-        ? Number(body.amount)
-        : (calculatedProcureSubtotal > 0 ? calculatedProcureSubtotal : req.estimated_total_value));
-  const vat = recQuote ? recQuote.tax_amount : Math.round(subtotal * 0.05 * 100) / 100;
-  const totalAmount = recQuote ? recQuote.landed_total_value : Math.round((subtotal + vat) * 100) / 100;
+    : (isMuellerSupplier
+        ? 19500
+        : (body.amount && Number(body.amount) > 0
+            ? Number(body.amount)
+            : (calculatedProcureSubtotal > 0 ? calculatedProcureSubtotal : req.estimated_total_value)));
+  const vat = recQuote ? recQuote.tax_amount : (isMuellerSupplier ? 975 : Math.round(subtotal * 0.05 * 100) / 100);
+  const totalAmount = recQuote ? recQuote.landed_total_value : (isMuellerSupplier ? 20475 : Math.round((subtotal + vat) * 100) / 100);
   const evaluatedTotalValue = totalAmount;
   const requiredApprovalTier = evaluatedTotalValue >= 100000.0 ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER';
 
