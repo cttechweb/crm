@@ -600,6 +600,7 @@ export interface CrmCezconStock {
   store?: string;
   status?: string;
   supplier?: string;
+  preferredSupplier?: string;
   supplierId?: string;
   createdBy?: string;
   createdByRole?: string;

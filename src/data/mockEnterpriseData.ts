@@ -60,7 +60,30 @@ export const mockCampaigns: CrmCampaign[] = [];
 
 export const mockCezconStocks: CrmCezconStock[] = [];
 
-export const mockCezconStockItems: CrmCezconStock[] = [];
+export const mockCezconStockItems: CrmCezconStock[] = [
+  {
+    id: 'PROD-CARRIER-40-DUCT',
+    slNo: 1,
+    code: 'CARR-40-DUCT',
+    name: 'Carrier 4.0 Ton Ducted Split AC',
+    unit: 'Pcs',
+    brand: 'Carrier',
+    category: 'Air Conditioning',
+    type: 'Product',
+    purchaseRate: 4200,
+    sellingPrice: 5500,
+    openingStock: 3,
+    stock: 5,
+    currentStock: 5,
+    minimumStock: 2,
+    store: 'CT',
+    status: 'Active',
+    supplier: 'Al Futtaim Engineering & Technologies LLC',
+    preferredSupplier: 'Al Futtaim Engineering & Technologies LLC',
+    supplierId: 'sup_al_futtaim_001',
+    owner: 'Stock Management',
+  },
+];
 
 export const mockStockTransfers: CrmStockTransfer[] = [];
 

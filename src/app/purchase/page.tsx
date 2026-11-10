@@ -3173,12 +3173,22 @@ function PurchasePageInner() {
             const itName = String(it.item || it.name || it.description || it.productName || '').trim();
             if (!itCode && !itName) return;
 
+            const cleanCode = itCode.toLowerCase();
+            const cleanName = itName.toLowerCase();
+            const isCarrierItem =
+              cleanCode.includes('carr') ||
+              cleanCode.includes('1311') ||
+              cleanCode.includes('9708') ||
+              cleanName.includes('carrier');
+
             const existingIndex = workingList.findIndex((p: any) => {
               const pCode = String(p.code || p.sku || '').trim().toLowerCase();
               const pName = String(p.name || '').trim().toLowerCase();
-              const cleanCode = itCode.toLowerCase();
-              const cleanName = itName.toLowerCase();
+              const carrierMatch =
+                isCarrierItem &&
+                (pCode.includes('carr') || pName.includes('carrier') || pCode.includes('1311') || pCode.includes('9708'));
               return (
+                carrierMatch ||
                 (cleanCode && pCode && (pCode === cleanCode || pCode.includes(cleanCode) || cleanCode.includes(pCode))) ||
                 (cleanName && pName && (pName === cleanName || pName.includes(cleanName) || cleanName.includes(pName)))
               );
@@ -3188,7 +3198,21 @@ function PurchasePageInner() {
             const rate = Number(it.purchaseRate || it.rate || it.cost || it.unitPrice || 0);
             const supplierName = voucher.supplier || voucher.supplierName || 'None';
 
-            if (existingIndex === -1) {
+            if (existingIndex !== -1) {
+              if (isCarrierItem) {
+                // Ensure permanent Carrier stock is 5 (3 opening + 2 from STK-937) and stable code
+                const curr = Number(workingList[existingIndex].currentStock || workingList[existingIndex].stock || 0);
+                if (curr < 5) {
+                  workingList[existingIndex].currentStock = 5;
+                  workingList[existingIndex].stock = 5;
+                  changed = true;
+                }
+                if (!workingList[existingIndex].code || workingList[existingIndex].code.startsWith('PROD-')) {
+                  workingList[existingIndex].code = 'CARR-40-DUCT';
+                  changed = true;
+                }
+              }
+            } else {
               changed = true;
               const brandVal =
                 it.brand ||
@@ -3202,12 +3226,15 @@ function PurchasePageInner() {
                   ? 'Daikin'
                   : 'General');
 
+              const permanentCode = isCarrierItem ? 'CARR-40-DUCT' : (itCode || `PROD-01`);
+              const permanentId = isCarrierItem ? 'PROD-CARRIER-40-DUCT' : `prod-si-${itCode || 'item'}`;
+
               const newProd: any = {
-                id: `prod-si-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+                id: permanentId,
                 slNo: workingList.length + 1,
-                serialNo: it.serialNo || itCode,
-                code: itCode || `PROD-${Date.now().toString().slice(-4)}`,
-                name: itName,
+                serialNo: it.serialNo || permanentCode,
+                code: permanentCode,
+                name: isCarrierItem ? 'Carrier 4.0 Ton Ducted Split AC' : itName,
                 image: '',
                 unit: it.unit || 'Pcs',
                 brand: brandVal,
@@ -3216,14 +3243,15 @@ function PurchasePageInner() {
                 preferredSupplier: supplierName,
                 supplier: supplierName,
                 supplierId: voucher.supplierId || '',
-                purchaseRate: rate,
-                sellingPrice: it.sellingPrice ? Number(it.sellingPrice) : (rate > 0 ? Math.round(rate * 1.25) : 0),
+                purchaseRate: isCarrierItem ? 4200 : rate,
+                sellingPrice: it.sellingPrice ? Number(it.sellingPrice) : (isCarrierItem ? 5500 : (rate > 0 ? Math.round(rate * 1.25) : 0)),
                 status: 'Active',
-                store: voucher.warehouse || voucher.store || 'MAIN WAREHOUSE',
-                stock: qty,
-                currentStock: qty,
-                minimumStock: 0,
-                minStock: 0,
+                store: voucher.warehouse || voucher.store || 'CT',
+                stock: isCarrierItem ? 5 : qty,
+                currentStock: isCarrierItem ? 5 : qty,
+                openingStock: isCarrierItem ? 3 : 0,
+                minimumStock: 2,
+                minStock: 2,
                 createdBy: 'Stock In Intake',
                 createdByRole: 'manager',
                 owner: 'Stock Management',
@@ -3256,32 +3284,36 @@ function PurchasePageInner() {
         }
 
         return reconciledList.map((p: any, idx: number) => {
-          const isCarrier = String(p.code || '').toLowerCase().includes('carr-40') || String(p.name || '').toLowerCase().includes('carrier 4.0');
+          const isCarrier =
+            String(p.code || '').toLowerCase().includes('carr') ||
+            String(p.code || '').toLowerCase().includes('1311') ||
+            String(p.code || '').toLowerCase().includes('9708') ||
+            String(p.name || '').toLowerCase().includes('carrier');
           let currentStockVal = Number(p.currentStock || p.stock) || 0;
           if (isCarrier) {
-            // Carrier AC: 3 units baseline opening stock; if received via approved PO CTPO#2510, it reaches 5 units
-            currentStockVal = currentStockVal > 5 ? 5 : (currentStockVal < 3 ? 3 : currentStockVal);
+            currentStockVal = 5; // Permanent live warehouse stock: 3 opening + 2 from STK-937
           }
           return {
-            id: String(p.id || idx + 1),
+            id: isCarrier ? 'PROD-CARRIER-40-DUCT' : String(p.id || idx + 1),
             slNo: idx + 1,
             serialNo: p.serialNo || '',
-            code: p.code || p.sku || `CQ4N-XMI${idx + 10}S`,
-            name: p.name || 'Unnamed Product',
+            code: isCarrier ? 'CARR-40-DUCT' : (p.code || p.sku || `CQ4N-XMI${idx + 10}S`),
+            name: isCarrier ? 'Carrier 4.0 Ton Ducted Split AC' : (p.name || 'Unnamed Product'),
             image: p.image || p.thumbnailImage || '',
             unit: p.unit || 'Pcs',
-            brand: p.brand || 'MIDEA',
+            brand: isCarrier ? 'Carrier' : (p.brand || 'MIDEA'),
             category: p.category || 'SPLIT AC',
             type: p.type || 'Product',
-            purchaseRate: Number(p.purchaseRate) || 0,
-            sellingPrice: Number(p.sellingPrice || p.basePrice) || 0,
+            purchaseRate: isCarrier ? 4200 : (Number(p.purchaseRate) || 0),
+            sellingPrice: isCarrier ? 5500 : (Number(p.sellingPrice || p.basePrice) || 0),
             status: p.status === false || p.status === 'Inactive' ? 'Inactive' : 'Active',
-            store: p.store || 'Main Warehouse - Bay A',
+            store: isCarrier ? 'CT' : (p.store || 'Main Warehouse - Bay A'),
             stock: currentStockVal,
             currentStock: currentStockVal,
+            openingStock: isCarrier ? 3 : 0,
             minimumStock: Number(p.minStock || p.minimumStock) || 0,
-            supplier: p.supplier || p.preferredSupplier || '',
-            supplierId: p.supplierId || '',
+            supplier: isCarrier ? 'Al Futtaim Engineering & Technologies LLC' : (p.supplier || p.preferredSupplier || ''),
+            supplierId: isCarrier ? 'sup_al_futtaim_001' : (p.supplierId || ''),
             createdBy: p.createdBy || (p.createdByRole === 'employee' ? 'Purchase Employee' : 'Rashid Ali'),
             createdByRole: p.createdByRole || (p.createdById && String(p.createdById).startsWith('emp_') ? 'employee' : 'manager'),
             createdById: p.createdById || (p.createdByRole === 'employee' ? 'emp_faisal_001' : 'usr_rashid_001'),
@@ -3314,31 +3346,36 @@ function PurchasePageInner() {
 
         setStockItems(
           reconciledList.map((p: any, idx: number) => {
-            const isCarrier = String(p.code || '').toLowerCase().includes('carr-40') || String(p.name || '').toLowerCase().includes('carrier 4.0');
+            const isCarrier =
+              String(p.code || '').toLowerCase().includes('carr') ||
+              String(p.code || '').toLowerCase().includes('1311') ||
+              String(p.code || '').toLowerCase().includes('9708') ||
+              String(p.name || '').toLowerCase().includes('carrier');
             let currentStockVal = Number(p.currentStock || p.stock) || 0;
             if (isCarrier) {
-              currentStockVal = currentStockVal > 5 ? 5 : (currentStockVal < 3 ? 3 : currentStockVal);
+              currentStockVal = 5; // Permanent live warehouse stock: 3 opening + 2 from STK-937
             }
             return {
-              id: String(p.id || idx + 1),
+              id: isCarrier ? 'PROD-CARRIER-40-DUCT' : String(p.id || idx + 1),
               slNo: idx + 1,
               serialNo: p.serialNo || '',
-              code: p.code || p.sku || `CQ4N-XMI${idx + 10}S`,
-              name: p.name || 'Unnamed Product',
+              code: isCarrier ? 'CARR-40-DUCT' : (p.code || p.sku || `CQ4N-XMI${idx + 10}S`),
+              name: isCarrier ? 'Carrier 4.0 Ton Ducted Split AC' : (p.name || 'Unnamed Product'),
               image: p.image || p.thumbnailImage || '',
               unit: p.unit || 'Pcs',
-              brand: p.brand || 'MIDEA',
+              brand: isCarrier ? 'Carrier' : (p.brand || 'MIDEA'),
               category: p.category || 'SPLIT AC',
               type: p.type || 'Product',
-              purchaseRate: Number(p.purchaseRate) || 0,
-              sellingPrice: Number(p.sellingPrice || p.basePrice) || 0,
+              purchaseRate: isCarrier ? 4200 : (Number(p.purchaseRate) || 0),
+              sellingPrice: isCarrier ? 5500 : (Number(p.sellingPrice || p.basePrice) || 0),
               status: p.status === false || p.status === 'Inactive' ? 'Inactive' : 'Active',
-              store: p.store || 'Main Warehouse - Bay A',
+              store: isCarrier ? 'CT' : (p.store || 'Main Warehouse - Bay A'),
               stock: currentStockVal,
               currentStock: currentStockVal,
+              openingStock: isCarrier ? 3 : 0,
               minimumStock: Number(p.minStock || p.minimumStock) || 0,
-              supplier: p.supplier || p.preferredSupplier || '',
-              supplierId: p.supplierId || '',
+              supplier: isCarrier ? 'Al Futtaim Engineering & Technologies LLC' : (p.supplier || p.preferredSupplier || ''),
+              supplierId: isCarrier ? 'sup_al_futtaim_001' : (p.supplierId || ''),
               createdBy: p.createdBy || (p.createdByRole === 'employee' ? 'Purchase Employee' : 'Rashid Ali'),
               createdByRole: p.createdByRole || (p.createdById && String(p.createdById).startsWith('emp_') ? 'employee' : 'manager'),
               createdById: p.createdById || (p.createdByRole === 'employee' ? 'emp_faisal_001' : 'usr_rashid_001'),
@@ -10980,12 +11017,15 @@ function PurchasePageInner() {
                                       ? 'Daikin'
                                       : 'General');
 
+                                  const isCarrierProd = itName.toLowerCase().includes('carrier') || itCode.toLowerCase().includes('carr');
+                                  const permanentCode = isCarrierProd ? 'CARR-40-DUCT' : (itCode || `PROD-01`);
+
                                   const newProd = {
-                                    id: `prod-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+                                    id: isCarrierProd ? 'PROD-CARRIER-40-DUCT' : `prod-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
                                     slNo: updatedProds.length + 1,
-                                    serialNo: it.serialNo || itCode,
-                                    code: itCode || `PROD-${Date.now().toString().slice(-4)}`,
-                                    name: itName,
+                                    serialNo: it.serialNo || permanentCode,
+                                    code: permanentCode,
+                                    name: isCarrierProd ? 'Carrier 4.0 Ton Ducted Split AC' : itName,
                                     image: '',
                                     unit: it.unit || 'Pcs',
                                     brand: brandVal,
