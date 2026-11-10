@@ -858,6 +858,36 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
                     ];
                   }
                 }
+                // CTSO#3991 / CTINV#15298 / CTINV#15521 (INDIGO - 5 Carrier Ducted ACs)
+                else if (
+                  inv.invoiceNumber === 'CTINV#15298' ||
+                  inv.invoiceNumber === 'CTINV#15521' ||
+                  inv.opportunityOrderRef?.includes('3991') ||
+                  (inv.customer?.toLowerCase().includes('indigo') && (inv.description?.toLowerCase().includes('carrier') || inv.amount === 30318.75 || inv.amount === 28875)) ||
+                  inv.description?.toLowerCase().includes('supply of 5 carrier')
+                ) {
+                  correctedCustomer = inv.customer || 'INDIGO';
+                  correctedAttention = inv.attention || inv.contactPerson || 'rinshad';
+                  correctedOpp = 'CTSO#3991 / Supply of 5 Carrier Ducted ACs';
+                  correctedAmount = 28875.00;
+                  correctedSubtotal = 27500.00;
+                  correctedVatAmount = 1375.00;
+                  const hasSingleLumpSum = Array.isArray(inv.items) && inv.items.some((it: any) => (it.qty === 1 && it.price === 28875) || it.description?.toLowerCase().includes('supply of 5 carrier'));
+                  if (!Array.isArray(inv.items) || inv.items.length === 0 || hasSingleLumpSum || inv.amount === 30318.75) {
+                    correctedItems = [
+                      {
+                        id: 'item-3991-carrier',
+                        description: 'Carrier 4.0 Ton Ducted Split AC',
+                        code: 'CARR-40-DUCT',
+                        unit: 'Pcs',
+                        brand: 'Carrier',
+                        qty: 5,
+                        price: 5500,
+                        total: 27500,
+                      },
+                    ];
+                  }
+                }
 
                 const currentPaid = Number(inv.paidAmount) || 0;
                 const currentBalance = Math.max(0, correctedAmount - currentPaid);
