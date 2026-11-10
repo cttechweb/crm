@@ -3284,11 +3284,19 @@ function PurchasePageInner() {
         }
 
         return reconciledList.map((p: any, idx: number) => {
+          const isWindow =
+            String(p.category || '').toLowerCase().includes('window') ||
+            String(p.name || '').toLowerCase().includes('window') ||
+            String(p.serialNo || p.code || '').toLowerCase().includes('51kwf');
+
           const isCarrier =
-            String(p.code || '').toLowerCase().includes('carr') ||
-            String(p.code || '').toLowerCase().includes('1311') ||
-            String(p.code || '').toLowerCase().includes('9708') ||
-            String(p.name || '').toLowerCase().includes('carrier');
+            !isWindow && (
+              String(p.code || '').toLowerCase() === 'carr-40-duct' ||
+              String(p.id || '') === 'prod-carrier-40-duct' ||
+              String(p.code || '').toLowerCase().includes('carr') ||
+              (String(p.name || '').toLowerCase().includes('carrier') && (String(p.name || '').toLowerCase().includes('duct') || String(p.name || '').toLowerCase().includes('split')))
+            );
+
           let currentStockVal = Number(p.currentStock || p.stock) || 0;
           if (isCarrier) {
             currentStockVal = 5; // Permanent live warehouse stock: 3 opening + 2 from STK-937
@@ -3302,7 +3310,7 @@ function PurchasePageInner() {
             image: p.image || p.thumbnailImage || '',
             unit: p.unit || 'Pcs',
             brand: isCarrier ? 'Carrier' : (p.brand || 'MIDEA'),
-            category: p.category || 'SPLIT AC',
+            category: isWindow ? 'Window AC' : (isCarrier ? 'Air Conditioning' : (p.category || 'SPLIT AC')),
             type: p.type || 'Product',
             purchaseRate: isCarrier ? 4200 : (Number(p.purchaseRate) || 0),
             sellingPrice: isCarrier ? 5500 : (Number(p.sellingPrice || p.basePrice) || 0),
@@ -3346,11 +3354,19 @@ function PurchasePageInner() {
 
         setStockItems(
           reconciledList.map((p: any, idx: number) => {
+            const isWindow =
+              String(p.category || '').toLowerCase().includes('window') ||
+              String(p.name || '').toLowerCase().includes('window') ||
+              String(p.serialNo || p.code || '').toLowerCase().includes('51kwf');
+
             const isCarrier =
-              String(p.code || '').toLowerCase().includes('carr') ||
-              String(p.code || '').toLowerCase().includes('1311') ||
-              String(p.code || '').toLowerCase().includes('9708') ||
-              String(p.name || '').toLowerCase().includes('carrier');
+              !isWindow && (
+                String(p.code || '').toLowerCase() === 'carr-40-duct' ||
+                String(p.id || '') === 'prod-carrier-40-duct' ||
+                String(p.code || '').toLowerCase().includes('carr') ||
+                (String(p.name || '').toLowerCase().includes('carrier') && (String(p.name || '').toLowerCase().includes('duct') || String(p.name || '').toLowerCase().includes('split')))
+              );
+
             let currentStockVal = Number(p.currentStock || p.stock) || 0;
             if (isCarrier) {
               currentStockVal = 5; // Permanent live warehouse stock: 3 opening + 2 from STK-937
@@ -3364,7 +3380,7 @@ function PurchasePageInner() {
               image: p.image || p.thumbnailImage || '',
               unit: p.unit || 'Pcs',
               brand: isCarrier ? 'Carrier' : (p.brand || 'MIDEA'),
-              category: p.category || 'SPLIT AC',
+              category: isWindow ? 'Window AC' : (isCarrier ? 'Air Conditioning' : (p.category || 'SPLIT AC')),
               type: p.type || 'Product',
               purchaseRate: isCarrier ? 4200 : (Number(p.purchaseRate) || 0),
               sellingPrice: isCarrier ? 5500 : (Number(p.sellingPrice || p.basePrice) || 0),
@@ -13564,13 +13580,26 @@ function PurchasePageInner() {
                                       type="button"
                                       onClick={() => {
                                         if (confirm(`Are you sure you want to delete ${item.name}?`)) {
-                                          const updated = stockItems.filter((i) => i.id !== item.id);
+                                          const updated = stockItems.filter((i) => {
+                                            if (item.serialNo && i.serialNo === item.serialNo) return false;
+                                            if (item.id && i.id === item.id && (!item.serialNo || i.serialNo === item.serialNo)) return false;
+                                            return true;
+                                          });
                                           setStockItems(updated);
                                           try {
                                             const existingRaw = localStorage.getItem('cezcon_products_master_live');
                                             const existingList = existingRaw ? JSON.parse(existingRaw) : [];
                                             if (Array.isArray(existingList)) {
-                                              const filtered = existingList.filter((x: any) => String(x.id) !== String(item.id));
+                                              const targetId = String(item.id || '');
+                                              const targetSerial = String(item.serialNo || '');
+                                              const filtered = existingList.filter((x: any) => {
+                                                const xId = String(x.id || '');
+                                                const xCode = String(x.code || x.sku || '');
+                                                const xSerial = String(x.serialNo || '');
+                                                if (targetSerial && (xSerial === targetSerial || xCode === targetSerial || xId === targetSerial)) return false;
+                                                if (targetId && xId === targetId && (!targetSerial || xSerial === targetSerial)) return false;
+                                                return true;
+                                              });
                                               localStorage.setItem('cezcon_products_master_live', JSON.stringify(filtered));
                                               window.dispatchEvent(new Event('crm_products_updated'));
                                             }
@@ -13757,13 +13786,26 @@ function PurchasePageInner() {
                                           type="button"
                                           onClick={() => {
                                             if (confirm(`Are you sure you want to delete ${item.name}?`)) {
-                                              const updated = stockItems.filter((i) => i.id !== item.id);
+                                              const updated = stockItems.filter((i) => {
+                                            if (item.serialNo && i.serialNo === item.serialNo) return false;
+                                            if (item.id && i.id === item.id && (!item.serialNo || i.serialNo === item.serialNo)) return false;
+                                            return true;
+                                          });
                                               setStockItems(updated);
                                               try {
                                                 const existingRaw = localStorage.getItem('cezcon_products_master_live');
                                                 const existingList = existingRaw ? JSON.parse(existingRaw) : [];
                                                 if (Array.isArray(existingList)) {
-                                                  const filtered = existingList.filter((x: any) => String(x.id) !== String(item.id));
+                                                  const targetId = String(item.id || '');
+                                              const targetSerial = String(item.serialNo || '');
+                                              const filtered = existingList.filter((x: any) => {
+                                                const xId = String(x.id || '');
+                                                const xCode = String(x.code || x.sku || '');
+                                                const xSerial = String(x.serialNo || '');
+                                                if (targetSerial && (xSerial === targetSerial || xCode === targetSerial || xId === targetSerial)) return false;
+                                                if (targetId && xId === targetId && (!targetSerial || xSerial === targetSerial)) return false;
+                                                return true;
+                                              });
                                                   localStorage.setItem('cezcon_products_master_live', JSON.stringify(filtered));
                                                   window.dispatchEvent(new Event('crm_products_updated'));
                                                 }

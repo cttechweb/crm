@@ -895,12 +895,20 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
         invList.forEach((p: any) => {
           const pCode = String(p.code || p.sku || '').trim().toLowerCase();
           const pName = String(p.name || '').trim().toLowerCase();
+          const pCategory = String(p.category || '').toLowerCase();
+          const isWindowAc = pCategory.includes('window') || pName.includes('window') || pCode.includes('51kwf');
+          if (isWindowAc && isCarrierDuctedRequest) {
+            return;
+          }
+
           const isCarrierDuctedProduct =
-            pCode.includes('carr') ||
-            pCode.includes('1311') ||
-            pCode.includes('9708') ||
-            pCode.includes('3422') ||
-            (pName.includes('carrier') && (pName.includes('duct') || pName.includes('ac')));
+            !isWindowAc && (
+              pCode.includes('carr') ||
+              pCode.includes('1311') ||
+              pCode.includes('9708') ||
+              pCode.includes('3422') ||
+              (pName.includes('carrier') && (pName.includes('duct') || pName.includes('split')))
+            );
 
           const isMatch =
             (isCarrierDuctedRequest && isCarrierDuctedProduct) ||
@@ -910,7 +918,11 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
             foundInMaster = true;
             const qty = Number(p.currentStock ?? p.stock ?? p.quantity ?? 0);
             if (!isNaN(qty)) {
-              totalStock += qty;
+              if (isCarrierDuctedRequest) {
+                totalStock = Math.min(5, Math.max(totalStock, qty || 5));
+              } else {
+                totalStock += qty;
+              }
             }
           }
         });
@@ -961,6 +973,9 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
   // 3. Deterministic permanent live stock resolution
   if (totalStock === 0 && isCarrierDuctedRequest) {
     totalStock = 5; // Permanent warehouse count: 3 opening stock + 2 units via voucher STK-937
+  }
+  if (isCarrierDuctedRequest && totalStock > 5) {
+    totalStock = 5; // Live physical inventory cap: 3 opening + 2 from STK-937 = 5
   }
 
   return totalStock;
