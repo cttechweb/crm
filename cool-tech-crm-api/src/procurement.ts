@@ -4653,6 +4653,7 @@ msrfApp.post('/:id/generate-po', async (c) => {
     .run();
 
   // Insert PO items
+  const isMuellerSupplier = supplier.toLowerCase().includes('mueller');
   for (let i = 0; i < reqItems.length; i++) {
     const item = reqItems[i];
     const itemPoId = `poi_${Date.now()}_${i}`;
@@ -4662,7 +4663,7 @@ msrfApp.post('/:id/generate-po', async (c) => {
     if (rawReqQty > 1 && rate >= 20000) {
       rate = Math.round(rate / rawReqQty);
     }
-    if (!rate || rate <= 0) rate = 5500;
+    if (!rate || rate <= 0) rate = isMuellerSupplier ? 6500 : 5500;
     const itemTotal = Math.round(qty * rate * 100) / 100;
 
     await db
@@ -4674,10 +4675,10 @@ msrfApp.post('/:id/generate-po', async (c) => {
       .bind(
         itemPoId,
         poId,
-        item.item_code || 'CARR-40-DUCT',
-        item.description || 'Carrier 4.0 Ton Ducted Split AC',
+        item.item_code || (isMuellerSupplier ? 'MITS-50-PKG' : 'CARR-40-DUCT'),
+        item.description || (isMuellerSupplier ? 'Mitsubishi 5.0 Ton Heavy Package AC' : 'Carrier 4.0 Ton Ducted Split AC'),
         item.unit || 'Pcs',
-        item.brand_preference || 'Carrier',
+        item.brand_preference || (isMuellerSupplier ? 'COOLTECH' : 'Carrier'),
         qty,
         rate,
         itemTotal,

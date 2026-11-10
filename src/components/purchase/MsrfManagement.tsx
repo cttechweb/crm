@@ -1587,7 +1587,7 @@ const getLinkedInventorySupplierForItem = (
                 if (linked?.purchaseRate) unitRate = linked.purchaseRate;
               }
               if (unitRate <= 0) {
-                unitRate = isItemMueller ? 6500 : (isFuttaim ? 4200 : 5000);
+                unitRate = isItemMueller ? 6500 : (isFuttaim ? 5500 : 5000);
               }
 
               const lineTotal = finalQty * unitRate;
@@ -1621,9 +1621,9 @@ const getLinkedInventorySupplierForItem = (
                 unit: 'Pcs',
                 qty: isMueller ? 3 : 2,
                 deliveryPending: isMueller ? 3 : 2,
-                rate: isMueller ? 6500 : 4200,
-                amount: isMueller ? 6500 : 4200,
-                total: (isMueller ? 3 : 2) * (isMueller ? 6500 : 4200),
+                rate: isMueller ? 6500 : (isFuttaim ? 5500 : 5000),
+                amount: isMueller ? 6500 : (isFuttaim ? 5500 : 5000),
+                total: (isMueller ? 3 : 2) * (isMueller ? 6500 : (isFuttaim ? 5500 : 5000)),
               },
             ];
 
@@ -1641,7 +1641,7 @@ const getLinkedInventorySupplierForItem = (
           projectNumber: selectedMsrf.salesOrderNumber || selectedMsrf.msrfNumber || '',
           projectName: selectedMsrf.projectName || selectedMsrf.purpose || 'Direct Procurement',
           reference: selectedMsrf.msrfNumber || '',
-          description: `Direct PO for 2 Units Carrier AC (${selectedMsrf.msrfNumber || 'MSRF'})`,
+          description: `Direct PO for ${poItems.map((p: any) => `${p.qty}x ${p.item || p.description}`).join(', ')} (${selectedMsrf.msrfNumber || 'MSRF'})`,
           amount: estSubtotal,
           vat: estVat,
           totalAmount: estTotal,
