@@ -1584,6 +1584,7 @@ function PurchasePageInner() {
     },
   ]);
 
+  const normalizeStockVoucherKey = (key?: string) => (key || '').replace(/[\s-]+/g, '').toUpperCase();
   const defaultStockInList: any[] = [];
 
   const [stockInList, setStockInList] = useState<any[]>(() => {
@@ -1599,7 +1600,19 @@ function PurchasePageInner() {
                 !String(it.id || '').startsWith('si_9') &&
                 !['STK 923', 'STK 922', 'STK 921', 'STK 920', 'STK 919', 'STK 918', 'STK 917', 'STK 916', 'STK 915', 'STK 914'].includes(it.stockInNo)
             );
-            return filtered;
+            const seen = new Set<string>();
+            const cleanList: any[] = [];
+            for (const r of filtered) {
+              const k = normalizeStockVoucherKey(r.stockInNo) || r.id;
+              if (!seen.has(k)) {
+                seen.add(k);
+                const cleanNo = r.stockInNo && r.stockInNo.startsWith('STK ')
+                  ? r.stockInNo.replace('STK ', 'STK-')
+                  : r.stockInNo;
+                cleanList.push({ ...r, stockInNo: cleanNo });
+              }
+            }
+            return cleanList;
           }
         }
       } catch (e) {
@@ -1623,7 +1636,7 @@ function PurchasePageInner() {
             .map((r: any, idx: number) => ({
               id: r.id,
               slNo: r.slNo ?? idx + 1,
-              stockInNo: r.stockInNo,
+              stockInNo: r.stockInNo && r.stockInNo.startsWith('STK ') ? r.stockInNo.replace('STK ', 'STK-') : r.stockInNo,
               date: r.date,
               supplier: r.supplier,
               purchaseInvoiceNumber: r.purchaseInvoiceNumber || '',
@@ -1636,12 +1649,26 @@ function PurchasePageInner() {
               files: [],
             }));
           setStockInList((prev) => {
-            const serverIds = new Set(serverRecords.map((s: any) => s.id || s.stockInNo));
-            const serverNos = new Set(serverRecords.map((s: any) => s.stockInNo));
-            const localOnly = (prev || []).filter(
-              (p: any) => !serverIds.has(p.id) && !serverNos.has(p.stockInNo) && !serverIds.has(p.stockInNo)
-            );
-            const combined = [...localOnly, ...serverRecords];
+            const serverIds = new Set(serverRecords.map((s: any) => s.id));
+            const serverNormNos = new Set(serverRecords.map((s: any) => normalizeStockVoucherKey(s.stockInNo)));
+            const localOnly = (prev || []).filter((p: any) => {
+              if (p.id && serverIds.has(p.id)) return false;
+              const pNorm = normalizeStockVoucherKey(p.stockInNo);
+              if (pNorm && serverNormNos.has(pNorm)) return false;
+              return true;
+            });
+            const seen = new Set<string>();
+            const combined: any[] = [];
+            for (const r of [...localOnly, ...serverRecords]) {
+              const k = normalizeStockVoucherKey(r.stockInNo) || r.id;
+              if (!seen.has(k)) {
+                seen.add(k);
+                const cleanNo = r.stockInNo && r.stockInNo.startsWith('STK ')
+                  ? r.stockInNo.replace('STK ', 'STK-')
+                  : r.stockInNo;
+                combined.push({ ...r, stockInNo: cleanNo });
+              }
+            }
             try {
               localStorage.setItem('crm_stock_in_list', JSON.stringify(combined));
             } catch (e) {
@@ -10746,9 +10773,14 @@ function PurchasePageInner() {
 
                         const isEditing = Boolean(editingStockInId);
                         if (isEditing) {
+                          const normEditing = normalizeStockVoucherKey(editingStockInId || '');
                           const updated = stockInList.map((item) => {
                             const itemId = item.id || item.stockInNo;
-                            if (itemId === editingStockInId) {
+                            const isMatch =
+                              itemId === editingStockInId ||
+                              normalizeStockVoucherKey(item.stockInNo) === normEditing ||
+                              normalizeStockVoucherKey(itemId) === normEditing;
+                            if (isMatch) {
                               return {
                                 ...item,
                                 stockInNo: stockInNumber,
@@ -10767,13 +10799,27 @@ function PurchasePageInner() {
                             }
                             return item;
                           });
-                          setStockInList(updated);
+
+                          // Deduplicate to eliminate any old spaced/hyphen duplicate that already existed
+                          const seenNos = new Set<string>();
+                          const deduplicated: any[] = [];
+                          for (const it of updated) {
+                            const k = normalizeStockVoucherKey(it.stockInNo) || it.id;
+                            if (!seenNos.has(k)) {
+                              seenNos.add(k);
+                              deduplicated.push(it);
+                            }
+                          }
+
+                          setStockInList(deduplicated);
                           try {
-                            localStorage.setItem('crm_stock_in_list', JSON.stringify(updated));
+                            localStorage.setItem('crm_stock_in_list', JSON.stringify(deduplicated));
                           } catch (e) {
                             console.error(e);
                           }
-                          const updatedRec = updated.find((it) => (it.id || it.stockInNo) === editingStockInId);
+                          const updatedRec = deduplicated.find(
+                            (it) => (it.id || it.stockInNo) === editingStockInId || normalizeStockVoucherKey(it.stockInNo) === normEditing
+                          );
                           if (updatedRec && editingStockInId) {
                             stockInApiService.updateStockInRecord(editingStockInId, updatedRec as any).catch(() => { });
                           }
@@ -11369,7 +11415,7 @@ function PurchasePageInner() {
                       </thead>
                       <tbody className="divide-y divide-slate-100 bg-white">
                         {(() => {
-                          const filtered = stockInList.filter((si) => {
+                          const rawFiltered = stockInList.filter((si) => {
                             if (stockInSupplierFilter !== 'All' && si.supplier !== stockInSupplierFilter) {
                               return false;
                             }
@@ -11384,6 +11430,17 @@ function PurchasePageInner() {
                             }
                             return true;
                           });
+
+                          // Deduplicate records with space vs dash so table always displays clean distinct vouchers
+                          const seenKeys = new Set<string>();
+                          const filtered: any[] = [];
+                          for (const r of rawFiltered) {
+                            const k = normalizeStockVoucherKey(r.stockInNo) || r.id;
+                            if (!seenKeys.has(k)) {
+                              seenKeys.add(k);
+                              filtered.push(r);
+                            }
+                          }
 
                           if (filtered.length === 0) {
                             return (
@@ -11531,9 +11588,12 @@ function PurchasePageInner() {
                                             setActiveStockInDropdownId(null);
                                             if (confirm(`Are you sure you want to delete ${si.stockInNo}?`)) {
                                               const targetId = si.id || si.stockInNo;
+                                              const targetNorm = normalizeStockVoucherKey(si.stockInNo);
                                               stockInApiService.deleteStockInRecord(targetId).catch((err) => console.warn('Failed to delete stock in from server:', err));
                                               const updated = stockInList.filter((item, i) => {
                                                 const itemId = item.id || item.stockInNo;
+                                                if (itemId === targetId) return false;
+                                                if (targetNorm && normalizeStockVoucherKey(item.stockInNo) === targetNorm) return false;
                                                 return itemId ? itemId !== targetId : i !== idx;
                                               });
                                               setStockInList(updated);

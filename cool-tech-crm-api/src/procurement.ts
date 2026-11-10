@@ -1835,10 +1835,21 @@ stockInApp.get('/', async (c) => {
 
   const rows = await db.prepare(query).bind(...listBindings).all<StockInRecordRow>();
 
+  // Deduplicate vouchers with space vs dash (e.g. 'STK 937' vs 'STK-937')
+  const uniqueRecords: StockInRecordRow[] = [];
+  const seenNos = new Set<string>();
+  for (const r of (rows.results || [])) {
+    const key = (r.stock_in_no || '').replace(/[\s-]+/g, '').toUpperCase() || r.id;
+    if (!seenNos.has(key)) {
+      seenNos.add(key);
+      uniqueRecords.push(r);
+    }
+  }
+
   return c.json({
     success: true,
-    records: rows.results || [],
-    total,
+    records: uniqueRecords,
+    total: uniqueRecords.length,
     page,
     limit,
   });
@@ -1847,10 +1858,11 @@ stockInApp.get('/', async (c) => {
 stockInApp.get('/:id', async (c) => {
   const db = c.env.DB;
   const id = c.req.param('id');
+  const normId = id.replace(/[\s-]+/g, '').toUpperCase();
 
   const record = await db
-    .prepare('SELECT * FROM stock_in_vouchers WHERE id = ? AND is_deleted = 0')
-    .bind(id)
+    .prepare("SELECT * FROM stock_in_vouchers WHERE (id = ? OR stock_in_no = ? OR REPLACE(REPLACE(stock_in_no, ' ', ''), '-', '') = ?) AND is_deleted = 0 LIMIT 1")
+    .bind(id, id, normId)
     .first<StockInRecordRow>();
 
   if (!record) {
@@ -1859,7 +1871,7 @@ stockInApp.get('/:id', async (c) => {
 
   const items = await db
     .prepare('SELECT * FROM stock_in_items WHERE voucher_id = ? ORDER BY sl_no ASC')
-    .bind(id)
+    .bind(record.id)
     .all<any>();
 
   const normalizedItems = (items.results || []).map((it: any) => ({
@@ -2179,6 +2191,17 @@ stockInApp.put('/:id', async (c) => {
     return c.json({ success: false, message: 'Invalid JSON payload' }, 400);
   }
 
+  const normId = id.replace(/[\s-]+/g, '').toUpperCase();
+  const existing = await db
+    .prepare("SELECT * FROM stock_in_vouchers WHERE (id = ? OR stock_in_no = ? OR REPLACE(REPLACE(stock_in_no, ' ', ''), '-', '') = ?) AND is_deleted = 0 LIMIT 1")
+    .bind(id, id, normId)
+    .first<StockInRecordRow>();
+
+  if (!existing) {
+    return c.json({ success: false, message: 'Stock-in record not found' }, 404);
+  }
+
+  const realId = existing.id;
   const now = new Date().toISOString();
   const totalItems = Array.isArray(body.items)
     ? body.items.reduce((acc: number, curr: any) => acc + (Number(curr.qty) || 1), 0)
@@ -2208,12 +2231,12 @@ stockInApp.put('/:id', async (c) => {
       body.purchaseInvoiceNumber || body.purchase_invoice_number || null,
       totalItems ?? null,
       now,
-      id
+      realId
     )
     .run();
 
   if (Array.isArray(body.items)) {
-    await db.prepare('DELETE FROM stock_in_items WHERE voucher_id = ?').bind(id).run();
+    await db.prepare('DELETE FROM stock_in_items WHERE voucher_id = ?').bind(realId).run();
     for (let i = 0; i < body.items.length; i++) {
       const it = body.items[i];
       const itemId = it.id || `sii_${Date.now()}_${i}`;
@@ -2224,7 +2247,7 @@ stockInApp.put('/:id', async (c) => {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .bind(
-          itemId, id, i + 1, it.code || null,
+          itemId, realId, i + 1, it.code || null,
           it.item_name || it.item || it.description || 'Item',
           it.unit || 'Pcs', it.brand || null,
           Number(it.purchaseRate ?? it.purchase_rate) || 0,
@@ -2237,18 +2260,19 @@ stockInApp.put('/:id', async (c) => {
     }
   }
 
-  const updated = await db.prepare('SELECT * FROM stock_in_vouchers WHERE id = ?').bind(id).first<StockInRecordRow>();
+  const updated = await db.prepare('SELECT * FROM stock_in_vouchers WHERE id = ?').bind(realId).first<StockInRecordRow>();
   return c.json({ success: true, record: updated });
 });
 
 stockInApp.delete('/:id', async (c) => {
   const db = c.env.DB;
   const id = c.req.param('id');
+  const normId = id.replace(/[\s-]+/g, '').toUpperCase();
 
   const now = new Date().toISOString();
   await db
-    .prepare('UPDATE stock_in_vouchers SET is_deleted = 1, updated_at = ? WHERE id = ? OR stock_in_no = ?')
-    .bind(now, id, id)
+    .prepare("UPDATE stock_in_vouchers SET is_deleted = 1, updated_at = ? WHERE id = ? OR stock_in_no = ? OR REPLACE(REPLACE(stock_in_no, ' ', ''), '-', '') = ?")
+    .bind(now, id, id, normId)
     .run();
 
   return c.json({ success: true, message: 'Stock-in record deleted successfully' });
