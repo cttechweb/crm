@@ -300,6 +300,7 @@ export interface ProductSettingItem {
   supplier?: string;
   supplierId?: string;
   currentStock?: number;
+  openingStock?: number;
   minStock?: number;
   inStock?: boolean;
   additionalDescription?: string;

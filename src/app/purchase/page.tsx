@@ -3884,6 +3884,7 @@ function PurchasePageInner() {
       supplierId: productFormData.supplierId || existingProduct?.supplierId || '',
       stock: Number(productFormData.currentStock) || 0,
       currentStock: Number(productFormData.currentStock) || 0,
+      openingStock: Number(productFormData.currentStock) || 0,
       minimumStock: Number(productFormData.minimumStock) || 0,
       createdBy: existingProduct?.createdBy || activeUser?.name || (isEmp ? 'Purchase Employee' : 'Rashid Ali'),
       createdByRole: existingProduct?.createdByRole || creatorRole,
@@ -3918,6 +3919,7 @@ function PurchasePageInner() {
         supplier: savedProduct.supplier,
         supplierId: savedProduct.supplierId,
         currentStock: savedProduct.currentStock,
+        openingStock: savedProduct.openingStock,
         minStock: savedProduct.minimumStock,
         additionalDescription: productFormData.additionalDescription,
         createdBy: savedProduct.createdBy,
@@ -4114,6 +4116,21 @@ function PurchasePageInner() {
                   value={productFormData.sellingPrice}
                   onChange={(e) => setProductFormData({ ...productFormData, sellingPrice: e.target.value })}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400"
+                />
+              </div>
+            </div>
+
+            {/* Stock Quantity */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
+              <label className="text-slate-700 font-medium text-xs">Stock Quantity</label>
+              <div className="sm:col-span-2">
+                <input
+                  type="number"
+                  step="1"
+                  placeholder="0"
+                  value={productFormData.currentStock}
+                  onChange={(e) => setProductFormData({ ...productFormData, currentStock: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white placeholder:text-slate-400 font-mono font-bold text-slate-800"
                 />
               </div>
             </div>
@@ -12738,7 +12755,7 @@ function PurchasePageInner() {
                                 purchaseRate: String(viewingProduct.purchaseRate || ''),
                                 sellingPrice: String(viewingProduct.sellingPrice || ''),
                                 store: viewingProduct.store || 'Select Store',
-                                currentStock: String(viewingProduct.currentStock || viewingProduct.stock || ''),
+                                currentStock: String(viewingProduct.openingStock ?? viewingProduct.currentStock ?? viewingProduct.stock ?? ''),
                                 minimumStock: String(viewingProduct.minimumStock || ''),
                                 type: viewingProduct.type || 'Product',
                                 imagesCountText: '',
@@ -13485,7 +13502,7 @@ function PurchasePageInner() {
                                           purchaseRate: String(item.purchaseRate || ''),
                                           sellingPrice: String(item.sellingPrice || ''),
                                           store: item.store || 'Select Store',
-                                          currentStock: String(item.currentStock || item.stock || ''),
+                                          currentStock: String((item as any).openingStock ?? item.currentStock ?? item.stock ?? ''),
                                           minimumStock: String(item.minimumStock || ''),
                                           type: item.type || 'Product',
                                           imagesCountText: '',
@@ -13677,7 +13694,7 @@ function PurchasePageInner() {
                                               purchaseRate: String(item.purchaseRate || ''),
                                               sellingPrice: String(item.sellingPrice || ''),
                                               store: item.store || 'Select Store',
-                                              currentStock: String(item.currentStock || item.stock || ''),
+                                              currentStock: String((item as any).openingStock ?? item.currentStock ?? item.stock ?? ''),
                                               minimumStock: String(item.minimumStock || ''),
                                               type: item.type || 'Product',
                                               imagesCountText: '',

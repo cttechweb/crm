@@ -595,6 +595,7 @@ export interface CrmCezconStock {
   minStock?: string;
   stock: number;
   currentStock?: number;
+  openingStock?: number;
   minimumStock?: number;
   store?: string;
   status?: string;
