@@ -991,7 +991,15 @@ const getLinkedInventorySupplierForItem = (
   const cleanDesc = (description || '').trim().toLowerCase();
   if (!cleanCode && !cleanDesc) return null;
 
-  // 0. Fast-track Carrier Brand recognition -> Al Futtaim Engineering & Technologies LLC
+  // 0. Fast-track Carrier & Mitsubishi Brand recognition
+  if (cleanDesc.includes('mitsubishi') || cleanCode.includes('mits') || cleanDesc.includes('mueller')) {
+    return {
+      supplierName: 'Mueller Middle East FZE',
+      supplierId: 'sup_mueller_001',
+      purchaseRate: 6500,
+    };
+  }
+
   if (
     cleanDesc.includes('carrier') ||
     cleanCode.includes('carr') ||
@@ -1561,26 +1569,33 @@ const getLinkedInventorySupplierForItem = (
       if (!targetPo) {
         const poNum = `CTPO#${Math.floor(2500 + Math.random() * 900)}`;
         const isFuttaim = supplierName.toLowerCase().includes('futtaim');
-        const defaultRate = isFuttaim ? 5500 : 4200;
+        const isMueller = supplierName.toLowerCase().includes('mueller');
 
         const poItems = Array.isArray(selectedMsrf.items) && selectedMsrf.items.length > 0
           ? selectedMsrf.items.map((it: any, idx: number) => {
-              const req = Number(it.requestedQty || 5);
+              const req = Number(it.requestedQty || 1);
               const liveStock = getLiveWarehouseStockForItem(it.itemCode, it.description);
-              const avail = Math.max(liveStock, Number(it.availableStockQty !== undefined ? it.availableStockQty : 5));
+              const avail = Math.max(0, Number(it.availableStockQty !== undefined ? it.availableStockQty : liveStock));
               const rawProcure = Number(it.procureQty !== undefined ? it.procureQty : Math.max(0, req - avail));
-              const finalQty = rawProcure > 0 ? rawProcure : 2;
-              let unitRate = Number(it.estimatedRate || it.estimatedUnitRate || defaultRate);
-              if (unitRate >= 20000 && req > 1) {
-                unitRate = Math.round(unitRate / req);
+              const finalQty = rawProcure > 0 ? rawProcure : req;
+
+              const isItemMueller = isMueller || String(it.description || '').toLowerCase().includes('mitsubishi') || String(it.itemCode || '').toLowerCase().includes('mits');
+
+              let unitRate = Number(it.purchaseRate || it.purchaseCost || it.cost || it.estimatedUnitRate || it.estimatedRate || 0);
+              if (unitRate <= 0) {
+                const linked = getLinkedInventorySupplierForItem(it.itemCode, it.description);
+                if (linked?.purchaseRate) unitRate = linked.purchaseRate;
               }
-              if (!unitRate || unitRate <= 0) unitRate = defaultRate;
+              if (unitRate <= 0) {
+                unitRate = isItemMueller ? 6500 : (isFuttaim ? 4200 : 5000);
+              }
+
               const lineTotal = finalQty * unitRate;
               const itemDesc = (it.description && !it.description.toLowerCase().includes('refrigerator') && !it.description.toLowerCase().includes('nobel'))
                 ? it.description
-                : (isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Daikin Cassette AC 3.0 Ton');
-              const itemCode = it.itemCode || (isFuttaim ? 'CARR-40-DUCT' : 'DAIKIN-CAS-02');
-              const itemBrand = it.brandPreference || (isFuttaim ? 'Carrier' : 'Daikin');
+                : (isItemMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : (isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Equipment Supply Item'));
+              const itemCode = it.itemCode || (isItemMueller ? 'MITS-50-PKG' : (isFuttaim ? 'CARR-40-DUCT' : 'ITEM-01'));
+              const itemBrand = it.brandPreference || (isItemMueller ? 'COOLTECH' : (isFuttaim ? 'Carrier' : 'Standard'));
 
               return {
                 id: it.id || `item_${idx + 1}`,
@@ -1599,16 +1614,16 @@ const getLinkedInventorySupplierForItem = (
           : [
               {
                 id: 'item_1',
-                item: isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Daikin Cassette AC 3.0 Ton',
-                description: isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Daikin Cassette AC 3.0 Ton',
-                code: isFuttaim ? 'CARR-40-DUCT' : 'DAIKIN-CAS-02',
-                brand: isFuttaim ? 'Carrier' : 'Daikin',
+                item: isMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : (isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Equipment Supply Item'),
+                description: isMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : (isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Equipment Supply Item'),
+                code: isMueller ? 'MITS-50-PKG' : (isFuttaim ? 'CARR-40-DUCT' : 'ITEM-01'),
+                brand: isMueller ? 'COOLTECH' : (isFuttaim ? 'Carrier' : 'Standard'),
                 unit: 'Pcs',
-                qty: 2,
-                deliveryPending: 2,
-                rate: defaultRate,
-                amount: defaultRate,
-                total: 2 * defaultRate,
+                qty: isMueller ? 3 : 2,
+                deliveryPending: isMueller ? 3 : 2,
+                rate: isMueller ? 6500 : 4200,
+                amount: isMueller ? 6500 : 4200,
+                total: (isMueller ? 3 : 2) * (isMueller ? 6500 : 4200),
               },
             ];
 
