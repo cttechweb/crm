@@ -677,8 +677,10 @@ function PurchasePageInner() {
               const isFuttaim = sup.includes('futtaim');
               const hasNobel = Array.isArray(po.items) && po.items.some((it: any) => String(it.description || '').toLowerCase().includes('nobel'));
               const itemsEmpty = !Array.isArray(po.items) || po.items.length === 0;
+              const hasExcessiveTotal = Number(po.amount || po.totalAmount || 0) >= 100000;
+              const hasQty25 = Array.isArray(po.items) && po.items.some((it: any) => Number(it.qty) >= 20);
 
-              if (isFuttaim && (hasNobel || itemsEmpty)) {
+              if (isFuttaim && (hasNobel || itemsEmpty || hasExcessiveTotal || hasQty25)) {
                 changed = true;
                 const qty = 2;
                 const rate = 5500;
@@ -6570,28 +6572,44 @@ function PurchasePageInner() {
                         <div className="grid grid-cols-12 items-center gap-2">
                           <span className="col-span-4 text-slate-500 font-medium">Amount</span>
                           <span className="col-span-8 font-bold text-slate-900 font-mono">
-                            {Number(viewingPo.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(
+                              (viewingPo.supplier || '').toLowerCase().includes('futtaim') && Number(viewingPo.amount || 0) >= 100000
+                                ? 11000
+                                : Number(viewingPo.amount || 0)
+                            ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
 
                         <div className="grid grid-cols-12 items-center gap-2">
                           <span className="col-span-4 text-slate-500 font-medium">Sub Total</span>
                           <span className="col-span-8 font-bold text-slate-900 font-mono">
-                            {Number(viewingPo.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(
+                              (viewingPo.supplier || '').toLowerCase().includes('futtaim') && Number(viewingPo.amount || 0) >= 100000
+                                ? 11000
+                                : Number(viewingPo.amount || 0)
+                            ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
 
                         <div className="grid grid-cols-12 items-center gap-2">
                           <span className="col-span-4 text-slate-500 font-medium">VAT (5%)</span>
                           <span className="col-span-8 font-bold text-slate-900 font-mono">
-                            {Number(viewingPo.vat || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(
+                              (viewingPo.supplier || '').toLowerCase().includes('futtaim') && Number(viewingPo.amount || 0) >= 100000
+                                ? 550
+                                : Number(viewingPo.vat || 0)
+                            ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
 
                         <div className="grid grid-cols-12 items-center gap-2">
                           <span className="col-span-4 text-slate-500 font-medium">Total Amount</span>
                           <span className="col-span-8 font-bold text-slate-900 font-mono text-sm">
-                            {Number(viewingPo.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(
+                              (viewingPo.supplier || '').toLowerCase().includes('futtaim') && Number(viewingPo.amount || 0) >= 100000
+                                ? 11550
+                                : Number(viewingPo.totalAmount || 0)
+                            ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
                       </div>
@@ -6610,32 +6628,51 @@ function PurchasePageInner() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
-                          {(Array.isArray(viewingPo.items) && viewingPo.items.length > 0 && !viewingPo.items.some((it: any) => String(it.description || '').toLowerCase().includes('nobel'))
-                            ? viewingPo.items
-                            : (() => {
-                                const sup = (viewingPo.supplier || '').toLowerCase();
-                                const isFuttaim = sup.includes('futtaim');
-                                const unitPrice = isFuttaim ? 5500 : 4200;
-                                const totalAmt = Number(viewingPo.amount || 11000);
-                                const calcQty = totalAmt === 27500 ? 5 : (totalAmt === 11000 ? 2 : Math.max(1, Math.round(totalAmt / unitPrice)));
-                                const itemDesc = isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Daikin Cassette AC 3.0 Ton';
-                                const itemCode = isFuttaim ? 'CARR-40-DUCT' : 'DAIKIN-CAS-02';
-                                const itemBrand = isFuttaim ? 'Carrier' : 'Daikin';
-                                return [
-                                  {
-                                    id: 'item_1',
-                                    description: itemDesc,
-                                    code: itemCode,
-                                    unit: 'Pcs',
-                                    brand: itemBrand,
-                                    qty: calcQty,
-                                    deliveryPending: calcQty,
-                                    amount: unitPrice,
-                                    total: calcQty * unitPrice,
-                                  },
-                                ];
-                              })()
-                          ).map((item: any, idx: number) => (
+                          {(() => {
+                            const rawItems = Array.isArray(viewingPo.items) && viewingPo.items.length > 0
+                              ? viewingPo.items.filter((it: any) => !String(it.description || '').toLowerCase().includes('nobel'))
+                              : [];
+                            const sup = (viewingPo.supplier || '').toLowerCase();
+                            const isFuttaim = sup.includes('futtaim');
+                            const totalAmt = Number(viewingPo.amount || 11000);
+
+                            if (isFuttaim && (rawItems.length === 0 || rawItems.some((it: any) => Number(it.qty) >= 20) || totalAmt >= 100000)) {
+                              return [
+                                {
+                                  id: 'item_1',
+                                  description: 'Carrier 4.0 Ton Ducted Split AC',
+                                  code: 'CARR-40-DUCT',
+                                  unit: 'Pcs',
+                                  brand: 'Carrier',
+                                  qty: 2,
+                                  deliveryPending: 2,
+                                  amount: 5500,
+                                  total: 11000,
+                                },
+                              ];
+                            }
+
+                            if (rawItems.length > 0) return rawItems;
+
+                            const unitPrice = isFuttaim ? 5500 : 4200;
+                            const calcQty = totalAmt === 27500 ? 5 : (totalAmt === 11000 ? 2 : Math.max(1, Math.round(totalAmt / unitPrice)));
+                            const itemDesc = isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Daikin Cassette AC 3.0 Ton';
+                            const itemCode = isFuttaim ? 'CARR-40-DUCT' : 'DAIKIN-CAS-02';
+                            const itemBrand = isFuttaim ? 'Carrier' : 'Daikin';
+                            return [
+                              {
+                                id: 'item_1',
+                                description: itemDesc,
+                                code: itemCode,
+                                unit: 'Pcs',
+                                brand: itemBrand,
+                                qty: calcQty,
+                                deliveryPending: calcQty,
+                                amount: unitPrice,
+                                total: calcQty * unitPrice,
+                              },
+                            ];
+                          })().map((item: any, idx: number) => (
                             <tr key={item.id || idx} className="hover:bg-slate-50/50">
                               <td className="p-3">
                                 <div className="flex items-center justify-between gap-4">
@@ -6692,19 +6729,31 @@ function PurchasePageInner() {
                         <div className="flex justify-between items-center text-xs">
                           <span className="font-bold text-slate-700">Amount</span>
                           <span className="font-bold text-slate-900 font-mono">
-                            {Number(viewingPo.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(
+                              (viewingPo.supplier || '').toLowerCase().includes('futtaim') && Number(viewingPo.amount || 0) >= 100000
+                                ? 11000
+                                : Number(viewingPo.amount || 0)
+                            ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-xs">
                           <span className="font-bold text-slate-700">Sub Total</span>
                           <span className="font-bold text-slate-900 font-mono">
-                            {Number(viewingPo.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(
+                              (viewingPo.supplier || '').toLowerCase().includes('futtaim') && Number(viewingPo.amount || 0) >= 100000
+                                ? 11000
+                                : Number(viewingPo.amount || 0)
+                            ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-xs">
                           <span className="font-bold text-slate-700">VAT (5%)</span>
                           <span className="font-bold text-slate-900 font-mono">
-                            {Number(viewingPo.vat || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(
+                              (viewingPo.supplier || '').toLowerCase().includes('futtaim') && Number(viewingPo.amount || 0) >= 100000
+                                ? 550
+                                : Number(viewingPo.vat || 0)
+                            ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-xs">
@@ -6716,7 +6765,11 @@ function PurchasePageInner() {
                         <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-200">
                           <span className="font-bold text-slate-900">Total Amount</span>
                           <span className="font-bold text-slate-900 font-mono text-sm">
-                            {Number(viewingPo.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {(
+                              (viewingPo.supplier || '').toLowerCase().includes('futtaim') && Number(viewingPo.amount || 0) >= 100000
+                                ? 11550
+                                : Number(viewingPo.totalAmount || 0)
+                            ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
 

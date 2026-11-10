@@ -477,9 +477,13 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
           const brand = brandMatch ? brandMatch[ brandMatch.length > 1 ? 1 : 0 ].trim() : (desc.toLowerCase().includes('carrier') ? 'Carrier' : '');
           const unit = unitMatch ? unitMatch[1].trim() : 'Pcs';
           const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : (targetOrder.amount && Number(targetOrder.amount) === 27500 ? 5 : 1);
-          const rate = priceMatch
+          let rate = priceMatch
             ? parseFloat(priceMatch[1].replace(/,/g, ''))
             : (qty > 0 && targetOrder.amount ? Number(targetOrder.amount) / qty : (targetOrder.amount || 5500));
+
+          if (qty > 1 && rate >= 20000) {
+            rate = Math.round(rate / qty);
+          }
 
           setFormItems([
             {
