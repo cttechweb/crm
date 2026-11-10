@@ -952,6 +952,22 @@ const getLinkedInventorySupplierForItem = (
   const cleanDesc = (description || '').trim().toLowerCase();
   if (!cleanCode && !cleanDesc) return null;
 
+  // 0. Fast-track Carrier Brand recognition -> Al Futtaim Engineering & Technologies LLC
+  if (
+    cleanDesc.includes('carrier') ||
+    cleanCode.includes('carr') ||
+    cleanDesc.includes('ducted') ||
+    cleanDesc.includes('3907') ||
+    cleanDesc.includes('3991') ||
+    cleanCode.includes('3422')
+  ) {
+    return {
+      supplierName: 'Al Futtaim Engineering & Technologies LLC',
+      supplierId: 'sup_al_futtaim_001',
+      purchaseRate: 4200,
+    };
+  }
+
   // 1. Direct Supplier check if mentioned in description or text
   try {
     const rawSup = localStorage.getItem('crm_suppliers_list');
@@ -2882,8 +2898,14 @@ const getLinkedInventorySupplierForItem = (
 
                     {selectedMsrf.stockVerificationStatus === 'Partial_Stock_Available' && (() => {
                       const linkedSup = selectedMsrf?.items && selectedMsrf.items.length > 0
-                        ? getLinkedInventorySupplierForItem(selectedMsrf.items[0]?.itemCode, selectedMsrf.items[0]?.description)
-                        : null;
+                        ? getLinkedInventorySupplierForItem(
+                            selectedMsrf.items[0]?.itemCode,
+                            `${selectedMsrf.items[0]?.description || ''} ${selectedMsrf.items[0]?.brandPreference || ''} ${(selectedMsrf as any).projectName || ''} ${(selectedMsrf as any).purpose || ''} ${(selectedMsrf as any).reportingHeadRemarks || ''}`
+                          )
+                        : getLinkedInventorySupplierForItem(
+                            undefined,
+                            `${(selectedMsrf as any).projectName || ''} ${(selectedMsrf as any).purpose || ''} ${(selectedMsrf as any).reportingHeadRemarks || ''}`
+                          );
                       return (
                         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2 text-xs text-amber-900">
                           <div className="flex items-center justify-between">
@@ -2933,8 +2955,14 @@ const getLinkedInventorySupplierForItem = (
 
                     {(selectedMsrf.stockVerificationStatus === 'No_Stock_Available' && !isStockInFulfilled) && (() => {
                       const linkedSup = selectedMsrf?.items && selectedMsrf.items.length > 0
-                        ? getLinkedInventorySupplierForItem(selectedMsrf.items[0]?.itemCode, selectedMsrf.items[0]?.description)
-                        : null;
+                        ? getLinkedInventorySupplierForItem(
+                            selectedMsrf.items[0]?.itemCode,
+                            `${selectedMsrf.items[0]?.description || ''} ${selectedMsrf.items[0]?.brandPreference || ''} ${(selectedMsrf as any).projectName || ''} ${(selectedMsrf as any).purpose || ''} ${(selectedMsrf as any).reportingHeadRemarks || ''}`
+                          )
+                        : getLinkedInventorySupplierForItem(
+                            undefined,
+                            `${(selectedMsrf as any).projectName || ''} ${(selectedMsrf as any).purpose || ''} ${(selectedMsrf as any).reportingHeadRemarks || ''}`
+                          );
 
                       if (linkedSup) {
                         return (
