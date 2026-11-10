@@ -7624,12 +7624,18 @@ function PurchasePageInner() {
                 currentUser={currentUser}
                 onClose={() => setApprovalModalOrder(null)}
                 onSuccess={(updatedOrder) => {
-                  setPurchaseOrders((prev) =>
-                    prev.map((p) => (p.id === updatedOrder.id ? { ...p, ...updatedOrder } : p))
-                  );
+                  const updatedPoObj = { ...updatedOrder, approval: updatedOrder.approval || 'Approved' };
+                  setPurchaseOrders((prev) => {
+                    const list = prev.map((p) => (p.id === updatedOrder.id ? { ...p, ...updatedPoObj } : p));
+                    try {
+                      localStorage.setItem('crm_purchase_orders', JSON.stringify(list));
+                    } catch {}
+                    return list;
+                  });
                   if (viewingPo && viewingPo.id === updatedOrder.id) {
-                    setViewingPo({ ...viewingPo, ...updatedOrder });
+                    setViewingPo((prev: any) => ({ ...prev, ...updatedPoObj }));
                   }
+                  window.dispatchEvent(new Event('crm_purchase_orders_updated'));
                 }}
               />
             )}
