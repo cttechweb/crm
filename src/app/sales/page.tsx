@@ -649,7 +649,7 @@ function SalesPipelineInner() {
   const [filterDeliveryType, setFilterDeliveryType] = useState<string>('All');
   const [filterDeliveryCostUpdate, setFilterDeliveryCostUpdate] = useState<string>('All');
   const [deliveryFormData, setDeliveryFormData] = useState({
-    owner: 'Tariq',
+    owner: 'Murshid',
     dnType: 'Customer Delivery Note',
     deliveryNoteNumber: 'CTDN#1038',
     deliveryDate: new Date().toLocaleDateString('en-GB').split('/').join('-'),
@@ -660,8 +660,8 @@ function SalesPipelineInner() {
     invoiceRef: '',
     lpoNumber: '',
     lpoDate: '',
-    approvedBy: 'Fahad',
-    approvedContact: '+971 0506693043',
+    approvedBy: 'Murshid',
+    approvedContact: '+971 56 887 8305',
     receivedBy: '',
     location: '',
     stateRegion: 'Abu Dhabi',
@@ -676,6 +676,15 @@ function SalesPipelineInner() {
     costUpdated: true,
     status: 'Delivered',
   });
+
+  const deliveryStaffList = useMemo(() => {
+    const set = new Set<string>();
+    if (currentUser?.name) set.add(currentUser.name);
+    (activeSalesUsers || []).forEach((u) => { if (u.name) set.add(u.name); });
+    (users || []).forEach((u) => { if (u.name) set.add(u.name); });
+    ['Murshid', 'Tariq', 'Hamdan', 'Mustafa', 'shemin', 'Nafal'].forEach((n) => set.add(n));
+    return Array.from(set);
+  }, [activeSalesUsers, users, currentUser?.name]);
 
   // --- OPPORTUNITIES STATE ---
   const [activeSubTab, setActiveSubTab] = useState<string>('open');
@@ -14570,7 +14579,9 @@ function SalesPipelineInner() {
 
                   setDeliveryFormData((prev) => ({
                     ...prev,
-                    owner: currentUser?.name || 'Tariq',
+                    owner: currentUser?.name || 'Murshid',
+                    approvedBy: currentUser?.name || 'Murshid',
+                    approvedContact: (currentUser as any)?.phone || '+971 56 887 8305',
                     deliveryDate: todayStr,
                     dispatchDate: todayStr,
                     deliveryNoteNumber: nextDnNum,
@@ -15365,12 +15376,11 @@ function SalesPipelineInner() {
                           onChange={(e) => setDeliveryFormData({ ...deliveryFormData, owner: e.target.value })}
                           className="w-full pl-8 pr-7 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-400"
                         >
-                          <option value="Nafal">Nafal</option>
-                          <option value="shemin">shemin</option>
-                          <option value="Muhammed shemin">Muhammed shemin</option>
-                          <option value="Mustafa">Mustafa</option>
-                          <option value="Rithul">Rithul</option>
-                          <option value="Muhammed arshad">Muhammed arshad</option>
+                          {deliveryStaffList.map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
                         </select>
                         <User className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
                       </div>
