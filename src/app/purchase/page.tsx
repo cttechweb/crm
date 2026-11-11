@@ -4194,14 +4194,14 @@ function PurchasePageInner() {
 
             {/* Unit */}
             <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-              <label className="text-slate-700 font-medium text-xs">Unit</label>
+              <label className="text-slate-700 font-medium text-xs">UoM</label>
               <div className="sm:col-span-2 flex items-center gap-2">
                 <select
                   value={productFormData.unit}
                   onChange={(e) => setProductFormData({ ...productFormData, unit: e.target.value })}
                   className="flex-1 min-w-0 px-3 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700 cursor-pointer"
                 >
-                  <option value="Select Unit">Select Unit</option>
+                  <option value="Select Unit">Select UoM</option>
                   {unitList.map((u) => (
                     <option key={u} value={u}>
                       {u}
@@ -5899,7 +5899,7 @@ function PurchasePageInner() {
                               </div>
                             </th>
                             <th className="p-2.5 w-28">Code</th>
-                            <th className="p-2.5 w-24">Unit</th>
+                            <th className="p-2.5 w-24">UoM</th>
                             <th className="p-2.5 w-28">Brand</th>
                             <th className="p-2.5 w-24 text-center">QTY</th>
                             <th className="p-2.5 w-32 text-center">Amount</th>
@@ -7049,7 +7049,7 @@ function PurchasePageInner() {
                                       <span className="italic text-slate-500">Code:</span> <span className="font-medium text-slate-800 not-italic">{item.code || '-'}</span>
                                     </div>
                                     <div>
-                                      <span className="italic text-slate-500">Unit:</span> <span className="font-medium text-slate-800 not-italic">{item.unit || 'Pcs'}</span>
+                                      <span className="italic text-slate-500">UoM:</span> <span className="font-medium text-slate-800 not-italic">{item.unit || 'Pcs'}</span>
                                     </div>
                                     <div>
                                       <span className="italic text-slate-500">Brand:</span> <span className="font-medium text-slate-800 not-italic">{item.brand || '-'}</span>
@@ -8612,7 +8612,7 @@ function PurchasePageInner() {
                             <tr>
                               <th className="p-2.5 w-12 text-center border-r border-slate-200">#</th>
                               <th className="p-2.5 border-r border-slate-200">Item / Product Description</th>
-                              <th className="p-2.5 w-24 border-r border-slate-200">Unit</th>
+                              <th className="p-2.5 w-24 border-r border-slate-200">UoM</th>
                               <th className="p-2.5 w-24 text-right border-r border-slate-200">Quantity</th>
                               <th className="p-2.5 w-28 text-right border-r border-slate-200">Rate (AED)</th>
                               <th className="p-2.5 w-28 text-right border-r border-slate-200">Total (AED)</th>
@@ -10904,7 +10904,7 @@ function PurchasePageInner() {
                     {/* Headers */}
                     <div className="hidden sm:grid grid-cols-12 gap-2 text-xs font-semibold text-slate-700 px-1">
                       <div className="col-span-4">Item</div>
-                      <div className="col-span-2">Unit</div>
+                      <div className="col-span-2">UoM</div>
                       <div className="col-span-2 text-left">Purchase Cost</div>
                       <div className="col-span-2 text-left">Selling Price</div>
                       <div className="col-span-2 text-left">Stock In Quantity</div>
@@ -11518,7 +11518,7 @@ function PurchasePageInner() {
                           <th className="p-2.5 w-14 text-center border-r border-slate-200">Sl. No.</th>
                           <th className="p-2.5 border-r border-slate-200">Code</th>
                           <th className="p-2.5 border-r border-slate-200">Item</th>
-                          <th className="p-2.5 border-r border-slate-200">Unit</th>
+                          <th className="p-2.5 border-r border-slate-200">UoM</th>
                           <th className="p-2.5 border-r border-slate-200">Brand</th>
                           <th className="p-2.5 text-right border-r border-slate-200">Stockin Purchase Cost</th>
                           <th className="p-2.5 text-right border-r border-slate-200">Stockin Selling Price</th>
@@ -13842,7 +13842,7 @@ function PurchasePageInner() {
                               <th className="p-2.5 w-48 text-center border-r border-slate-200">Code</th>
                               <th className="p-2.5 border-r border-slate-200">Name</th>
                               <th className="p-2.5 w-24 text-center border-r border-slate-200">Image</th>
-                              <th className="p-2.5 w-16 text-center border-r border-slate-200">Unit</th>
+                              <th className="p-2.5 w-16 text-center border-r border-slate-200">UoM</th>
                               <th className="p-2.5 w-24 border-r border-slate-200">Brand</th>
                               <th className="p-2.5 w-32 border-r border-slate-200">Category</th>
                               <th className="p-2.5 w-36 border-r border-slate-200">Preferred Supplier</th>
@@ -14111,7 +14111,7 @@ function PurchasePageInner() {
                     <thead>
                       <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
                         <th className="p-2.5 w-20 text-center border-r border-slate-200">SL.No</th>
-                        <th className="p-2.5 border-r border-slate-200">Unit</th>
+                        <th className="p-2.5 border-r border-slate-200">UoM</th>
                         <th className="p-2.5 text-center w-28">Actions</th>
                       </tr>
                     </thead>
@@ -16074,7 +16074,7 @@ function PurchasePageInner() {
                           <th className="p-2.5 w-44 text-center border-r border-slate-200">Code</th>
                           <th className="p-2.5 border-r border-slate-200">Name</th>
                           <th className="p-2.5 w-16 text-center border-r border-slate-200">Image</th>
-                          <th className="p-2.5 w-16 text-center border-r border-slate-200">Unit</th>
+                          <th className="p-2.5 w-16 text-center border-r border-slate-200">UoM</th>
                           <th className="p-2.5 w-28 border-r border-slate-200">Brand</th>
                           <th className="p-2.5 w-28 border-r border-slate-200">Category</th>
                           <th className="p-2.5 w-20 border-r border-slate-200">

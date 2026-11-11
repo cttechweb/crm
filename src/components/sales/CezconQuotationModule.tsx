@@ -812,7 +812,7 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
       items: revItems.map((it) => ({
         id: it.id,
         productName: it.description,
-        description: `Code: ${it.code} | Unit: ${it.unit} | Brand: ${it.brand}`,
+        description: `Code: ${it.code} | UoM: ${it.unit} | Brand: ${it.brand}`,
         quantity: it.qty,
         unitPrice: it.price,
         discount: 0,
@@ -857,7 +857,7 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
       items: revItems.map((it) => ({
         id: it.id,
         productName: it.description,
-        description: `Code: ${it.code} | Unit: ${it.unit} | Brand: ${it.brand}`,
+        description: `Code: ${it.code} | UoM: ${it.unit} | Brand: ${it.brand}`,
         quantity: it.qty,
         unitPrice: it.price,
         discount: 0,
@@ -1434,7 +1434,7 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
 
                       {/* Unit */}
                       <div className="col-span-6 md:col-span-1">
-                        <label className="text-[11px] text-slate-600 block mb-0.5">Unit</label>
+                        <label className="text-[11px] text-slate-600 block mb-0.5">UoM</label>
                         <input
                           type="text"
                           value={item.unit}
@@ -2755,7 +2755,7 @@ export function CezconQuotationModule({ initialCreate = false }: CezconQuotation
 
                       {/* Unit */}
                       <div className="col-span-6 md:col-span-1">
-                        <label className="text-[11px] text-slate-600 block mb-0.5">Unit</label>
+                        <label className="text-[11px] text-slate-600 block mb-0.5">UoM</label>
                         <input
                           type="text"
                           value={item.unit}

@@ -646,7 +646,7 @@ export function ProductsTab() {
           }`}
         >
           <SlidersHorizontal className="w-3.5 h-3.5" />
-          <span>Unit</span>
+          <span>UoM</span>
         </button>
 
         <button
@@ -827,7 +827,7 @@ export function ProductsTab() {
             {/* Row 4: Unit & Brand */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-2">
-                <label className="text-slate-700 font-medium">Unit</label>
+                <label className="text-slate-700 font-medium">UoM</label>
                 <div className="sm:col-span-2">
                   <select
                     value={formData.unit}
@@ -1299,7 +1299,7 @@ export function ProductsTab() {
                   <th className="py-2.5 px-4 w-44 text-center border-r border-slate-200">Code</th>
                   <th className="py-2.5 px-4 min-w-[200px] border-r border-slate-200">Name</th>
                   <th className="py-2.5 px-3 w-16 text-center border-r border-slate-200">Image</th>
-                  <th className="py-2.5 px-3 w-14 text-center border-r border-slate-200">Unit</th>
+                  <th className="py-2.5 px-3 w-14 text-center border-r border-slate-200">UoM</th>
                   <th className="py-2.5 px-4 w-24 border-r border-slate-200">Brand</th>
                   <th className="py-2.5 px-4 w-32 border-r border-slate-200">Category</th>
                   <th className="py-2.5 px-3 w-20 border-r border-slate-200">Type ⓘ</th>

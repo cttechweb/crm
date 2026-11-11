@@ -4100,7 +4100,7 @@ function SalesPipelineInner() {
                                   </div>
                                 </th>
                                 <th className="p-2 min-w-[90px] font-semibold text-slate-800">Code</th>
-                                <th className="p-2 min-w-[80px] font-semibold text-slate-800">Unit</th>
+                                <th className="p-2 min-w-[80px] font-semibold text-slate-800">UoM</th>
                                 <th className="p-2 min-w-[90px] font-semibold text-slate-800">Brand</th>
                                 <th className="p-2 min-w-[70px] text-center font-semibold text-slate-800">QTY</th>
                                 <th className="p-2 min-w-[100px] text-right font-semibold text-slate-800">Price</th>
@@ -4766,7 +4766,7 @@ function SalesPipelineInner() {
                                 <th className="py-2.5 px-3 w-10 text-center">SL</th>
                                 <th className="py-2.5 px-3">Description</th>
                                 <th className="py-2.5 px-3">Code</th>
-                                <th className="py-2.5 px-3">Unit</th>
+                                <th className="py-2.5 px-3">UoM</th>
                                 <th className="py-2.5 px-3">Brand</th>
                                 <th className="py-2.5 px-3 text-center">QTY</th>
                                 <th className="py-2.5 px-3 text-right">Price</th>
@@ -10414,7 +10414,7 @@ function SalesPipelineInner() {
                               </div>
                             </th>
                             <th className="p-2 w-28 text-slate-700">Code</th>
-                            <th className="p-2 w-24 text-slate-700">Unit</th>
+                            <th className="p-2 w-24 text-slate-700">UoM</th>
                             <th className="p-2 w-28 text-slate-700">Brand</th>
                             <th className="p-2 w-20 text-center text-slate-700">QTY</th>
                             <th className="p-2 w-24 text-right text-slate-700">Price</th>
@@ -17879,7 +17879,7 @@ function SalesPipelineInner() {
                           <th className="py-2 px-2.5 text-center w-8">SL</th>
                           <th className="py-2 px-2.5">Code</th>
                           <th className="py-2 px-2.5">Item Description</th>
-                          <th className="py-2 px-2.5">Unit</th>
+                          <th className="py-2 px-2.5">UoM</th>
                           <th className="py-2 px-2.5">Brand</th>
                           {showQty && <th className="py-2 px-2.5 text-center">Qty</th>}
                           {showPrice && <th className="py-2 px-2.5 text-right">Price</th>}
@@ -18373,7 +18373,7 @@ function SalesPipelineInner() {
                           <th className="py-1.5 px-2 text-center w-9">SL.</th>
                           <th className="py-1.5 px-2 w-24">Code</th>
                           <th className="py-1.5 px-2">Item Description</th>
-                          <th className="py-1.5 px-2 w-14">Unit</th>
+                          <th className="py-1.5 px-2 w-14">UoM</th>
                           <th className="py-1.5 px-2 w-20">Brand</th>
                           {showQty && <th className="py-1.5 px-2 text-center w-12">Qty</th>}
                           {showPrice && <th className="py-1.5 px-2 text-right w-24">Price ({currencySymbol})</th>}

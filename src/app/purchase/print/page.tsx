@@ -611,7 +611,7 @@ function PurchasePrintContent() {
                       <th className="p-2 border-r border-slate-400 w-8 text-center font-semibold">SL</th>
                       <th className="p-2 border-r border-slate-400 w-16 font-semibold">Code</th>
                       <th className="p-2 border-r border-slate-400 font-semibold">Item Description</th>
-                      <th className="p-2 border-r border-slate-400 w-12 text-center font-semibold">Unit</th>
+                      <th className="p-2 border-r border-slate-400 w-12 text-center font-semibold">UoM</th>
                       <th className="p-2 border-r border-slate-400 w-16 text-center font-semibold">Brand</th>
                       {showQty && (
                         <th className="p-2 border-r border-slate-400 w-12 text-center font-semibold">Qty</th>

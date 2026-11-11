@@ -2410,7 +2410,7 @@ export function CezconOrderModule() {
                           </div>
                         </th>
                         <th className="p-2 border-r border-slate-200 w-24">Code</th>
-                        <th className="p-2 border-r border-slate-200 w-20">Unit</th>
+                        <th className="p-2 border-r border-slate-200 w-20">UoM</th>
                         <th className="p-2 border-r border-slate-200 w-24">Brand</th>
                         <th className="p-2 border-r border-slate-200 w-16 text-center">QTY</th>
                         <th className="p-2 border-r border-slate-200 w-24 text-right">Price</th>

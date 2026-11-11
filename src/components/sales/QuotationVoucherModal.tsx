@@ -277,7 +277,7 @@ export function QuotationVoucherModal({
                     <th className="py-2 px-2.5 text-center w-8">SL</th>
                     <th className="py-2 px-2.5">Code</th>
                     <th className="py-2 px-2.5">Item Description</th>
-                    <th className="py-2 px-2.5">Unit</th>
+                    <th className="py-2 px-2.5">UoM</th>
                     <th className="py-2 px-2.5">Brand</th>
                     {showQty && <th className="py-2 px-2.5 text-center">Qty</th>}
                     {showPrice && <th className="py-2 px-2.5 text-right">Price</th>}

@@ -333,7 +333,7 @@ export function InitialSettingsTab({
                 <tr>
                   <th className="py-2.5 px-4">Document Type</th>
                   <th className="py-2.5 px-3 text-center">Item Code</th>
-                  <th className="py-2.5 px-3 text-center">Unit</th>
+                  <th className="py-2.5 px-3 text-center">UoM</th>
                   <th className="py-2.5 px-3 text-center">Brand</th>
                   <th className="py-2.5 px-3 text-center">Seal & Sign</th>
                   <th className="py-2.5 px-3 text-center">Terms Header</th>
