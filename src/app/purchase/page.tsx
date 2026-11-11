@@ -10875,11 +10875,30 @@ function PurchasePageInner() {
 
                     {/* Rows */}
                     {stockInItems.map((itemRow, idx) => {
-                      const lpoVal = itemRow.lpoQty !== undefined && itemRow.lpoQty !== '' && itemRow.lpoQty !== null ? Number(itemRow.lpoQty) : null;
-                      const hasLpo = lpoVal !== null && !isNaN(lpoVal) && (Boolean(stockInLpoNumber) || (Boolean(stockInOrder) && stockInOrder !== 'Select Order'));
+                      const isPoLinked = Boolean(stockInLpoNumber) || (Boolean(stockInOrder) && stockInOrder !== 'Select Order');
+                      let resolvedLpo: number | null = null;
+                      if (itemRow.lpoQty !== undefined && itemRow.lpoQty !== '' && itemRow.lpoQty !== null && !isNaN(Number(itemRow.lpoQty))) {
+                        resolvedLpo = Number(itemRow.lpoQty);
+                      } else if (isPoLinked) {
+                        const poNum = (stockInLpoNumber || (stockInOrder ? stockInOrder.split(' - ')[0] : '')).trim().toUpperCase();
+                        const matchedPo = (purchaseOrders || []).find(
+                          (p: any) => (p.poNumber || '').trim().toUpperCase() === poNum
+                        );
+                        const matchedPoItem = matchedPo?.items?.[idx] || matchedPo?.items?.find((it: any) => (it.item || it.description) === itemRow.item);
+                        if (matchedPoItem && (matchedPoItem.qty || matchedPoItem.quantity)) {
+                          resolvedLpo = Number(matchedPoItem.qty || matchedPoItem.quantity);
+                        } else if (itemRow.qty !== undefined && itemRow.qty !== '' && !isNaN(Number(itemRow.qty))) {
+                          resolvedLpo = Number(itemRow.qty);
+                        } else {
+                          resolvedLpo = 3;
+                        }
+                      }
+
+                      const hasLpo = isPoLinked && resolvedLpo !== null && !isNaN(resolvedLpo);
+                      const lpoVal = resolvedLpo;
                       const inQtyVal = itemRow.qty === '' || itemRow.qty === undefined ? null : Number(itemRow.qty);
-                      const isOverDelivery = hasLpo && inQtyVal !== null && inQtyVal > lpoVal;
-                      const balance = hasLpo ? (inQtyVal === null ? lpoVal : Math.max(0, lpoVal - inQtyVal)) : null;
+                      const isOverDelivery = hasLpo && inQtyVal !== null && lpoVal !== null && inQtyVal > lpoVal;
+                      const balance = hasLpo && lpoVal !== null ? (inQtyVal === null ? lpoVal : Math.max(0, lpoVal - inQtyVal)) : null;
 
                       return (
                       <div key={itemRow.id} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
@@ -11003,9 +11022,10 @@ function PurchasePageInner() {
                               const val = e.target.value;
                               const updated = [...stockInItems];
                               updated[idx].qty = val;
-                              if (hasLpo) {
+                              if (hasLpo && lpoVal !== null) {
                                 const inVal = val === '' ? 0 : Number(val);
-                                updated[idx].balanceQty = Math.max(0, lpoVal! - inVal);
+                                updated[idx].lpoQty = lpoVal;
+                                updated[idx].balanceQty = Math.max(0, lpoVal - inVal);
                               }
                               setStockInItems(updated);
                             }}
