@@ -32,9 +32,15 @@ When selecting a Purchase Order (e.g. `CTPO#2516 - Mueller Middle East FZE`) in 
 3. **Edit Stock In Modal Auto-Resolution:**
    - When editing an existing record that references a PO, missing item descriptions and costs are now dynamically populated from the linked PO.
 
+4. **Auto-Fill Stock In Quantity & Delivered Balance:**
+   - In `src/app/purchase/page.tsx`, selecting a PO now automatically sets `Stock In Quantity` to the ordered quantity (e.g. `3`).
+   - `Balance to be Received` automatically defaults to `0` and displays `✓ 0 (Delivered)` in green.
+   - When editing an existing draft with a linked PO, `Stock In Quantity` also defaults to the contractual LPO quantity.
+
 ---
 
 ## 3. Verification
 
 - **TypeScript Compilation:** Passed with 0 errors via `npx tsc --noEmit`.
-- **Git Deployment:** Pushed to `origin/main` at commit `4e0474e`.
+- **Git Deployment:** Pushed to `origin/main` at commit `a60ddb2`.
+
