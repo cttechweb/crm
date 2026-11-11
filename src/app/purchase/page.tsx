@@ -1637,6 +1637,8 @@ function PurchasePageInner() {
       qty: string;
       code?: string;
       serialNo?: string;
+      lpoQty?: number | string;
+      balanceQty?: number | string;
     }>
   >([
     {
@@ -1646,6 +1648,8 @@ function PurchasePageInner() {
       purchaseRate: '',
       sellingPrice: '',
       qty: '',
+      lpoQty: '',
+      balanceQty: '',
     },
   ]);
 
@@ -1765,6 +1769,8 @@ function PurchasePageInner() {
         purchaseRate: '',
         sellingPrice: '',
         qty: '',
+        lpoQty: '',
+        balanceQty: '',
       },
     ]);
   };
@@ -3633,13 +3639,16 @@ function PurchasePageInner() {
             if (isCarrier && (targetPo.poNumber || '').toUpperCase().includes('CTPO#2510')) {
               itemQty = '2'; // Strictly cap to 2 shortage units
             }
+            const orderedQty = Number(itemQty || 1);
             return {
               id: `si_item_${Date.now()}_${i}`,
               item: it.item || it.name || it.item_name || it.description || 'Item',
               unit: it.unit || 'Pcs',
               purchaseRate: String(it.rate ?? it.purchaseRate ?? it.unitPrice ?? it.amount ?? '0'),
               sellingPrice: String(it.sellingPrice ?? (Number(it.rate ?? it.purchaseRate ?? it.amount ?? 0) * 1.25).toFixed(2)),
-              qty: itemQty,
+              qty: '',
+              lpoQty: orderedQty,
+              balanceQty: orderedQty,
             };
           })
         );
@@ -3670,6 +3679,8 @@ function PurchasePageInner() {
         purchaseRate: String(defaultProduct.purchaseRate || '1000.00'),
         sellingPrice: String(defaultProduct.sellingPrice || '1250.00'),
         qty: '1',
+        lpoQty: '',
+        balanceQty: '',
       },
     ]);
   };
@@ -10821,14 +10832,19 @@ function PurchasePageInner() {
                                   const foundItems = (found.items && found.items.length > 0) ? found.items : (found.raw?.items || []);
                                   if (foundItems && foundItems.length > 0) {
                                     setStockInItems(
-                                      foundItems.map((it: any, i: number) => ({
-                                        id: `si_item_${Date.now()}_${i}`,
-                                        item: it.item || it.name || it.item_name || it.description || 'Item',
-                                        unit: it.unit || 'Pcs',
-                                        purchaseRate: String(it.rate ?? it.purchaseRate ?? it.unitPrice ?? it.amount ?? '0'),
-                                        sellingPrice: String(it.sellingPrice ?? (Number(it.rate ?? it.purchaseRate ?? it.amount ?? 0) * 1.25).toFixed(2)),
-                                        qty: String(it.qty ?? it.quantity ?? '1'),
-                                      }))
+                                      foundItems.map((it: any, i: number) => {
+                                        const orderedQty = Number(it.qty ?? it.quantity ?? 1);
+                                        return {
+                                          id: `si_item_${Date.now()}_${i}`,
+                                          item: it.item || it.name || it.item_name || it.description || 'Item',
+                                          unit: it.unit || 'Pcs',
+                                          purchaseRate: String(it.rate ?? it.purchaseRate ?? it.unitPrice ?? it.amount ?? '0'),
+                                          sellingPrice: String(it.sellingPrice ?? (Number(it.rate ?? it.purchaseRate ?? it.amount ?? 0) * 1.25).toFixed(2)),
+                                          qty: '',
+                                          lpoQty: orderedQty,
+                                          balanceQty: orderedQty,
+                                        };
+                                      })
                                     );
                                   }
                                 } else {
@@ -10903,18 +10919,27 @@ function PurchasePageInner() {
                   <div className="space-y-2 pt-2">
                     {/* Headers */}
                     <div className="hidden sm:grid grid-cols-12 gap-2 text-xs font-semibold text-slate-700 px-1">
-                      <div className="col-span-4">Item</div>
-                      <div className="col-span-2">UoM</div>
+                      <div className="col-span-3">Item</div>
+                      <div className="col-span-1">UoM</div>
                       <div className="col-span-2 text-left">Purchase Cost</div>
-                      <div className="col-span-2 text-left">Selling Price</div>
+                      <div className="col-span-1 text-left">Selling Price</div>
                       <div className="col-span-2 text-left">Stock In Quantity</div>
+                      <div className="col-span-1 text-left">LPO Qty</div>
+                      <div className="col-span-2 text-left">Balance to be Received</div>
                     </div>
 
                     {/* Rows */}
-                    {stockInItems.map((itemRow, idx) => (
+                    {stockInItems.map((itemRow, idx) => {
+                      const lpoVal = itemRow.lpoQty !== undefined && itemRow.lpoQty !== '' ? Number(itemRow.lpoQty) : null;
+                      const hasLpo = lpoVal !== null && !isNaN(lpoVal);
+                      const inQtyVal = itemRow.qty === '' || itemRow.qty === undefined ? null : Number(itemRow.qty);
+                      const isOverDelivery = hasLpo && inQtyVal !== null && inQtyVal > lpoVal;
+                      const balance = hasLpo ? (inQtyVal === null ? lpoVal : Math.max(0, lpoVal - inQtyVal)) : null;
+
+                      return (
                       <div key={itemRow.id} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
                         {/* Item */}
-                        <div className="sm:col-span-4 flex items-center gap-2">
+                        <div className="sm:col-span-3 flex items-center gap-1.5">
                           <select
                             value={itemRow.item}
                             onChange={(e) => {
@@ -10926,7 +10951,6 @@ function PurchasePageInner() {
                                 updated[idx].unit = foundProd.unit;
                                 updated[idx].purchaseRate = foundProd.purchaseRate;
                                 updated[idx].sellingPrice = foundProd.sellingPrice;
-                                if (!updated[idx].qty) updated[idx].qty = '1';
                                 if (foundProd.code) updated[idx].code = foundProd.code;
                                 if (foundProd.supplier && (stockInSupplier === 'Select' || !stockInSupplier)) {
                                   setStockInSupplier(foundProd.supplier);
@@ -10938,7 +10962,7 @@ function PurchasePageInner() {
                               }
                               setStockInItems(updated);
                             }}
-                            className="flex-1 min-w-0 px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                            className="flex-1 min-w-0 px-2 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                           >
                             <option value="">Select Item</option>
                             {liveStockInProducts.map((p) => (
@@ -10981,8 +11005,8 @@ function PurchasePageInner() {
                           </button>
                         </div>
 
-                        {/* Unit */}
-                        <div className="sm:col-span-2">
+                        {/* UoM */}
+                        <div className="sm:col-span-1">
                           <input
                             type="text"
                             value={itemRow.unit}
@@ -10991,7 +11015,7 @@ function PurchasePageInner() {
                               updated[idx].unit = e.target.value;
                               setStockInItems(updated);
                             }}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-slate-50 text-slate-700 focus:outline-none"
+                            className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs bg-slate-50 text-slate-700 focus:outline-none text-center"
                           />
                         </div>
 
@@ -11005,12 +11029,12 @@ function PurchasePageInner() {
                               updated[idx].purchaseRate = e.target.value;
                               setStockInItems(updated);
                             }}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                            className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                           />
                         </div>
 
                         {/* Selling Price */}
-                        <div className="sm:col-span-2">
+                        <div className="sm:col-span-1">
                           <input
                             type="text"
                             value={itemRow.sellingPrice}
@@ -11019,30 +11043,92 @@ function PurchasePageInner() {
                               updated[idx].sellingPrice = e.target.value;
                               setStockInItems(updated);
                             }}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                            className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
                           />
                         </div>
 
-                        {/* Stock In Quantity + Lock */}
-                        <div className="sm:col-span-2 flex items-center gap-1.5">
+                        {/* Stock In Quantity */}
+                        <div className="sm:col-span-2">
                           <input
-                            type="text"
+                            type="number"
+                            placeholder="0"
+                            min="0"
                             value={itemRow.qty}
                             onChange={(e) => {
+                              const val = e.target.value;
                               const updated = [...stockInItems];
-                              updated[idx].qty = e.target.value;
+                              updated[idx].qty = val;
+                              if (hasLpo) {
+                                const inVal = val === '' ? 0 : Number(val);
+                                updated[idx].balanceQty = Math.max(0, lpoVal! - inVal);
+                              }
                               setStockInItems(updated);
                             }}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                            className={`w-full px-2.5 py-1.5 border rounded text-xs text-slate-800 focus:outline-none transition-colors ${
+                              isOverDelivery
+                                ? 'border-rose-400 bg-rose-50/60 focus:border-rose-500 font-semibold text-rose-700'
+                                : 'border-slate-300 bg-white focus:border-blue-500'
+                            }`}
                           />
-                          <span className="text-slate-400 select-none text-xs">🔒</span>
+                        </div>
+
+                        {/* LPO Quantity */}
+                        <div className="sm:col-span-1">
+                          <div
+                            className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-slate-100 text-slate-700 font-semibold flex items-center justify-between select-none shadow-2xs"
+                            title="Contractual LPO Quantity (Locked)"
+                          >
+                            <span>{hasLpo ? lpoVal : (itemRow.qty || '-')}</span>
+                            <span className="text-slate-400 text-[10px]">🔒</span>
+                          </div>
+                        </div>
+
+                        {/* Balance to be Received */}
+                        <div className="sm:col-span-2 flex items-center justify-between gap-1">
+                          {hasLpo ? (
+                            (() => {
+                              if (isOverDelivery) {
+                                return (
+                                  <span
+                                    className="flex-1 px-2 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded text-[11px] font-bold text-center shadow-2xs truncate"
+                                    title={`Over-delivery: ${inQtyVal! - lpoVal!} excess units`}
+                                  >
+                                    ⚠️ Excess ({inQtyVal! - lpoVal!})
+                                  </span>
+                                );
+                              }
+                              if (inQtyVal !== null && balance === 0) {
+                                return (
+                                  <span
+                                    className="flex-1 px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-[11px] font-semibold text-center shadow-2xs flex items-center justify-center gap-1"
+                                    title="Contract fully received"
+                                  >
+                                    <span>✓ 0 (Delivered)</span>
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span
+                                  className="flex-1 px-2 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded text-[11px] font-medium text-center shadow-2xs"
+                                  title={`${balance} units pending from supplier`}
+                                >
+                                  {balance} Pending
+                                </span>
+                              );
+                            })()
+                          ) : (
+                            <span className="flex-1 text-slate-400 text-xs italic px-2 py-1 bg-slate-50 border border-slate-200 rounded text-center">
+                              -
+                            </span>
+                          )}
+
                           {stockInItems.length > 1 && (
                             <button
                               type="button"
                               onClick={() => {
                                 setStockInItems(stockInItems.filter((_, i) => i !== idx));
                               }}
-                              className="text-red-500 hover:text-red-700 text-xs px-1 cursor-pointer"
+                              className="text-red-500 hover:text-red-700 text-xs px-1 cursor-pointer shrink-0 ml-1"
                               title="Remove item"
                             >
                               ✕
@@ -11050,7 +11136,8 @@ function PurchasePageInner() {
                           )}
                         </div>
                       </div>
-                    ))}
+                    );
+                  })}
 
                     {/* + Add More button */}
                     <div className="flex justify-end pt-2">
@@ -11066,6 +11153,8 @@ function PurchasePageInner() {
                               purchaseRate: '',
                               sellingPrice: '',
                               qty: '',
+                              lpoQty: '',
+                              balanceQty: '',
                             },
                           ]);
                         }}
@@ -11146,6 +11235,38 @@ function PurchasePageInner() {
                           if (updatedRec && editingStockInId) {
                             stockInApiService.updateStockInRecord(editingStockInId, updatedRec as any).catch(() => { });
                           }
+
+                          // Synchronize Purchase Order Delivery Status on edit
+                          if (stockInLpoNumber) {
+                            try {
+                              const normPo = stockInLpoNumber.trim().toUpperCase();
+                              const totalPending = stockInItems.reduce((acc, curr) => {
+                                const lpo = Number(curr.lpoQty || 0);
+                                const inQ = Number(curr.qty || 0);
+                                return acc + Math.max(0, lpo - inQ);
+                              }, 0);
+                              const targetStatus = totalPending === 0 ? 'Delivered' : 'Partially Delivered';
+
+                              const updatedPos = purchaseOrders.map((p) => {
+                                if ((p.poNumber || '').trim().toUpperCase() === normPo || (p.id || '').trim().toUpperCase() === normPo) {
+                                  return {
+                                    ...p,
+                                    deliveryStatus: targetStatus,
+                                    deliveryPending: totalPending,
+                                    deliveryProgress: targetStatus === 'Delivered' ? 100 : 50,
+                                  };
+                                }
+                                return p;
+                              });
+
+                              setPurchaseOrders(updatedPos);
+                              localStorage.setItem('crm_purchase_orders', JSON.stringify(updatedPos));
+                              window.dispatchEvent(new Event('crm_purchase_orders_updated'));
+                            } catch (e) {
+                              console.error('Failed to sync PO status from Stock In:', e);
+                            }
+                          }
+
                           alert(`Stock In ${stockInNumber} updated successfully!`);
                           resetStockInForm();
                           setStockInViewMode('register');
@@ -11381,6 +11502,37 @@ function PurchasePageInner() {
                             console.error('Failed to sync MSRF from Stock In:', e);
                           }
 
+                          // Synchronize Purchase Order Delivery Status on new record
+                          if (stockInLpoNumber) {
+                            try {
+                              const normPo = stockInLpoNumber.trim().toUpperCase();
+                              const totalPending = stockInItems.reduce((acc, curr) => {
+                                const lpo = Number(curr.lpoQty || 0);
+                                const inQ = Number(curr.qty || 0);
+                                return acc + Math.max(0, lpo - inQ);
+                              }, 0);
+                              const targetStatus = totalPending === 0 ? 'Delivered' : 'Partially Delivered';
+
+                              const updatedPos = purchaseOrders.map((p) => {
+                                if ((p.poNumber || '').trim().toUpperCase() === normPo || (p.id || '').trim().toUpperCase() === normPo) {
+                                  return {
+                                    ...p,
+                                    deliveryStatus: targetStatus,
+                                    deliveryPending: totalPending,
+                                    deliveryProgress: targetStatus === 'Delivered' ? 100 : 50,
+                                  };
+                                }
+                                return p;
+                              });
+
+                              setPurchaseOrders(updatedPos);
+                              localStorage.setItem('crm_purchase_orders', JSON.stringify(updatedPos));
+                              window.dispatchEvent(new Event('crm_purchase_orders_updated'));
+                            } catch (e) {
+                              console.error('Failed to sync PO status from Stock In:', e);
+                            }
+                          }
+
                           stockInApiService.createStockInRecord(newRecord as any).catch(() => { });
                           alert(`Stock In ${stockInNumber} created successfully!`);
                           resetStockInForm();
@@ -11523,6 +11675,8 @@ function PurchasePageInner() {
                           <th className="p-2.5 text-right border-r border-slate-200">Stockin Purchase Cost</th>
                           <th className="p-2.5 text-right border-r border-slate-200">Stockin Selling Price</th>
                           <th className="p-2.5 text-center border-r border-slate-200">Stock In Qty</th>
+                          <th className="p-2.5 text-center border-r border-slate-200">LPO Qty</th>
+                          <th className="p-2.5 text-center border-r border-slate-200">Balance</th>
                           <th className="p-2.5 text-center">Current Stock</th>
                         </tr>
                       </thead>
@@ -11539,6 +11693,8 @@ function PurchasePageInner() {
                               purchaseRate: '625.00',
                               sellingPrice: '0.00',
                               qty: '5',
+                              lpoQty: '5',
+                              balanceQty: '0',
                               currentStock: '5',
                             },
                           ]
@@ -11568,6 +11724,20 @@ function PurchasePageInner() {
                             <td className="p-2.5 text-center border-r border-slate-100 font-semibold text-slate-900">
                               {it.qty || 1}
                             </td>
+                            <td className="p-2.5 text-center border-r border-slate-100 font-semibold text-slate-700 bg-slate-50/50">
+                              {it.lpoQty !== undefined && it.lpoQty !== '' ? it.lpoQty : (it.qty || 1)} 🔒
+                            </td>
+                            <td className="p-2.5 text-center border-r border-slate-100 font-semibold">
+                              {(() => {
+                                const lpo = Number(it.lpoQty !== undefined && it.lpoQty !== '' ? it.lpoQty : (it.qty || 1));
+                                const rec = Number(it.qty || 1);
+                                const bal = it.balanceQty !== undefined && it.balanceQty !== '' ? Number(it.balanceQty) : Math.max(0, lpo - rec);
+                                if (bal === 0) {
+                                  return <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-[11px] font-semibold">0 (Delivered)</span>;
+                                }
+                                return <span className="px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded text-[11px] font-medium">{bal} Pending</span>;
+                              })()}
+                            </td>
                             <td className="p-2.5 text-center font-semibold text-slate-900">
                               {it.currentStock || it.qty || 1}
                             </td>
@@ -11590,14 +11760,21 @@ function PurchasePageInner() {
                         setStockInDeliveryNote(viewingStockInRecord.deliveryNote || '');
                         if (viewingStockInRecord.items && viewingStockInRecord.items.length > 0) {
                           setStockInItems(
-                            viewingStockInRecord.items.map((it: any, idx: number) => ({
-                              id: `si_item_${idx + 1}`,
-                              item: it.item || '',
-                              unit: it.unit || 'Pcs',
-                              purchaseRate: it.purchaseRate || '',
-                              sellingPrice: it.sellingPrice || '',
-                              qty: it.qty || '1',
-                            }))
+                            viewingStockInRecord.items.map((it: any, idx: number) => {
+                              const lpo = it.lpoQty !== undefined && it.lpoQty !== '' ? it.lpoQty : (it.qty || '1');
+                              const recQty = it.qty !== undefined && it.qty !== null ? String(it.qty) : '';
+                              const bal = it.balanceQty !== undefined && it.balanceQty !== '' ? it.balanceQty : Math.max(0, Number(lpo) - (Number(recQty) || 0));
+                              return {
+                                id: `si_item_${idx + 1}`,
+                                item: it.item || '',
+                                unit: it.unit || 'Pcs',
+                                purchaseRate: it.purchaseRate || '',
+                                sellingPrice: it.sellingPrice || '',
+                                qty: recQty,
+                                lpoQty: lpo,
+                                balanceQty: bal,
+                              };
+                            })
                           );
                         }
                         setStockInViewMode('add');
@@ -11885,14 +12062,21 @@ function PurchasePageInner() {
                                             setStockInOrder(si.order || 'Select Order');
                                             if (si.items && si.items.length > 0) {
                                               setStockInItems(
-                                                si.items.map((it: any, i: number) => ({
-                                                  id: it.id || `si_item_${i + 1}`,
-                                                  item: it.item || '',
-                                                  unit: it.unit || 'Pcs',
-                                                  purchaseRate: it.purchaseRate || '',
-                                                  sellingPrice: it.sellingPrice || '',
-                                                  qty: it.qty ? String(it.qty) : '1',
-                                                }))
+                                                si.items.map((it: any, i: number) => {
+                                                  const lpo = it.lpoQty !== undefined && it.lpoQty !== '' ? it.lpoQty : (it.qty || '1');
+                                                  const recQty = it.qty !== undefined && it.qty !== null ? String(it.qty) : '';
+                                                  const bal = it.balanceQty !== undefined && it.balanceQty !== '' ? it.balanceQty : Math.max(0, Number(lpo) - (Number(recQty) || 0));
+                                                  return {
+                                                    id: it.id || `si_item_${i + 1}`,
+                                                    item: it.item || '',
+                                                    unit: it.unit || 'Pcs',
+                                                    purchaseRate: it.purchaseRate || '',
+                                                    sellingPrice: it.sellingPrice || '',
+                                                    qty: recQty,
+                                                    lpoQty: lpo,
+                                                    balanceQty: bal,
+                                                  };
+                                                })
                                               );
                                             } else {
                                               setStockInItems([
@@ -11902,7 +12086,9 @@ function PurchasePageInner() {
                                                   unit: '',
                                                   purchaseRate: '',
                                                   sellingPrice: '',
-                                                  qty: '1',
+                                                  qty: '',
+                                                  lpoQty: '',
+                                                  balanceQty: '',
                                                 },
                                               ]);
                                             }
