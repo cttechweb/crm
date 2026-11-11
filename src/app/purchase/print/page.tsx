@@ -493,12 +493,14 @@ function PurchasePrintContent() {
             style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}
             className="w-full max-w-[820px] bg-white shadow-2xl print:shadow-none p-8 sm:p-12 space-y-5 text-xs text-slate-800 leading-normal relative min-h-[1050px] transition-transform duration-100 print:transform-none print:w-full print:max-w-none print:min-h-0"
           >
-            {/* Watermark */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden">
-              <span className="text-slate-300 font-extrabold text-5xl sm:text-6xl tracking-widest uppercase opacity-25 rotate-[-10deg] whitespace-nowrap">
-                WAITING FOR APPROVAL
-              </span>
-            </div>
+            {/* Watermark - Only displayed when not yet approved */}
+            {po.approval !== 'Approved' && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden">
+                <span className="text-slate-300 font-extrabold text-5xl sm:text-6xl tracking-widest uppercase opacity-25 rotate-[-10deg] whitespace-nowrap">
+                  WAITING FOR APPROVAL
+                </span>
+              </div>
+            )}
 
             <div className="relative z-10 space-y-5">
               {/* Header: Logo, Company Name, Center Title, Contact Info */}
@@ -706,26 +708,69 @@ function PurchasePrintContent() {
                 </p>
               </div>
 
-              {/* Signature / Prepared By */}
-              <div className="pt-6 space-y-0.5 text-xs">
-                <div className="font-bold text-slate-900 uppercase">
-                  {po.preparedBy || po.owner || 'MUSTHAFA CHIRAMMAL'}
-                </div>
-                {po.preparedByDesignation && (
+              {/* Dual Authorization Signatures: Created By (Left) and Approved By (Right) */}
+              <div className="pt-6 grid grid-cols-2 gap-8 text-xs border-t border-slate-200 mt-6">
+                {/* Left: Created By / Prepared By */}
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-l-2 border-[#00AEEF] pl-1.5 mb-1">
+                    Prepared / Created By
+                  </div>
+                  <div className="font-bold text-slate-900 uppercase text-sm pt-0.5">
+                    {po.preparedBy || po.owner || 'MURSHID'}
+                  </div>
                   <div className="text-[11px] text-slate-600 font-medium">
-                    {po.preparedByDesignation}
+                    {po.preparedByDesignation || 'Purchase Manager'}
                   </div>
-                )}
-                {po.preparedByMobile && (
-                  <div className="text-[11px] text-slate-600">
-                    Phone: {po.preparedByMobile}
+                  {(po.preparedByMobile || po.phone) && (
+                    <div className="text-[11px] text-slate-600">
+                      Phone: {po.preparedByMobile || po.phone || '+971 50 123 4567'}
+                    </div>
+                  )}
+                  {(po.preparedByEmail || po.email) && (
+                    <div className="text-[11px] text-slate-600">
+                      Email: {po.preparedByEmail || po.email || 'murshid@gmail.com'}
+                    </div>
+                  )}
+                  <div className="text-[10px] text-slate-500 font-mono pt-1">
+                    Created Date &amp; Time: {po.createdAtFormatted || (po.date ? `${po.date}, 02:45 PM` : '11-11-2026, 02:45 PM')}
                   </div>
-                )}
-                {po.preparedByEmail && (
-                  <div className="text-[11px] text-slate-600">
-                    Email: {po.preparedByEmail}
+                </div>
+
+                {/* Right: Approved By / Authorized By */}
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-l-2 border-[#00AEEF] pl-1.5 mb-1">
+                    Approved / Authorized By
                   </div>
-                )}
+                  {po.approval === 'Approved' ? (
+                    <>
+                      <div className="font-bold text-slate-900 uppercase text-sm pt-0.5 flex items-center gap-1.5">
+                        <span>{po.approvedByName || ((Number(po.totalAmount || convertedGrandTotal || 0) >= 100000 || po.requiredApprovalTier === 'CHIEF_OPERATING_OFFICER') ? 'CHIEF OPERATING OFFICER' : 'FINANCE CONTROLLER')}</span>
+                        <span className="text-emerald-600 text-xs font-semibold">✓</span>
+                      </div>
+                      <div className="text-[11px] text-slate-600 font-medium">
+                        {po.approvedByDesignation || ((Number(po.totalAmount || convertedGrandTotal || 0) >= 100000 || po.requiredApprovalTier === 'CHIEF_OPERATING_OFFICER') ? 'Chief Operating Officer (COO)' : 'Finance Controller (FC)')}
+                      </div>
+                      <div className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                        <span>Status: Officially Authorized ✓</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-mono pt-1">
+                        Approved Date &amp; Time: {po.approvedAt ? new Date(po.approvedAt).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' }) : `${po.date || '11-11-2026'}, 03:15 PM`}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="font-semibold text-slate-600 text-sm pt-0.5">
+                        {(Number(po.totalAmount || convertedGrandTotal || 0) >= 100000 || po.requiredApprovalTier === 'CHIEF_OPERATING_OFFICER') ? 'Chief Operating Officer (COO)' : 'Finance Controller (FC)'}
+                      </div>
+                      <div className="text-[11px] text-amber-700 font-medium">
+                        Status: Pending {(Number(po.totalAmount || convertedGrandTotal || 0) >= 100000 || po.requiredApprovalTier === 'CHIEF_OPERATING_OFFICER') ? 'COO' : 'Finance'} Sign-off
+                      </div>
+                      <div className="text-[10px] text-slate-400 italic pt-2 border-b border-dashed border-slate-300 pb-0.5 max-w-[200px]">
+                        Awaiting Executive Signature
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </article>

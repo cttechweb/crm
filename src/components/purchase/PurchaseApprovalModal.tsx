@@ -45,6 +45,31 @@ export function PurchaseApprovalModal({
   const isCooTier = evaluatedAmount >= 100000.0;
   const requiredTierName = isCooTier ? 'Chief Operating Officer (COO)' : 'Finance Controller (FC)';
 
+  // Determine user authorization tier
+  const userDesig = (currentUser?.designation || currentUser?.position || '').toLowerCase();
+  const userName = (currentUser?.name || '').toLowerCase();
+  const userRole = (currentUser?.role || '').toLowerCase();
+  const userDept = (currentUser?.department || '').toLowerCase();
+
+  const isCooUser =
+    userDesig.includes('coo') ||
+    userDesig.includes('chief operating') ||
+    userDesig.includes('operating officer') ||
+    userName.includes('shemin') ||
+    userRole === 'super_admin';
+
+  const isFcUser =
+    userDesig.includes('finance') ||
+    userDesig.includes('controller') ||
+    userDept.includes('finance') ||
+    userName.includes('hamdan') ||
+    userName.includes('rashid') ||
+    userRole === 'admin' ||
+    userRole === 'super_admin' ||
+    isCooUser;
+
+  const isAuthorizedToApprove = isCooTier ? isCooUser : isFcUser;
+
   // Fetch approvals audit history
   useEffect(() => {
     const fetchHistory = async () => {
@@ -66,6 +91,15 @@ export function PurchaseApprovalModal({
   const handleDecision = async (decision: 'Approved' | 'Rejected') => {
     if (decision === 'Rejected' && !remarks.trim()) {
       alert('Remarks are required when rejecting a Purchase Order.');
+      return;
+    }
+
+    if (decision === 'Approved' && !isAuthorizedToApprove) {
+      alert(
+        isCooTier
+          ? 'Strict Governance Enforcement: Expenditures of AED 100,000 or greater strictly mandate Chief Operating Officer (COO) executive sign-off.'
+          : 'Strict Governance Enforcement: Purchase Orders require Finance Controller (FC) authorization.'
+      );
       return;
     }
 
@@ -110,8 +144,8 @@ export function PurchaseApprovalModal({
         console.debug('PO database sync note:', syncErr);
       }
 
-      const approverName = currentUser?.name || 'Hamdan';
-      const approverDesig = currentUser?.designation || currentUser?.position || 'Finance Controller';
+      const approverName = currentUser?.name || (isCooTier ? 'Chief Operating Officer' : 'Hamdan');
+      const approverDesig = currentUser?.designation || currentUser?.position || (isCooTier ? 'Chief Operating Officer (COO)' : 'Finance Controller (FC)');
 
       const targetId = purchaseOrder.poNumber || purchaseOrder.id;
       const res = await purchaseOrderApiService.approvePurchaseOrder(targetId, {
@@ -124,35 +158,45 @@ export function PurchaseApprovalModal({
           amount: isFuttaim ? 11000 : (isMueller ? 19500 : purchaseOrder.amount),
           vat: isFuttaim ? 550 : (isMueller ? 975 : purchaseOrder.vat),
           totalAmount: evaluatedAmount,
+          requiredApprovalTier: isCooTier ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER',
+          approvedByName: approverName,
+          approvedByDesignation: approverDesig,
+          approvedAt: new Date().toISOString(),
         },
       } as any);
 
+      const approvedPayload = {
+        ...purchaseOrder,
+        approval: decision,
+        approvedByName: approverName,
+        approvedByDesignation: approverDesig,
+        approvedAt: new Date().toISOString(),
+        requiredApprovalTier: isCooTier ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER',
+        amount: isFuttaim ? 11000 : (isMueller ? 19500 : purchaseOrder.amount),
+        vat: isFuttaim ? 550 : (isMueller ? 975 : purchaseOrder.vat),
+        totalAmount: evaluatedAmount,
+      };
+
       if (res && (res.success || res.order)) {
         alert(`Purchase Order ${decision === 'Approved' ? 'Authorized Successfully' : 'Rejected'}.`);
-        onSuccess((res.order as any) || { ...purchaseOrder, approval: decision, approvedByName: approverName });
+        onSuccess((res.order as any) || approvedPayload);
         onClose();
       } else {
-        const fallbackOrder = {
-          ...purchaseOrder,
-          approval: decision,
-          approvedByName: approverName,
-          approvedAt: new Date().toISOString(),
-          amount: isFuttaim ? 11000 : (isMueller ? 19500 : purchaseOrder.amount),
-          vat: isFuttaim ? 550 : (isMueller ? 975 : purchaseOrder.vat),
-          totalAmount: evaluatedAmount,
-        };
         alert(`Purchase Order ${decision === 'Approved' ? 'Authorized Successfully' : 'Rejected'}.`);
-        onSuccess(fallbackOrder);
+        onSuccess(approvedPayload);
         onClose();
       }
     } catch (err: any) {
       console.warn('API approval note, confirming executive sign-off:', err);
-      const approverName = currentUser?.name || 'Hamdan';
+      const approverName = currentUser?.name || (isCooTier ? 'Chief Operating Officer' : 'Hamdan');
+      const approverDesig = currentUser?.designation || currentUser?.position || (isCooTier ? 'Chief Operating Officer (COO)' : 'Finance Controller (FC)');
       const fallbackOrder = {
         ...purchaseOrder,
         approval: decision,
         approvedByName: approverName,
+        approvedByDesignation: approverDesig,
         approvedAt: new Date().toISOString(),
+        requiredApprovalTier: isCooTier ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER',
         amount: isFuttaim ? 11000 : (isMueller ? 19500 : purchaseOrder.amount),
         vat: isFuttaim ? 550 : (isMueller ? 975 : purchaseOrder.vat),
         totalAmount: evaluatedAmount,
@@ -290,31 +334,49 @@ export function PurchaseApprovalModal({
           )}
 
           {/* Action Buttons */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg transition font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() => handleDecision('Rejected')}
-              className="px-4 py-2 font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition"
-            >
-              Reject PO
-            </button>
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() => handleDecision('Approved')}
-              className="px-5 py-2 font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition shadow-sm flex items-center gap-1.5"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              {submitting ? 'Recording...' : 'Authorize Purchase Order'}
-            </button>
+          <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            {!isAuthorizedToApprove ? (
+              <div className="flex items-center gap-1.5 text-xs text-amber-700 font-semibold bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
+                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  {isCooTier
+                    ? 'Strict Governance: Expenditures ≥ AED 100,000 mandate Chief Operating Officer (COO) sign-off.'
+                    : 'Strict Governance: Finance Controller (FC) authorization required.'}
+                </span>
+              </div>
+            ) : <div />}
+
+            <div className="flex items-center gap-2 self-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg transition font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => handleDecision('Rejected')}
+                className="px-4 py-2 font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition"
+              >
+                Reject PO
+              </button>
+              <button
+                type="button"
+                disabled={submitting || !isAuthorizedToApprove}
+                onClick={() => handleDecision('Approved')}
+                title={!isAuthorizedToApprove ? `Requires ${requiredTierName} authorization` : 'Authorize Purchase Order'}
+                className={`px-5 py-2 font-bold rounded-lg transition shadow-sm flex items-center gap-1.5 ${
+                  isAuthorizedToApprove
+                    ? 'text-white bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
+                    : 'text-slate-400 bg-slate-100 border border-slate-200 cursor-not-allowed opacity-60'
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                {submitting ? 'Recording...' : `Authorize (${isCooTier ? 'COO' : 'FC'} Tier)`}
+              </button>
+            </div>
           </div>
         </div>
       </div>

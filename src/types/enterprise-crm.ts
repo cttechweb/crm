@@ -710,6 +710,7 @@ export interface CrmPurchaseOrder {
   evaluatedTotalValue?: number;
   requiredApprovalTier?: 'FINANCE_CONTROLLER' | 'CHIEF_OPERATING_OFFICER' | string;
   approvedByName?: string;
+  approvedByDesignation?: string;
   approvedAt?: string;
   isAdhoc?: boolean;
   deliveryMode?: 'Warehouse_Receipt' | 'Direct_Site_Delivery' | string;

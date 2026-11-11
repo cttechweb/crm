@@ -73,6 +73,7 @@ import { RecordPaymentModal } from '@/components/purchase/RecordPaymentModal';
 import { PurchaseDashboard } from '@/components/purchase/PurchaseDashboard';
 import { SupplierReconciliationView } from '@/components/purchase/SupplierReconciliationView';
 import { LegacyMigrationView } from '@/components/purchase/LegacyMigrationView';
+import { notificationService } from '@/services/notificationService';
 import { cn } from '@/lib/utils';
 
 // Helper Barcode Component
@@ -2083,6 +2084,7 @@ function PurchasePageInner() {
           deliveryPending: item.qty,
           total: Number(item.qty || 0) * Number(item.amount || 0),
         })),
+        requiredApprovalTier: poCalculatedTotal >= 100000 ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER',
         msrfId: selectedAutofillMsrfId || undefined,
         quotationId: selectedAutofillQuoteId || undefined,
       };
@@ -2104,6 +2106,45 @@ function PurchasePageInner() {
       purchaseOrderApiService
         .createPurchaseOrder(newPo as any)
         .catch((err) => console.warn('Could not sync newly created PO to backend API:', err));
+
+      // Multi-Tier Procurement Approval Notifications
+      const isCooThreshold = poCalculatedTotal >= 100000;
+      if (isCooThreshold) {
+        // High-Value Tier (AED 100,000 and above):
+        // 1. Notify COO for mandatory executive sign-off
+        notificationService.addLocalNotification({
+          recipientId: 'coo',
+          recipientRole: 'coo',
+          title: `🚨 High-Value PO Awaiting COO Approval: ${effectivePoNumber} (AED ${poCalculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
+          message: `${newPo.preparedBy || 'Murshid'} created PO ${effectivePoNumber} for ${newPo.supplier} totaling AED ${poCalculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Expenditures of AED 100,000 or greater strictly mandate Chief Operating Officer (COO) executive sign-off before issuance.`,
+          type: 'approval',
+          linkUrl: `/purchase?tab=po&poId=${newPo.id}`,
+          metadata: { poId: newPo.id, poNumber: effectivePoNumber, amount: poCalculatedTotal, tier: 'CHIEF_OPERATING_OFFICER' },
+        });
+
+        // 2. Notify Finance Controller of escalation
+        notificationService.addLocalNotification({
+          recipientId: 'finance_controller',
+          recipientRole: 'finance_controller',
+          title: `PO Escalated to COO Tier: ${effectivePoNumber} (AED ${poCalculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
+          message: `PO ${effectivePoNumber} for ${newPo.supplier} (AED ${poCalculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) exceeds AED 100,000 and has been routed to the Chief Operating Officer (COO) for executive authorization.`,
+          type: 'info',
+          linkUrl: `/purchase?tab=po&poId=${newPo.id}`,
+          metadata: { poId: newPo.id, poNumber: effectivePoNumber, amount: poCalculatedTotal, tier: 'CHIEF_OPERATING_OFFICER' },
+        });
+      } else {
+        // Standard Tier (Below AED 100,000):
+        // Notify Finance Controller for review and approval
+        notificationService.addLocalNotification({
+          recipientId: 'finance_controller',
+          recipientRole: 'finance_controller',
+          title: `PO Awaiting Finance Approval: ${effectivePoNumber} (AED ${poCalculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
+          message: `${newPo.preparedBy || 'Murshid'} created PO ${effectivePoNumber} for ${newPo.supplier} totaling AED ${poCalculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Finance Controller review and approval is required before PO issuance.`,
+          type: 'approval',
+          linkUrl: `/purchase?tab=po&poId=${newPo.id}`,
+          metadata: { poId: newPo.id, poNumber: effectivePoNumber, amount: poCalculatedTotal, tier: 'FINANCE_CONTROLLER' },
+        });
+      }
 
       setSelectedAutofillMsrfId('');
       setSelectedAutofillQuoteId('');
@@ -7939,6 +7980,21 @@ function PurchasePageInner() {
                     setViewingPo((prev: any) => ({ ...prev, ...updatedPoObj }));
                   }
                   window.dispatchEvent(new Event('crm_purchase_orders_updated'));
+
+                  // Notify Creator (Murshid) upon decision
+                  const isApproved = updatedPoObj.approval === 'Approved';
+                  const approverTitle = updatedPoObj.approvedByName ? `${updatedPoObj.approvedByName} (${updatedPoObj.approvedByDesignation || 'Executive'})` : 'Executive Management';
+                  notificationService.addLocalNotification({
+                    recipientId: 'murshid',
+                    recipientRole: 'purchase_manager',
+                    title: isApproved ? `✓ PO Approved: ${updatedPoObj.poNumber}` : `❌ PO Rejected: ${updatedPoObj.poNumber}`,
+                    message: isApproved
+                      ? `Purchase Order ${updatedPoObj.poNumber} for ${updatedPoObj.supplier} (AED ${Number(updatedPoObj.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) has been authorized by ${approverTitle}. It is officially released for procurement and stock intake.`
+                      : `Purchase Order ${updatedPoObj.poNumber} for ${updatedPoObj.supplier} has been rejected by ${approverTitle}. Please review remarks and adjust.`,
+                    type: 'approval',
+                    linkUrl: `/purchase?tab=po&poId=${updatedPoObj.id}`,
+                    metadata: { poId: updatedPoObj.id, poNumber: updatedPoObj.poNumber, status: updatedPoObj.approval },
+                  });
                 }}
               />
             )}
