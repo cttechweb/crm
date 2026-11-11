@@ -3595,90 +3595,19 @@ function PurchasePageInner() {
     // 2. Auto-select Delivery Mode to Warehouse_Receipt
     setStockInDeliveryMode('Warehouse_Receipt');
 
-    // 3. Search for existing Purchase Order for this supplier
-    const supLower = selectedSup.toLowerCase().trim();
-    const matchedPo = (purchaseOrders || []).find((p: any) => {
-      const s = (p.supplier || '').toLowerCase().trim();
-      return s === supLower || s.includes(supLower) || supLower.includes(s);
-    });
-
-    const matchingLiveOrder = (liveStockInOrders || []).find((o: any) => {
-      const s = (o.supplier || '').toLowerCase().trim();
-      return s === supLower || s.includes(supLower) || supLower.includes(s);
-    });
-
-    if (matchedPo || matchingLiveOrder) {
-      const targetPo = matchedPo || matchingLiveOrder?.raw || {};
-      const orderLabel = matchingLiveOrder?.label || `${targetPo.poNumber} - ${targetPo.supplier}${targetPo.projectName ? ` (${targetPo.projectName})` : ''}`;
-      setStockInOrder(orderLabel);
-      setStockInLpoNumber(targetPo.poNumber || matchingLiveOrder?.poNumber || '');
-      if (targetPo.store && targetPo.store !== 'Select') {
-        setStockInStore(targetPo.store);
-      }
-      if (targetPo.delivery_mode || targetPo.deliveryMode) {
-        setStockInDeliveryMode(targetPo.delivery_mode || targetPo.deliveryMode);
-      }
-      const cleanPoNum = (targetPo.poNumber || matchingLiveOrder?.poNumber || 'PO').replace(/[^a-zA-Z0-9]/g, '');
-      setStockInDeliveryNote(targetPo.deliveryNote || `DN-${cleanPoNum}-01`);
-      setStockInPurchaseInvoiceNumber(targetPo.purchaseInvoiceNumber || `PINV-${cleanPoNum}`);
-
-      // Fill line items if available
-      const poItems = (Array.isArray(targetPo.items) && targetPo.items.length > 0)
-        ? targetPo.items
-        : (Array.isArray(matchingLiveOrder?.items) && matchingLiveOrder.items.length > 0)
-          ? matchingLiveOrder.items
-          : null;
-
-      if (poItems && poItems.length > 0) {
-        setStockInItems(
-          poItems.map((it: any, i: number) => {
-            const itName = (it.item || it.name || it.item_name || it.description || 'Item').toLowerCase();
-            const itCode = (it.code || '').toLowerCase();
-            const isCarrier = itCode.includes('carr-40') || itName.includes('carrier');
-            let itemQty = String(it.qty ?? it.quantity ?? '1');
-            if (isCarrier && (targetPo.poNumber || '').toUpperCase().includes('CTPO#2510')) {
-              itemQty = '2'; // Strictly cap to 2 shortage units
-            }
-            const orderedQty = Number(itemQty || 1);
-            return {
-              id: `si_item_${Date.now()}_${i}`,
-              item: it.item || it.name || it.item_name || it.description || 'Item',
-              unit: it.unit || 'Pcs',
-              purchaseRate: String(it.rate ?? it.purchaseRate ?? it.unitPrice ?? it.amount ?? '0'),
-              sellingPrice: String(it.sellingPrice ?? (Number(it.rate ?? it.purchaseRate ?? it.amount ?? 0) * 1.25).toFixed(2)),
-              qty: '',
-              lpoQty: orderedQty,
-              balanceQty: orderedQty,
-            };
-          })
-        );
-        return;
-      }
-    }
-
-    // If no direct PO exists for this supplier:
-    // Generate clean identifiers & autofill line items
-    const cleanCode = selectedSup.slice(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'SUP';
-    setStockInOrder(`Direct Intake - ${selectedSup}`);
+    // 3. Keep Order on 'Select Order' so user explicitly selects the PO from the Order dropdown
+    setStockInOrder('Select Order');
     setStockInLpoNumber('');
-    setStockInDeliveryNote(`DN-${cleanCode}-928`);
+    setStockInDeliveryNote('');
     setStockInPurchaseInvoiceNumber('');
-
-    // Auto-fill line items from available products catalog
-    const defaultProduct = (liveStockInProducts || []).find((p) => p.name) || {
-      name: 'Blue Star Window AC 1.5 TR Rotary R-410a',
-      unit: 'Pcs',
-      purchaseRate: '1336.00',
-      sellingPrice: '1587.00',
-    };
     setStockInItems([
       {
-        id: `si_item_${Date.now()}_0`,
-        item: defaultProduct.name,
-        unit: defaultProduct.unit || 'Pcs',
-        purchaseRate: String(defaultProduct.purchaseRate || '1000.00'),
-        sellingPrice: String(defaultProduct.sellingPrice || '1250.00'),
-        qty: '1',
+        id: 'si_item_1',
+        item: '',
+        unit: '',
+        purchaseRate: '',
+        sellingPrice: '',
+        qty: '',
         lpoQty: '',
         balanceQty: '',
       },
@@ -10809,47 +10738,63 @@ function PurchasePageInner() {
                             onChange={(e) => {
                               const val = e.target.value;
                               setStockInOrder(val);
-                              if (val !== 'Select Order') {
-                                const found = liveStockInOrders.find(
-                                  (o) => o.poNumber === val || o.label === val || val.startsWith(o.poNumber)
-                                );
-                                if (found) {
-                                  setStockInLpoNumber(found.poNumber);
-                                  if (found.supplier) {
-                                    setStockInSupplier(found.supplier);
-                                  }
-                                  if (found.raw?.store && found.raw.store !== 'Select') {
-                                    setStockInStore(found.raw.store);
-                                  } else if (!stockInStore || stockInStore === 'Select') {
-                                    setStockInStore('MAIN WAREHOUSE');
-                                  }
-                                  if (found.raw?.delivery_mode || found.raw?.deliveryMode) {
-                                    setStockInDeliveryMode(found.raw.delivery_mode || found.raw.deliveryMode);
-                                  }
-                                  const cleanPo = (found.poNumber || 'PO').replace(/[^a-zA-Z0-9]/g, '');
-                                  setStockInDeliveryNote(`DN-${cleanPo}-01`);
-                                  setStockInPurchaseInvoiceNumber(`PINV-${cleanPo}`);
-                                  const foundItems = (found.items && found.items.length > 0) ? found.items : (found.raw?.items || []);
-                                  if (foundItems && foundItems.length > 0) {
-                                    setStockInItems(
-                                      foundItems.map((it: any, i: number) => {
-                                        const orderedQty = Number(it.qty ?? it.quantity ?? 1);
-                                        return {
-                                          id: `si_item_${Date.now()}_${i}`,
-                                          item: it.item || it.name || it.item_name || it.description || 'Item',
-                                          unit: it.unit || 'Pcs',
-                                          purchaseRate: String(it.rate ?? it.purchaseRate ?? it.unitPrice ?? it.amount ?? '0'),
-                                          sellingPrice: String(it.sellingPrice ?? (Number(it.rate ?? it.purchaseRate ?? it.amount ?? 0) * 1.25).toFixed(2)),
-                                          qty: '',
-                                          lpoQty: orderedQty,
-                                          balanceQty: orderedQty,
-                                        };
-                                      })
-                                    );
-                                  }
-                                } else {
-                                  setStockInLpoNumber(val.split(' - ')[0] || val);
+                              if (val === 'Select Order' || !val) {
+                                setStockInLpoNumber('');
+                                setStockInDeliveryNote('');
+                                setStockInPurchaseInvoiceNumber('');
+                                setStockInItems([
+                                  {
+                                    id: 'si_item_1',
+                                    item: '',
+                                    unit: '',
+                                    purchaseRate: '',
+                                    sellingPrice: '',
+                                    qty: '',
+                                    lpoQty: '',
+                                    balanceQty: '',
+                                  },
+                                ]);
+                                return;
+                              }
+                              const found = liveStockInOrders.find(
+                                (o) => o.poNumber === val || o.label === val || val.startsWith(o.poNumber)
+                              );
+                              if (found) {
+                                setStockInLpoNumber(found.poNumber);
+                                if (found.supplier) {
+                                  setStockInSupplier(found.supplier);
                                 }
+                                if (found.raw?.store && found.raw.store !== 'Select') {
+                                  setStockInStore(found.raw.store);
+                                } else if (!stockInStore || stockInStore === 'Select') {
+                                  setStockInStore('MAIN WAREHOUSE');
+                                }
+                                if (found.raw?.delivery_mode || found.raw?.deliveryMode) {
+                                  setStockInDeliveryMode(found.raw.delivery_mode || found.raw.deliveryMode);
+                                }
+                                const cleanPo = (found.poNumber || 'PO').replace(/[^a-zA-Z0-9]/g, '');
+                                setStockInDeliveryNote(`DN-${cleanPo}-01`);
+                                setStockInPurchaseInvoiceNumber(`PINV-${cleanPo}`);
+                                const foundItems = (found.items && found.items.length > 0) ? found.items : (found.raw?.items || []);
+                                if (foundItems && foundItems.length > 0) {
+                                  setStockInItems(
+                                    foundItems.map((it: any, i: number) => {
+                                      const orderedQty = Number(it.qty ?? it.quantity ?? 1);
+                                      return {
+                                        id: `si_item_${Date.now()}_${i}`,
+                                        item: it.item || it.name || it.item_name || it.description || 'Item',
+                                        unit: it.unit || 'Pcs',
+                                        purchaseRate: String(it.rate ?? it.purchaseRate ?? it.unitPrice ?? it.amount ?? '0'),
+                                        sellingPrice: String(it.sellingPrice ?? (Number(it.rate ?? it.purchaseRate ?? it.amount ?? 0) * 1.25).toFixed(2)),
+                                        qty: '',
+                                        lpoQty: orderedQty,
+                                        balanceQty: orderedQty,
+                                      };
+                                    })
+                                  );
+                                }
+                              } else {
+                                setStockInLpoNumber(val.split(' - ')[0] || val);
                               }
                             }}
                             className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
@@ -10930,8 +10875,8 @@ function PurchasePageInner() {
 
                     {/* Rows */}
                     {stockInItems.map((itemRow, idx) => {
-                      const lpoVal = itemRow.lpoQty !== undefined && itemRow.lpoQty !== '' ? Number(itemRow.lpoQty) : null;
-                      const hasLpo = lpoVal !== null && !isNaN(lpoVal);
+                      const lpoVal = itemRow.lpoQty !== undefined && itemRow.lpoQty !== '' && itemRow.lpoQty !== null ? Number(itemRow.lpoQty) : null;
+                      const hasLpo = lpoVal !== null && !isNaN(lpoVal) && (Boolean(stockInLpoNumber) || (Boolean(stockInOrder) && stockInOrder !== 'Select Order'));
                       const inQtyVal = itemRow.qty === '' || itemRow.qty === undefined ? null : Number(itemRow.qty);
                       const isOverDelivery = hasLpo && inQtyVal !== null && inQtyVal > lpoVal;
                       const balance = hasLpo ? (inQtyVal === null ? lpoVal : Math.max(0, lpoVal - inQtyVal)) : null;
@@ -11076,10 +11021,10 @@ function PurchasePageInner() {
                         <div className="sm:col-span-1">
                           <div
                             className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-slate-100 text-slate-700 font-semibold flex items-center justify-between select-none shadow-2xs"
-                            title="Contractual LPO Quantity (Locked)"
+                            title={hasLpo ? "Contractual LPO Quantity (Locked)" : "No PO Selected"}
                           >
-                            <span>{hasLpo ? lpoVal : (itemRow.qty || '-')}</span>
-                            <span className="text-slate-400 text-[10px]">🔒</span>
+                            <span>{hasLpo ? lpoVal : '-'}</span>
+                            {hasLpo && <span className="text-slate-400 text-[10px]">🔒</span>}
                           </div>
                         </div>
 
@@ -11755,15 +11700,18 @@ function PurchasePageInner() {
                         setStockInNumber(viewingStockInRecord.stockInNo || 'STK-924');
                         setStockInSupplier(viewingStockInRecord.supplier || 'Select');
                         setStockInDate(viewingStockInRecord.date || getLiveTodayDateString());
+                        setStockInStore(viewingStockInRecord.store || viewingStockInRecord.warehouse || 'Select');
+                        setStockInOrder(viewingStockInRecord.order || 'Select Order');
                         setStockInLpoNumber(viewingStockInRecord.lpoNumber || '');
                         setStockInPurchaseInvoiceNumber(viewingStockInRecord.purchaseInvoiceNumber || '');
                         setStockInDeliveryNote(viewingStockInRecord.deliveryNote || '');
+                        const hasLinkedPo = Boolean(viewingStockInRecord.lpoNumber) || (Boolean(viewingStockInRecord.order) && viewingStockInRecord.order !== 'Select Order');
                         if (viewingStockInRecord.items && viewingStockInRecord.items.length > 0) {
                           setStockInItems(
                             viewingStockInRecord.items.map((it: any, idx: number) => {
-                              const lpo = it.lpoQty !== undefined && it.lpoQty !== '' ? it.lpoQty : (it.qty || '1');
+                              const lpo = hasLinkedPo && it.lpoQty !== undefined && it.lpoQty !== '' ? it.lpoQty : (hasLinkedPo ? (it.qty || '1') : '');
                               const recQty = it.qty !== undefined && it.qty !== null ? String(it.qty) : '';
-                              const bal = it.balanceQty !== undefined && it.balanceQty !== '' ? it.balanceQty : Math.max(0, Number(lpo) - (Number(recQty) || 0));
+                              const bal = hasLinkedPo ? (it.balanceQty !== undefined && it.balanceQty !== '' ? it.balanceQty : Math.max(0, Number(lpo) - (Number(recQty) || 0))) : '';
                               return {
                                 id: `si_item_${idx + 1}`,
                                 item: it.item || '',
@@ -12060,12 +12008,13 @@ function PurchasePageInner() {
                                             setStockInPurchaseInvoiceNumber(si.purchaseInvoiceNumber || '');
                                             setStockInDeliveryNote(si.deliveryNote || '');
                                             setStockInOrder(si.order || 'Select Order');
+                                            const hasLinkedPo = Boolean(si.lpoNumber) || (Boolean(si.order) && si.order !== 'Select Order');
                                             if (si.items && si.items.length > 0) {
                                               setStockInItems(
                                                 si.items.map((it: any, i: number) => {
-                                                  const lpo = it.lpoQty !== undefined && it.lpoQty !== '' ? it.lpoQty : (it.qty || '1');
+                                                  const lpo = hasLinkedPo && it.lpoQty !== undefined && it.lpoQty !== '' ? it.lpoQty : (hasLinkedPo ? (it.qty || '1') : '');
                                                   const recQty = it.qty !== undefined && it.qty !== null ? String(it.qty) : '';
-                                                  const bal = it.balanceQty !== undefined && it.balanceQty !== '' ? it.balanceQty : Math.max(0, Number(lpo) - (Number(recQty) || 0));
+                                                  const bal = hasLinkedPo ? (it.balanceQty !== undefined && it.balanceQty !== '' ? it.balanceQty : Math.max(0, Number(lpo) - (Number(recQty) || 0))) : '';
                                                   return {
                                                     id: it.id || `si_item_${i + 1}`,
                                                     item: it.item || '',
