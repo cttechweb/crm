@@ -7699,6 +7699,20 @@ function PurchasePageInner() {
                                   type="button"
                                   onClick={() => {
                                     setActivePoActionDropdownId(null);
+                                    try {
+                                      localStorage.setItem('crm_active_print_po', JSON.stringify(po));
+                                    } catch {}
+                                    window.open(`/purchase/print?id=${po.id}&format=Print with Quantity`, '_blank');
+                                  }}
+                                  className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-blue-50 text-blue-700 font-semibold transition-colors cursor-pointer border-b border-slate-100"
+                                >
+                                  <Printer className="w-4 h-4 text-blue-600 shrink-0" />
+                                  <span>View PDF</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActivePoActionDropdownId(null);
                                     window.open(`/purchase?tab=po&view=${po.id}`, '_blank');
                                   }}
                                   className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
@@ -7879,6 +7893,20 @@ function PurchasePageInner() {
                                     onClick={(e) => e.stopPropagation()}
                                     className="absolute right-0 top-full mt-1 z-50 w-44 bg-white border border-slate-200 rounded shadow-xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-75"
                                   >
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActivePoActionDropdownId(null);
+                                        try {
+                                          localStorage.setItem('crm_active_print_po', JSON.stringify(po));
+                                        } catch {}
+                                        window.open(`/purchase/print?id=${po.id}&format=Print with Quantity`, '_blank');
+                                      }}
+                                      className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-blue-50 text-blue-700 font-semibold transition-colors cursor-pointer border-b border-slate-100"
+                                    >
+                                      <Printer className="w-4 h-4 text-blue-600 shrink-0" />
+                                      <span>View PDF</span>
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={() => {
