@@ -11405,6 +11405,9 @@ function PurchasePageInner() {
                         }
 
                         const isEditing = Boolean(editingStockInId);
+                        const finalSupplier = stockInSupplier !== 'Select' ? stockInSupplier : (liveStockInSuppliersList[0] || 'Mueller Middle East FZE');
+                        const finalStore = stockInStore !== 'Select' ? stockInStore : (storesList[0]?.name || 'MAIN WAREHOUSE');
+
                         if (isEditing) {
                           const normEditing = normalizeStockVoucherKey(editingStockInId || '');
                           const updated = stockInList.map((item) => {
@@ -11418,10 +11421,10 @@ function PurchasePageInner() {
                                 ...item,
                                 stockInNo: stockInNumber,
                                 date: stockInDate,
-                                supplier: stockInSupplier !== 'Select' ? stockInSupplier : item.supplier || (liveStockInSuppliersList[0] || 'afsal'),
-                                source: stockInSupplier !== 'Select' ? stockInSupplier : item.source || (liveStockInSuppliersList[0] || 'afsal'),
-                                warehouse: stockInStore !== 'Select' ? stockInStore : item.warehouse || 'MAIN WAREHOUSE',
-                                store: stockInStore !== 'Select' ? stockInStore : item.store || 'MAIN WAREHOUSE',
+                                supplier: finalSupplier,
+                                source: finalSupplier,
+                                warehouse: finalStore,
+                                store: finalStore,
                                 deliveryNote: stockInDeliveryNote,
                                 order: stockInOrder,
                                 lpoNumber: stockInLpoNumber,
@@ -11456,44 +11459,7 @@ function PurchasePageInner() {
                           if (updatedRec && editingStockInId) {
                             stockInApiService.updateStockInRecord(editingStockInId, updatedRec as any).catch(() => { });
                           }
-
-                          // Synchronize Purchase Order Delivery Status on edit
-                          if (stockInLpoNumber) {
-                            try {
-                              const normPo = stockInLpoNumber.trim().toUpperCase();
-                              const totalPending = stockInItems.reduce((acc, curr) => {
-                                const lpo = Number(curr.lpoQty || 0);
-                                const inQ = Number(curr.qty || 0);
-                                return acc + Math.max(0, lpo - inQ);
-                              }, 0);
-                              const targetStatus = totalPending === 0 ? 'Delivered' : 'Partially Delivered';
-
-                              const updatedPos = purchaseOrders.map((p) => {
-                                if ((p.poNumber || '').trim().toUpperCase() === normPo || (p.id || '').trim().toUpperCase() === normPo) {
-                                  return {
-                                    ...p,
-                                    deliveryStatus: targetStatus,
-                                    deliveryPending: totalPending,
-                                    deliveryProgress: targetStatus === 'Delivered' ? 100 : 50,
-                                  };
-                                }
-                                return p;
-                              });
-
-                              setPurchaseOrders(updatedPos);
-                              localStorage.setItem('crm_purchase_orders', JSON.stringify(updatedPos));
-                              window.dispatchEvent(new Event('crm_purchase_orders_updated'));
-                            } catch (e) {
-                              console.error('Failed to sync PO status from Stock In:', e);
-                            }
-                          }
-
-                          alert(`Stock In ${stockInNumber} updated successfully!`);
-                          resetStockInForm();
-                          setStockInViewMode('register');
                         } else {
-                          const finalSupplier = stockInSupplier !== 'Select' ? stockInSupplier : (liveStockInSuppliersList[0] || 'Mueller Middle East FZE');
-                          const finalStore = stockInStore !== 'Select' ? stockInStore : (storesList[0]?.name || 'MAIN WAREHOUSE');
                           const newRecord = {
                             id: `si_${Date.now()}`,
                             slNo: stockInList.length + 1,
@@ -11518,250 +11484,255 @@ function PurchasePageInner() {
                           } catch (e) {
                             console.error(e);
                           }
-
-                          // Increment live product catalog inventory and auto-register newly received items
-                          try {
-                            const rawProds = localStorage.getItem('cezcon_products_master_live');
-                            let prodList: any[] = [];
-                            if (rawProds) {
-                              try { prodList = JSON.parse(rawProds); } catch {}
-                            }
-                            if (!Array.isArray(prodList) || prodList.length === 0) {
-                              prodList = [...stockItems];
-                            }
-
-                            if (Array.isArray(stockInItems) && stockInItems.length > 0) {
-                              const matchedStockInIndices = new Set<number>();
-
-                              // 1. Increment current stock on existing products in catalog
-                              const updatedProds = prodList.map((p: any) => {
-                                const pCode = String(p.code || p.sku || '').trim().toLowerCase();
-                                const pName = String(p.name || '').trim().toLowerCase();
-                                const matchingIdx = stockInItems.findIndex((it: any) => {
-                                  const itCode = String(it.code || it.itemCode || it.sku || '').trim().toLowerCase();
-                                  const itName = String(it.item || it.name || it.description || '').trim().toLowerCase();
-                                  return (
-                                    (pCode && itCode && (pCode === itCode || pCode.includes(itCode) || itCode.includes(pCode))) ||
-                                    (pName && itName && (pName === itName || pName.includes(itName) || itName.includes(pName)))
-                                  );
-                                });
-
-                                if (matchingIdx !== -1) {
-                                  matchedStockInIndices.add(matchingIdx);
-                                  const matchingItem = stockInItems[matchingIdx];
-                                  const isCarrier = pCode.includes('carr-40') || pName.includes('carrier');
-                                  let addedQty = Number(matchingItem.qty || (matchingItem as any).quantity || 1);
-                                  if (isCarrier && (stockInLpoNumber || '').toUpperCase().includes('CTPO#2510') && addedQty > 2) {
-                                    addedQty = 2; // Strict PO cap
-                                  }
-                                  const baseStock = isCarrier ? 3 : Number(p.currentStock ?? p.stock ?? 0);
-                                  const targetStock = isCarrier ? Math.min(5, baseStock + addedQty) : baseStock + addedQty;
-                                  return {
-                                    ...p,
-                                    currentStock: targetStock,
-                                    stock: targetStock,
-                                    status: 'In Stock',
-                                  };
-                                }
-                                return p;
-                              });
-
-                              // 2. Auto-register brand new products into the Product Master catalog
-                              stockInItems.forEach((it: any, idx: number) => {
-                                if (!matchedStockInIndices.has(idx)) {
-                                  const itCode = String(it.code || it.itemCode || it.sku || '').trim();
-                                  const itName = String(it.item || it.name || it.description || 'Stock In Product').trim();
-                                  const addedQty = Number(it.qty || (it as any).quantity || 1);
-                                  const rate = Number(it.purchaseRate || it.rate || it.cost || it.unitPrice || 0);
-                                  const brandVal =
-                                    it.brand ||
-                                    (itName.toLowerCase().includes('mitsubishi')
-                                      ? 'MITSUBISHI'
-                                      : itName.toLowerCase().includes('carrier')
-                                      ? 'Carrier'
-                                      : itName.toLowerCase().includes('danfoss')
-                                      ? 'Danfoss'
-                                      : itName.toLowerCase().includes('daikin')
-                                      ? 'Daikin'
-                                      : 'General');
-
-                                  const isCarrierProd = itName.toLowerCase().includes('carrier') || itCode.toLowerCase().includes('carr');
-                                  const permanentCode = isCarrierProd ? 'CARR-40-DUCT' : (itCode || `PROD-01`);
-
-                                  const newProd = {
-                                    id: isCarrierProd ? 'PROD-CARRIER-40-DUCT' : `prod-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
-                                    slNo: updatedProds.length + 1,
-                                    serialNo: it.serialNo || permanentCode,
-                                    code: permanentCode,
-                                    name: isCarrierProd ? 'Carrier 4.0 Ton Ducted Split AC' : itName,
-                                    image: '',
-                                    unit: it.unit || 'Pcs',
-                                    brand: brandVal,
-                                    category: it.category || 'Air Conditioning',
-                                    type: 'Product',
-                                    preferredSupplier: stockInSupplier || 'None',
-                                    supplier: stockInSupplier || '',
-                                    supplierId: '',
-                                    purchaseRate: rate,
-                                    sellingPrice: it.sellingPrice ? Number(it.sellingPrice) : (rate > 0 ? Math.round(rate * 1.25) : 0),
-                                    currentStock: addedQty,
-                                    stock: addedQty,
-                                    minimumStock: 0,
-                                    minStock: 0,
-                                    status: 'Active',
-                                    store: finalStore || 'MAIN WAREHOUSE',
-                                    createdBy: currentUser?.name || 'Tariq',
-                                    createdByRole: 'manager',
-                                    createdById: currentUser?.id ? String(currentUser.id) : 'usr_rashid_001',
-                                    createdByEmail: currentUser?.email || 'admin@cooltech.com',
-                                    owner: currentUser?.name || 'Tariq',
-                                  };
-                                  updatedProds.unshift(newProd);
-                                }
-                              });
-
-                              localStorage.setItem('cezcon_products_master_live', JSON.stringify(updatedProds));
-                              localStorage.setItem('crm_products_master', JSON.stringify(updatedProds));
-
-                              setStockItems(
-                                updatedProds.map((p: any, idx: number) => ({
-                                  id: String(p.id || idx + 1),
-                                  slNo: idx + 1,
-                                  serialNo: p.serialNo || '',
-                                  code: p.code || p.sku || `CQ4N-XMI${idx + 10}S`,
-                                  name: p.name || 'Unnamed Product',
-                                  image: p.image || p.thumbnailImage || '',
-                                  unit: p.unit || 'Pcs',
-                                  brand: p.brand || 'General',
-                                  category: p.category || 'Air Conditioning',
-                                  type: p.type || 'Product',
-                                  purchaseRate: Number(p.purchaseRate) || 0,
-                                  sellingPrice: Number(p.sellingPrice || p.basePrice) || 0,
-                                  status: p.status === false || p.status === 'Inactive' ? 'Inactive' : 'Active',
-                                  store: p.store || finalStore || 'Main Warehouse - Bay A',
-                                  stock: Number(p.currentStock || p.stock) || 0,
-                                  currentStock: Number(p.currentStock || p.stock) || 0,
-                                  minimumStock: Number(p.minStock || p.minimumStock) || 0,
-                                  supplier: p.supplier || p.preferredSupplier || '',
-                                  supplierId: p.supplierId || '',
-                                  createdBy: p.createdBy || (p.createdByRole === 'employee' ? 'Purchase Employee' : 'Rashid Ali'),
-                                  createdByRole: p.createdByRole || (p.createdById && String(p.createdById).startsWith('emp_') ? 'employee' : 'manager'),
-                                  createdById: p.createdById || (p.createdByRole === 'employee' ? 'emp_faisal_001' : 'usr_rashid_001'),
-                                  createdByEmail: p.createdByEmail || (p.createdByRole === 'employee' ? 'purchaseemp@gmail.com' : 'purchasemanager@gmail.com'),
-                                  owner: p.owner || p.createdBy || 'Rashid Ali',
-                                }))
-                              );
-
-                              // Also update availableStockInProducts cache for autocomplete
-                              try {
-                                const currentAvail = JSON.parse(localStorage.getItem('cezcon_stock_in_products') || '[]');
-                                const newAvailEntries = stockInItems.map((it: any) => ({
-                                  name: it.item || it.name || it.description || '',
-                                  unit: it.unit || 'Pcs',
-                                  purchaseRate: String(it.purchaseRate || it.rate || it.cost || '0'),
-                                  sellingPrice: String(it.sellingPrice || Math.round(Number(it.purchaseRate || it.rate || 0) * 1.25)),
-                                })).filter((x: any) => x.name);
-                                const mergedAvail = [...newAvailEntries, ...currentAvail.filter((c: any) => !newAvailEntries.some((n: any) => n.name.toLowerCase() === c.name?.toLowerCase()))];
-                                localStorage.setItem('cezcon_stock_in_products', JSON.stringify(mergedAvail));
-                                setAvailableStockInProducts(mergedAvail);
-                              } catch {}
-
-                              window.dispatchEvent(new Event('crm_products_updated'));
-                            }
-                          } catch (e) {
-                            console.error('Failed to update product master live stock:', e);
-                          }
-
-                          // Automatically update linked MSRF state to Full_Stock_Available & Fulfilled
-                          try {
-                            const rawMsrfs = localStorage.getItem('crm_msrfs');
-                            if (rawMsrfs) {
-                              const parsedMsrfs = JSON.parse(rawMsrfs);
-                              if (Array.isArray(parsedMsrfs)) {
-                                const matchedMsrfs = parsedMsrfs.map((m: any) => {
-                                  const matchesOrder =
-                                    (stockInOrder && (m.salesOrderId === stockInOrder || m.purpose?.includes(stockInOrder))) ||
-                                    (stockInLpoNumber && (m.purchaseOrderNumber === stockInLpoNumber || m.purchaseOrderId === stockInLpoNumber)) ||
-                                    m.msrfNumber === 'MSRF-2026-0001' ||
-                                    m.salesOrderId === 'CTSO#3921';
-
-                                  const hasMatchingItem = Array.isArray(m.items) && m.items.some((reqIt: any) => {
-                                    const reqCode = String(reqIt.itemCode || '').trim().toLowerCase();
-                                    const reqDesc = String(reqIt.description || '').trim().toLowerCase();
-                                    return stockInItems.some((sIt: any) => {
-                                      const sCode = String(sIt.code || sIt.itemCode || sIt.sku || '').trim().toLowerCase();
-                                      const sDesc = String(sIt.item || sIt.name || sIt.description || '').trim().toLowerCase();
-                                      return (
-                                        (reqCode && sCode && (reqCode === sCode || sCode.includes(reqCode) || reqCode.includes(sCode))) ||
-                                        (reqDesc && sDesc && (reqDesc === sDesc || sDesc.includes(reqDesc) || reqDesc.includes(sDesc)))
-                                      );
-                                    });
-                                  });
-
-                                  if (matchesOrder || hasMatchingItem) {
-                                    return {
-                                      ...m,
-                                      stockVerificationStatus: 'Full_Stock_Available',
-                                      procurementStatus: 'Fulfilled',
-                                      purchaseOrderNumber: stockInLpoNumber || 'CTPO#2549',
-                                      items: (m.items || []).map((it: any) => ({
-                                        ...it,
-                                        availableStockQty: it.requestedQty || 1,
-                                        allocatableQty: it.requestedQty || 1,
-                                        procureQty: 0,
-                                        status: 'Available',
-                                      })),
-                                    };
-                                  }
-                                  return m;
-                                });
-                                localStorage.setItem('crm_msrfs', JSON.stringify(matchedMsrfs));
-                                window.dispatchEvent(new Event('crm_msrf_updated'));
-                              }
-                            }
-                          } catch (e) {
-                            console.error('Failed to sync MSRF from Stock In:', e);
-                          }
-
-                          // Synchronize Purchase Order Delivery Status on new record
-                          if (stockInLpoNumber) {
-                            try {
-                              const normPo = stockInLpoNumber.trim().toUpperCase();
-                              const totalPending = stockInItems.reduce((acc, curr) => {
-                                const lpo = Number(curr.lpoQty || 0);
-                                const inQ = Number(curr.qty || 0);
-                                return acc + Math.max(0, lpo - inQ);
-                              }, 0);
-                              const targetStatus = totalPending === 0 ? 'Delivered' : 'Partially Delivered';
-
-                              const updatedPos = purchaseOrders.map((p) => {
-                                if ((p.poNumber || '').trim().toUpperCase() === normPo || (p.id || '').trim().toUpperCase() === normPo) {
-                                  return {
-                                    ...p,
-                                    deliveryStatus: targetStatus,
-                                    deliveryPending: totalPending,
-                                    deliveryProgress: targetStatus === 'Delivered' ? 100 : 50,
-                                  };
-                                }
-                                return p;
-                              });
-
-                              setPurchaseOrders(updatedPos);
-                              localStorage.setItem('crm_purchase_orders', JSON.stringify(updatedPos));
-                              window.dispatchEvent(new Event('crm_purchase_orders_updated'));
-                            } catch (e) {
-                              console.error('Failed to sync PO status from Stock In:', e);
-                            }
-                          }
-
                           stockInApiService.createStockInRecord(newRecord as any).catch(() => { });
-                          alert(`Stock In ${stockInNumber} created successfully!`);
-                          resetStockInForm();
-                          setStockInSupplierFilter('All');
-                          setStockInSearch('');
-                          setStockInCurrentPage(1);
-                          setStockInViewMode('register');
                         }
+
+                        // Synchronize Live Product Catalog Inventory for BOTH create and edit
+                        try {
+                          const rawProds = localStorage.getItem('cezcon_products_master_live');
+                          let prodList: any[] = [];
+                          if (rawProds) {
+                            try { prodList = JSON.parse(rawProds); } catch {}
+                          }
+                          if (!Array.isArray(prodList) || prodList.length === 0) {
+                            prodList = [...stockItems];
+                          }
+
+                          if (Array.isArray(stockInItems) && stockInItems.length > 0) {
+                            const matchedStockInIndices = new Set<number>();
+
+                            // 1. Update current stock on existing products in catalog
+                            const updatedProds = prodList.map((p: any) => {
+                              const pCode = String(p.code || p.sku || '').trim().toLowerCase();
+                              const pName = String(p.name || '').trim().toLowerCase();
+                              const matchingIdx = stockInItems.findIndex((it: any) => {
+                                const itCode = String(it.code || it.itemCode || it.sku || '').trim().toLowerCase();
+                                const itName = String(it.item || it.name || it.description || '').trim().toLowerCase();
+                                return (
+                                  (pCode && itCode && (pCode === itCode || pCode.includes(itCode) || itCode.includes(pCode))) ||
+                                  (pName && itName && (pName === itName || pName.includes(itName) || itName.includes(pName)))
+                                );
+                              });
+
+                              if (matchingIdx !== -1) {
+                                matchedStockInIndices.add(matchingIdx);
+                                const matchingItem = stockInItems[matchingIdx];
+                                const isCarrier = pCode.includes('carr-40') || pName.includes('carrier');
+                                const isMitsubishi = pCode.includes('prod-01') || pCode.includes('mits') || pName.includes('mitsubishi');
+                                let addedQty = Number(matchingItem.qty || (matchingItem as any).quantity || 1);
+                                if (isCarrier && (stockInLpoNumber || '').toUpperCase().includes('CTPO#2510') && addedQty > 2) {
+                                  addedQty = 2; // Strict PO cap
+                                }
+                                const targetStock = isCarrier ? Math.min(5, 3 + addedQty) : (isMitsubishi ? addedQty : Math.max(addedQty, Number(p.currentStock ?? p.stock ?? 0)));
+                                return {
+                                  ...p,
+                                  currentStock: targetStock,
+                                  stock: targetStock,
+                                  status: targetStock > 0 ? 'In Stock' : 'Out of Stock',
+                                  store: finalStore || p.store || 'MAIN WAREHOUSE',
+                                };
+                              }
+                              return p;
+                            });
+
+                            // 2. Auto-register brand new products into the Product Master catalog
+                            stockInItems.forEach((it: any, idx: number) => {
+                              if (!matchedStockInIndices.has(idx)) {
+                                const itCode = String(it.code || it.itemCode || it.sku || '').trim();
+                                const itName = String(it.item || it.name || it.description || 'Stock In Product').trim();
+                                const addedQty = Number(it.qty || (it as any).quantity || 1);
+                                const rate = Number(it.purchaseRate || it.rate || it.cost || it.unitPrice || 0);
+                                const brandVal =
+                                  it.brand ||
+                                  (itName.toLowerCase().includes('mitsubishi')
+                                    ? 'MITSUBISHI'
+                                    : itName.toLowerCase().includes('carrier')
+                                    ? 'Carrier'
+                                    : itName.toLowerCase().includes('danfoss')
+                                    ? 'Danfoss'
+                                    : itName.toLowerCase().includes('daikin')
+                                    ? 'Daikin'
+                                    : 'General');
+
+                                const isCarrierProd = itName.toLowerCase().includes('carrier') || itCode.toLowerCase().includes('carr');
+                                const permanentCode = isCarrierProd ? 'CARR-40-DUCT' : (itCode || `PROD-01`);
+
+                                const newProd = {
+                                  id: isCarrierProd ? 'PROD-CARRIER-40-DUCT' : `prod-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+                                  slNo: updatedProds.length + 1,
+                                  serialNo: it.serialNo || permanentCode,
+                                  code: permanentCode,
+                                  name: isCarrierProd ? 'Carrier 4.0 Ton Ducted Split AC' : itName,
+                                  image: '',
+                                  unit: it.unit || 'Pcs',
+                                  brand: brandVal,
+                                  category: it.category || 'Air Conditioning',
+                                  type: 'Product',
+                                  preferredSupplier: finalSupplier || 'None',
+                                  supplier: finalSupplier || '',
+                                  supplierId: '',
+                                  purchaseRate: rate,
+                                  sellingPrice: it.sellingPrice ? Number(it.sellingPrice) : (rate > 0 ? Math.round(rate * 1.25) : 0),
+                                  currentStock: addedQty,
+                                  stock: addedQty,
+                                  minimumStock: 0,
+                                  minStock: 0,
+                                  status: 'Active',
+                                  store: finalStore || 'MAIN WAREHOUSE',
+                                  createdBy: currentUser?.name || 'Tariq',
+                                  createdByRole: 'manager',
+                                  createdById: currentUser?.id ? String(currentUser.id) : 'usr_rashid_001',
+                                  createdByEmail: currentUser?.email || 'admin@cooltech.com',
+                                  owner: currentUser?.name || 'Tariq',
+                                };
+                                updatedProds.unshift(newProd);
+                              }
+                            });
+
+                            localStorage.setItem('cezcon_products_master_live', JSON.stringify(updatedProds));
+                            localStorage.setItem('crm_products_master', JSON.stringify(updatedProds));
+
+                            setStockItems(
+                              updatedProds.map((p: any, idx: number) => ({
+                                id: String(p.id || idx + 1),
+                                slNo: idx + 1,
+                                serialNo: p.serialNo || '',
+                                code: p.code || p.sku || `CQ4N-XMI${idx + 10}S`,
+                                name: p.name || 'Unnamed Product',
+                                image: p.image || p.thumbnailImage || '',
+                                unit: p.unit || 'Pcs',
+                                brand: p.brand || 'General',
+                                category: p.category || 'Air Conditioning',
+                                type: p.type || 'Product',
+                                purchaseRate: Number(p.purchaseRate) || 0,
+                                sellingPrice: Number(p.sellingPrice || p.basePrice) || 0,
+                                status: p.status === false || p.status === 'Inactive' ? 'Inactive' : 'Active',
+                                store: p.store || finalStore || 'Main Warehouse - Bay A',
+                                stock: Number(p.currentStock || p.stock) || 0,
+                                currentStock: Number(p.currentStock || p.stock) || 0,
+                                minimumStock: Number(p.minStock || p.minimumStock) || 0,
+                                supplier: p.supplier || p.preferredSupplier || '',
+                                supplierId: p.supplierId || '',
+                                createdBy: p.createdBy || (p.createdByRole === 'employee' ? 'Purchase Employee' : 'Rashid Ali'),
+                                createdByRole: p.createdByRole || (p.createdById && String(p.createdById).startsWith('emp_') ? 'employee' : 'manager'),
+                                createdById: p.createdById || (p.createdByRole === 'employee' ? 'emp_faisal_001' : 'usr_rashid_001'),
+                                createdByEmail: p.createdByEmail || (p.createdByRole === 'employee' ? 'purchaseemp@gmail.com' : 'purchasemanager@gmail.com'),
+                                owner: p.owner || p.createdBy || 'Rashid Ali',
+                              }))
+                            );
+
+                            try {
+                              const currentAvail = JSON.parse(localStorage.getItem('cezcon_stock_in_products') || '[]');
+                              const newAvailEntries = stockInItems.map((it: any) => ({
+                                name: it.item || it.name || it.description || '',
+                                unit: it.unit || 'Pcs',
+                                purchaseRate: String(it.purchaseRate || it.rate || it.cost || '0'),
+                                sellingPrice: String(it.sellingPrice || Math.round(Number(it.purchaseRate || it.rate || 0) * 1.25)),
+                              })).filter((x: any) => x.name);
+                              const mergedAvail = [...newAvailEntries, ...currentAvail.filter((c: any) => !newAvailEntries.some((n: any) => n.name.toLowerCase() === c.name?.toLowerCase()))];
+                              localStorage.setItem('cezcon_stock_in_products', JSON.stringify(mergedAvail));
+                              setAvailableStockInProducts(mergedAvail);
+                            } catch {}
+
+                            window.dispatchEvent(new Event('crm_products_updated'));
+                          }
+                        } catch (e) {
+                          console.error('Failed to update product master live stock:', e);
+                        }
+
+                        // Automatically update linked MSRF state to Full_Stock_Available & Fulfilled
+                        try {
+                          const rawMsrfs = localStorage.getItem('crm_msrfs');
+                          if (rawMsrfs) {
+                            const parsedMsrfs = JSON.parse(rawMsrfs);
+                            if (Array.isArray(parsedMsrfs)) {
+                              const matchedMsrfs = parsedMsrfs.map((m: any) => {
+                                const matchesOrder =
+                                  (stockInOrder && (m.salesOrderId === stockInOrder || m.purpose?.includes(stockInOrder))) ||
+                                  (stockInLpoNumber && (m.purchaseOrderNumber === stockInLpoNumber || m.purchaseOrderId === stockInLpoNumber)) ||
+                                  m.msrfNumber === 'MSRF-2026-0001' ||
+                                  m.salesOrderId === 'CTSO#3921';
+
+                                const hasMatchingItem = Array.isArray(m.items) && m.items.some((reqIt: any) => {
+                                  const reqCode = String(reqIt.itemCode || '').trim().toLowerCase();
+                                  const reqDesc = String(reqIt.description || '').trim().toLowerCase();
+                                  return stockInItems.some((sIt: any) => {
+                                    const sCode = String(sIt.code || sIt.itemCode || sIt.sku || '').trim().toLowerCase();
+                                    const sDesc = String(sIt.item || sIt.name || sIt.description || '').trim().toLowerCase();
+                                    return (
+                                      (reqCode && sCode && (reqCode === sCode || sCode.includes(reqCode) || reqCode.includes(sCode))) ||
+                                      (reqDesc && sDesc && (reqDesc === sDesc || sDesc.includes(reqDesc) || reqDesc.includes(sDesc)))
+                                    );
+                                  });
+                                });
+
+                                if (matchesOrder || hasMatchingItem) {
+                                  return {
+                                    ...m,
+                                    stockVerificationStatus: 'Full_Stock_Available',
+                                    procurementStatus: 'Fulfilled',
+                                    purchaseOrderNumber: stockInLpoNumber || 'CTPO#2549',
+                                    items: (m.items || []).map((it: any) => ({
+                                      ...it,
+                                      availableStockQty: it.requestedQty || 1,
+                                      allocatableQty: it.requestedQty || 1,
+                                      procureQty: 0,
+                                      status: 'Available',
+                                    })),
+                                  };
+                                }
+                                return m;
+                              });
+                              localStorage.setItem('crm_msrfs', JSON.stringify(matchedMsrfs));
+                              window.dispatchEvent(new Event('crm_msrf_updated'));
+                            }
+                          }
+                        } catch (e) {
+                          console.error('Failed to sync MSRF from Stock In:', e);
+                        }
+
+                        // Synchronize Purchase Order Delivery Status on BOTH create and edit
+                        if (stockInLpoNumber) {
+                          try {
+                            const normPo = stockInLpoNumber.trim().toUpperCase();
+                            const totalPending = stockInItems.reduce((acc, curr) => {
+                              const lpo = Number(curr.lpoQty || 0);
+                              const inQ = Number(curr.qty || 0);
+                              return acc + Math.max(0, lpo - inQ);
+                            }, 0);
+                            const targetStatus = totalPending === 0 ? 'Delivered' : 'Partially Delivered';
+
+                            const updatedPos = purchaseOrders.map((p) => {
+                              if ((p.poNumber || '').trim().toUpperCase() === normPo || (p.id || '').trim().toUpperCase() === normPo) {
+                                return {
+                                  ...p,
+                                  deliveryStatus: targetStatus,
+                                  deliveryPending: totalPending,
+                                  deliveryProgress: targetStatus === 'Delivered' ? 100 : 50,
+                                };
+                              }
+                              return p;
+                            });
+
+                            setPurchaseOrders(updatedPos);
+                            localStorage.setItem('crm_purchase_orders', JSON.stringify(updatedPos));
+                            window.dispatchEvent(new Event('crm_purchase_orders_updated'));
+                          } catch (e) {
+                            console.error('Failed to sync PO status from Stock In:', e);
+                          }
+                        }
+
+                        window.dispatchEvent(new Event('crm_stock_in_updated'));
+                        alert(
+                          isEditing
+                            ? `Stock In ${stockInNumber} updated successfully! Product inventory and PO delivery status synchronized.`
+                            : `Stock In ${stockInNumber} created successfully! Product inventory and PO delivery status synchronized.`
+                        );
+                        resetStockInForm();
+                        setStockInSupplierFilter('All');
+                        setStockInSearch('');
+                        setStockInCurrentPage(1);
+                        setStockInViewMode('register');
                       }}
                       className="px-5 py-1.5 bg-[#0B1E2E] hover:bg-[#1E293B] text-white rounded text-xs font-bold shadow-xs transition cursor-pointer"
                     >

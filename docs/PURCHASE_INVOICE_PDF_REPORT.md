@@ -48,3 +48,4 @@ The print engine dynamically adapts when viewing an invoice (`type=invoice` or `
 ## 2. Verification
 - TypeScript compilation: `npx tsc --noEmit` passed with 0 errors.
 - Both desktop and responsive views verified.
+
