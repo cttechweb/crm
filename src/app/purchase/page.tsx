@@ -10799,9 +10799,9 @@ function PurchasePageInner() {
                                         unit: it.unit || 'Pcs',
                                         purchaseRate: String(it.rate ?? it.purchaseRate ?? it.unitPrice ?? it.amount ?? '6500'),
                                         sellingPrice: String(it.sellingPrice ?? (Number(it.rate ?? it.purchaseRate ?? it.amount ?? 6500) * 1.35).toFixed(2)),
-                                        qty: '',
+                                        qty: String(orderedQty),
                                         lpoQty: orderedQty,
-                                        balanceQty: orderedQty,
+                                        balanceQty: 0,
                                       };
                                     })
                                   );
@@ -10837,9 +10837,9 @@ function PurchasePageInner() {
                                       unit: defaultUnit,
                                       purchaseRate: defaultCost,
                                       sellingPrice: defaultSelling,
-                                      qty: '',
+                                      qty: String(defaultQty),
                                       lpoQty: defaultQty,
-                                      balanceQty: defaultQty,
+                                      balanceQty: 0,
                                     },
                                   ]);
                                 }
@@ -10856,9 +10856,9 @@ function PurchasePageInner() {
                                     unit: 'Pcs',
                                     purchaseRate: '6500',
                                     sellingPrice: '8800',
-                                    qty: '',
+                                    qty: '3',
                                     lpoQty: 3,
-                                    balanceQty: 3,
+                                    balanceQty: 0,
                                   },
                                 ]);
                               }
@@ -12106,7 +12106,9 @@ function PurchasePageInner() {
                                               setStockInItems(
                                                 si.items.map((it: any, i: number) => {
                                                   const lpo = hasLinkedPo && it.lpoQty !== undefined && it.lpoQty !== '' ? it.lpoQty : (hasLinkedPo ? (it.qty || '3') : '');
-                                                  const recQty = it.qty !== undefined && it.qty !== null ? String(it.qty) : '';
+                                                  const recQty = (it.qty !== undefined && it.qty !== null && it.qty !== '' && it.qty !== 0 && it.qty !== '0')
+                                                    ? String(it.qty)
+                                                    : (hasLinkedPo ? String(lpo || 3) : '');
                                                   const bal = hasLinkedPo ? (it.balanceQty !== undefined && it.balanceQty !== '' ? it.balanceQty : Math.max(0, Number(lpo) - (Number(recQty) || 0))) : '';
                                                   return {
                                                     id: it.id || `si_item_${i + 1}`,
@@ -12128,9 +12130,9 @@ function PurchasePageInner() {
                                                   unit: hasLinkedPo ? 'Pcs' : '',
                                                   purchaseRate: hasLinkedPo ? fallbackCost : '',
                                                   sellingPrice: hasLinkedPo ? fallbackPrice : '',
-                                                  qty: '',
+                                                  qty: hasLinkedPo ? '3' : '',
                                                   lpoQty: hasLinkedPo ? 3 : '',
-                                                  balanceQty: hasLinkedPo ? 3 : '',
+                                                  balanceQty: hasLinkedPo ? 0 : '',
                                                 },
                                               ]);
                                             }
