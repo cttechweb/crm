@@ -114,6 +114,11 @@ function getSupplierDetails(po: any) {
       if (!phone) phone = '+971 4 222 2221';
       if (!email) email = 'support@erosgroup.ae';
       if (!trn) trn = '100441923400003';
+    } else if (s.includes('mueller')) {
+      if (!poBox) poBox = 'PO BOX : 41655 HAMRIYAH FREE ZONE, SHARJAH, UAE';
+      if (!phone) phone = '+971 6 526 9292';
+      if (!email) email = 'sales@muellerme.com';
+      if (!trn) trn = '100412896500003';
     } else {
       const clean = supplierName.toLowerCase().replace(/[^a-z0-9]/g, '');
       if (!poBox) poBox = 'PO BOX : 1430 DEIRA UNITED ARAB EMIRATES';
@@ -137,6 +142,8 @@ function PurchasePrintContent() {
   const router = useRouter();
 
   const poId = searchParams.get('id') || '';
+  const typeParam = searchParams.get('type') || '';
+  const isInvoiceType = typeParam === 'invoice';
   const format = searchParams.get('format') || 'Print with Quantity';
   const currencyParam = searchParams.get('currency') || 'AED';
   const isUSD = currencyParam.toUpperCase() === 'USD';
@@ -146,6 +153,8 @@ function PurchasePrintContent() {
   const [po, setPo] = useState<any>(null);
   const [showSidebar, setShowSidebar] = useState<boolean>(true);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
+
+  const isInvoice = isInvoiceType || Boolean(po?.isInvoice);
 
   const loadPoData = () => {
     if (typeof window !== 'undefined') {
@@ -157,10 +166,67 @@ function PurchasePrintContent() {
             activePo &&
             (!poId ||
               String(activePo.id) === String(poId) ||
-              String(activePo.poNumber).toLowerCase() === String(poId).toLowerCase())
+              String(activePo.invoiceNumber || '').toLowerCase() === String(poId).toLowerCase() ||
+              String(activePo.poNumber || '').toLowerCase() === String(poId).toLowerCase())
           ) {
             setPo(activePo);
             return;
+          }
+        }
+
+        // Check purchase invoices list if invoice requested
+        if (isInvoiceType || (poId && poId.toLowerCase().includes('inv'))) {
+          const invStored = localStorage.getItem('crm_purchase_invoices_list');
+          if (invStored) {
+            const invList = JSON.parse(invStored);
+            if (Array.isArray(invList) && invList.length > 0) {
+              const foundInv = invList.find(
+                (inv: any) =>
+                  String(inv.id) === String(poId) ||
+                  String(inv.invoiceNumber || '').toLowerCase() === String(poId).toLowerCase()
+              );
+              if (foundInv) {
+                const isMueller = (foundInv.supplier || '').toLowerCase().includes('mueller');
+                let invoiceItems = Array.isArray(foundInv.items) && foundInv.items.length > 0 ? foundInv.items : [];
+                if (invoiceItems.length === 0) {
+                  invoiceItems = [
+                    {
+                      id: 'item_1',
+                      description: isMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : 'Carrier 4.0 Ton Ducted Split AC',
+                      code: isMueller ? 'MITS-50-PKG' : 'CARR-40-DUCT',
+                      unit: 'Pcs',
+                      brand: isMueller ? 'COOLTECH' : 'Carrier',
+                      qty: 3,
+                      amount: 6500,
+                      total: 19500,
+                    },
+                  ];
+                }
+                setPo({
+                  id: foundInv.id,
+                  poNumber: foundInv.poNumber || 'CTPO#2516',
+                  invoiceNumber: foundInv.invoiceNumber || foundInv.id,
+                  pisn: foundInv.pisn || 'PIR62',
+                  supplier: foundInv.supplier || 'MUELLER MIDDLE EAST FZE',
+                  date: foundInv.date || '08-10-2026',
+                  createdAtFormatted: foundInv.createdAtFormatted || `${foundInv.date || '08-10-2026'}, 02:45 PM`,
+                  amount: Number(foundInv.amount || (Number(foundInv.totalAmount || 20475) / 1.05)),
+                  vat: Number(foundInv.vat || (Number(foundInv.totalAmount || 20475) * 0.05 / 1.05)),
+                  totalAmount: Number(foundInv.totalAmount || 20475),
+                  items: invoiceItems,
+                  approval: 'Approved',
+                  approvedByName: foundInv.approvedByName || 'FINANCE CONTROLLER',
+                  approvedByDesignation: 'Finance Controller (FC)',
+                  approvedAt: foundInv.approvedAt || new Date().toISOString(),
+                  preparedBy: foundInv.owner || 'MURSHID',
+                  preparedByDesignation: 'Purchase Manager',
+                  preparedByMobile: '+971 50 123 4567',
+                  preparedByEmail: 'murshid@gmail.com',
+                  isInvoice: true,
+                });
+                return;
+              }
+            }
           }
         }
 
@@ -254,9 +320,10 @@ function PurchasePrintContent() {
 
   useEffect(() => {
     if (po && typeof document !== 'undefined') {
-      document.title = `${po.poNumber || 'CTPO#2543'}_1791440436.pdf`;
+      const docCode = isInvoice ? (po.invoiceNumber || po.id || 'INV') : (po.poNumber || 'CTPO#2543');
+      document.title = `${docCode}_1791440436.pdf`;
     }
-  }, [po]);
+  }, [po, isInvoice]);
 
   const showQty =
     format !== 'Print without Quantity' &&
@@ -368,7 +435,7 @@ function PurchasePrintContent() {
             <Menu className="w-4 h-4" />
           </button>
           <span className="font-normal text-xs text-[#f1f3f4] tracking-wide">
-            {po.poNumber || 'CTPO#2543'}_1791440436.pdf
+            {isInvoice ? (po.invoiceNumber || po.id || 'INV') : (po.poNumber || 'CTPO#2543')}_1791440436.pdf
           </span>
         </div>
 
@@ -467,11 +534,11 @@ function PurchasePrintContent() {
                   alt="Cool Technologies"
                   className="h-3 w-auto object-contain"
                 />
-                <span className="font-black text-[5px]">PURCHASE ORDER</span>
+                <span className="font-black text-[5px]">{isInvoice ? 'PURCHASE INVOICE' : 'PURCHASE ORDER'}</span>
               </div>
               <div className="text-[3.5px] space-y-0.5">
                 <div className="font-bold">{supplier.name}</div>
-                <div>PO: {po.poNumber}</div>
+                <div>{isInvoice ? `INV: ${po.invoiceNumber || po.id}` : `PO: ${po.poNumber}`}</div>
               </div>
               <div className="bg-slate-300 h-1 w-full my-0.5"></div>
               <div className="space-y-0.5 text-[3px]">
@@ -521,7 +588,7 @@ function PurchasePrintContent() {
                 {/* Center Title */}
                 <div className="text-center pt-2 flex-1">
                   <h1 className="text-xl font-black text-slate-900 tracking-wider uppercase leading-tight">
-                    PURCHASE ORDER
+                    {isInvoice ? 'PURCHASE INVOICE' : 'PURCHASE ORDER'}
                   </h1>
                 </div>
 
@@ -587,20 +654,47 @@ function PurchasePrintContent() {
                   </div>
                 </div>
 
-                {/* Right Column: PO Details */}
+                {/* Right Column: PO or Invoice Details */}
                 <div className="col-span-5 space-y-1">
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-l-2 border-[#00AEEF] pl-1.5 mb-1">
-                    PO Details
+                    {isInvoice ? 'Invoice Details' : 'PO Details'}
                   </div>
                   <div className="text-xs space-y-1 pt-0.5 font-medium">
-                    <div className="grid grid-cols-12 gap-1">
-                      <span className="col-span-5 text-slate-600">PO Number</span>
-                      <span className="col-span-7 font-bold text-slate-900">: {po.poNumber}</span>
-                    </div>
-                    <div className="grid grid-cols-12 gap-1">
-                      <span className="col-span-5 text-slate-600">PO Date</span>
-                      <span className="col-span-7 text-slate-800">: {po.date || po.poDate}</span>
-                    </div>
+                    {isInvoice ? (
+                      <>
+                        <div className="grid grid-cols-12 gap-1">
+                          <span className="col-span-5 text-slate-600">Invoice Number</span>
+                          <span className="col-span-7 font-bold text-slate-900">: {po.invoiceNumber || po.id}</span>
+                        </div>
+                        {po.pisn && (
+                          <div className="grid grid-cols-12 gap-1">
+                            <span className="col-span-5 text-slate-600">PISN</span>
+                            <span className="col-span-7 font-bold text-slate-900">: {po.pisn}</span>
+                          </div>
+                        )}
+                        {po.poNumber && (
+                          <div className="grid grid-cols-12 gap-1">
+                            <span className="col-span-5 text-slate-600">Linked PO</span>
+                            <span className="col-span-7 text-slate-800">: {po.poNumber}</span>
+                          </div>
+                        )}
+                        <div className="grid grid-cols-12 gap-1">
+                          <span className="col-span-5 text-slate-600">Invoice Date</span>
+                          <span className="col-span-7 text-slate-800">: {po.date || po.invoiceDate || '08-10-2026'}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-12 gap-1">
+                          <span className="col-span-5 text-slate-600">PO Number</span>
+                          <span className="col-span-7 font-bold text-slate-900">: {po.poNumber}</span>
+                        </div>
+                        <div className="grid grid-cols-12 gap-1">
+                          <span className="col-span-5 text-slate-600">PO Date</span>
+                          <span className="col-span-7 text-slate-800">: {po.date || po.poDate}</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -704,7 +798,9 @@ function PurchasePrintContent() {
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed whitespace-pre-line">
                   {po.termsConditionText ||
-                    'All product supply should be from the latest stock. Material supplied should comply 100% with the requested specifications. Products with any manufacturing defects or issues should be exchanged with new one with all cost including fright to End User. Cool Technologies is requesting you to acknowledge the receipt of this LPO and confirmation of delivery time, via return email.'}
+                    (isInvoice
+                      ? '1. Payment Terms: 30 days from invoice date.\n2. Delivery: Received in good order & condition against Delivery Note.\n3. Warranty: 12 months standard warranty against manufacturing defects.\n4. Defective or non-conforming items will be replaced within 48 hours.\n5. VAT: 5% applicable as per UAE FTA regulations.'
+                      : 'All product supply should be from the latest stock. Material supplied should comply 100% with the requested specifications. Products with any manufacturing defects or issues should be exchanged with new one with all cost including fright to End User. Cool Technologies is requesting you to acknowledge the receipt of this LPO and confirmation of delivery time, via return email.')}
                 </p>
               </div>
 

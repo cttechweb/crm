@@ -3070,6 +3070,93 @@ function PurchasePageInner() {
     window.open(`/purchase?tab=invoice&view=${encodeURIComponent(inv.invoiceNumber || inv.id)}`, '_blank');
   };
 
+  const handleViewInvoicePdf = (inv: any) => {
+    setActiveInvoiceActionDropdownId(null);
+    const linkedPo = purchaseOrders.find(
+      (p) =>
+        (p.poNumber && inv.poNumber && p.poNumber.trim().toUpperCase() === inv.poNumber.trim().toUpperCase()) ||
+        (p.id && inv.poId && p.id === inv.poId) ||
+        (p.supplier && inv.supplier && p.supplier.trim().toLowerCase() === inv.supplier.trim().toLowerCase())
+    );
+
+    const isMueller = (inv.supplier || '').toLowerCase().includes('mueller');
+    const isFuttaim = (inv.supplier || '').toLowerCase().includes('futtaim');
+
+    let invoiceItems = Array.isArray(inv.items) && inv.items.length > 0 ? inv.items : (linkedPo?.items || []);
+    if (!invoiceItems || invoiceItems.length === 0) {
+      if (isMueller) {
+        invoiceItems = [
+          {
+            id: 'item_1',
+            description: 'Mitsubishi 5.0 Ton Heavy Package AC',
+            code: 'MITS-50-PKG',
+            unit: 'Pcs',
+            brand: 'COOLTECH',
+            qty: 3,
+            amount: 6500,
+            total: 19500,
+          },
+        ];
+      } else if (isFuttaim) {
+        invoiceItems = [
+          {
+            id: 'item_1',
+            description: 'Carrier 4.0 Ton Ducted Split AC',
+            code: 'CARR-40-DUCT',
+            unit: 'Pcs',
+            brand: 'Carrier',
+            qty: 2,
+            amount: 5500,
+            total: 11000,
+          },
+        ];
+      } else {
+        invoiceItems = [
+          {
+            id: 'item_1',
+            description: 'Mitsubishi 5.0 Ton Heavy Package AC',
+            code: 'MITS-50-PKG',
+            unit: 'Pcs',
+            brand: 'COOLTECH',
+            qty: 3,
+            amount: 6500,
+            total: 19500,
+          },
+        ];
+      }
+    }
+
+    const printPayload = {
+      id: inv.id || `inv_${Date.now()}`,
+      poNumber: inv.poNumber || linkedPo?.poNumber || 'CTPO#2516',
+      invoiceNumber: inv.invoiceNumber || inv.id || 'INV 2026-001',
+      pisn: inv.pisn || 'PIR62',
+      supplier: inv.supplier || linkedPo?.supplier || 'MUELLER MIDDLE EAST FZE',
+      date: inv.date || '08-10-2026',
+      createdAtFormatted: inv.createdAtFormatted || `${inv.date || '08-10-2026'}, 02:45 PM`,
+      amount: Number(inv.amount || (Number(inv.totalAmount || 20475) / 1.05)),
+      vat: Number(inv.vat || (Number(inv.totalAmount || 20475) * 0.05 / 1.05)),
+      totalAmount: Number(inv.totalAmount || 20475),
+      items: invoiceItems,
+      approval: 'Approved',
+      approvedByName: inv.approvedByName || linkedPo?.approvedByName || 'FINANCE CONTROLLER',
+      approvedByDesignation: 'Finance Controller (FC)',
+      approvedAt: inv.approvedAt || linkedPo?.approvedAt || new Date().toISOString(),
+      preparedBy: inv.owner || linkedPo?.preparedBy || 'MURSHID',
+      preparedByDesignation: 'Purchase Manager',
+      preparedByMobile: '+971 50 123 4567',
+      preparedByEmail: 'murshid@gmail.com',
+      isInvoice: true,
+    };
+
+    try {
+      localStorage.setItem('crm_active_print_po', JSON.stringify(printPayload));
+    } catch (e) {
+      console.error(e);
+    }
+    window.open(`/purchase/print?id=${encodeURIComponent(printPayload.id)}&type=invoice&format=Print with Quantity`, '_blank');
+  };
+
   const [invoiceFilterOwner, setInvoiceFilterOwner] = useState<string>('All Owners');
   const [invoiceDateRange, setInvoiceDateRange] = useState<string>('All Month & Year');
   const [invoiceFilterSupplier, setInvoiceFilterSupplier] = useState<string>('Select Supplier');
@@ -10034,6 +10121,14 @@ function PurchasePageInner() {
                                 >
                                   <button
                                     type="button"
+                                    onClick={() => handleViewInvoicePdf(inv)}
+                                    className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-blue-50 text-blue-700 font-semibold transition-colors cursor-pointer border-b border-slate-100"
+                                  >
+                                    <Printer className="w-4 h-4 text-blue-600 shrink-0" />
+                                    <span>View PDF</span>
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => handleOpenInvoiceInNewTab(inv)}
                                     className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-slate-50 text-slate-800 font-normal transition-colors cursor-pointer"
                                   >
@@ -10227,6 +10322,14 @@ function PurchasePageInner() {
                                     onClick={(e) => e.stopPropagation()}
                                     className="absolute right-0 top-full mt-1 z-50 w-48 bg-white border border-slate-200 rounded shadow-xl py-1 text-left text-xs animate-in fade-in zoom-in-95 duration-75"
                                   >
+                                    <button
+                                      type="button"
+                                      onClick={() => handleViewInvoicePdf(inv)}
+                                      className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-blue-50 text-blue-700 font-semibold transition-colors cursor-pointer border-b border-slate-100"
+                                    >
+                                      <Printer className="w-4 h-4 text-blue-600 shrink-0" />
+                                      <span>View PDF</span>
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={() => handleOpenInvoiceInNewTab(inv)}
