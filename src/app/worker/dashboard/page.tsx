@@ -46,6 +46,26 @@ export default function EmployeeDashboardPage() {
   const [currentTimeStr, setCurrentTimeStr] = useState('08:00 AM');
   const [currentDateStr, setCurrentDateStr] = useState('');
   const [greeting, setGreeting] = useState('Good Morning');
+  const [pendingFinancePos, setPendingFinancePos] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const loadPos = () => {
+      try {
+        const raw = localStorage.getItem('crm_purchase_orders');
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            const pending = list.filter((p: any) => p.approval === 'Pending' || p.approval === 'Pending Approval' || !p.approval);
+            setPendingFinancePos(pending);
+          }
+        }
+      } catch {}
+    };
+    loadPos();
+    window.addEventListener('crm_purchase_orders_updated', loadPos);
+    return () => window.removeEventListener('crm_purchase_orders_updated', loadPos);
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -138,6 +158,14 @@ export default function EmployeeDashboardPage() {
     updateTask(taskId, { status: 'Completed', progress: 100 });
   };
 
+  const isFinanceController =
+    userName.toLowerCase() === 'hamdan' ||
+    (currentUser?.position || '').toLowerCase().includes('finance') ||
+    (currentUser?.designation || '').toLowerCase().includes('finance') ||
+    (currentUser?.position || '').toLowerCase().includes('controller') ||
+    (currentUser?.designation || '').toLowerCase().includes('controller') ||
+    (currentUser?.department || '').toLowerCase().includes('finance');
+
   const initialLetter = userName.charAt(0).toUpperCase() || 'E';
 
   return (
@@ -183,6 +211,39 @@ export default function EmployeeDashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* ── FINANCE CONTROLLER PENDING PO APPROVALS BANNER ── */}
+      {isFinanceController && pendingFinancePos.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-300 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-900">
+                  Pending Purchase Order Authorizations
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900">
+                  {pendingFinancePos.length} Awaiting Finance Review
+                </span>
+              </div>
+              <p className="text-xs text-amber-900/80 mt-0.5">
+                {pendingFinancePos.length === 1
+                  ? `PO ${pendingFinancePos[0].poNumber || 'New PO'} (${pendingFinancePos[0].supplier || 'Supplier'}) requires Finance Controller sign-off before issuance.`
+                  : `${pendingFinancePos.length} purchase orders require Finance Controller sign-off before supplier release.`}
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/purchase?tab=po"
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
+          >
+            <span>Review & Authorize ({pendingFinancePos.length})</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
 
       {/* ── 2. TOP 4 LIVE KPI METRIC CARDS ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">

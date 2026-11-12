@@ -2124,7 +2124,7 @@ function PurchasePageInner() {
 
         // 2. Notify Finance Controller of escalation
         notificationService.addLocalNotification({
-          recipientId: 'finance_controller',
+          recipientId: 'hamdan',
           recipientRole: 'finance_controller',
           title: `PO Escalated to COO Tier: ${effectivePoNumber} (AED ${poCalculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
           message: `PO ${effectivePoNumber} for ${newPo.supplier} (AED ${poCalculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) exceeds AED 100,000 and has been routed to the Chief Operating Officer (COO) for executive authorization.`,
@@ -2136,7 +2136,7 @@ function PurchasePageInner() {
         // Standard Tier (Below AED 100,000):
         // Notify Finance Controller for review and approval
         notificationService.addLocalNotification({
-          recipientId: 'finance_controller',
+          recipientId: 'hamdan',
           recipientRole: 'finance_controller',
           title: `PO Awaiting Finance Approval: ${effectivePoNumber} (AED ${poCalculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
           message: `${newPo.preparedBy || 'Murshid'} created PO ${effectivePoNumber} for ${newPo.supplier} totaling AED ${poCalculatedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Finance Controller review and approval is required before PO issuance.`,
@@ -8096,11 +8096,12 @@ function PurchasePageInner() {
                   }
                   window.dispatchEvent(new Event('crm_purchase_orders_updated'));
 
-                  // Notify Creator (Murshid) upon decision
+                  // Notify Creator upon decision
                   const isApproved = updatedPoObj.approval === 'Approved';
-                  const approverTitle = updatedPoObj.approvedByName ? `${updatedPoObj.approvedByName} (${updatedPoObj.approvedByDesignation || 'Executive'})` : 'Executive Management';
+                  const approverTitle = updatedPoObj.approvedByName ? `${updatedPoObj.approvedByName} (${updatedPoObj.approvedByDesignation || 'Finance Controller'})` : 'Finance Controller (Hamdan)';
+                  const targetCreator = (updatedPoObj.preparedBy || 'Murshid').trim();
                   notificationService.addLocalNotification({
-                    recipientId: 'murshid',
+                    recipientId: targetCreator.toLowerCase(),
                     recipientRole: 'purchase_manager',
                     title: isApproved ? `✓ PO Approved: ${updatedPoObj.poNumber}` : `❌ PO Rejected: ${updatedPoObj.poNumber}`,
                     message: isApproved
@@ -8110,6 +8111,19 @@ function PurchasePageInner() {
                     linkUrl: `/purchase?tab=po&poId=${updatedPoObj.id}`,
                     metadata: { poId: updatedPoObj.id, poNumber: updatedPoObj.poNumber, status: updatedPoObj.approval },
                   });
+                  if (targetCreator.toLowerCase() !== 'murshid') {
+                    notificationService.addLocalNotification({
+                      recipientId: 'murshid',
+                      recipientRole: 'purchase_manager',
+                      title: isApproved ? `✓ PO Approved: ${updatedPoObj.poNumber}` : `❌ PO Rejected: ${updatedPoObj.poNumber}`,
+                      message: isApproved
+                        ? `Purchase Order ${updatedPoObj.poNumber} for ${updatedPoObj.supplier} (AED ${Number(updatedPoObj.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) created by ${targetCreator} has been authorized by ${approverTitle}.`
+                        : `Purchase Order ${updatedPoObj.poNumber} for ${updatedPoObj.supplier} has been rejected by ${approverTitle}.`,
+                      type: 'approval',
+                      linkUrl: `/purchase?tab=po&poId=${updatedPoObj.id}`,
+                      metadata: { poId: updatedPoObj.id, poNumber: updatedPoObj.poNumber, status: updatedPoObj.approval },
+                    });
+                  }
                 }}
               />
             )}

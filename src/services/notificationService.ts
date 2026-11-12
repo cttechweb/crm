@@ -158,9 +158,29 @@ export const notificationService = {
         const normalizedDept = department.toLowerCase();
         const normalizedUserId = userId.toLowerCase();
         const normalizedUserName = userName.toLowerCase();
+        const userPosition = (user?.position || '').toLowerCase();
+        const userDesignation = (user?.designation || '').toLowerCase();
         const isAdmin = normalizedRole.includes('admin') || normalizedRole === 'super_admin';
+
+        const isFinanceController =
+          normalizedUserName === 'hamdan' ||
+          userPosition.includes('finance') ||
+          userDesignation.includes('finance') ||
+          userPosition.includes('controller') ||
+          userDesignation.includes('controller') ||
+          normalizedDept.includes('finance') ||
+          normalizedRole.includes('finance');
+
+        const isCoo =
+          normalizedUserName === 'coo' ||
+          userPosition.includes('coo') ||
+          userDesignation.includes('coo') ||
+          userPosition.includes('chief operating officer') ||
+          userDesignation.includes('chief operating officer') ||
+          normalizedRole === 'coo';
+
         const isSalesManager =
-          (normalizedRole.includes('manager') && (normalizedDept.includes('sales') || (user?.position || '').toLowerCase().includes('sales'))) ||
+          (normalizedRole.includes('manager') && (normalizedDept.includes('sales') || userPosition.includes('sales') || userDesignation.includes('sales'))) ||
           normalizedRole === 'sales_manager' ||
           normalizedRole === 'manager' ||
           normalizedUserName === 'arafath';
@@ -185,7 +205,15 @@ export const notificationService = {
             (normalizedDept && (nRecRole === normalizedDept || nRecRole.includes(normalizedDept) || normalizedDept.includes(nRecRole))) ||
             (isSalesManager && (nRecRole === 'sales_manager' || nRecRole === 'manager' || nRecRole.includes('sales')));
 
-          return Boolean(matchesUser || matchesRole);
+          const matchesFinance =
+            isFinanceController &&
+            (nRecRole.includes('finance') || nRecRole.includes('controller') || nRecId === 'hamdan' || nRecId === 'finance_controller');
+
+          const matchesCoo =
+            isCoo &&
+            (nRecRole.includes('coo') || nRecId.includes('coo'));
+
+          return Boolean(matchesUser || matchesRole || matchesFinance || matchesCoo);
         });
 
         // Strict newest-first chronological sort
@@ -210,10 +238,29 @@ export const notificationService = {
           const normalizedDept = department.toLowerCase();
           const normalizedUserId = userId.toLowerCase();
           const normalizedUserName = userName.toLowerCase();
+          const userPosition = (user?.position || '').toLowerCase();
+          const userDesignation = (user?.designation || '').toLowerCase();
           const isAdmin = normalizedRole.includes('admin') || normalizedRole === 'super_admin';
 
+          const isFinanceController =
+            normalizedUserName === 'hamdan' ||
+            userPosition.includes('finance') ||
+            userDesignation.includes('finance') ||
+            userPosition.includes('controller') ||
+            userDesignation.includes('controller') ||
+            normalizedDept.includes('finance') ||
+            normalizedRole.includes('finance');
+
+          const isCoo =
+            normalizedUserName === 'coo' ||
+            userPosition.includes('coo') ||
+            userDesignation.includes('coo') ||
+            userPosition.includes('chief operating officer') ||
+            userDesignation.includes('chief operating officer') ||
+            normalizedRole === 'coo';
+
           const isSalesManager =
-            (normalizedRole.includes('manager') && (normalizedDept.includes('sales') || (user?.position || '').toLowerCase().includes('sales'))) ||
+            (normalizedRole.includes('manager') && (normalizedDept.includes('sales') || userPosition.includes('sales') || userDesignation.includes('sales'))) ||
             normalizedRole === 'sales_manager' ||
             normalizedRole === 'manager' ||
             normalizedUserName === 'arafath';
@@ -238,7 +285,15 @@ export const notificationService = {
               (normalizedDept && (nRecRole === normalizedDept || nRecRole.includes(normalizedDept) || normalizedDept.includes(nRecRole))) ||
               (isSalesManager && (nRecRole === 'sales_manager' || nRecRole === 'manager' || nRecRole.includes('sales')));
 
-            return Boolean(matchesUser || matchesRole);
+            const matchesFinance =
+              isFinanceController &&
+              (nRecRole.includes('finance') || nRecRole.includes('controller') || nRecId === 'hamdan' || nRecId === 'finance_controller');
+
+            const matchesCoo =
+              isCoo &&
+              (nRecRole.includes('coo') || nRecId.includes('coo'));
+
+            return Boolean(matchesUser || matchesRole || matchesFinance || matchesCoo);
           });
 
           // Strict newest-first chronological sort
