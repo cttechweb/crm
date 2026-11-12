@@ -43,6 +43,7 @@ import {
   mockReceipts,
   mockDeliveryNotes,
   getEmployeePhoto,
+  baselinePurchaseOrders,
 } from '@/data/mockEnterpriseData';
 import { authMockService } from '@/services/authMockService';
 import { customerApiService } from '@/services/customerApiService';
@@ -1060,12 +1061,15 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         if (storedPOs) {
           try {
             const parsed = JSON.parse(storedPOs);
-            setPurchaseOrders(Array.isArray(parsed) ? parsed : []);
+            setPurchaseOrders(Array.isArray(parsed) && parsed.length > 0 ? parsed : baselinePurchaseOrders);
           } catch {
-            setPurchaseOrders([]);
+            setPurchaseOrders(baselinePurchaseOrders);
           }
         } else {
-          setPurchaseOrders([]);
+          setPurchaseOrders(baselinePurchaseOrders);
+          try {
+            localStorage.setItem('crm_purchase_orders', JSON.stringify(baselinePurchaseOrders));
+          } catch {}
         }
 
         purchaseOrderApiService

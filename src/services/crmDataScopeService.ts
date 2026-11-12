@@ -46,6 +46,9 @@ export function getDataScopeLevel(user?: UserContext | null): DataScopeLevel {
   const role = normalizeIdentifier(user.role);
   const profile = normalizeIdentifier(user.profileType);
   const explicitScope = normalizeIdentifier(user.dataScope);
+  const desig = normalizeIdentifier(user.designation);
+  const dept = normalizeIdentifier(user.department);
+  const name = normalizeIdentifier(user.name);
 
   if (explicitScope === 'all' || explicitScope === 'company') {
     return 'COMPANY';
@@ -56,6 +59,23 @@ export function getDataScopeLevel(user?: UserContext | null): DataScopeLevel {
   }
 
   if (role === 'admin' || user.isAdmin || profile.includes('admin')) {
+    return 'COMPANY';
+  }
+
+  // Executive and Financial governance roles have organization-wide visibility
+  if (
+    role === 'finance_controller' ||
+    role === 'finance_manager' ||
+    role === 'coo' ||
+    role === 'ceo' ||
+    desig.includes('controller') ||
+    desig.includes('finance') ||
+    profile.includes('controller') ||
+    dept.includes('finance') ||
+    name === 'hamdan' ||
+    name === 'coo' ||
+    name === 'ceo'
+  ) {
     return 'COMPANY';
   }
 

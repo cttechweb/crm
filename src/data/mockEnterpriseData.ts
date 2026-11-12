@@ -15,6 +15,7 @@ import {
   CrmDeliveryNote,
   CrmCezconStock,
   CrmStockTransfer,
+  CrmPurchaseOrder,
 } from '@/types/enterprise-crm';
 
 // Clean initial live state datasets (All live data is entered and managed by users in real-time)
@@ -86,6 +87,108 @@ export const mockCezconStockItems: CrmCezconStock[] = [
 ];
 
 export const mockStockTransfers: CrmStockTransfer[] = [];
+
+// Baseline active Purchase Orders for cross-session testing and governance sign-off
+export const baselinePurchaseOrders: any[] = [
+  {
+    id: 'po_1794462645581',
+    slNo: 19,
+    poNumber: 'CTPO#2519',
+    date: '2026-11-12',
+    supplier: 'Mueller Middle East FZE',
+    amount: 19500,
+    vat: 975,
+    totalAmount: 20475,
+    total_amount: 20475,
+    approval: 'Waiting for Final Approval',
+    deliveryStatus: 'Pending',
+    paymentStatus: 'Due',
+    owner: 'Murshid',
+    preparedBy: 'Murshid',
+    requiredApprovalTier: 'FINANCE_CONTROLLER',
+    items: [
+      {
+        id: 'item_1',
+        item: 'Mitsubishi 5.0 Ton Heavy Package AC',
+        description: 'Mitsubishi 5.0 Ton Heavy Package AC',
+        code: 'MITS-50-PKG',
+        brand: 'COOLTECH',
+        unit: 'Pcs',
+        qty: 3,
+        deliveryPending: 3,
+        rate: 6500,
+        amount: 6500,
+        total: 19500,
+      },
+    ],
+  },
+  {
+    id: 'po_1794462645582',
+    slNo: 17,
+    poNumber: 'CTPO#2547',
+    date: '11-11-2026',
+    supplier: 'Danfoss Gulf FZE',
+    reference: 'CTPO#2545',
+    amount: 6500,
+    vat: 325,
+    totalAmount: 6825,
+    total_amount: 6825,
+    approval: 'Waiting for Final Approval',
+    deliveryStatus: 'Pending',
+    paymentStatus: 'Due',
+    owner: 'Murshid',
+    preparedBy: 'Murshid',
+    requiredApprovalTier: 'FINANCE_CONTROLLER',
+    items: [
+      {
+        id: 'item_1',
+        item: 'Danfoss Expansion Valves',
+        description: 'Danfoss Expansion Valves',
+        code: 'DANF-VALVE-01',
+        brand: 'Danfoss',
+        unit: 'Pcs',
+        qty: 1,
+        deliveryPending: 1,
+        rate: 6500,
+        amount: 6500,
+        total: 6500,
+      },
+    ],
+  },
+  {
+    id: 'po_1794462645583',
+    slNo: 16,
+    poNumber: 'CTPO#2516',
+    date: '2026-11-11',
+    supplier: 'Mueller Middle East FZE',
+    amount: 19500,
+    vat: 975,
+    totalAmount: 20475,
+    total_amount: 20475,
+    approval: 'Approved',
+    deliveryStatus: 'Pending',
+    paymentStatus: 'Due',
+    owner: 'Murshid',
+    preparedBy: 'Murshid',
+    requiredApprovalTier: 'FINANCE_CONTROLLER',
+    items: [
+      {
+        id: 'item_1',
+        item: 'Mueller Copper Pipes',
+        description: 'Mueller Copper Pipes',
+        code: 'MUEL-COP-01',
+        brand: 'Mueller',
+        unit: 'Pcs',
+        qty: 3,
+        deliveryPending: 3,
+        rate: 6500,
+        amount: 6500,
+        total: 19500,
+      },
+    ],
+  },
+];
+export const mockPurchaseOrders = baselinePurchaseOrders;
 
 // System User Directory (Dynamically populated from Cloudflare D1 via userApiService / EnterpriseCrmContext)
 export const mockUsers: CrmUser[] = [];

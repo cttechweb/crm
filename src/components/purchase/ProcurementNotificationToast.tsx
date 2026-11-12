@@ -162,7 +162,12 @@ export function ProcurementNotificationToast() {
           const list = JSON.parse(raw);
           if (Array.isArray(list)) {
             const pendingPo = list.find(
-              (p: any) => p.approval === 'Pending' || p.approval === 'Pending Approval' || !p.approval
+              (p: any) =>
+                p.approval === 'Pending' ||
+                p.approval === 'Pending Approval' ||
+                p.approval === 'Waiting for Final Approval' ||
+                String(p.approval || '').toLowerCase().includes('wait') ||
+                !p.approval
             );
             if (pendingPo) {
               const seenRaw = sessionStorage.getItem(SEEN_PO_SESSION_KEY) || '[]';

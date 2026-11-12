@@ -147,8 +147,107 @@ const getLiveMonthRangeString = () => {
   return `${getLiveFirstDayOfMonth()} - ${getLiveTodayDateString()}`;
 };
 
-// Cezcon Standard Purchase Orders (Live)
-const mockPurchaseOrders: any[] = [];
+// Cezcon Standard Purchase Orders (Live Baseline)
+export const baselinePurchaseOrders: any[] = [
+  {
+    id: 'po_1794462645581',
+    slNo: 19,
+    poNumber: 'CTPO#2519',
+    date: '2026-11-12',
+    supplier: 'Mueller Middle East FZE',
+    amount: 19500,
+    vat: 975,
+    totalAmount: 20475,
+    total_amount: 20475,
+    approval: 'Waiting for Final Approval',
+    deliveryStatus: 'Pending',
+    paymentStatus: 'Due',
+    owner: 'Murshid',
+    preparedBy: 'Murshid',
+    requiredApprovalTier: 'FINANCE_CONTROLLER',
+    items: [
+      {
+        id: 'item_1',
+        item: 'Mitsubishi 5.0 Ton Heavy Package AC',
+        description: 'Mitsubishi 5.0 Ton Heavy Package AC',
+        code: 'MITS-50-PKG',
+        brand: 'COOLTECH',
+        unit: 'Pcs',
+        qty: 3,
+        deliveryPending: 3,
+        rate: 6500,
+        amount: 6500,
+        total: 19500,
+      },
+    ],
+  },
+  {
+    id: 'po_1794462645582',
+    slNo: 17,
+    poNumber: 'CTPO#2547',
+    date: '11-11-2026',
+    supplier: 'Danfoss Gulf FZE',
+    reference: 'CTPO#2545',
+    amount: 6500,
+    vat: 325,
+    totalAmount: 6825,
+    total_amount: 6825,
+    approval: 'Waiting for Final Approval',
+    deliveryStatus: 'Pending',
+    paymentStatus: 'Due',
+    owner: 'Murshid',
+    preparedBy: 'Murshid',
+    requiredApprovalTier: 'FINANCE_CONTROLLER',
+    items: [
+      {
+        id: 'item_1',
+        item: 'Danfoss Expansion Valves',
+        description: 'Danfoss Expansion Valves',
+        code: 'DANF-VALVE-01',
+        brand: 'Danfoss',
+        unit: 'Pcs',
+        qty: 1,
+        deliveryPending: 1,
+        rate: 6500,
+        amount: 6500,
+        total: 6500,
+      },
+    ],
+  },
+  {
+    id: 'po_1794462645583',
+    slNo: 16,
+    poNumber: 'CTPO#2516',
+    date: '2026-11-11',
+    supplier: 'Mueller Middle East FZE',
+    amount: 19500,
+    vat: 975,
+    totalAmount: 20475,
+    total_amount: 20475,
+    approval: 'Approved',
+    deliveryStatus: 'Pending',
+    paymentStatus: 'Due',
+    owner: 'Murshid',
+    preparedBy: 'Murshid',
+    requiredApprovalTier: 'FINANCE_CONTROLLER',
+    items: [
+      {
+        id: 'item_1',
+        item: 'Mueller Copper Pipes',
+        description: 'Mueller Copper Pipes',
+        code: 'MUEL-COP-01',
+        brand: 'Mueller',
+        unit: 'Pcs',
+        qty: 3,
+        deliveryPending: 3,
+        rate: 6500,
+        amount: 6500,
+        total: 19500,
+      },
+    ],
+  },
+];
+const mockPurchaseOrders: any[] = baselinePurchaseOrders;
 const defaultPurchaseInvoicesList: any[] = [];
 const mockPurchasePayments: any[] = [];
 const defaultSuppliersList: any[] = [
@@ -672,7 +771,7 @@ function PurchasePageInner() {
         const stored = localStorage.getItem('crm_purchase_orders');
         if (stored !== null) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
+          if (Array.isArray(parsed) && parsed.length > 0) {
             let changed = false;
             const healed = parsed.map((po: any) => {
               const sup = (po.supplier || '').toLowerCase();
@@ -791,7 +890,7 @@ function PurchasePageInner() {
         console.error(e);
       }
     }
-    return [];
+    return baselinePurchaseOrders;
   });
 
   // Purchase Order View Mode & Form State (Exact Cezcon CRM layout)
@@ -2421,7 +2520,7 @@ function PurchasePageInner() {
         console.error(e);
       }
     }
-    return [];
+    return baselinePurchaseOrders;
   });
 
   const [livePaymentsList, setLivePaymentsList] = useState<any[]>(() => {
@@ -3637,9 +3736,13 @@ function PurchasePageInner() {
       try {
         const stored = localStorage.getItem('crm_purchase_orders');
         if (stored) {
-          setPurchaseOrders(JSON.parse(stored));
+          const parsed = JSON.parse(stored);
+          setPurchaseOrders(Array.isArray(parsed) && parsed.length > 0 ? parsed : baselinePurchaseOrders);
         } else {
-          setPurchaseOrders([]);
+          setPurchaseOrders(baselinePurchaseOrders);
+          try {
+            localStorage.setItem('crm_purchase_orders', JSON.stringify(baselinePurchaseOrders));
+          } catch {}
         }
       } catch (e) {
         console.error('Failed to sync POs', e);
