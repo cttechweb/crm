@@ -13,6 +13,7 @@ export interface ProcurementNotificationPayload {
   supplier: string;
   amount: number;
   preparedBy: string;
+  linkedOrder?: string;
   approvedByName?: string;
   approvedByDesignation?: string;
   timestamp: string;
@@ -253,6 +254,11 @@ export function ProcurementNotificationToast() {
           </h4>
 
           <div className="text-[11px] text-slate-600 mt-1 space-y-0.5 leading-snug">
+            {activeToast.linkedOrder && (
+              <p className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-medium inline-block mb-0.5">
+                Order: <strong className="font-bold">{activeToast.linkedOrder}</strong>
+              </p>
+            )}
             <p className="font-semibold text-slate-800">
               Supplier: <span className="font-bold text-slate-900">{activeToast.supplier}</span>
             </p>
@@ -294,3 +300,4 @@ export function ProcurementNotificationToast() {
     </div>
   );
 }
+

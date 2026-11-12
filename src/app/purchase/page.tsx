@@ -2148,6 +2148,11 @@ function PurchasePageInner() {
       }
 
       // Live Instant Screen Popup for Hamdan / COO / CEO
+      const linkedOrderRef =
+        (poFormData.opportunityOrder && poFormData.opportunityOrder !== 'Select Opportunity/Order'
+          ? poFormData.opportunityOrder
+          : (activeMsrfObj as any)?.orderNumber || (activeMsrfObj as any)?.salesOrderId || (activeMsrfObj?.projectName ? `${activeMsrfObj.projectName}` : '')) || 'CTSO#3915';
+
       dispatchProcurementPopup({
         id: `popup_awaiting_${newPo.id || Date.now()}`,
         type: 'po_awaiting_approval',
@@ -2156,6 +2161,7 @@ function PurchasePageInner() {
         supplier: newPo.supplier || 'Vendor',
         amount: poCalculatedTotal,
         preparedBy: newPo.preparedBy || 'Murshid',
+        linkedOrder: linkedOrderRef,
         timestamp: new Date().toISOString(),
       });
 
@@ -8098,13 +8104,21 @@ function PurchasePageInner() {
                 onSuccess={(updatedOrder) => {
                   const updatedPoObj = { ...updatedOrder, approval: updatedOrder.approval || 'Approved' };
                   setPurchaseOrders((prev) => {
-                    const list = prev.map((p) => (p.id === updatedOrder.id ? { ...p, ...updatedPoObj } : p));
+                    const list = prev.map((p) =>
+                      (p.id === updatedOrder.id || (p.poNumber && updatedOrder.poNumber && p.poNumber === updatedOrder.poNumber))
+                        ? { ...p, ...updatedPoObj }
+                        : p
+                    );
                     try {
                       localStorage.setItem('crm_purchase_orders', JSON.stringify(list));
                     } catch {}
                     return list;
                   });
-                  if (viewingPo && viewingPo.id === updatedOrder.id) {
+                  if (
+                    viewingPo &&
+                    (viewingPo.id === updatedOrder.id ||
+                      (viewingPo.poNumber && updatedOrder.poNumber && viewingPo.poNumber === updatedOrder.poNumber))
+                  ) {
                     setViewingPo((prev: any) => ({ ...prev, ...updatedPoObj }));
                   }
                   window.dispatchEvent(new Event('crm_purchase_orders_updated'));
@@ -8149,6 +8163,7 @@ function PurchasePageInner() {
                     preparedBy: targetCreator,
                     approvedByName: updatedPoObj.approvedByName || 'Hamdan',
                     approvedByDesignation: updatedPoObj.approvedByDesignation || 'Finance Controller',
+                    linkedOrder: (updatedPoObj as any).salesOrderId || (updatedPoObj as any).opportunityOrder || (updatedPoObj as any).reference || undefined,
                     timestamp: new Date().toISOString(),
                   });
                 }}
