@@ -51,9 +51,19 @@ function ChatContent() {
     try {
       let list = await chatApiService.getConversations();
 
-      // If URL specifies a conversation (e.g. ?c=conv_dm_...), ensure it is present in the list
+      // If URL specifies a conversation (e.g. ?c=conv_dm_... or ?c=conv_...), ensure it is present in the list
       if (conversationParam) {
         let matched = list.find((c) => c.id === conversationParam);
+        if (!matched) {
+          try {
+            const fetched = await chatApiService.getConversation(conversationParam);
+            if (fetched) {
+              matched = fetched;
+              list = [fetched, ...list];
+            }
+          } catch {}
+        }
+
         if (!matched && conversationParam.startsWith('conv_dm_')) {
           // Synthesize DM conversation object from colleagues directory
           const parts = conversationParam.replace('conv_dm_', '').split('_');
@@ -63,7 +73,12 @@ function ChatContent() {
           const allColleagues = getAllCrmColleagues();
           const otherUser = allColleagues.find((c) => {
             const clean = c.id.replace(/^usr_/, '');
-            return clean === otherId || clean === parts[0] || clean === parts[1];
+            return (
+              clean === otherId ||
+              clean === parts[0] ||
+              clean === parts[1] ||
+              (otherId.toLowerCase().includes('hamdan') && c.id.toLowerCase().includes('hamdan'))
+            );
           });
           if (otherUser) {
             matched = {

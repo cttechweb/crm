@@ -119,6 +119,9 @@ export function NewConversationModal({
       const res = await chatApiService.createConversation({
         type: 'direct',
         target_user_id: user.id,
+        target_user_name: user.name,
+        target_user_role: user.role,
+        target_user_email: user.email,
       });
       onConversationCreated(res.conversation);
       onClose();

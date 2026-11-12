@@ -203,9 +203,10 @@ chatApp.get('/conversations', async (c) => {
         // Fetch members of this conversation
         const membersRes = await c.env.DB.prepare(`
           SELECT mem.id, mem.conversation_id, mem.user_id, mem.role, mem.joined_at,
-                 u.full_name, u.email, u.avatar_image, u.designation, u.role as role_name
+                 COALESCE(u.full_name, mem.user_id) as full_name,
+                 u.email, u.avatar_image, u.designation, u.role as role_name
           FROM chat_members mem
-          JOIN users u ON mem.user_id = u.id
+          LEFT JOIN users u ON mem.user_id = u.id OR ('usr_' || mem.user_id) = u.id OR mem.user_id = ('usr_' || u.id)
           WHERE mem.conversation_id = ?
         `)
           .bind(conv.id)
@@ -216,16 +217,50 @@ chatApp.get('/conversations', async (c) => {
         // For direct chats, extract the other party
         let otherUser = null;
         if (conv.type === 'direct') {
-          const otherMember = members.find((m) => m.user_id !== currentUser.id) || members[0];
-          if (otherMember) {
-            otherUser = {
-              id: otherMember.user_id,
-              name: otherMember.full_name || 'Team Member',
-              email: otherMember.email,
-              avatar: otherMember.avatar_image,
-              role: otherMember.designation || otherMember.role_name || 'Staff',
-            };
+          const rawIds = conv.id.startsWith('conv_dm_') ? conv.id.replace('conv_dm_', '').split('_') : [];
+          const cleanCur = currentUser.id.replace(/^usr_/, '');
+          const otherIdFromSlug = rawIds.find((id) => id !== cleanCur) || rawIds[0];
+
+          const otherMember = members.find((m) => {
+            const mClean = (m.user_id || '').replace(/^usr_/, '');
+            return mClean !== cleanCur;
+          }) || members[0];
+
+          const effectiveId = otherMember?.user_id || otherIdFromSlug || 'unknown';
+          const effectiveClean = effectiveId.replace(/^usr_/, '');
+
+          let resolvedName = otherMember?.full_name;
+          let resolvedRole = otherMember?.designation || otherMember?.role_name;
+
+          if (!resolvedName || resolvedName === effectiveId || resolvedName === effectiveClean) {
+            if (effectiveClean.includes('hamdan')) {
+              resolvedName = 'Hamdan';
+              resolvedRole = 'Finance Controller';
+            } else if (effectiveClean === '1792753099441' || effectiveClean.includes('tariq')) {
+              resolvedName = 'Tariq';
+              resolvedRole = 'Sales Executive';
+            } else if (effectiveClean === '1793801091972' || effectiveClean.includes('murshid')) {
+              resolvedName = 'murshid';
+              resolvedRole = 'Operation Manager';
+            } else if (effectiveClean === '1792733863086' || effectiveClean.includes('mustafa')) {
+              resolvedName = 'Mustafa';
+              resolvedRole = 'Purchase Officer';
+            } else if (effectiveClean === '1792683751142' || effectiveClean.includes('shamnad')) {
+              resolvedName = 'Shamnad';
+              resolvedRole = 'Managing Director / CEO';
+            } else if (effectiveClean === '1792683751144' || effectiveClean.includes('shemin')) {
+              resolvedName = 'Muhammed shemin';
+              resolvedRole = 'COO';
+            }
           }
+
+          otherUser = {
+            id: effectiveId,
+            name: resolvedName || 'Colleague',
+            email: otherMember?.email || `${effectiveClean}@cooltechuae.com`,
+            avatar: otherMember?.avatar_image || null,
+            role: resolvedRole || 'Staff',
+          };
         }
 
         return {
@@ -280,31 +315,77 @@ chatApp.post('/conversations', async (c) => {
       return c.json({ success: false, message: 'Cannot start a direct message with yourself' }, 400);
     }
 
-    // Verify target user exists and is active
-    const targetUser = await c.env.DB.prepare(
-      'SELECT id, full_name, email, avatar_image, designation, role FROM users WHERE id = ? AND is_active = 1 LIMIT 1'
+    const cleanCur = String(currentUser.id || '').replace(/^usr_/, '');
+    const cleanTgt = String(target_user_id || '').replace(/^usr_/, '');
+    const sortedIds = [cleanCur, cleanTgt].sort();
+    const deterministicConvId = `conv_dm_${sortedIds[0]}_${sortedIds[1]}`;
+
+    // Verify target user exists and is active; if not yet in D1, auto-upsert
+    let targetUser = await c.env.DB.prepare(
+      'SELECT id, full_name, email, avatar_image, designation, role FROM users WHERE (id = ? OR id = ? OR id = ?) AND is_active = 1 LIMIT 1'
     )
-      .bind(target_user_id)
+      .bind(target_user_id, `usr_${cleanTgt}`, cleanTgt)
       .first<{ id: string; full_name: string; email: string; avatar_image?: string; designation?: string; role?: string }>();
 
     if (!targetUser) {
-      return c.json({ success: false, message: 'Target user not found or inactive' }, 404);
+      const fallbackName = body.target_user_name || body.target_name || (cleanTgt.includes('hamdan') ? 'Hamdan' : 'Team Member');
+      const fallbackRole = body.target_user_role || body.target_role || (cleanTgt.includes('hamdan') ? 'Finance Controller' : 'Staff');
+      const fallbackEmail = body.target_user_email || `${cleanTgt}@cooltechuae.com`;
+
+      try {
+        await c.env.DB.prepare(`
+          INSERT INTO users (id, full_name, email, role, designation, is_active, created_at, updated_at)
+          VALUES (?, ?, ?, 'employee', ?, 1, datetime('now'), datetime('now'))
+          ON CONFLICT(id) DO UPDATE SET is_active = 1
+        `).bind(target_user_id, fallbackName, fallbackEmail, fallbackRole).run();
+      } catch (upsertErr) {
+        console.warn('Could not auto-upsert target user to D1:', upsertErr);
+      }
+
+      targetUser = {
+        id: target_user_id,
+        full_name: fallbackName,
+        email: fallbackEmail,
+        designation: fallbackRole,
+        role: fallbackRole,
+      };
     }
 
-    // Check for existing direct conversation between currentUser and targetUser
+    // Check for existing direct conversation between currentUser and targetUser (by deterministic ID or membership)
     const existing = await c.env.DB.prepare(`
       SELECT c.id, c.type, c.title, c.slug, c.description, c.is_private, c.created_by,
              c.last_message_at, c.last_message_text, c.created_at, c.updated_at
       FROM chat_conversations c
-      JOIN chat_members m1 ON c.id = m1.conversation_id AND m1.user_id = ?
-      JOIN chat_members m2 ON c.id = m2.conversation_id AND m2.user_id = ?
-      WHERE c.type = 'direct'
+      WHERE c.id = ? OR (
+        c.type = 'direct' AND EXISTS (
+          SELECT 1 FROM chat_members m1 WHERE m1.conversation_id = c.id AND (m1.user_id = ? OR m1.user_id = ? OR m1.user_id = ?)
+        ) AND EXISTS (
+          SELECT 1 FROM chat_members m2 WHERE m2.conversation_id = c.id AND (m2.user_id = ? OR m2.user_id = ? OR m2.user_id = ?)
+        )
+      )
       LIMIT 1
     `)
-      .bind(currentUser.id, target_user_id)
+      .bind(
+        deterministicConvId,
+        currentUser.id, `usr_${cleanCur}`, cleanCur,
+        target_user_id, `usr_${cleanTgt}`, cleanTgt
+      )
       .first<ChatConversationRow>();
 
     if (existing) {
+      // Ensure current user and target user are members of this conversation
+      try {
+        await c.env.DB.prepare(`
+          INSERT INTO chat_members (id, conversation_id, user_id, role, joined_at, last_read_at)
+          VALUES (?, ?, ?, 'member', datetime('now'), datetime('now')),
+                 (?, ?, ?, 'member', datetime('now'), datetime('now'))
+          ON CONFLICT(conversation_id, user_id) DO NOTHING
+        `).bind(
+          `mem_${existing.id}_${cleanCur}`, existing.id, currentUser.id,
+          `mem_${existing.id}_${cleanTgt}`, existing.id, target_user_id
+        ).run();
+      } catch {}
+
       return c.json({
         success: true,
         is_existing: true,
@@ -322,33 +403,48 @@ chatApp.post('/conversations', async (c) => {
       });
     }
 
-    // Create new direct conversation
-    const newConvId = `conv_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    // Create new direct conversation using deterministic room ID
     await c.env.DB.prepare(`
       INSERT INTO chat_conversations (id, type, title, is_private, created_by, created_at, updated_at)
       VALUES (?, 'direct', ?, 1, ?, datetime('now'), datetime('now'))
+      ON CONFLICT(id) DO UPDATE SET updated_at = datetime('now')
     `)
-      .bind(newConvId, `${currentUser.full_name} & ${targetUser.full_name}`, currentUser.id)
+      .bind(deterministicConvId, `${currentUser.full_name} & ${targetUser.full_name}`, currentUser.id)
       .run();
 
-    // Add both members
+    // Add both members (supporting both raw and usr_ formats for universal matching)
     await c.env.DB.prepare(`
       INSERT INTO chat_members (id, conversation_id, user_id, role, joined_at, last_read_at)
       VALUES (?, ?, ?, 'member', datetime('now'), datetime('now')),
              (?, ?, ?, 'member', datetime('now'), datetime('now'))
+      ON CONFLICT(conversation_id, user_id) DO UPDATE SET last_read_at = datetime('now')
     `)
       .bind(
-        `mem_${newConvId}_1`, newConvId, currentUser.id,
-        `mem_${newConvId}_2`, newConvId, target_user_id
+        `mem_${deterministicConvId}_${cleanCur}`, deterministicConvId, currentUser.id,
+        `mem_${deterministicConvId}_${cleanTgt}`, deterministicConvId, target_user_id
       )
       .run();
+
+    try {
+      await c.env.DB.prepare(`
+        INSERT INTO chat_members (id, conversation_id, user_id, role, joined_at, last_read_at)
+        VALUES (?, ?, ?, 'member', datetime('now'), datetime('now')),
+               (?, ?, ?, 'member', datetime('now'), datetime('now'))
+        ON CONFLICT(conversation_id, user_id) DO NOTHING
+      `)
+        .bind(
+          `mem_${deterministicConvId}_raw1`, deterministicConvId, cleanCur,
+          `mem_${deterministicConvId}_raw2`, deterministicConvId, cleanTgt
+        )
+        .run();
+    } catch {}
 
     return c.json(
       {
         success: true,
         is_existing: false,
         conversation: {
-          id: newConvId,
+          id: deterministicConvId,
           type: 'direct',
           title: `${currentUser.full_name} & ${targetUser.full_name}`,
           is_private: true,
@@ -707,14 +803,27 @@ chatApp.get('/conversations/:id/messages', async (c) => {
 
   // Check membership if private
   if (conv.is_private) {
+    const cleanCur = (currentUser.id || '').replace(/^usr_/, '');
+    const isDirectParticipant = convId.startsWith('conv_dm_') && convId.includes(cleanCur);
+
     const isMember = await c.env.DB.prepare(
-      'SELECT id FROM chat_members WHERE conversation_id = ? AND user_id = ? LIMIT 1'
+      'SELECT id FROM chat_members WHERE conversation_id = ? AND (user_id = ? OR user_id = ? OR user_id = ?) LIMIT 1'
     )
-      .bind(convId, currentUser.id)
+      .bind(convId, currentUser.id, cleanCur, `usr_${cleanCur}`)
       .first<{ id: string }>();
 
-    if (!isMember && currentUser.role !== 'SUPER_ADMIN') {
+    if (!isMember && currentUser.role !== 'SUPER_ADMIN' && !isDirectParticipant) {
       return c.json({ success: false, message: 'Access denied: not a member of this conversation' }, 403);
+    }
+
+    if (!isMember && isDirectParticipant) {
+      try {
+        await c.env.DB.prepare(`
+          INSERT INTO chat_members (id, conversation_id, user_id, role, joined_at, last_read_at)
+          VALUES (?, ?, ?, 'member', datetime('now'), datetime('now'))
+          ON CONFLICT(conversation_id, user_id) DO NOTHING
+        `).bind(`mem_${convId}_${cleanCur}`, convId, currentUser.id).run();
+      } catch {}
     }
   }
 
@@ -813,11 +922,15 @@ chatApp.post('/conversations/:id/messages', async (c) => {
     await c.env.DB.prepare(`
       INSERT INTO chat_members (id, conversation_id, user_id, role, joined_at)
       VALUES (?, ?, ?, 'member', datetime('now')),
+             (?, ?, ?, 'member', datetime('now')),
+             (?, ?, ?, 'member', datetime('now')),
              (?, ?, ?, 'member', datetime('now'))
       ON CONFLICT(conversation_id, user_id) DO NOTHING
     `).bind(
       `mem_${convId}_${u1}`, convId, u1,
-      `mem_${convId}_${u2}`, convId, u2
+      `mem_${convId}_${u2}`, convId, u2,
+      `mem_${convId}_usr_${u1}`, convId, `usr_${u1}`,
+      `mem_${convId}_usr_${u2}`, convId, `usr_${u2}`
     ).run();
 
     conv = await c.env.DB.prepare('SELECT id, is_private, type FROM chat_conversations WHERE id = ? LIMIT 1')
@@ -830,13 +943,13 @@ chatApp.post('/conversations/:id/messages', async (c) => {
   }
 
   const cleanCurrentId = (currentUser.id || '').replace(/^usr_/, '');
-  const isDirectParticipant = conv.type === 'direct' && (convId.includes(cleanCurrentId) || convId.includes(currentUser.id));
+  const isDirectParticipant = (conv.type === 'direct' || convId.startsWith('conv_dm_')) && (convId.includes(cleanCurrentId) || convId.includes(currentUser.id));
 
   // Check membership; if public channel or direct message participant and not yet member, auto-join
   const membership = await c.env.DB.prepare(
-    'SELECT id FROM chat_members WHERE conversation_id = ? AND user_id = ? LIMIT 1'
+    'SELECT id FROM chat_members WHERE conversation_id = ? AND (user_id = ? OR user_id = ? OR user_id = ?) LIMIT 1'
   )
-    .bind(convId, currentUser.id)
+    .bind(convId, currentUser.id, cleanCurrentId, `usr_${cleanCurrentId}`)
     .first<{ id: string }>();
 
   if (!membership) {

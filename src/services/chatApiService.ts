@@ -80,6 +80,15 @@ const DEFAULT_COLLEAGUES: ChatUser[] = [
     is_active: 1,
   },
   {
+    id: 'usr_hamdan_fc',
+    name: 'Hamdan',
+    email: 'hamdan@cooltechuae.com',
+    role: 'Finance Controller',
+    department: 'Accounts & Finance',
+    avatar: null,
+    is_active: 1,
+  },
+  {
     id: 'usr_1793801091972',
     name: 'murshid',
     email: 'murshid@cooltechuae.com',
@@ -837,25 +846,61 @@ export const chatApiService = {
   async createConversation(data: {
     type: 'direct' | 'group' | 'channel';
     target_user_id?: string;
+    target_user_name?: string;
+    target_user_role?: string;
+    target_user_email?: string;
     title?: string;
     slug?: string;
     description?: string;
     is_private?: boolean | number;
     member_ids?: string[];
   }): Promise<{ conversation: ChatConversation; isExisting?: boolean }> {
+    // Resolve target user details upfront if direct message
+    let otherUser: ChatUser | null = null;
+    if (data.type === 'direct' && data.target_user_id) {
+      const allUsers = await this.getAvailableUsers();
+      const cleanTarget = String(data.target_user_id).replace(/^usr_/, '');
+      otherUser =
+        allUsers.find(
+          (u) => u.id === data.target_user_id || u.id.replace(/^usr_/, '') === cleanTarget
+        ) || null;
+
+      if (!otherUser && data.target_user_name) {
+        otherUser = {
+          id: data.target_user_id,
+          name: data.target_user_name,
+          role: data.target_user_role || 'Staff',
+          email: data.target_user_email || `${cleanTarget}@cooltechuae.com`,
+          avatar: null,
+          is_active: 1,
+        };
+      }
+    }
+
+    const payload = {
+      ...data,
+      target_user_name: otherUser?.name || data.target_user_name,
+      target_user_role: otherUser?.role || data.target_user_role,
+      target_user_email: otherUser?.email || data.target_user_email,
+    };
+
     try {
       const res = await apiClient.post<{
         success: boolean;
         conversation: ChatConversation;
         is_existing?: boolean;
-      }>('/api/chat/conversations', data);
+      }>('/api/chat/conversations', payload);
 
       if (res && res.conversation) {
         const localList = getLocalStoredConversations();
-        const updated = [res.conversation, ...localList.filter((c) => c.id !== res.conversation.id)];
+        const convToSave = {
+          ...res.conversation,
+          other_user: res.conversation.other_user || otherUser,
+        };
+        const updated = [convToSave, ...localList.filter((c) => c.id !== convToSave.id)];
         saveLocalConversations(updated);
         return {
-          conversation: res.conversation,
+          conversation: convToSave,
           isExisting: res.is_existing,
         };
       }
@@ -880,17 +925,6 @@ export const chatApiService = {
       if (existing) {
         return { conversation: existing, isExisting: true };
       }
-    }
-
-    // Resolve target user details if direct message
-    let otherUser: ChatUser | null = null;
-    if (data.type === 'direct' && data.target_user_id) {
-      const allUsers = await this.getAvailableUsers();
-      const cleanTarget = String(data.target_user_id).replace(/^usr_/, '');
-      otherUser =
-        allUsers.find(
-          (u) => u.id === data.target_user_id || u.id.replace(/^usr_/, '') === cleanTarget
-        ) || null;
     }
 
     const newId =
