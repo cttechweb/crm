@@ -1639,9 +1639,12 @@ const getLinkedInventorySupplierForItem = (
         const estSubtotal = poItems.reduce((acc: number, it: any) => acc + (Number(it.total) || 0), 0);
         const estVat = estSubtotal * 0.05;
         const estTotal = estSubtotal * 1.05;
+        const isCooTier = estTotal >= 100000;
+        const requiredTier = isCooTier ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER';
 
         targetPo = {
           id: `po_${Date.now()}`,
+          slNo: 1,
           poNumber: poNum,
           date: new Date().toLocaleDateString('en-GB').replace(/\//g, '-'),
           supplier: supplierName,
@@ -1654,11 +1657,15 @@ const getLinkedInventorySupplierForItem = (
           amount: estSubtotal,
           vat: estVat,
           totalAmount: estTotal,
-          approval: 'Approved',
+          approval: 'Waiting for Final Approval',
           deliveryStatus: 'Pending',
+          paymentStatus: 'Due',
+          requiredApprovalTier: requiredTier,
           msrfId: selectedMsrf.id,
           msrfNumber: selectedMsrf.msrfNumber,
-          owner: (currentUser?.name) || 'Tariq',
+          owner: (currentUser?.name) || 'Murshid',
+          preparedBy: (currentUser?.name) || 'Murshid',
+          preparedByDesignation: (currentUser?.designation) || 'Operation Manager',
           items: poItems,
         };
       }
@@ -1667,15 +1674,54 @@ const getLinkedInventorySupplierForItem = (
         try {
           const raw = localStorage.getItem('crm_purchase_orders');
           const list = raw ? JSON.parse(raw) : [];
+          targetPo.slNo = list.length + 1;
           const updated = [targetPo, ...list.filter((p: any) => p.id !== targetPo.id && p.poNumber !== targetPo.poNumber)];
           localStorage.setItem('crm_purchase_orders', JSON.stringify(updated));
+
+          // Purge stale approvals from registry
+          const rawReg = localStorage.getItem('crm_po_approvals_registry') || '{}';
+          const reg = JSON.parse(rawReg);
+          if (targetPo.poNumber && reg[targetPo.poNumber]) delete reg[targetPo.poNumber];
+          if (targetPo.id && reg[targetPo.id]) delete reg[targetPo.id];
+          localStorage.setItem('crm_po_approvals_registry', JSON.stringify(reg));
+
           window.dispatchEvent(new Event('crm_purchase_orders_updated'));
         } catch (e) {
           console.error(e);
         }
       }
 
-      alert(`Direct Purchase Order ${targetPo.poNumber} successfully generated for ${supplierName}! It is available under Purchase Orders.`);
+      // Sync to central server store
+      try {
+        const { apiClient } = await import('@/lib/apiClient');
+        apiClient.post('/api/procurement/orders', targetPo).catch(() => {});
+      } catch {}
+
+      // Multi-Tier Procurement Approval Notifications
+      const isHighValue = Number(targetPo.totalAmount || 0) >= 100000;
+      if (isHighValue) {
+        notificationService.addLocalNotification({
+          recipientId: 'coo',
+          recipientRole: 'coo',
+          title: `🚨 High-Value PO Awaiting COO Approval: ${targetPo.poNumber} (AED ${Number(targetPo.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
+          message: `${targetPo.preparedBy || 'Murshid'} generated PO ${targetPo.poNumber} for ${targetPo.supplier} totaling AED ${Number(targetPo.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Expenditures of AED 100,000 or greater mandate Chief Operating Officer (COO) executive sign-off.`,
+          type: 'approval',
+          linkUrl: `/purchase?tab=po&poId=${targetPo.id}`,
+          metadata: { poId: targetPo.id, poNumber: targetPo.poNumber, amount: targetPo.totalAmount, tier: 'CHIEF_OPERATING_OFFICER' },
+        });
+      } else {
+        notificationService.addLocalNotification({
+          recipientId: 'hamdan',
+          recipientRole: 'finance_controller',
+          title: `PO Awaiting Finance Approval: ${targetPo.poNumber} (AED ${Number(targetPo.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`,
+          message: `${targetPo.preparedBy || 'Murshid'} generated PO ${targetPo.poNumber} for ${targetPo.supplier} totaling AED ${Number(targetPo.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Finance Controller review and authorization is required.`,
+          type: 'approval',
+          linkUrl: `/purchase?tab=po&poId=${targetPo.id}`,
+          metadata: { poId: targetPo.id, poNumber: targetPo.poNumber, amount: targetPo.totalAmount, tier: 'FINANCE_CONTROLLER' },
+        });
+      }
+
+      alert(`Direct Purchase Order ${targetPo.poNumber} successfully generated for ${supplierName}! It is awaiting Finance Controller authorization.`);
       setSelectedMsrf(null);
       await loadRequests();
       if (onNavigateToPo) {

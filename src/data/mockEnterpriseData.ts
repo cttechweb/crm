@@ -195,12 +195,21 @@ export const applyApprovalRegistry = (orders: any[]): any[] => {
   if (typeof window === 'undefined' || !Array.isArray(orders)) return orders;
   try {
     const rawRegistry = localStorage.getItem('crm_po_approvals_registry');
-    if (!rawRegistry) return orders;
-    const registry = JSON.parse(rawRegistry);
+    const registry = rawRegistry ? JSON.parse(rawRegistry) : {};
     return orders.map((o) => {
       const key = o.poNumber || o.id;
       if (key && registry[key]) {
         return { ...o, ...registry[key] };
+      }
+      // If an order claims to be Approved but has no actual approver signature,
+      // heal it to 'Waiting for Final Approval' so the Finance Controller can review and sign off!
+      if (o.approval === 'Approved' && !o.approvedByName && !o.approved_by_name) {
+        const amt = Number(o.totalAmount || o.total_amount || o.amount || 0);
+        return {
+          ...o,
+          approval: 'Waiting for Final Approval',
+          requiredApprovalTier: amt >= 100000 ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER',
+        };
       }
       return o;
     });

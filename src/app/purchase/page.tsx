@@ -224,7 +224,7 @@ export const baselinePurchaseOrders: any[] = [
     vat: 975,
     totalAmount: 20475,
     total_amount: 20475,
-    approval: 'Approved',
+    approval: 'Waiting for Final Approval',
     deliveryStatus: 'Pending',
     paymentStatus: 'Due',
     owner: 'Murshid',
@@ -8052,9 +8052,9 @@ function PurchasePageInner() {
                             </td>
                           </tr>
                         ) : (
-                          filteredPOItems.map((po) => (
+                          filteredPOItems.map((po, idx) => (
                             <tr key={po.id} className="hover:bg-blue-50/40 transition-colors">
-                              <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{po.slNo}</td>
+                              <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{po.slNo ?? po.sl_no ?? idx + 1}</td>
                               <td className="p-2.5 text-center border-r border-slate-100">
                                 {po.ownerAvatar ? (
                                   <img src={po.ownerAvatar} alt={po.owner} className="w-6 h-6 rounded-full object-cover inline-block mx-auto border border-slate-200" />
