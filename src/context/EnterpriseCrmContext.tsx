@@ -1109,14 +1109,30 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
                 deletedPoNumbers = new Set(JSON.parse(rawDel).map((s: string) => String(s).trim().toLowerCase()));
               } catch {}
 
+              // Read existing local purchase orders
+              let localExisting: any[] = [];
+              try {
+                const rawLocal = localStorage.getItem('crm_purchase_orders');
+                if (rawLocal) localExisting = JSON.parse(rawLocal);
+              } catch {}
+
               const serverNums = new Set(sanitized.map((o: any) => String(o.poNumber || o.id).trim().toLowerCase()));
+
+              // Preserve any locally created POs that haven't hit the server yet!
+              const localUnsynced = localExisting.filter((loc: any) => {
+                const num = String(loc.poNumber || '').trim().toLowerCase();
+                const id = String(loc.id || '').trim().toLowerCase();
+                if (deletedPoNumbers.has(num) || deletedPoNumbers.has(id)) return false;
+                return (!num || !serverNums.has(num)) && (!id || !serverNums.has(id));
+              });
+
               const missingBaselines = baselinePurchaseOrders.filter((b) => {
                 const num = String(b.poNumber).trim().toLowerCase();
                 const id = String(b.id).trim().toLowerCase();
                 if (deletedPoNumbers.has(num) || deletedPoNumbers.has(id)) return false;
-                return !serverNums.has(num) && !serverNums.has(id);
+                return !serverNums.has(num) && !serverNums.has(id) && !localUnsynced.some((l: any) => String(l.poNumber || l.id).toLowerCase() === num);
               });
-              const merged = [...sanitized, ...missingBaselines].filter((po) => {
+              const merged = [...sanitized, ...localUnsynced, ...missingBaselines].filter((po) => {
                 const num = String(po.poNumber || '').trim().toLowerCase();
                 const id = String(po.id || '').trim().toLowerCase();
                 return (!num || !deletedPoNumbers.has(num)) && (!id || !deletedPoNumbers.has(id));
@@ -2637,7 +2653,15 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
       ...poData,
       id: existingId || `po-${Date.now()}`,
       slNo: purchaseOrders.length + 1,
+      approval: 'Waiting for Final Approval',
     };
+    try {
+      const rawReg = localStorage.getItem('crm_po_approvals_registry') || '{}';
+      const reg = JSON.parse(rawReg);
+      if (newPo.poNumber && reg[newPo.poNumber]) delete reg[newPo.poNumber];
+      if (newPo.id && reg[newPo.id]) delete reg[newPo.id];
+      localStorage.setItem('crm_po_approvals_registry', JSON.stringify(reg));
+    } catch {}
     const updated = [newPo, ...purchaseOrders.filter((p) => p.id !== newPo.id && p.poNumber !== newPo.poNumber)];
     setPurchaseOrders(updated);
     persist('crm_purchase_orders', updated);

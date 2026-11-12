@@ -2124,6 +2124,15 @@ function PurchasePageInner() {
         quotationId: selectedAutofillQuoteId || undefined,
       };
 
+      // Clear any stale approval record from registry
+      try {
+        const rawReg = localStorage.getItem('crm_po_approvals_registry') || '{}';
+        const reg = JSON.parse(rawReg);
+        if (effectivePoNumber && reg[effectivePoNumber]) delete reg[effectivePoNumber];
+        if (newPo.id && reg[newPo.id]) delete reg[newPo.id];
+        localStorage.setItem('crm_po_approvals_registry', JSON.stringify(reg));
+      } catch {}
+
       const updated = [newPo, ...purchaseOrders.filter((p) => p.poNumber !== effectivePoNumber && p.id !== newPo.id)];
       setPurchaseOrders(updated);
       const afterSeq = computeNextPoSequence(updated);
@@ -3719,15 +3728,31 @@ function PurchasePageInner() {
             deletedPoNumbers = new Set(JSON.parse(rawDel).map((s: string) => String(s).trim().toLowerCase()));
           } catch {}
 
+          // Read existing local purchase orders
+          let localExisting: any[] = [];
+          try {
+            const rawLocal = localStorage.getItem('crm_purchase_orders');
+            if (rawLocal) localExisting = JSON.parse(rawLocal);
+          } catch {}
+
           // Ensure baseline POs (e.g. CTPO#2516) are never lost if remote list has fewer records, unless explicitly deleted
           const serverIds = new Set(sanitized.map((o: any) => String(o.poNumber || o.id).trim().toLowerCase()));
+
+          // Preserve any locally created POs that haven't hit the server yet!
+          const localUnsynced = localExisting.filter((loc: any) => {
+            const num = String(loc.poNumber || '').trim().toLowerCase();
+            const id = String(loc.id || '').trim().toLowerCase();
+            if (deletedPoNumbers.has(num) || deletedPoNumbers.has(id)) return false;
+            return (!num || !serverIds.has(num)) && (!id || !serverIds.has(id));
+          });
+
           const missingBaselines = baselinePurchaseOrders.filter((b) => {
             const num = String(b.poNumber).trim().toLowerCase();
             const id = String(b.id).trim().toLowerCase();
             if (deletedPoNumbers.has(num) || deletedPoNumbers.has(id)) return false;
-            return !serverIds.has(num) && !serverIds.has(id);
+            return !serverIds.has(num) && !serverIds.has(id) && !localUnsynced.some((l: any) => String(l.poNumber || l.id).toLowerCase() === num);
           });
-          const merged = [...sanitized, ...missingBaselines].filter((po) => {
+          const merged = [...sanitized, ...localUnsynced, ...missingBaselines].filter((po) => {
             const num = String(po.poNumber || '').trim().toLowerCase();
             const id = String(po.id || '').trim().toLowerCase();
             return (!num || !deletedPoNumbers.has(num)) && (!id || !deletedPoNumbers.has(id));
@@ -3806,6 +3831,16 @@ function PurchasePageInner() {
                 return localPo;
               });
 
+              // Add newly discovered orders from server
+              const existingKeys = new Set(prev.map((p) => String(p.poNumber || p.id).toLowerCase()));
+              const incomingNew = res.orders.filter((sPo: any) => {
+                const k1 = String(sPo.poNumber || '').toLowerCase();
+                const k2 = String(sPo.id || '').toLowerCase();
+                if (deletedPoNumbers.has(k1) || deletedPoNumbers.has(k2)) return false;
+                return (!k1 || !existingKeys.has(k1)) && (!k2 || !existingKeys.has(k2));
+              });
+              const combinedList = [...incomingNew, ...updated];
+
               if (hasNewApproval) {
                 try {
                   localStorage.setItem('crm_po_approvals_registry', JSON.stringify(regToUpdate));
@@ -3813,9 +3848,9 @@ function PurchasePageInner() {
               }
 
               try {
-                localStorage.setItem('crm_purchase_orders', JSON.stringify(updated));
+                localStorage.setItem('crm_purchase_orders', JSON.stringify(combinedList));
               } catch {}
-              return updated;
+              return combinedList;
             });
           }
         })
