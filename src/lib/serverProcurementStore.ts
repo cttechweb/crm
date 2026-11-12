@@ -11,6 +11,7 @@ export interface ProcurementApprovalRecord {
 export interface ProcurementStoreState {
   orders: any[];
   approvals: Record<string, ProcurementApprovalRecord>;
+  deletedIds: string[];
   lastUpdated: string;
 }
 
@@ -23,29 +24,43 @@ export function getProcurementStore(): ProcurementStoreState {
     g.__CRM_PROCUREMENT_STORE__ = {
       orders: initialOrders,
       approvals: {},
+      deletedIds: [],
       lastUpdated: new Date().toISOString(),
     };
+  }
+  if (!Array.isArray(g.__CRM_PROCUREMENT_STORE__.deletedIds)) {
+    g.__CRM_PROCUREMENT_STORE__.deletedIds = [];
   }
   return g.__CRM_PROCUREMENT_STORE__;
 }
 
 export function getAllOrdersWithApprovals(): any[] {
   const store = getProcurementStore();
-  return store.orders.map((po) => {
-    const key1 = po.poNumber;
-    const key2 = po.id;
-    const app = (key1 && store.approvals[key1]) || (key2 && store.approvals[key2]);
-    if (app) {
-      return {
-        ...po,
-        approval: app.approval,
-        approvedByName: app.approvedByName || po.approvedByName,
-        approvedByDesignation: app.approvedByDesignation || po.approvedByDesignation,
-        approvedAt: app.approvedAt || po.approvedAt,
-      };
-    }
-    return po;
-  });
+  const deletedSet = new Set((store.deletedIds || []).map((d) => String(d).trim().toLowerCase()));
+
+  return store.orders
+    .filter((po) => {
+      const k1 = String(po.poNumber || '').trim().toLowerCase();
+      const k2 = String(po.id || '').trim().toLowerCase();
+      if (k1 && deletedSet.has(k1)) return false;
+      if (k2 && deletedSet.has(k2)) return false;
+      return true;
+    })
+    .map((po) => {
+      const key1 = po.poNumber;
+      const key2 = po.id;
+      const app = (key1 && store.approvals[key1]) || (key2 && store.approvals[key2]);
+      if (app) {
+        return {
+          ...po,
+          approval: app.approval,
+          approvedByName: app.approvedByName || po.approvedByName,
+          approvedByDesignation: app.approvedByDesignation || po.approvedByDesignation,
+          approvedAt: app.approvedAt || po.approvedAt,
+        };
+      }
+      return po;
+    });
 }
 
 export function recordOrderApproval(payload: {
@@ -121,10 +136,46 @@ export function upsertOrderInStore(order: any) {
   store.lastUpdated = new Date().toISOString();
 }
 
+export function deleteOrderFromStore(idOrPoNumber: string): boolean {
+  const store = getProcurementStore();
+  if (!idOrPoNumber) return false;
+  const target = String(idOrPoNumber).trim();
+  const lowerTarget = target.toLowerCase();
+
+  const matched = store.orders.find(
+    (o) =>
+      String(o.id || '').trim().toLowerCase() === lowerTarget ||
+      String(o.poNumber || '').trim().toLowerCase() === lowerTarget
+  );
+
+  const idsToBlacklist = new Set<string>(store.deletedIds || []);
+  idsToBlacklist.add(target);
+  if (matched) {
+    if (matched.id) idsToBlacklist.add(String(matched.id));
+    if (matched.poNumber) idsToBlacklist.add(String(matched.poNumber));
+  }
+  store.deletedIds = Array.from(idsToBlacklist);
+
+  const beforeCount = store.orders.length;
+  store.orders = store.orders.filter(
+    (o) =>
+      String(o.id || '').trim().toLowerCase() !== lowerTarget &&
+      String(o.poNumber || '').trim().toLowerCase() !== lowerTarget
+  );
+
+  if (matched?.id) delete store.approvals[matched.id];
+  if (matched?.poNumber) delete store.approvals[matched.poNumber];
+  delete store.approvals[target];
+
+  store.lastUpdated = new Date().toISOString();
+  return store.orders.length < beforeCount;
+}
+
 export function purgeDemoProcurementData() {
   const store = getProcurementStore();
   store.orders = [];
   store.approvals = {};
+  store.deletedIds = [];
   store.lastUpdated = new Date().toISOString();
 }
 
@@ -132,5 +183,6 @@ export function resetDemoProcurementData() {
   const store = getProcurementStore();
   store.orders = baselinePurchaseOrders.map((o) => ({ ...o }));
   store.approvals = {};
+  store.deletedIds = [];
   store.lastUpdated = new Date().toISOString();
 }

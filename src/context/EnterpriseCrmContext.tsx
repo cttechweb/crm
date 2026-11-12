@@ -1105,10 +1105,25 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
                 return po;
               });
 
-              // Ensure all baseline POs (such as CTPO#2516) are preserved if missing from remote
-              const serverNums = new Set(sanitized.map((o: any) => o.poNumber || o.id));
-              const missingBaselines = baselinePurchaseOrders.filter((b) => !serverNums.has(b.poNumber) && !serverNums.has(b.id));
-              const merged = [...sanitized, ...missingBaselines];
+              // Ensure all baseline POs (such as CTPO#2516) are preserved IF not explicitly deleted
+              let deletedPoNumbers = new Set<string>();
+              try {
+                const rawDel = localStorage.getItem('crm_deleted_po_numbers') || '[]';
+                deletedPoNumbers = new Set(JSON.parse(rawDel).map((s: string) => String(s).trim().toLowerCase()));
+              } catch {}
+
+              const serverNums = new Set(sanitized.map((o: any) => String(o.poNumber || o.id).trim().toLowerCase()));
+              const missingBaselines = baselinePurchaseOrders.filter((b) => {
+                const num = String(b.poNumber).trim().toLowerCase();
+                const id = String(b.id).trim().toLowerCase();
+                if (deletedPoNumbers.has(num) || deletedPoNumbers.has(id)) return false;
+                return !serverNums.has(num) && !serverNums.has(id);
+              });
+              const merged = [...sanitized, ...missingBaselines].filter((po) => {
+                const num = String(po.poNumber || '').trim().toLowerCase();
+                const id = String(po.id || '').trim().toLowerCase();
+                return (!num || !deletedPoNumbers.has(num)) && (!id || !deletedPoNumbers.has(id));
+              });
               const finalized = applyApprovalRegistry(merged);
 
               setPurchaseOrders(finalized);

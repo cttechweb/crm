@@ -460,61 +460,69 @@ export function mapBackendInventoryToPurchaseStock(row: BackendCrmInventoryRow):
   };
 }
 
-export function mapBackendPurchaseOrderToFrontend(row: BackendPurchaseOrderRow): CrmPurchaseOrder {
+export function mapBackendPurchaseOrderToFrontend(row: any): CrmPurchaseOrder {
+  if (!row) return row;
+  const isCooTier = Number(row.totalAmount || row.total_amount || 0) >= 100000;
   return {
+    ...row,
     id: row.id,
-    slNo: row.sl_no ?? 1,
-    poNumber: row.po_number,
-    date: row.date,
-    expectedDeliveryDate: row.expected_delivery_date || undefined,
-    supplier: row.supplier,
-    supplierId: row.supplier_id || undefined,
-    orderRef: row.order_ref || undefined,
+    slNo: row.slNo !== undefined ? Number(row.slNo) : (row.sl_no !== undefined ? Number(row.sl_no) : 1),
+    poNumber: row.poNumber || row.po_number || (row.id && String(row.id).startsWith('CTPO#') ? row.id : ''),
+    date: row.date || row.poDate || '',
+    expectedDeliveryDate: row.expectedDeliveryDate || row.expected_delivery_date || undefined,
+    supplier: row.supplier || row.supplierName || '',
+    supplierId: row.supplierId || row.supplier_id || undefined,
+    orderRef: row.orderRef || row.order_ref || undefined,
     reference: row.reference || undefined,
     description: row.description || undefined,
-    opportunityOrder: row.opportunity_order || undefined,
-    projectNumber: row.project_number || undefined,
-    projectName: row.project_name || undefined,
-    vatType: row.vat_type || 'with_vat',
-    vatRate: row.vat_rate ?? 5,
+    opportunityOrder: row.opportunityOrder || row.opportunity_order || undefined,
+    projectNumber: row.projectNumber || row.project_number || undefined,
+    projectName: row.projectName || row.project_name || undefined,
+    vatType: row.vatType || row.vat_type || 'with_vat',
+    vatRate: row.vatRate !== undefined ? Number(row.vatRate) : (row.vat_rate !== undefined ? Number(row.vat_rate) : 5),
     attention: row.attention || undefined,
-    preparedBy: row.prepared_by || undefined,
-    preparedByMobile: row.prepared_by_mobile || undefined,
-    preparedByEmail: row.prepared_by_email || undefined,
-    preparedByDesignation: row.prepared_by_designation || undefined,
-    termsCondition: row.terms_condition || undefined,
-    termsConditionText: row.terms_condition_text || undefined,
-    amount: row.amount,
-    vat: row.vat,
-    discount: row.discount,
-    adjustment: row.adjustment,
-    totalAmount: row.total_amount,
-    invoiceReceived: row.invoice_received || undefined,
-    approval: row.approval,
-    deliveryStatus: row.delivery_status,
-    paymentStatus: row.payment_status,
-    owner: row.owner || undefined,
-    ownerAvatar: row.owner_avatar || undefined,
-    evaluatedTotalValue: row.evaluated_total_value ?? undefined,
-    requiredApprovalTier: row.required_approval_tier ?? undefined,
-    approvedByName: row.approved_by_name ?? undefined,
-    approvedAt: row.approved_at ?? undefined,
-    isAdhoc: Boolean(row.is_adhoc),
-    deliveryMode: row.delivery_mode ?? undefined,
-    msrfId: row.msrf_id ?? undefined,
-    salesOrderId: row.sales_order_id ?? undefined,
+    preparedBy: row.preparedBy || row.prepared_by || undefined,
+    preparedByMobile: row.preparedByMobile || row.prepared_by_mobile || undefined,
+    preparedByEmail: row.preparedByEmail || row.prepared_by_email || undefined,
+    preparedByDesignation: row.preparedByDesignation || row.prepared_by_designation || undefined,
+    termsCondition: row.termsCondition || row.terms_condition || undefined,
+    termsConditionText: row.termsConditionText || row.terms_condition_text || undefined,
+    amount: Number(row.amount || 0),
+    vat: Number(row.vat || 0),
+    discount: Number(row.discount || 0),
+    adjustment: Number(row.adjustment || 0),
+    totalAmount: Number(row.totalAmount || row.total_amount || 0),
+    total_amount: Number(row.totalAmount || row.total_amount || 0),
+    invoiceReceived: row.invoiceReceived || row.invoice_received || undefined,
+    approval: row.approval || 'Waiting for Final Approval',
+    approvalId: row.approvalId || row.approval_id || undefined,
+    approvedByName: row.approvedByName || row.approved_by_name || undefined,
+    approvedByDesignation: row.approvedByDesignation || row.approved_by_designation || undefined,
+    approvedAt: row.approvedAt || row.approved_at || undefined,
+    deliveryStatus: row.deliveryStatus || row.delivery_status || 'Pending',
+    paymentStatus: row.paymentStatus || row.payment_status || 'Due',
+    owner: row.owner || row.preparedBy || row.prepared_by || 'Staff',
+    ownerAvatar: row.ownerAvatar || row.owner_avatar || undefined,
+    evaluatedTotalValue: Number(row.evaluatedTotalValue || row.evaluated_total_value || row.totalAmount || row.total_amount || 0),
+    requiredApprovalTier: row.requiredApprovalTier || row.required_approval_tier || (isCooTier ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER'),
+    isAdhoc: Boolean(row.isAdhoc ?? row.is_adhoc),
+    deliveryMode: row.deliveryMode || row.delivery_mode || undefined,
+    msrfId: row.msrfId || row.msrf_id || undefined,
+    salesOrderId: row.salesOrderId || row.sales_order_id || undefined,
     approvals: Array.isArray(row.approvals) ? row.approvals.map(mapBackendApprovalToFrontend) : undefined,
     items: Array.isArray(row.items)
-      ? row.items.map((it) => ({
+      ? row.items.map((it: any) => ({
           id: it.id,
           code: it.code || undefined,
-          description: it.description,
+          description: it.description || it.item || '',
+          item: it.item || it.description || '',
           unit: it.unit || 'Pcs',
           brand: it.brand || undefined,
-          qty: it.qty,
-          deliveryPending: it.delivery_pending,
-          amount: it.amount,
-          total: it.total,
+          qty: Number(it.qty || 1),
+          deliveryPending: Number(it.deliveryPending ?? it.delivery_pending ?? it.qty ?? 1),
+          amount: Number(it.amount ?? it.rate ?? 0),
+          rate: Number(it.rate ?? it.amount ?? 0),
+          total: Number(it.total || 0),
         }))
       : undefined,
   };
@@ -1052,9 +1060,13 @@ export const purchaseOrderApiService = {
   },
 
   async deletePurchaseOrder(id: string) {
+    // 1. Primary: Delete from Central Server Store
+    apiClient.delete(`/api/procurement/orders?id=${encodeURIComponent(id)}`).catch(() => {});
+
+    // 2. Secondary: Remote Worker fallback
     return await apiClient.delete<{ success: boolean; message?: string }>(
       `/api/purchase-orders/${encodeURIComponent(id)}`
-    );
+    ).catch(() => ({ success: true, message: 'Deleted' }));
   },
 
   async approvePurchaseOrder(

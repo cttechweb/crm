@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getAllOrdersWithApprovals,
   upsertOrderInStore,
+  deleteOrderFromStore,
   purgeDemoProcurementData,
   resetDemoProcurementData,
   getProcurementStore,
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
       success: true,
       orders,
       total: orders.length,
+      deletedIds: store.deletedIds || [],
       lastUpdated: store.lastUpdated,
     });
   } catch (error: any) {
@@ -59,11 +61,29 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    purgeDemoProcurementData();
-    return NextResponse.json({ success: true, message: 'Procurement database cleaned successfully.' });
+    const { searchParams } = new URL(req.url);
+    const targetId = searchParams.get('id') || searchParams.get('poNumber');
+    const action = searchParams.get('action');
+
+    if (targetId) {
+      const removed = deleteOrderFromStore(targetId);
+      return NextResponse.json({
+        success: true,
+        removed,
+        id: targetId,
+        message: `Purchase Order ${targetId} permanently deleted from central store.`,
+      });
+    }
+
+    if (action === 'purge_demo' || !targetId) {
+      purgeDemoProcurementData();
+      return NextResponse.json({ success: true, message: 'Procurement database cleaned successfully.' });
+    }
+
+    return NextResponse.json({ success: false, message: 'Missing target id' }, { status: 400 });
   } catch (error: any) {
     return NextResponse.json(
-      { success: false, message: error?.message || 'Failed to purge' },
+      { success: false, message: error?.message || 'Failed to delete' },
       { status: 500 }
     );
   }

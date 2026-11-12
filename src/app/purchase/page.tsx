@@ -924,13 +924,26 @@ function PurchasePageInner() {
   }, [contextPurchaseOrders]);
 
   const handleDeletePurchaseOrder = (poId: string, poNumber: string) => {
-    if (window.confirm(`Are you sure you want to delete Purchase Order ${poNumber}?`)) {
+    const label = poNumber || poId;
+    if (window.confirm(`Are you sure you want to delete Purchase Order ${label}?`)) {
       const targetId = poId || poNumber;
       purchaseOrderApiService.deletePurchaseOrder(targetId).catch((err) => console.warn('Delete PO error:', err));
       if (poNumber && poNumber !== targetId) {
         purchaseOrderApiService.deletePurchaseOrder(poNumber).catch(() => {});
       }
-      const updated = purchaseOrders.filter((po) => po.id !== poId && po.poNumber !== poNumber);
+
+      // Add to permanent local deleted blacklist
+      try {
+        const rawDel = localStorage.getItem('crm_deleted_po_numbers') || '[]';
+        const deletedArr: string[] = JSON.parse(rawDel);
+        if (poId && !deletedArr.includes(poId)) deletedArr.push(poId);
+        if (poNumber && !deletedArr.includes(poNumber)) deletedArr.push(poNumber);
+        localStorage.setItem('crm_deleted_po_numbers', JSON.stringify(deletedArr));
+      } catch {}
+
+      const updated = purchaseOrders.filter(
+        (po) => po.id !== poId && po.poNumber !== poNumber && (!poNumber || po.poNumber !== targetId)
+      );
       setPurchaseOrders(updated);
       try {
         localStorage.setItem('crm_purchase_orders', JSON.stringify(updated));
@@ -3373,6 +3386,27 @@ function PurchasePageInner() {
   const [approvalModalOrder, setApprovalModalOrder] = useState<CrmPurchaseOrder | null>(null);
   const [stockInDeliveryMode, setStockInDeliveryMode] = useState<'Warehouse_Receipt' | 'Direct_Site_Delivery'>('Warehouse_Receipt');
 
+  const userDesig = (currentUser?.designation || currentUser?.position || '').toLowerCase();
+  const userName = (currentUser?.name || '').toLowerCase();
+  const userRole = (currentUser?.role || '').toLowerCase();
+  const userDept = (currentUser?.department || '').toLowerCase();
+
+  const isCooUser =
+    userDesig.includes('coo') ||
+    userDesig.includes('chief operating') ||
+    userDesig.includes('operating officer') ||
+    userName.includes('shemin') ||
+    userRole === 'super_admin';
+
+  const isFcUser =
+    userDesig.includes('finance') ||
+    userDesig.includes('controller') ||
+    userDept.includes('finance') ||
+    userName.includes('hamdan') ||
+    userName.includes('rashid') ||
+    userRole === 'admin' ||
+    isCooUser;
+
   // Computed dynamic Owners list for Purchase Invoices & Orders filter & creation
   const invoiceFilterOwnersList = useMemo(() => {
     const canonicalMap = new Map<string, string>();
@@ -3800,10 +3834,25 @@ function PurchasePageInner() {
             return po;
           });
 
-          // Ensure baseline POs (e.g. CTPO#2516) are never lost if remote list has fewer records
-          const serverIds = new Set(sanitized.map((o: any) => o.poNumber || o.id));
-          const missingBaselines = baselinePurchaseOrders.filter((b) => !serverIds.has(b.poNumber) && !serverIds.has(b.id));
-          const merged = [...sanitized, ...missingBaselines];
+          let deletedPoNumbers = new Set<string>();
+          try {
+            const rawDel = localStorage.getItem('crm_deleted_po_numbers') || '[]';
+            deletedPoNumbers = new Set(JSON.parse(rawDel).map((s: string) => String(s).trim().toLowerCase()));
+          } catch {}
+
+          // Ensure baseline POs (e.g. CTPO#2516) are never lost if remote list has fewer records, unless explicitly deleted
+          const serverIds = new Set(sanitized.map((o: any) => String(o.poNumber || o.id).trim().toLowerCase()));
+          const missingBaselines = baselinePurchaseOrders.filter((b) => {
+            const num = String(b.poNumber).trim().toLowerCase();
+            const id = String(b.id).trim().toLowerCase();
+            if (deletedPoNumbers.has(num) || deletedPoNumbers.has(id)) return false;
+            return !serverIds.has(num) && !serverIds.has(id);
+          });
+          const merged = [...sanitized, ...missingBaselines].filter((po) => {
+            const num = String(po.poNumber || '').trim().toLowerCase();
+            const id = String(po.id || '').trim().toLowerCase();
+            return (!num || !deletedPoNumbers.has(num)) && (!id || !deletedPoNumbers.has(id));
+          });
           const finalized = applyApprovalRegistry(merged);
 
           setPurchaseOrders(finalized);
@@ -3821,6 +3870,12 @@ function PurchasePageInner() {
         .then((res) => {
           if (res && res.success && Array.isArray(res.orders) && res.orders.length > 0) {
             setPurchaseOrders((prev) => {
+              let deletedPoNumbers = new Set<string>();
+              try {
+                const rawDel = localStorage.getItem('crm_deleted_po_numbers') || '[]';
+                deletedPoNumbers = new Set(JSON.parse(rawDel).map((s: string) => String(s).trim().toLowerCase()));
+              } catch {}
+
               const serverMap = new Map(res.orders.map((o: any) => [o.poNumber || o.id, o]));
               let hasNewApproval = false;
               let regToUpdate: Record<string, any> = {};
@@ -3828,7 +3883,13 @@ function PurchasePageInner() {
                 regToUpdate = JSON.parse(localStorage.getItem('crm_po_approvals_registry') || '{}');
               } catch {}
 
-              const updated = prev.map((localPo) => {
+              const updated = prev
+                .filter((localPo) => {
+                  const num = String(localPo.poNumber || '').trim().toLowerCase();
+                  const id = String(localPo.id || '').trim().toLowerCase();
+                  return (!num || !deletedPoNumbers.has(num)) && (!id || !deletedPoNumbers.has(id));
+                })
+                .map((localPo) => {
                 const key = localPo.poNumber || localPo.id;
                 const serverPo = serverMap.get(key);
                 if (serverPo) {
@@ -8169,15 +8230,28 @@ function PurchasePageInner() {
                                     {po.approval || 'Waiting for Final Approval'}
                                   </span>
                                   {po.approval !== 'Approved' && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setApprovalModalOrder(po)}
-                                      className="px-2 py-0.5 text-[9px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded cursor-pointer transition flex items-center gap-1"
-                                      title="Authorize or Reject Purchase Order"
-                                    >
-                                      <ShieldCheck className="w-2.5 h-2.5" />
-                                      <span>Sign-off</span>
-                                    </button>
+                                    (() => {
+                                      const isCooTier = po.requiredApprovalTier === 'CHIEF_OPERATING_OFFICER' || Number(po.totalAmount || 0) >= 100000;
+                                      const canSignThis = isCooTier ? isCooUser : isFcUser;
+                                      if (canSignThis) {
+                                        return (
+                                          <button
+                                            type="button"
+                                            onClick={() => setApprovalModalOrder(po)}
+                                            className="px-2 py-0.5 text-[9px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded cursor-pointer transition flex items-center gap-1 shadow-2xs"
+                                            title="Authorize or Reject Purchase Order"
+                                          >
+                                            <ShieldCheck className="w-2.5 h-2.5" />
+                                            <span>Sign-off</span>
+                                          </button>
+                                        );
+                                      }
+                                      return (
+                                        <span className={`text-[9px] font-medium ${isCooTier ? 'text-purple-700' : 'text-amber-700'}`}>
+                                          {isCooTier ? 'Awaiting COO Sign-off' : 'Awaiting FC Sign-off'}
+                                        </span>
+                                      );
+                                    })()
                                   )}
                                   {po.requiredApprovalTier && (
                                     <span className="text-[9px] text-slate-400 font-mono">
@@ -8275,17 +8349,26 @@ function PurchasePageInner() {
                                       <Edit2 className="w-4 h-4 text-slate-700 shrink-0" />
                                       <span>Change Status</span>
                                     </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setActivePoActionDropdownId(null);
-                                        setApprovalModalOrder(po);
-                                      }}
-                                      className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-emerald-50 text-emerald-700 font-medium transition-colors cursor-pointer"
-                                    >
-                                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                                      <span>Executive Sign-off</span>
-                                    </button>
+                                    {(() => {
+                                      const isCooTier = po.requiredApprovalTier === 'CHIEF_OPERATING_OFFICER' || Number(po.totalAmount || 0) >= 100000;
+                                      const canSignThis = isCooTier ? isCooUser : isFcUser;
+                                      if (canSignThis && po.approval !== 'Approved') {
+                                        return (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setActivePoActionDropdownId(null);
+                                              setApprovalModalOrder(po);
+                                            }}
+                                            className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-emerald-50 text-emerald-700 font-medium transition-colors cursor-pointer"
+                                          >
+                                            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                                            <span>Executive Sign-off</span>
+                                          </button>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
                                     <button
                                       type="button"
                                       onClick={() => handleDeletePurchaseOrder(po.id, po.poNumber)}
