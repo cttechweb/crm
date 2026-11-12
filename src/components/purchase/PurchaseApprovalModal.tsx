@@ -36,12 +36,7 @@ export function PurchaseApprovalModal({
   const [approvalsHistory, setApprovalsHistory] = useState<CrmPurchaseApproval[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
-  const isFuttaim = (purchaseOrder.supplier || '').toLowerCase().includes('futtaim');
-  const isMueller = (purchaseOrder.supplier || '').toLowerCase().includes('mueller');
-  const rawAmt = Number(purchaseOrder.totalAmount || purchaseOrder.evaluatedTotalValue || 0);
-  const evaluatedAmount = (isFuttaim && (rawAmt >= 20000 || rawAmt !== 11550))
-    ? 11550
-    : (isMueller ? 20475 : rawAmt);
+  const evaluatedAmount = Number(purchaseOrder.totalAmount || (purchaseOrder as any).total_amount || purchaseOrder.amount || 0);
   const isCooTier = evaluatedAmount >= 100000.0;
   const requiredTierName = isCooTier ? 'Chief Operating Officer (COO)' : 'Finance Controller (FC)';
 
@@ -155,8 +150,8 @@ export function PurchaseApprovalModal({
         approver_designation: approverDesig,
         purchaseOrder: {
           ...purchaseOrder,
-          amount: isFuttaim ? 11000 : (isMueller ? 19500 : purchaseOrder.amount),
-          vat: isFuttaim ? 550 : (isMueller ? 975 : purchaseOrder.vat),
+          amount: purchaseOrder.amount,
+          vat: purchaseOrder.vat,
           totalAmount: evaluatedAmount,
           requiredApprovalTier: isCooTier ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER',
           approvedByName: approverName,
@@ -172,8 +167,8 @@ export function PurchaseApprovalModal({
         approvedByDesignation: approverDesig,
         approvedAt: new Date().toISOString(),
         requiredApprovalTier: isCooTier ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER',
-        amount: isFuttaim ? 11000 : (isMueller ? 19500 : purchaseOrder.amount),
-        vat: isFuttaim ? 550 : (isMueller ? 975 : purchaseOrder.vat),
+        amount: purchaseOrder.amount,
+        vat: purchaseOrder.vat,
         totalAmount: evaluatedAmount,
       };
 
@@ -197,8 +192,8 @@ export function PurchaseApprovalModal({
         approvedByDesignation: approverDesig,
         approvedAt: new Date().toISOString(),
         requiredApprovalTier: isCooTier ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER',
-        amount: isFuttaim ? 11000 : (isMueller ? 19500 : purchaseOrder.amount),
-        vat: isFuttaim ? 550 : (isMueller ? 975 : purchaseOrder.vat),
+        amount: purchaseOrder.amount,
+        vat: purchaseOrder.vat,
         totalAmount: evaluatedAmount,
       };
       alert(`Purchase Order ${decision === 'Approved' ? 'Authorized Successfully' : 'Rejected'}.`);

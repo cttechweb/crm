@@ -165,7 +165,7 @@ export const baselinePurchaseOrders: any[] = [
     vat: 975,
     totalAmount: 20475,
     total_amount: 20475,
-    approval: 'Approved',
+    approval: 'Waiting for Final Approval',
     deliveryStatus: 'Pending',
     paymentStatus: 'Due',
     owner: 'Murshid',

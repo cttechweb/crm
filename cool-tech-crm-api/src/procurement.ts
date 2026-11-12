@@ -913,24 +913,10 @@ purchaseOrdersApp.get('/', async (c) => {
           .bind(po.id)
           .all<PurchaseOrderItemRow>();
         const items = itemRows.results || [];
-        const isFuttaim = (po.supplier || '').toLowerCase().includes('futtaim');
-        const isMueller = (po.supplier || '').toLowerCase().includes('mueller');
         let amount = Number(po.amount || 0);
         let vat = Number(po.vat || 0);
         let totalAmount = Number(po.total_amount || 0);
         let tier = po.required_approval_tier;
-
-        if (isFuttaim && (amount >= 20000 || totalAmount >= 20000 || amount !== 11000)) {
-          amount = 11000;
-          vat = 550;
-          totalAmount = 11550;
-          tier = 'FINANCE_CONTROLLER';
-        } else if (isMueller && (amount !== 19500 || totalAmount !== 20475)) {
-          amount = 19500;
-          vat = 975;
-          totalAmount = 20475;
-          tier = 'FINANCE_CONTROLLER';
-        }
 
         return {
           ...po,
@@ -985,24 +971,10 @@ purchaseOrdersApp.get('/:id', async (c) => {
     .bind(id)
     .all<PurchaseApprovalRow>();
 
-  const isFuttaim = (po.supplier || '').toLowerCase().includes('futtaim');
-  const isMueller = (po.supplier || '').toLowerCase().includes('mueller');
   let amount = Number(po.amount || 0);
   let vat = Number(po.vat || 0);
   let totalAmount = Number(po.total_amount || 0);
   let tier = po.required_approval_tier;
-
-  if (isFuttaim && (amount >= 20000 || totalAmount >= 20000 || amount !== 11000)) {
-    amount = 11000;
-    vat = 550;
-    totalAmount = 11550;
-    tier = 'FINANCE_CONTROLLER';
-  } else if (isMueller && (amount !== 19500 || totalAmount !== 20475)) {
-    amount = 19500;
-    vat = 975;
-    totalAmount = 20475;
-    tier = 'FINANCE_CONTROLLER';
-  }
 
   return c.json({
     success: true,
@@ -1436,19 +1408,10 @@ purchaseOrdersApp.post('/:id/approve', async (c) => {
     .bind(id)
     .first<{ items_sum: number | null }>();
 
-  const isFuttaim = (po.supplier || '').toLowerCase().includes('futtaim');
-  const isMueller = (po.supplier || '').toLowerCase().includes('mueller');
-  const baseItemsAmount =
-    (isFuttaim && (Number(po.amount) >= 20000 || Number(po.amount) === 27500))
-      ? 11000
-      : (isMueller
-          ? 19500
-          : (itemsSumRes?.items_sum !== null && itemsSumRes?.items_sum !== undefined
-              ? Number(itemsSumRes.items_sum)
-              : Number(po.amount)));
-  const vat = (isFuttaim && (Number(po.amount) >= 20000 || Number(po.amount) === 27500))
-    ? 550
-    : (isMueller ? 975 : (Number(po.vat) || 0));
+  const baseItemsAmount = itemsSumRes?.items_sum !== null && itemsSumRes?.items_sum !== undefined
+    ? Number(itemsSumRes.items_sum)
+    : Number(po.amount || 0);
+  const vat = Number(po.vat) || 0;
   const discount = Number(po.discount) || 0;
   const adjustment = Number(po.adjustment) || 0;
   const evaluatedTotalValue = Math.round((baseItemsAmount + vat - discount + adjustment) * 100) / 100;

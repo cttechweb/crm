@@ -1058,17 +1058,38 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         supplierApiService.migrateLocalSuppliersToDatabase().catch(() => { });
 
         // Purchase Orders
+        let deletedPoNumbers = new Set<string>();
+        try {
+          const rawDel = localStorage.getItem('crm_deleted_po_numbers') || '[]';
+          deletedPoNumbers = new Set(JSON.parse(rawDel).map((s: string) => String(s).trim().toLowerCase()));
+        } catch {}
+
         const storedPOs = localStorage.getItem('crm_purchase_orders');
         if (storedPOs) {
           try {
             const parsed = JSON.parse(storedPOs);
             const activeList = Array.isArray(parsed) && parsed.length > 0 ? parsed : baselinePurchaseOrders;
-            setPurchaseOrders(applyApprovalRegistry(activeList));
+            const filteredActive = activeList.filter((b: any) => {
+              const num = String(b.poNumber || '').trim().toLowerCase();
+              const id = String(b.id || '').trim().toLowerCase();
+              return (!num || !deletedPoNumbers.has(num)) && (!id || !deletedPoNumbers.has(id));
+            });
+            setPurchaseOrders(applyApprovalRegistry(filteredActive));
           } catch {
-            setPurchaseOrders(applyApprovalRegistry(baselinePurchaseOrders));
+            const filteredBaseline = baselinePurchaseOrders.filter((b: any) => {
+              const num = String(b.poNumber || '').trim().toLowerCase();
+              const id = String(b.id || '').trim().toLowerCase();
+              return (!num || !deletedPoNumbers.has(num)) && (!id || !deletedPoNumbers.has(id));
+            });
+            setPurchaseOrders(applyApprovalRegistry(filteredBaseline));
           }
         } else {
-          const initList = applyApprovalRegistry(baselinePurchaseOrders);
+          const filteredBaseline = baselinePurchaseOrders.filter((b: any) => {
+            const num = String(b.poNumber || '').trim().toLowerCase();
+            const id = String(b.id || '').trim().toLowerCase();
+            return (!num || !deletedPoNumbers.has(num)) && (!id || !deletedPoNumbers.has(id));
+          });
+          const initList = applyApprovalRegistry(filteredBaseline);
           setPurchaseOrders(initList);
           try {
             localStorage.setItem('crm_purchase_orders', JSON.stringify(initList));
@@ -1079,31 +1100,7 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
           .getPurchaseOrders({ limit: 100 })
           .then((res) => {
             if (res && Array.isArray(res.orders) && res.orders.length > 0) {
-              const sanitized = res.orders.map((po: any) => {
-                const isFuttaim = (po.supplier || '').toLowerCase().includes('futtaim');
-                const isMueller = (po.supplier || '').toLowerCase().includes('mueller');
-                if (isFuttaim && (Number(po.amount || 0) >= 20000 || Number(po.amount || 0) !== 11000)) {
-                  return {
-                    ...po,
-                    amount: 11000,
-                    vat: 550,
-                    totalAmount: 11550,
-                    total_amount: 11550,
-                    requiredApprovalTier: 'FINANCE_CONTROLLER',
-                  };
-                }
-                if (isMueller && (Number(po.amount || 0) !== 19500 || Number(po.totalAmount || 0) !== 20475)) {
-                  return {
-                    ...po,
-                    amount: 19500,
-                    vat: 975,
-                    totalAmount: 20475,
-                    total_amount: 20475,
-                    requiredApprovalTier: 'FINANCE_CONTROLLER',
-                  };
-                }
-                return po;
-              });
+              const sanitized = res.orders;
 
               // Ensure all baseline POs (such as CTPO#2516) are preserved IF not explicitly deleted
               let deletedPoNumbers = new Set<string>();

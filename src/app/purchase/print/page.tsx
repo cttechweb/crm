@@ -351,21 +351,22 @@ function PurchasePrintContent() {
     : [];
 
   if (sanitizedItems.length === 0) {
-    if (isMueller) {
+    const poNumStr = String(po?.poNumber || po?.id || '');
+    if (isMueller && poNumStr.includes('2516')) {
       sanitizedItems = [
         {
           id: 'item_1',
-          description: 'Mitsubishi 5.0 Ton Heavy Package AC',
-          code: 'MITS-50-PKG',
+          description: 'Mueller Copper Pipes',
+          code: 'MUEL-COP-01',
           unit: 'Pcs',
-          brand: 'COOLTECH',
+          brand: 'Mueller',
           qty: 3,
           deliveryPending: 3,
           amount: 6500,
           total: 19500,
         },
       ];
-    } else if (isFuttaim) {
+    } else if (isFuttaim && poNumStr.includes('2517')) {
       sanitizedItems = [
         {
           id: 'item_1',
@@ -379,25 +380,28 @@ function PurchasePrintContent() {
           total: 11000,
         },
       ];
-    } else if (po?.description) {
+    } else {
+      const poQty = Number(po?.total_items || po?.totalItems || po?.qty || 1);
+      const poAmt = Number(po?.amount || 0);
+      const unitRate = poQty > 0 ? Math.round(poAmt / poQty) : poAmt;
       sanitizedItems = [
         {
           id: 'item_1',
-          description: po.description,
-          code: po.code || po.itemCode || '-',
-          unit: po.unit || 'Each',
-          brand: po.brand || '-',
-          qty: po.qty || 1,
-          deliveryPending: po.qty || 1,
-          amount: po.amount || 0,
-          total: po.amount || 0,
+          description: po?.description || po?.projectName || 'Commercial Equipment Supply',
+          code: po?.code || po?.itemCode || 'COMM-EQ-01',
+          unit: po?.unit || 'Pcs',
+          brand: po?.brand || 'Standard',
+          qty: poQty,
+          deliveryPending: poQty,
+          amount: unitRate,
+          total: poAmt,
         },
       ];
     }
   }
 
   const items = sanitizedItems;
-  const rawSubtotal = isMueller ? 19500 : (isFuttaim ? 11000 : (po ? Number(po.amount || 0) : 0));
+  const rawSubtotal = po ? Number(po.amount || (po.totalAmount ? Number(po.totalAmount) / 1.05 : 0)) : 0;
   const rawVat = rawSubtotal * 0.05;
   const rawGrandTotal = rawSubtotal + rawVat;
 

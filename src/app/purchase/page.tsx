@@ -787,124 +787,27 @@ function PurchasePageInner() {
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>(() => {
     if (typeof window !== 'undefined') {
       try {
+        const rawDel = localStorage.getItem('crm_deleted_po_numbers') || '[]';
+        const deletedSet = new Set(JSON.parse(rawDel).map((s: string) => String(s).trim().toLowerCase()));
+
         const stored = localStorage.getItem('crm_purchase_orders');
         if (stored !== null) {
           const parsed = JSON.parse(stored);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            let changed = false;
-            const healed = parsed.map((po: any) => {
-              const sup = (po.supplier || '').toLowerCase();
-              const isFuttaim = sup.includes('futtaim');
-              const isMueller = sup.includes('mueller');
-              const isRealDaikin = sup.includes('daikin');
-              const hasNobel = Array.isArray(po.items) && po.items.some((it: any) => String(it.description || '').toLowerCase().includes('nobel'));
-              const hasFakeDaikin = !isRealDaikin && Array.isArray(po.items) && po.items.some((it: any) => {
-                const c = String(it.code || '').toLowerCase();
-                const d = String(it.description || '').toLowerCase();
-                return c === 'daikin-cas-02' || (d.includes('daikin') && d.includes('cassette'));
-              });
-              const itemsEmpty = !Array.isArray(po.items) || po.items.length === 0;
-              const hasExcessiveTotal = Number(po.amount || po.totalAmount || 0) >= 20000;
-              const hasQty25 = Array.isArray(po.items) && po.items.some((it: any) => Number(it.qty) >= 5);
-              const hasMismatchAmount = Number(po.amount || 0) !== 11000 && isFuttaim;
-
-              if (isFuttaim && (hasNobel || itemsEmpty || hasExcessiveTotal || hasQty25 || hasMismatchAmount || hasFakeDaikin)) {
-                changed = true;
-                const qty = 2;
-                const rate = 5500;
-                const amt = qty * rate;
-                return {
-                  ...po,
-                  amount: amt,
-                  vat: amt * 0.05,
-                  totalAmount: amt * 1.05,
-                  total_amount: amt * 1.05,
-                  description: po.description && !po.description.toLowerCase().includes('nobel') ? po.description : 'Direct PO for 2 Units Carrier AC',
-                  items: [
-                    {
-                      id: 'item_1',
-                      item: 'Carrier 4.0 Ton Ducted Split AC',
-                      description: 'Carrier 4.0 Ton Ducted Split AC',
-                      code: 'CARR-40-DUCT',
-                      brand: 'Carrier',
-                      unit: 'Pcs',
-                      qty: qty,
-                      deliveryPending: qty,
-                      rate: rate,
-                      amount: rate,
-                      total: amt,
-                    },
-                  ],
-                };
-              }
-
-              if (isMueller && (hasNobel || itemsEmpty || hasFakeDaikin || Number(po.amount || 0) !== 19500)) {
-                changed = true;
-                const qty = 3;
-                const rate = 6500;
-                const amt = qty * rate;
-                return {
-                  ...po,
-                  amount: amt,
-                  vat: amt * 0.05,
-                  totalAmount: amt * 1.05,
-                  total_amount: amt * 1.05,
-                  description: po.description && !po.description.toLowerCase().includes('nobel') && !po.description.toLowerCase().includes('carrier')
-                    ? po.description
-                    : 'Direct PO for 3 Units Mitsubishi AC',
-                  items: [
-                    {
-                      id: 'item_1',
-                      item: 'Mitsubishi 5.0 Ton Heavy Package AC',
-                      description: 'Mitsubishi 5.0 Ton Heavy Package AC',
-                      code: 'MITS-50-PKG',
-                      brand: 'COOLTECH',
-                      unit: 'Pcs',
-                      qty: qty,
-                      deliveryPending: qty,
-                      rate: rate,
-                      amount: rate,
-                      total: amt,
-                    },
-                  ],
-                };
-              }
-
-              if (hasFakeDaikin) {
-                changed = true;
-                const poQty = Number(po.total_items || po.totalItems || 1);
-                const poAmt = Number(po.amount || 5000);
-                const rate = poQty > 0 ? Math.round(poAmt / poQty) : poAmt;
-                return {
-                  ...po,
-                  items: [
-                    {
-                      id: 'item_1',
-                      item: po.description || 'Equipment Supply Item',
-                      description: po.description || 'Equipment Supply Item',
-                      code: 'EQ-01',
-                      brand: 'Standard',
-                      unit: 'Pcs',
-                      qty: poQty,
-                      deliveryPending: poQty,
-                      rate: rate,
-                      amount: rate,
-                      total: poAmt,
-                    },
-                  ],
-                };
-              }
-              return po;
+            const filtered = parsed.filter((po: any) => {
+              const k1 = String(po.poNumber || '').trim().toLowerCase();
+              const k2 = String(po.id || '').trim().toLowerCase();
+              return (!k1 || !deletedSet.has(k1)) && (!k2 || !deletedSet.has(k2));
             });
-
-            if (changed) {
-              try {
-                localStorage.setItem('crm_purchase_orders', JSON.stringify(healed));
-              } catch {}
-            }
-            return applyApprovalRegistry(healed);
+            return applyApprovalRegistry(filtered);
           }
         }
+        const filteredBaseline = baselinePurchaseOrders.filter((po: any) => {
+          const k1 = String(po.poNumber || '').trim().toLowerCase();
+          const k2 = String(po.id || '').trim().toLowerCase();
+          return (!k1 || !deletedSet.has(k1)) && (!k2 || !deletedSet.has(k2));
+        });
+        return applyApprovalRegistry(filteredBaseline);
       } catch (e) {
         console.error(e);
       }
@@ -3808,31 +3711,7 @@ function PurchasePageInner() {
       .getPurchaseOrders({ limit: 100 })
       .then((res) => {
         if (res && res.success && Array.isArray(res.orders) && res.orders.length > 0) {
-          const sanitized = res.orders.map((po: any) => {
-            const isFuttaim = (po.supplier || '').toLowerCase().includes('futtaim');
-            const isMueller = (po.supplier || '').toLowerCase().includes('mueller');
-            if (isFuttaim && (Number(po.amount || 0) >= 20000 || Number(po.amount || 0) !== 11000)) {
-              return {
-                ...po,
-                amount: 11000,
-                vat: 550,
-                totalAmount: 11550,
-                total_amount: 11550,
-                requiredApprovalTier: 'FINANCE_CONTROLLER',
-              };
-            }
-            if (isMueller && (Number(po.amount || 0) !== 19500 || Number(po.totalAmount || 0) !== 20475)) {
-              return {
-                ...po,
-                amount: 19500,
-                vat: 975,
-                totalAmount: 20475,
-                total_amount: 20475,
-                requiredApprovalTier: 'FINANCE_CONTROLLER',
-              };
-            }
-            return po;
-          });
+          const sanitized = res.orders;
 
           let deletedPoNumbers = new Set<string>();
           try {
@@ -5245,33 +5124,7 @@ function PurchasePageInner() {
 
   // Filtered Purchase Orders
   const filteredPOItems = useMemo(() => {
-    return purchaseOrders
-      .map((item) => {
-        const isFuttaim = (item.supplier || '').toLowerCase().includes('futtaim');
-        const isMueller = (item.supplier || '').toLowerCase().includes('mueller');
-        if (isFuttaim && (Number(item.amount || 0) >= 20000 || Number(item.amount || 0) !== 11000)) {
-          return {
-            ...item,
-            amount: 11000,
-            vat: 550,
-            totalAmount: 11550,
-            total_amount: 11550,
-            requiredApprovalTier: 'FINANCE_CONTROLLER',
-          };
-        }
-        if (isMueller && (Number(item.amount || 0) !== 19500 || Number(item.totalAmount || 0) !== 20475)) {
-          return {
-            ...item,
-            amount: 19500,
-            vat: 975,
-            totalAmount: 20475,
-            total_amount: 20475,
-            requiredApprovalTier: 'FINANCE_CONTROLLER',
-          };
-        }
-        return item;
-      })
-      .filter((item) => {
+    return purchaseOrders.filter((item) => {
       if (poSearch) {
         const q = poSearch.toLowerCase();
         const matchNo = (item.poNumber || '').toLowerCase().includes(q);
@@ -7027,14 +6880,15 @@ function PurchasePageInner() {
 
               // Dynamic fallback: preserve real PO totals without fake Daikin
               if (resolvedItems.length === 0) {
-                if (isMueller) {
+                const poNumStr = String(viewingPo.poNumber || viewingPo.id || '');
+                if (isMueller && poNumStr.includes('2516')) {
                   resolvedItems = [
                     {
                       id: 'item_1',
-                      description: 'Mitsubishi 5.0 Ton Heavy Package AC',
-                      code: 'MITS-50-PKG',
+                      description: 'Mueller Copper Pipes',
+                      code: 'MUEL-COP-01',
                       unit: 'Pcs',
-                      brand: 'COOLTECH',
+                      brand: 'Mueller',
                       qty: 3,
                       deliveryPending: 3,
                       rate: 6500,
@@ -7042,7 +6896,7 @@ function PurchasePageInner() {
                       total: 19500,
                     },
                   ];
-                } else if (isFuttaim) {
+                } else if (isFuttaim && poNumStr.includes('2517')) {
                   resolvedItems = [
                     {
                       id: 'item_1',
@@ -7059,7 +6913,7 @@ function PurchasePageInner() {
                   ];
                 } else {
                   const poQty = Number(viewingPo.total_items || viewingPo.totalItems || 1);
-                  const poAmt = Number(viewingPo.amount || 5000);
+                  const poAmt = Number(viewingPo.amount || viewingPo.totalAmount || 5000);
                   const unitRate = poQty > 0 ? Math.round(poAmt / poQty) : poAmt;
                   resolvedItems = [
                     {
