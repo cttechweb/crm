@@ -74,18 +74,19 @@ export function CezconDateInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
-          'w-full px-3 py-1.5 border border-slate-300 rounded text-xs text-slate-800 focus:outline-none focus:border-blue-500 pr-9 bg-white',
+          'w-full px-2.5 py-1.5 border border-r-0 border-slate-300 rounded-l text-xs text-slate-800 focus:outline-none focus:border-blue-500 bg-white h-[30px]',
           className
         )}
       />
       
-      {/* Visual Calendar Icon */}
+      {/* Visual Calendar Button */}
       <button
         type="button"
         tabIndex={-1}
         onClick={handleOpenPicker}
         disabled={disabled}
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer z-10"
+        className="px-2.5 py-1.5 border border-slate-300 bg-[#F8FAFC] hover:bg-slate-100 text-slate-600 rounded-r flex items-center justify-center cursor-pointer transition shrink-0 h-[30px]"
+        title="Open calendar"
       >
         <Calendar className="w-3.5 h-3.5" />
       </button>
@@ -101,7 +102,7 @@ export function CezconDateInput({
             onChange(formatToDdMmYyyy(e.target.value));
           }
         }}
-        className="absolute right-0 top-0 bottom-0 w-8 opacity-0 cursor-pointer z-20"
+        className="absolute right-0 top-0 bottom-0 w-9 opacity-0 cursor-pointer z-20"
         title="Select date"
       />
     </div>

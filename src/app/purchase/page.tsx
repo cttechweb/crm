@@ -75,6 +75,7 @@ import { SupplierReconciliationView } from '@/components/purchase/SupplierReconc
 import { LegacyMigrationView } from '@/components/purchase/LegacyMigrationView';
 import { notificationService } from '@/services/notificationService';
 import { dispatchProcurementPopup } from '@/components/purchase/ProcurementNotificationToast';
+import { CezconDateInput } from '@/components/ui/CezconDateInput';
 import { cn } from '@/lib/utils';
 
 // Helper Barcode Component
@@ -5725,16 +5726,13 @@ function PurchasePageInner() {
                         <label className="col-span-4 font-semibold text-slate-700">
                           PO Date
                         </label>
-                        <div className="col-span-8 relative flex items-center">
-                          <input
-                            type="text"
+                        <div className="col-span-8">
+                          <CezconDateInput
                             value={poFormData.poDate}
-                            onChange={(e) => setPoFormData({ ...poFormData, poDate: e.target.value })}
-                            className="w-full px-2.5 py-1.5 border border-r-0 border-slate-300 rounded-l text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                            onChange={(val) => setPoFormData({ ...poFormData, poDate: val })}
+                            placeholder="DD-MM-YYYY"
+                            className="w-full text-xs"
                           />
-                          <div className="px-2.5 py-1.5 border border-slate-300 bg-[#F8FAFC] text-slate-600 rounded-r flex items-center justify-center">
-                            <Calendar className="w-3.5 h-3.5" />
-                          </div>
                         </div>
                       </div>
 
@@ -5743,17 +5741,13 @@ function PurchasePageInner() {
                         <label className="col-span-4 font-semibold text-slate-700">
                           Expected Delivery Date
                         </label>
-                        <div className="col-span-8 relative flex items-center">
-                          <input
-                            type="text"
+                        <div className="col-span-8">
+                          <CezconDateInput
                             value={poFormData.expectedDeliveryDate}
-                            onChange={(e) => setPoFormData({ ...poFormData, expectedDeliveryDate: e.target.value })}
-                            placeholder=""
-                            className="w-full px-2.5 py-1.5 border border-r-0 border-slate-300 rounded-l text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                            onChange={(val) => setPoFormData({ ...poFormData, expectedDeliveryDate: val })}
+                            placeholder="DD-MM-YYYY"
+                            className="w-full text-xs"
                           />
-                          <div className="px-2.5 py-1.5 border border-slate-300 bg-[#F8FAFC] text-slate-600 rounded-r flex items-center justify-center">
-                            <Calendar className="w-3.5 h-3.5" />
-                          </div>
                         </div>
                       </div>
 
@@ -8802,15 +8796,12 @@ function PurchasePageInner() {
                           Purchase Invoice Date
                         </label>
                         <div className="relative flex-1">
-                          <input
-                            type="text"
+                          <CezconDateInput
                             value={invoiceDate}
-                            onChange={(e) => setInvoiceDate(e.target.value)}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500"
+                            onChange={(val) => setInvoiceDate(val)}
+                            placeholder="DD-MM-YYYY"
+                            className="w-full text-xs"
                           />
-                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs">
-                            📅
-                          </span>
                         </div>
                       </div>
 
@@ -11095,15 +11086,12 @@ function PurchasePageInner() {
                           Stock In Date
                         </label>
                         <div className="relative flex-1">
-                          <input
-                            type="text"
+                          <CezconDateInput
                             value={stockInDate}
-                            onChange={(e) => setStockInDate(e.target.value)}
-                            className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-800 focus:outline-none focus:border-blue-500 font-medium"
+                            onChange={(val) => setStockInDate(val)}
+                            placeholder="DD-MM-YYYY"
+                            className="w-full text-xs"
                           />
-                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs">
-                            📅
-                          </span>
                         </div>
                       </div>
 
