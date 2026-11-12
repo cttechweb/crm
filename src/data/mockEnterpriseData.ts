@@ -190,6 +190,25 @@ export const baselinePurchaseOrders: any[] = [
 ];
 export const mockPurchaseOrders = baselinePurchaseOrders;
 
+// Persistent Approval Registry Helper: Ensures approved statuses survive page refreshes and fallbacks
+export const applyApprovalRegistry = (orders: any[]): any[] => {
+  if (typeof window === 'undefined' || !Array.isArray(orders)) return orders;
+  try {
+    const rawRegistry = localStorage.getItem('crm_po_approvals_registry');
+    if (!rawRegistry) return orders;
+    const registry = JSON.parse(rawRegistry);
+    return orders.map((o) => {
+      const key = o.poNumber || o.id;
+      if (key && registry[key]) {
+        return { ...o, ...registry[key] };
+      }
+      return o;
+    });
+  } catch {
+    return orders;
+  }
+};
+
 // System User Directory (Dynamically populated from Cloudflare D1 via userApiService / EnterpriseCrmContext)
 export const mockUsers: CrmUser[] = [];
 

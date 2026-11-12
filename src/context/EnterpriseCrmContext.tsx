@@ -44,6 +44,7 @@ import {
   mockDeliveryNotes,
   getEmployeePhoto,
   baselinePurchaseOrders,
+  applyApprovalRegistry,
 } from '@/data/mockEnterpriseData';
 import { authMockService } from '@/services/authMockService';
 import { customerApiService } from '@/services/customerApiService';
@@ -1061,21 +1062,23 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
         if (storedPOs) {
           try {
             const parsed = JSON.parse(storedPOs);
-            setPurchaseOrders(Array.isArray(parsed) && parsed.length > 0 ? parsed : baselinePurchaseOrders);
+            const activeList = Array.isArray(parsed) && parsed.length > 0 ? parsed : baselinePurchaseOrders;
+            setPurchaseOrders(applyApprovalRegistry(activeList));
           } catch {
-            setPurchaseOrders(baselinePurchaseOrders);
+            setPurchaseOrders(applyApprovalRegistry(baselinePurchaseOrders));
           }
         } else {
-          setPurchaseOrders(baselinePurchaseOrders);
+          const initList = applyApprovalRegistry(baselinePurchaseOrders);
+          setPurchaseOrders(initList);
           try {
-            localStorage.setItem('crm_purchase_orders', JSON.stringify(baselinePurchaseOrders));
+            localStorage.setItem('crm_purchase_orders', JSON.stringify(initList));
           } catch {}
         }
 
         purchaseOrderApiService
           .getPurchaseOrders({ limit: 100 })
           .then((res) => {
-            if (res && Array.isArray(res.orders)) {
+            if (res && Array.isArray(res.orders) && res.orders.length > 0) {
               const sanitized = res.orders.map((po: any) => {
                 const isFuttaim = (po.supplier || '').toLowerCase().includes('futtaim');
                 const isMueller = (po.supplier || '').toLowerCase().includes('mueller');
@@ -2623,9 +2626,26 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
   };
 
   const updatePurchaseOrder = (id: string, updated: Partial<CrmPurchaseOrder>) => {
-    const list = purchaseOrders.map((p) => (p.id === id ? { ...p, ...updated } : p));
+    const list = purchaseOrders.map((p) => (p.id === id || p.poNumber === id ? { ...p, ...updated } : p));
     setPurchaseOrders(list);
     persist('crm_purchase_orders', list);
+    try {
+      if (updated.approval) {
+        const rawReg = localStorage.getItem('crm_po_approvals_registry') || '{}';
+        const registry = JSON.parse(rawReg);
+        registry[id] = {
+          approval: updated.approval,
+          approvedByName: updated.approvedByName,
+          approvedByDesignation: updated.approvedByDesignation,
+          approvedAt: updated.approvedAt,
+        };
+        const matched = purchaseOrders.find((p) => p.id === id || p.poNumber === id);
+        if (matched?.poNumber) {
+          registry[matched.poNumber] = registry[id];
+        }
+        localStorage.setItem('crm_po_approvals_registry', JSON.stringify(registry));
+      }
+    } catch {}
     purchaseOrderApiService.updatePurchaseOrder(id, updated).catch(() => { });
   };
 

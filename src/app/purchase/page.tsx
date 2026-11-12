@@ -248,6 +248,25 @@ export const baselinePurchaseOrders: any[] = [
   },
 ];
 const mockPurchaseOrders: any[] = baselinePurchaseOrders;
+
+// Persistent Approval Registry Helper: Ensures approved statuses survive page refreshes and fallbacks
+export const applyApprovalRegistry = (orders: any[]): any[] => {
+  if (typeof window === 'undefined' || !Array.isArray(orders)) return orders;
+  try {
+    const rawRegistry = localStorage.getItem('crm_po_approvals_registry');
+    if (!rawRegistry) return orders;
+    const registry = JSON.parse(rawRegistry);
+    return orders.map((o) => {
+      const key = o.poNumber || o.id;
+      if (key && registry[key]) {
+        return { ...o, ...registry[key] };
+      }
+      return o;
+    });
+  } catch {
+    return orders;
+  }
+};
 const defaultPurchaseInvoicesList: any[] = [];
 const mockPurchasePayments: any[] = [];
 const defaultSuppliersList: any[] = [
@@ -883,14 +902,14 @@ function PurchasePageInner() {
                 localStorage.setItem('crm_purchase_orders', JSON.stringify(healed));
               } catch {}
             }
-            return healed;
+            return applyApprovalRegistry(healed);
           }
         }
       } catch (e) {
         console.error(e);
       }
     }
-    return baselinePurchaseOrders;
+    return applyApprovalRegistry(baselinePurchaseOrders);
   });
 
   // Purchase Order View Mode & Form State (Exact Cezcon CRM layout)
@@ -2513,14 +2532,14 @@ function PurchasePageInner() {
                 localStorage.setItem('crm_purchase_invoices_list', JSON.stringify(healed));
               } catch {}
             }
-            return healed;
+            return applyApprovalRegistry(healed);
           }
         }
       } catch (e) {
         console.error(e);
       }
     }
-    return baselinePurchaseOrders;
+    return applyApprovalRegistry(baselinePurchaseOrders);
   });
 
   const [livePaymentsList, setLivePaymentsList] = useState<any[]>(() => {
@@ -3737,11 +3756,13 @@ function PurchasePageInner() {
         const stored = localStorage.getItem('crm_purchase_orders');
         if (stored) {
           const parsed = JSON.parse(stored);
-          setPurchaseOrders(Array.isArray(parsed) && parsed.length > 0 ? parsed : baselinePurchaseOrders);
+          const activeList = Array.isArray(parsed) && parsed.length > 0 ? parsed : baselinePurchaseOrders;
+          setPurchaseOrders(applyApprovalRegistry(activeList));
         } else {
-          setPurchaseOrders(baselinePurchaseOrders);
+          const initList = applyApprovalRegistry(baselinePurchaseOrders);
+          setPurchaseOrders(initList);
           try {
-            localStorage.setItem('crm_purchase_orders', JSON.stringify(baselinePurchaseOrders));
+            localStorage.setItem('crm_purchase_orders', JSON.stringify(initList));
           } catch {}
         }
       } catch (e) {
@@ -8206,6 +8227,22 @@ function PurchasePageInner() {
                 onClose={() => setApprovalModalOrder(null)}
                 onSuccess={(updatedOrder) => {
                   const updatedPoObj = { ...updatedOrder, approval: updatedOrder.approval || 'Approved' };
+                  try {
+                    const rawReg = localStorage.getItem('crm_po_approvals_registry') || '{}';
+                    const registry = JSON.parse(rawReg);
+                    const key1 = updatedOrder.id;
+                    const key2 = updatedOrder.poNumber || approvalModalOrder.poNumber;
+                    const payload = {
+                      approval: updatedPoObj.approval,
+                      approvedByName: updatedPoObj.approvedByName || currentUser?.name || 'Hamdan',
+                      approvedByDesignation: updatedPoObj.approvedByDesignation || currentUser?.designation || currentUser?.position || 'Finance Controller',
+                      approvedAt: updatedPoObj.approvedAt || new Date().toISOString(),
+                    };
+                    if (key1) registry[key1] = payload;
+                    if (key2) registry[key2] = payload;
+                    localStorage.setItem('crm_po_approvals_registry', JSON.stringify(registry));
+                  } catch {}
+
                   setPurchaseOrders((prev) => {
                     const list = prev.map((p) =>
                       (p.id === updatedOrder.id || (p.poNumber && updatedOrder.poNumber && p.poNumber === updatedOrder.poNumber))
@@ -8217,6 +8254,7 @@ function PurchasePageInner() {
                     } catch {}
                     return list;
                   });
+                  contextUpdatePurchaseOrder(updatedOrder.id || approvalModalOrder.id, updatedPoObj);
                   if (
                     viewingPo &&
                     (viewingPo.id === updatedOrder.id ||
@@ -8387,6 +8425,14 @@ function PurchasePageInner() {
                           setViewingPo({ ...viewingPo, approval: statusLabel });
                         }
                         try {
+                          const rawReg = localStorage.getItem('crm_po_approvals_registry') || '{}';
+                          const registry = JSON.parse(rawReg);
+                          const key1 = target.id;
+                          const key2 = target.poNumber;
+                          const payload = { approval: statusLabel };
+                          if (key1) registry[key1] = payload;
+                          if (key2) registry[key2] = payload;
+                          localStorage.setItem('crm_po_approvals_registry', JSON.stringify(registry));
                           localStorage.setItem('crm_purchase_orders', JSON.stringify(updatedList));
                           window.dispatchEvent(new Event('crm_purchase_orders_updated'));
                         } catch (e) {
