@@ -74,6 +74,7 @@ import { PurchaseDashboard } from '@/components/purchase/PurchaseDashboard';
 import { SupplierReconciliationView } from '@/components/purchase/SupplierReconciliationView';
 import { LegacyMigrationView } from '@/components/purchase/LegacyMigrationView';
 import { notificationService } from '@/services/notificationService';
+import { dispatchProcurementPopup } from '@/components/purchase/ProcurementNotificationToast';
 import { cn } from '@/lib/utils';
 
 // Helper Barcode Component
@@ -2145,6 +2146,18 @@ function PurchasePageInner() {
           metadata: { poId: newPo.id, poNumber: effectivePoNumber, amount: poCalculatedTotal, tier: 'FINANCE_CONTROLLER' },
         });
       }
+
+      // Live Instant Screen Popup for Hamdan / COO / CEO
+      dispatchProcurementPopup({
+        id: `popup_awaiting_${newPo.id || Date.now()}`,
+        type: 'po_awaiting_approval',
+        poId: newPo.id || '',
+        poNumber: effectivePoNumber,
+        supplier: newPo.supplier || 'Vendor',
+        amount: poCalculatedTotal,
+        preparedBy: newPo.preparedBy || 'Murshid',
+        timestamp: new Date().toISOString(),
+      });
 
       setSelectedAutofillMsrfId('');
       setSelectedAutofillQuoteId('');
@@ -8124,6 +8137,20 @@ function PurchasePageInner() {
                       metadata: { poId: updatedPoObj.id, poNumber: updatedPoObj.poNumber, status: updatedPoObj.approval },
                     });
                   }
+
+                  // Live Instant Screen Popup for Creator (Murshid / Creator)
+                  dispatchProcurementPopup({
+                    id: `popup_decision_${updatedPoObj.id || Date.now()}`,
+                    type: isApproved ? 'po_approved' : 'po_rejected',
+                    poId: updatedPoObj.id || '',
+                    poNumber: updatedPoObj.poNumber || 'PO',
+                    supplier: updatedPoObj.supplier || 'Vendor',
+                    amount: Number(updatedPoObj.totalAmount || 0),
+                    preparedBy: targetCreator,
+                    approvedByName: updatedPoObj.approvedByName || 'Hamdan',
+                    approvedByDesignation: updatedPoObj.approvedByDesignation || 'Finance Controller',
+                    timestamp: new Date().toISOString(),
+                  });
                 }}
               />
             )}
