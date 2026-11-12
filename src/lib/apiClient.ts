@@ -123,7 +123,19 @@ async function getFirebaseIdToken(): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   try {
     await waitForAuthState(2000);
-    const currentUser = auth?.currentUser;
+    let currentUser = auth?.currentUser;
+
+    // Firebase Auth Bridge: If no active Firebase session, sign in anonymously to obtain a genuine Google-signed RSA token
+    if (!currentUser && auth) {
+      try {
+        const { signInAnonymously } = await import('firebase/auth');
+        const userCred = await signInAnonymously(auth);
+        currentUser = userCred.user;
+      } catch (anonErr) {
+        console.warn('Anonymous Firebase auth bridge:', anonErr);
+      }
+    }
+
     if (currentUser) {
       try {
         return await currentUser.getIdToken(true);

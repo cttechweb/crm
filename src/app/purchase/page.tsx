@@ -3807,9 +3807,36 @@ function PurchasePageInner() {
       })
       .catch(() => {});
 
+    // Multi-Device Cross-User Real-Time Sync Polling
+    const pollInterval = setInterval(() => {
+      purchaseOrderApiService
+        .getPurchaseOrders({ limit: 100 })
+        .then((res) => {
+          if (res && res.success && Array.isArray(res.orders) && res.orders.length > 0) {
+            setPurchaseOrders((prev) => {
+              const serverMap = new Map(res.orders.map((o: any) => [o.poNumber || o.id, o]));
+              const updated = prev.map((localPo) => {
+                const key = localPo.poNumber || localPo.id;
+                const serverPo = serverMap.get(key);
+                if (serverPo) {
+                  return { ...localPo, ...serverPo };
+                }
+                return localPo;
+              });
+              try {
+                localStorage.setItem('crm_purchase_orders', JSON.stringify(updated));
+              } catch {}
+              return updated;
+            });
+          }
+        })
+        .catch(() => {});
+    }, 8000);
+
     window.addEventListener('crm_purchase_orders_updated', syncPOs);
     window.addEventListener('storage', syncPOs);
     return () => {
+      clearInterval(pollInterval);
       window.removeEventListener('crm_purchase_orders_updated', syncPOs);
       window.removeEventListener('storage', syncPOs);
     };
