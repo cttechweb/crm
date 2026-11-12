@@ -16,6 +16,7 @@ interface ChatMessageListProps {
   conversation: ChatConversation | null;
   messages: ChatMessage[];
   currentUserId?: string;
+  currentUserName?: string;
   isAdmin?: boolean;
   isLoading?: boolean;
   isLoadingMore?: boolean;
@@ -29,6 +30,7 @@ export function ChatMessageList({
   conversation,
   messages,
   currentUserId,
+  currentUserName,
   isAdmin = false,
   isLoading = false,
   isLoadingMore = false,
@@ -247,6 +249,7 @@ export function ChatMessageList({
                   key={msg.id}
                   message={msg}
                   currentUserId={currentUserId}
+                  currentUserName={currentUserName}
                   isAdmin={isAdmin}
                   isFirstInGroup={isFirstInGroup}
                   onEditMessage={onEditMessage}

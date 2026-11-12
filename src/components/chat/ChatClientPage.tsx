@@ -616,6 +616,7 @@ function ChatContent() {
           conversation={activeConversation}
           messages={messages}
           currentUserId={currentUserId}
+          currentUserName={currentUser?.name}
           isAdmin={isAdmin}
           isLoading={isLoadingMessages}
           isLoadingMore={isLoadingMore}
