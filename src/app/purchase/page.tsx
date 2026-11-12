@@ -919,7 +919,7 @@ function PurchasePageInner() {
 
   useEffect(() => {
     if (contextPurchaseOrders && contextPurchaseOrders.length > 0) {
-      setPurchaseOrders(contextPurchaseOrders);
+      setPurchaseOrders(applyApprovalRegistry(contextPurchaseOrders));
     }
   }, [contextPurchaseOrders]);
 
@@ -3799,15 +3799,22 @@ function PurchasePageInner() {
             }
             return po;
           });
-          setPurchaseOrders(sanitized);
+
+          // Ensure baseline POs (e.g. CTPO#2516) are never lost if remote list has fewer records
+          const serverIds = new Set(sanitized.map((o: any) => o.poNumber || o.id));
+          const missingBaselines = baselinePurchaseOrders.filter((b) => !serverIds.has(b.poNumber) && !serverIds.has(b.id));
+          const merged = [...sanitized, ...missingBaselines];
+          const finalized = applyApprovalRegistry(merged);
+
+          setPurchaseOrders(finalized);
           if (typeof window !== 'undefined') {
-            localStorage.setItem('crm_purchase_orders', JSON.stringify(sanitized));
+            localStorage.setItem('crm_purchase_orders', JSON.stringify(finalized));
           }
         }
       })
       .catch(() => {});
 
-    // Multi-Device Cross-User Real-Time Sync Polling
+    // Multi-Device Cross-User Real-Time Sync Polling (4-second live pulse)
     const pollInterval = setInterval(() => {
       purchaseOrderApiService
         .getPurchaseOrders({ limit: 100 })
@@ -3815,14 +3822,56 @@ function PurchasePageInner() {
           if (res && res.success && Array.isArray(res.orders) && res.orders.length > 0) {
             setPurchaseOrders((prev) => {
               const serverMap = new Map(res.orders.map((o: any) => [o.poNumber || o.id, o]));
+              let hasNewApproval = false;
+              let regToUpdate: Record<string, any> = {};
+              try {
+                regToUpdate = JSON.parse(localStorage.getItem('crm_po_approvals_registry') || '{}');
+              } catch {}
+
               const updated = prev.map((localPo) => {
                 const key = localPo.poNumber || localPo.id;
                 const serverPo = serverMap.get(key);
                 if (serverPo) {
+                  // Check if an order was approved on another device
+                  if (serverPo.approval === 'Approved' && localPo.approval !== 'Approved') {
+                    hasNewApproval = true;
+                    if (key) {
+                      regToUpdate[key] = {
+                        approval: 'Approved',
+                        approvedByName: serverPo.approvedByName || 'Hamdan',
+                        approvedByDesignation: serverPo.approvedByDesignation || 'Finance Controller',
+                        approvedAt: serverPo.approvedAt || new Date().toISOString(),
+                      };
+                    }
+                    if (serverPo.poNumber && serverPo.poNumber !== key) {
+                      regToUpdate[serverPo.poNumber] = regToUpdate[key];
+                    }
+
+                    // Alert Murshid with header bell notification
+                    const approverTitle = serverPo.approvedByName
+                      ? `${serverPo.approvedByName} (${serverPo.approvedByDesignation || 'Finance Controller'})`
+                      : 'Hamdan (Finance Controller)';
+                    notificationService.addLocalNotification({
+                      recipientId: 'murshid',
+                      recipientRole: 'purchase_manager',
+                      title: `✓ PO Approved: ${serverPo.poNumber}`,
+                      message: `Purchase Order ${serverPo.poNumber} for ${serverPo.supplier} (AED ${Number(serverPo.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) has been authorized by ${approverTitle}.`,
+                      type: 'approval',
+                      linkUrl: `/purchase?tab=po&poId=${serverPo.id}`,
+                      metadata: { poId: serverPo.id, poNumber: serverPo.poNumber, status: 'Approved' },
+                    });
+                  }
                   return { ...localPo, ...serverPo };
                 }
                 return localPo;
               });
+
+              if (hasNewApproval) {
+                try {
+                  localStorage.setItem('crm_po_approvals_registry', JSON.stringify(regToUpdate));
+                } catch {}
+              }
+
               try {
                 localStorage.setItem('crm_purchase_orders', JSON.stringify(updated));
               } catch {}
@@ -3831,7 +3880,7 @@ function PurchasePageInner() {
           }
         })
         .catch(() => {});
-    }, 8000);
+    }, 4000);
 
     window.addEventListener('crm_purchase_orders_updated', syncPOs);
     window.addEventListener('storage', syncPOs);

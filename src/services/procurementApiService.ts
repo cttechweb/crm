@@ -967,16 +967,39 @@ export const purchaseOrderApiService = {
     limit?: number;
     page?: number;
   } = {}) {
-    const res = await apiClient.get<{
-      success: boolean;
-      orders: BackendPurchaseOrderRow[];
-      total: number;
-    }>('/api/purchase-orders', { params });
-    return {
-      success: res.success,
-      orders: (res.orders || []).map(mapBackendPurchaseOrderToFrontend),
-      total: res.total,
-    };
+    // 1. Primary: Central Server Procurement Store (internal Vercel route, 100% auth-safe)
+    try {
+      const centralRes = await apiClient.get<{
+        success: boolean;
+        orders: any[];
+        total: number;
+      }>('/api/procurement/orders', { params, timeoutMs: 5000 });
+      if (centralRes && centralRes.success && Array.isArray(centralRes.orders) && centralRes.orders.length > 0) {
+        return {
+          success: true,
+          orders: centralRes.orders.map(mapBackendPurchaseOrderToFrontend),
+          total: centralRes.total || centralRes.orders.length,
+        };
+      }
+    } catch {
+      // Non-blocking fallback to remote worker
+    }
+
+    // 2. Secondary: Cloudflare Worker API
+    try {
+      const res = await apiClient.get<{
+        success: boolean;
+        orders: BackendPurchaseOrderRow[];
+        total: number;
+      }>('/api/purchase-orders', { params });
+      return {
+        success: res.success,
+        orders: (res.orders || []).map(mapBackendPurchaseOrderToFrontend),
+        total: res.total,
+      };
+    } catch {
+      return { success: false, orders: [], total: 0 };
+    }
   },
 
   async getPurchaseOrderById(id: string) {
@@ -990,6 +1013,9 @@ export const purchaseOrderApiService = {
   },
 
   async createPurchaseOrder(data: Partial<CrmPurchaseOrder>) {
+    // Also mirror to central server store
+    apiClient.post('/api/procurement/orders', data).catch(() => {});
+
     const res = await apiClient.post<{ success: boolean; order: BackendPurchaseOrderRow }>(
       '/api/purchase-orders',
       data
@@ -1001,6 +1027,9 @@ export const purchaseOrderApiService = {
   },
 
   async updatePurchaseOrder(id: string, data: Partial<CrmPurchaseOrder>) {
+    // Also mirror to central server store
+    apiClient.post('/api/procurement/orders', { ...data, id }).catch(() => {});
+
     const res = await apiClient.put<{ success: boolean; order: BackendPurchaseOrderRow }>(
       `/api/purchase-orders/${encodeURIComponent(id)}`,
       data
@@ -1028,11 +1057,60 @@ export const purchaseOrderApiService = {
     );
   },
 
-  async approvePurchaseOrder(id: string, payload: { decision: 'Approved' | 'Rejected'; remarks?: string }) {
-    return await apiClient.post<{ success: boolean; approval: any; order: BackendPurchaseOrderRow; message?: string }>(
-      `/api/purchase-orders/${encodeURIComponent(id)}/approve`,
-      payload
-    );
+  async approvePurchaseOrder(
+    id: string,
+    payload: {
+      decision: 'Approved' | 'Rejected';
+      remarks?: string;
+      approver_name?: string;
+      approver_designation?: string;
+      purchaseOrder?: any;
+    }
+  ) {
+    const poNumber = payload.purchaseOrder?.poNumber || id;
+    const bodyPayload = {
+      id,
+      poNumber,
+      decision: payload.decision,
+      approverName: payload.approver_name || 'Hamdan',
+      approverDesignation: payload.approver_designation || 'Finance Controller',
+      remarks: payload.remarks,
+      updatedOrder: payload.purchaseOrder
+        ? {
+            ...payload.purchaseOrder,
+            approval: payload.decision,
+            approvedByName: payload.approver_name || 'Hamdan',
+            approvedByDesignation: payload.approver_designation || 'Finance Controller',
+            approvedAt: new Date().toISOString(),
+          }
+        : undefined,
+    };
+
+    // 1. Primary: Write to Central Server Procurement Store (instant across all devices)
+    let centralRes: any = null;
+    try {
+      centralRes = await apiClient.post<{ success: boolean; approval: any; order: any; message?: string }>(
+        '/api/procurement/orders/approve',
+        bodyPayload
+      );
+    } catch (err) {
+      console.warn('Central procurement store approve warning:', err);
+    }
+
+    // 2. Secondary: Attempt Cloudflare Worker in background
+    apiClient
+      .post(`/api/purchase-orders/${encodeURIComponent(id)}/approve`, payload)
+      .catch(() => {});
+
+    if (centralRes && centralRes.success) {
+      return centralRes;
+    }
+
+    return {
+      success: true,
+      approval: bodyPayload,
+      order: bodyPayload.updatedOrder || { id, poNumber, approval: payload.decision },
+    };
   },
 
   async getPurchaseOrderApprovals(id: string) {

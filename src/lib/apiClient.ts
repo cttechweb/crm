@@ -203,8 +203,23 @@ async function getFirebaseIdToken(): Promise<string | null> {
  * Constructs the final URL with query parameters after validating the base URL
  */
 function buildUrl(endpoint: string, params?: Record<string, string | number | boolean | undefined | null>): string {
-  const baseUrl = validateAndGetBaseUrl();
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+  // Internal Next.js App routes (e.g. /api/procurement/*) resolve directly to the current Vercel host
+  if (cleanEndpoint.startsWith('/api/procurement/')) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : (process.env.NEXTAUTH_URL || 'http://localhost:3000');
+    const url = new URL(`${origin}${cleanEndpoint}`);
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          url.searchParams.append(key, String(value));
+        }
+      });
+    }
+    return url.toString();
+  }
+
+  const baseUrl = validateAndGetBaseUrl();
   const url = new URL(`${baseUrl}${cleanEndpoint}`);
 
   if (params) {

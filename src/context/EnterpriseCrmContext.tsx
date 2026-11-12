@@ -1104,8 +1104,15 @@ export function EnterpriseCrmProvider({ children }: { children: React.ReactNode 
                 }
                 return po;
               });
-              setPurchaseOrders(sanitized);
-              persist('crm_purchase_orders', sanitized, undefined, false);
+
+              // Ensure all baseline POs (such as CTPO#2516) are preserved if missing from remote
+              const serverNums = new Set(sanitized.map((o: any) => o.poNumber || o.id));
+              const missingBaselines = baselinePurchaseOrders.filter((b) => !serverNums.has(b.poNumber) && !serverNums.has(b.id));
+              const merged = [...sanitized, ...missingBaselines];
+              const finalized = applyApprovalRegistry(merged);
+
+              setPurchaseOrders(finalized);
+              persist('crm_purchase_orders', finalized, undefined, false);
             }
           })
           .catch(() => { });
