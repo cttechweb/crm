@@ -270,9 +270,9 @@ export const applyApprovalRegistry = (orders: any[]): any[] => {
 const defaultPurchaseInvoicesList: any[] = [];
 const mockPurchasePayments: any[] = [];
 const defaultSuppliersList: any[] = [
-  { id: 'sup_1793096319825', name: 'hello', supplierName: 'hello', companyName: 'Mussafah Industrial Area, Abu Dhabi', owner: 'shemin', status: 'Active' },
-  { id: 'sup_1793099052834', name: 'shezin', supplierName: 'shezin', companyName: 'hello', owner: 'shemin', status: 'Active' },
-  { id: 'sup_1793100105795', name: 'afsal', supplierName: 'afsal', companyName: 'ash', owner: 'shemin', status: 'Active' },
+  { id: 'sup_mueller_01', name: 'Mueller Middle East FZE', supplierName: 'Mueller Middle East FZE', companyName: 'Mueller Middle East FZE', trn: '100234567800003', owner: 'Murshid', status: 'Active', city: 'Dubai' },
+  { id: 'sup_danfoss_01', name: 'Danfoss Gulf FZE', supplierName: 'Danfoss Gulf FZE', companyName: 'Danfoss Gulf FZE', trn: '100456789000003', owner: 'Murshid', status: 'Active', city: 'Dubai' },
+  { id: 'sup_futtaim_01', name: 'Al Futtaim Engineering & Technologies LLC', supplierName: 'Al Futtaim Engineering & Technologies LLC', companyName: 'Al Futtaim Engineering & Technologies LLC', trn: '100987654300003', owner: 'Murshid', status: 'Active', city: 'Dubai' },
 ];
 
 const defaultStoresList: any[] = [
@@ -5049,19 +5049,38 @@ function PurchasePageInner() {
     });
   }, [purchaseInvoicesList, invoiceSearch, invoiceFilterOwner, invoiceFilterSupplier, invoiceFilterStatus]);
 
-  // Live unique suppliers for PO filter dropdown (strictly from registered Suppliers directory)
+  // Live unique suppliers for PO filter dropdown (from registered Suppliers directory & active Purchase Orders)
   const poLiveFilterSuppliers = useMemo(() => {
     const map = new Map<string, string>();
     suppliersList.forEach((s: any) => {
       const name = (s.supplierName || s.name || '').trim();
-      if (name && name !== 'Select Supplier') {
+      if (
+        name &&
+        name !== 'Select Supplier' &&
+        name !== 'hello' &&
+        name !== 'shezin' &&
+        name !== 'afsal'
+      ) {
         if (!map.has(name.toLowerCase())) {
           map.set(name.toLowerCase(), name);
         }
       }
     });
+    purchaseOrders.forEach((po: any) => {
+      const name = (po.supplier || '').trim();
+      if (
+        name &&
+        name !== 'Select Supplier' &&
+        name !== 'hello' &&
+        name !== 'shezin' &&
+        name !== 'afsal' &&
+        !map.has(name.toLowerCase())
+      ) {
+        map.set(name.toLowerCase(), name);
+      }
+    });
     return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
-  }, [suppliersList]);
+  }, [suppliersList, purchaseOrders]);
 
   const selectedFilterMsrfObj = useMemo(() => {
     if (poFilterMsrf === 'All Material Requests') return null;

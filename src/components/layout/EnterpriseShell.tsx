@@ -20,14 +20,6 @@ const ChatNotificationToast = dynamic(
   { ssr: false }
 );
 
-const ProcurementNotificationToast = dynamic(
-  () =>
-    import('@/components/purchase/ProcurementNotificationToast').then(
-      (mod) => mod.ProcurementNotificationToast
-    ),
-  { ssr: false }
-);
-
 export function EnterpriseShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -110,9 +102,6 @@ export function EnterpriseShell({ children }: { children: React.ReactNode }) {
 
             {/* Real-Time WhatsApp-Style In-App Chat Notification Toast */}
             <ChatNotificationToast />
-
-            {/* Real-Time Procurement PO Approval & Creator Popup Notification */}
-            <ProcurementNotificationToast />
           </div>
         )}
       </SuperAdminProvider>
