@@ -158,8 +158,13 @@ chatApp.get('/unread', async (c) => {
 chatApp.get('/conversations', async (c) => {
   const currentUser = c.get('user');
 
+  const cleanUserId = currentUser.id.replace(/^usr_/, '');
+  const userVariants = [currentUser.id, cleanUserId, `usr_${cleanUserId}`];
+  const userPattern1 = `%_${cleanUserId}_%`;
+  const userPattern2 = `%_${cleanUserId}`;
+
   try {
-    // 1. Fetch conversations where user is a member OR public channels
+    // 1. Fetch conversations where user is a member OR public channels OR user's direct messages
     const query = await c.env.DB.prepare(`
       SELECT DISTINCT
         c.id, c.type, c.title, c.slug, c.description, c.is_private, c.created_by,
@@ -167,11 +172,13 @@ chatApp.get('/conversations', async (c) => {
         c.created_at, c.updated_at,
         mem.role as my_role, mem.last_read_at as my_last_read_at, mem.is_muted as my_is_muted
       FROM chat_conversations c
-      LEFT JOIN chat_members mem ON c.id = mem.conversation_id AND mem.user_id = ?
-      WHERE mem.user_id IS NOT NULL OR (c.type = 'channel' AND c.is_private = 0)
+      LEFT JOIN chat_members mem ON c.id = mem.conversation_id AND (mem.user_id = ? OR mem.user_id = ? OR mem.user_id = ?)
+      WHERE mem.user_id IS NOT NULL 
+         OR (c.type = 'channel' AND c.is_private = 0)
+         OR (c.type = 'direct' AND (c.id LIKE ? OR c.id LIKE ?))
       ORDER BY COALESCE(c.last_message_at, c.created_at) DESC
     `)
-      .bind(currentUser.id)
+      .bind(userVariants[0], userVariants[1], userVariants[2], userPattern1, userPattern2)
       .all<ChatConversationRow & { my_role?: string; my_last_read_at?: string; my_is_muted?: number }>();
 
     const conversations = query.results || [];
@@ -686,9 +693,13 @@ chatApp.get('/conversations/:id/messages', async (c) => {
   const currentUser = c.get('user');
   const convId = c.req.param('id');
 
-  const conv = await c.env.DB.prepare('SELECT is_private FROM chat_conversations WHERE id = ? LIMIT 1')
+  let conv = await c.env.DB.prepare('SELECT is_private FROM chat_conversations WHERE id = ? LIMIT 1')
     .bind(convId)
     .first<{ is_private: number }>();
+
+  if (!conv && convId.startsWith('conv_dm_')) {
+    return c.json({ success: true, messages: [], total: 0 });
+  }
 
   if (!conv) {
     return c.json({ success: false, message: 'Conversation not found' }, 404);
@@ -785,15 +796,43 @@ chatApp.post('/conversations/:id/messages', async (c) => {
     return c.json({ success: false, message: 'Message exceeds maximum length of 4000 characters' }, 400);
   }
 
-  const conv = await c.env.DB.prepare('SELECT id, is_private, type FROM chat_conversations WHERE id = ? LIMIT 1')
+  let conv = await c.env.DB.prepare('SELECT id, is_private, type FROM chat_conversations WHERE id = ? LIMIT 1')
     .bind(convId)
     .first<ChatConversationRow>();
+
+  if (!conv && convId.startsWith('conv_dm_')) {
+    const rawIds = convId.replace('conv_dm_', '').split('_');
+    const u1 = rawIds[0];
+    const u2 = rawIds[1];
+    await c.env.DB.prepare(`
+      INSERT INTO chat_conversations (id, type, title, is_private, created_by, created_at, updated_at)
+      VALUES (?, 'direct', 'Direct Message', 1, ?, datetime('now'), datetime('now'))
+      ON CONFLICT(id) DO NOTHING
+    `).bind(convId, currentUser.id).run();
+
+    await c.env.DB.prepare(`
+      INSERT INTO chat_members (id, conversation_id, user_id, role, joined_at)
+      VALUES (?, ?, ?, 'member', datetime('now')),
+             (?, ?, ?, 'member', datetime('now'))
+      ON CONFLICT(conversation_id, user_id) DO NOTHING
+    `).bind(
+      `mem_${convId}_${u1}`, convId, u1,
+      `mem_${convId}_${u2}`, convId, u2
+    ).run();
+
+    conv = await c.env.DB.prepare('SELECT id, is_private, type FROM chat_conversations WHERE id = ? LIMIT 1')
+      .bind(convId)
+      .first<ChatConversationRow>();
+  }
 
   if (!conv) {
     return c.json({ success: false, message: 'Conversation not found' }, 404);
   }
 
-  // Check membership; if public channel and not yet member, auto-join
+  const cleanCurrentId = (currentUser.id || '').replace(/^usr_/, '');
+  const isDirectParticipant = conv.type === 'direct' && (convId.includes(cleanCurrentId) || convId.includes(currentUser.id));
+
+  // Check membership; if public channel or direct message participant and not yet member, auto-join
   const membership = await c.env.DB.prepare(
     'SELECT id FROM chat_members WHERE conversation_id = ? AND user_id = ? LIMIT 1'
   )
@@ -801,11 +840,11 @@ chatApp.post('/conversations/:id/messages', async (c) => {
     .first<{ id: string }>();
 
   if (!membership) {
-    if (conv.is_private && currentUser.role !== 'SUPER_ADMIN') {
+    if (conv.is_private && currentUser.role !== 'SUPER_ADMIN' && !isDirectParticipant) {
       return c.json({ success: false, message: 'Forbidden: You are not a member of this conversation' }, 403);
     }
 
-    // Auto-join public channel
+    // Auto-join
     await c.env.DB.prepare(`
       INSERT INTO chat_members (id, conversation_id, user_id, role, joined_at, last_read_at)
       VALUES (?, ?, ?, 'member', datetime('now'), datetime('now'))

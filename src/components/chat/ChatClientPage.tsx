@@ -9,7 +9,7 @@ import { ChatMessageList } from '@/components/chat/ChatMessageList';
 import { ChatMessageComposer } from '@/components/chat/ChatMessageComposer';
 import { NewConversationModal } from '@/components/chat/NewConversationModal';
 import { ConversationMembersModal } from '@/components/chat/ConversationMembersModal';
-import { chatApiService } from '@/services/chatApiService';
+import { chatApiService, getAllCrmColleagues } from '@/services/chatApiService';
 import { authMockService } from '@/services/authMockService';
 import type {
   ChatConversation,
@@ -49,41 +49,83 @@ function ChatContent() {
   const loadConversations = useCallback(async (silent = false) => {
     if (!silent) setIsLoadingConversations(true);
     try {
-      const list = await chatApiService.getConversations();
+      let list = await chatApiService.getConversations();
+
+      // If URL specifies a conversation (e.g. ?c=conv_dm_...), ensure it is present in the list
+      if (conversationParam) {
+        let matched = list.find((c) => c.id === conversationParam);
+        if (!matched && conversationParam.startsWith('conv_dm_')) {
+          // Synthesize DM conversation object from colleagues directory
+          const parts = conversationParam.replace('conv_dm_', '').split('_');
+          const myUser = authMockService.getCurrentUser();
+          const myId = String(myUser?.id || '').replace(/^usr_/, '');
+          const otherId = parts.find((p) => p !== myId) || parts[0];
+          const allColleagues = getAllCrmColleagues();
+          const otherUser = allColleagues.find((c) => {
+            const clean = c.id.replace(/^usr_/, '');
+            return clean === otherId || clean === parts[0] || clean === parts[1];
+          });
+          if (otherUser) {
+            matched = {
+              id: conversationParam,
+              type: 'direct',
+              title: otherUser.name,
+              slug: null,
+              description: otherUser.role || 'Direct Message',
+              is_private: true,
+              created_by: myUser?.id || 'me',
+              last_message_at: null,
+              last_message_text: null,
+              last_message_sender_id: null,
+              last_message_sender_name: null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              unread_count: 0,
+              members_count: 2,
+              other_user: otherUser,
+              is_member: true,
+              my_role: 'member',
+              is_deleted_by_user: false,
+            };
+            list = [matched, ...list];
+          }
+        }
+      }
+
       setConversations(list);
 
       // If active conversation is not selected yet, pick from query param or default to department channel or user's active direct chat
       setActiveConversationId((prevActive) => {
+        // Priority 1: Explicit URL parameter!
+        if (conversationParam && list.some((c) => c.id === conversationParam)) {
+          return conversationParam;
+        }
+        // Priority 2: Currently active conversation if valid
         if (prevActive && list.some((c) => c.id === prevActive && !c.is_deleted_by_user)) {
           return prevActive;
-        }
-        if (conversationParam && list.some((c) => c.id === conversationParam && !c.is_deleted_by_user)) {
-          return conversationParam;
         }
 
         const user = authMockService.getCurrentUser();
         const roleOrDept = (user?.department || user?.position || user?.designation || user?.role || '').toLowerCase();
         const name = (user?.name || '').toLowerCase();
 
-        // 1. If user is in Operations (e.g. Murshid), open #operations by default!
+        // 1. If user has active direct messages with colleagues, open the latest active DM!
+        const latestDm = list.find((c) => c.type === 'direct' && Boolean(c.last_message_text) && !c.is_deleted_by_user);
+        if (latestDm) return latestDm.id;
+
+        // 2. Department channels
         if (roleOrDept.includes('operation') || name.includes('murshid')) {
           const ops = list.find((c) => c.slug === 'operations');
           if (ops) return ops.id;
         }
-        // 2. If user is in Sales (e.g. Tariq), open #sales by default!
         if (roleOrDept.includes('sales') || name.includes('tariq')) {
           const sales = list.find((c) => c.slug === 'sales');
           if (sales) return sales.id;
         }
-        // 3. If user is in Purchase / Procurement (e.g. Mustafa), open #purchase by default!
         if (roleOrDept.includes('purchase') || roleOrDept.includes('procurement') || name.includes('mustafa')) {
           const purch = list.find((c) => c.slug === 'purchase');
           if (purch) return purch.id;
         }
-
-        // 4. If user has active direct messages with colleagues, open the latest active DM!
-        const latestDm = list.find((c) => c.type === 'direct' && Boolean(c.last_message_text) && !c.is_deleted_by_user);
-        if (latestDm) return latestDm.id;
 
         const general = list.find((c) => c.slug === 'general');
         if (general) return general.id;
