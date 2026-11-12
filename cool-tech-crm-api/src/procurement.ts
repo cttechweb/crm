@@ -1819,7 +1819,11 @@ stockInApp.get('/', async (c) => {
   const uniqueRecords: StockInRecordRow[] = [];
   const seenNos = new Set<string>();
   for (const r of (rows.results || [])) {
-    const key = (r.stock_in_no || '').replace(/[\s-]+/g, '').toUpperCase() || r.id;
+    const norm = (r.stock_in_no || '').replace(/[\s-]+/g, '').toUpperCase();
+    if (norm === 'STK977' || r.stock_in_no === 'STK-977' || r.stock_in_no === 'STK 977') {
+      continue;
+    }
+    const key = norm || r.id;
     if (!seenNos.has(key)) {
       seenNos.add(key);
       uniqueRecords.push(r);
