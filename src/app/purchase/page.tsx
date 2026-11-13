@@ -3889,6 +3889,39 @@ function PurchasePageInner() {
     };
   }, []);
 
+  // Live Fetch & Sync with Cloudflare D1 Database for Products / Inventory
+  useEffect(() => {
+    const fetchLiveInventory = async () => {
+      try {
+        const res = await crmInventoryApiService.getInventory({ limit: 200 });
+        if (res && res.success && Array.isArray(res.cezconStocks) && res.cezconStocks.length > 0) {
+          const { list: reconciledList } = reconcileProductsWithStockIn(res.cezconStocks);
+          setStockItems(reconciledList);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('cezcon_products_master_live', JSON.stringify(reconciledList));
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch live inventory from Cloudflare D1 API:', err);
+      }
+    };
+
+    fetchLiveInventory();
+
+    const handleProductsUpdated = () => {
+      fetchLiveInventory();
+    };
+
+    window.addEventListener('crm_products_updated', handleProductsUpdated);
+    return () => {
+      window.removeEventListener('crm_products_updated', handleProductsUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
+    crmInventoryApiService.migrateLocalInventoryToDatabase().catch(() => { });
+  }, []);
+
   useEffect(() => {
     const syncPOs = () => {
       try {
@@ -4536,7 +4569,11 @@ function PurchasePageInner() {
       console.error('Failed to persist product to localStorage', err);
     }
 
-    crmInventoryApiService.createInventoryItem(savedProduct).catch(() => { });
+    if (editingProductId) {
+      crmInventoryApiService.updateInventoryItem(editingProductId, savedProduct).catch(() => { });
+    } else {
+      crmInventoryApiService.createInventoryItem(savedProduct).catch(() => { });
+    }
 
     // Also update availableStockInProducts
     const stockInProd = {
@@ -14754,6 +14791,9 @@ function PurchasePageInner() {
                                               localStorage.setItem('cezcon_products_master_live', JSON.stringify(filtered));
                                               window.dispatchEvent(new Event('crm_products_updated'));
                                             }
+                                            if (item.id) {
+                                              crmInventoryApiService.deleteInventoryItem(item.id).catch(() => {});
+                                            }
                                           } catch (err) {
                                             console.error('Failed to delete product', err);
                                           }
@@ -14836,6 +14876,9 @@ function PurchasePageInner() {
                                           );
                                           localStorage.setItem('cezcon_products_master_live', JSON.stringify(updatedList));
                                           window.dispatchEvent(new Event('crm_products_updated'));
+                                        }
+                                        if (item.id) {
+                                          crmInventoryApiService.updateInventoryItem(item.id, { status: newStatus }).catch(() => {});
                                         }
                                       } catch (err) {
                                         console.error('Failed to toggle status', err);

@@ -4642,7 +4642,6 @@ msrfApp.post('/:id/generate-po', async (c) => {
     .run();
 
   // Insert PO items
-  const isMuellerSupplier = supplier.toLowerCase().includes('mueller');
   for (let i = 0; i < reqItems.length; i++) {
     const item = reqItems[i];
     const itemPoId = `poi_${Date.now()}_${i}`;
