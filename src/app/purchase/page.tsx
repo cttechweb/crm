@@ -53,6 +53,7 @@ import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { CrmCezconStock, CrmStockTransfer, CrmPurchaseOrder, CrmMsrf, CrmSupplierQuotation } from '@/types/enterprise-crm';
 import { ProductSettingItem } from '@/types/settings';
 import { authMockService, MockAuthUser } from '@/services/authMockService';
+import { getLiveProducts } from '@/services/productApiService';
 import {
   supplierApiService,
   storeApiService,
@@ -3321,6 +3322,7 @@ function PurchasePageInner() {
   const [productStore, setProductStore] = useState<string>('All Store');
   const [productSearch, setProductSearch] = useState<string>('');
   const [productRowsPerPage, setProductRowsPerPage] = useState<number>(10);
+  const [productCurrentPage, setProductCurrentPage] = useState<number>(1);
 
   // Unit Sub-Tab States
   const [unitsList, setUnitsList] = useState<string[]>([
@@ -3849,62 +3851,118 @@ function PurchasePageInner() {
     };
   }, []);
 
-  // Live Fetch & Sync with Cloudflare D1 Database for Products / Inventory
+  // Live Fetch & Sync with Cloudflare D1 Database & Master Catalog for Products / Inventory
   useEffect(() => {
     const fetchLiveInventory = async () => {
       try {
-        const res = await crmInventoryApiService.getInventory({ limit: 200 });
-        if (res && res.success && Array.isArray(res.cezconStocks) && res.cezconStocks.length > 0) {
-          const { list: reconciledList } = reconcileProductsWithStockIn(res.cezconStocks);
-          const mapped = reconciledList.map((p: any, idx: number) => {
-            const isMitsubishi =
-              String(p.code || '').toLowerCase() === 'prod-01' ||
-              String(p.name || '').toLowerCase().includes('mitsubishi');
+        const [d1Res, liveCatalogRes] = await Promise.allSettled([
+          crmInventoryApiService.getInventory({ limit: 500 }),
+          getLiveProducts({ limit: 1000 }),
+        ]);
 
-            let currentStockVal = Number(p.currentStock ?? p.stock) || 0;
-            if (isMitsubishi && currentStockVal === 0) {
-              currentStockVal = 8;
+        let combined: any[] = [];
+        const seenCodes = new Set<string>();
+
+        // 1. Add D1 warehouse inventory records first
+        if (d1Res.status === 'fulfilled' && d1Res.value?.success && Array.isArray(d1Res.value.cezconStocks)) {
+          for (const item of d1Res.value.cezconStocks) {
+            const key = String(item.code || item.id || '').trim().toLowerCase();
+            if (key && !seenCodes.has(key)) {
+              seenCodes.add(key);
+              combined.push(item);
             }
-
-            const cleanCode = String(p.code || p.sku || `PROD-${idx + 1}`);
-            const cleanName = isMitsubishi ? 'Mitsubishi 5.0 Ton Package AC' : (p.name || 'Unnamed Product');
-            const cleanBrand = isMitsubishi ? 'MITSUBISHI' : (p.brand || 'General');
-
-            return {
-              id: String(p.id || `prod-${idx + 1}`),
-              slNo: idx + 1,
-              serialNo: p.serialNo || '',
-              code: cleanCode,
-              name: cleanName,
-              image: p.image || p.thumbnailImage || '',
-              unit: p.unit || 'Pcs',
-              brand: cleanBrand,
-              category: p.category || 'Air Conditioning',
-              type: p.type || 'Product',
-              purchaseRate: Number(p.purchaseRate) || 0,
-              sellingPrice: Number(p.sellingPrice || p.basePrice) || 0,
-              status: p.status === false || p.status === 'Inactive' ? 'Inactive' : 'Active',
-              store: p.store || 'Main Warehouse - Bay A',
-              stock: currentStockVal,
-              currentStock: currentStockVal,
-              openingStock: Number(p.openingStock) || 0,
-              minimumStock: Number(p.minStock || p.minimumStock) || 0,
-              supplier: p.supplier || p.preferredSupplier || '',
-              supplierId: p.supplierId || '',
-              createdBy: p.createdBy || 'Rashid Ali',
-              createdByRole: p.createdByRole || 'manager',
-              createdById: p.createdById || 'usr_rashid_001',
-              createdByEmail: p.createdByEmail || 'purchasemanager@gmail.com',
-              owner: p.owner || p.createdBy || 'Rashid Ali',
-            };
-          });
-          setStockItems(mapped);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('cezcon_products_master_live', JSON.stringify(mapped));
           }
         }
+
+        // 2. Add full catalog products from Master Catalog (the 40+ products)
+        if (liveCatalogRes.status === 'fulfilled' && liveCatalogRes.value?.success && Array.isArray(liveCatalogRes.value.products)) {
+          for (const item of liveCatalogRes.value.products) {
+            const key = String(item.code || (item as any).sku || item.id || '').trim().toLowerCase();
+            if (key && !seenCodes.has(key)) {
+              seenCodes.add(key);
+              combined.push({
+                id: item.id || `prod-cat-${key}`,
+                slNo: combined.length + 1,
+                serialNo: (item as any).serialNo || '',
+                code: item.code || (item as any).sku || key,
+                name: item.name || 'Unnamed Product',
+                image: (item as any).image || (item as any).thumbnailImage || '',
+                unit: item.unit || 'Pcs',
+                brand: item.brand || 'General',
+                category: item.category || 'Air Conditioning',
+                type: item.type || 'Product',
+                purchaseRate: Number(item.purchaseRate) || 0,
+                sellingPrice: Number(item.sellingPrice || (item as any).price || 0),
+                status: (item as any).status === false || (item as any).status === 'Inactive' ? 'Inactive' : 'Active',
+                store: (item as any).store || 'Main Warehouse - Bay A',
+                stock: Number((item as any).stock || (item as any).currentStock || 0),
+                currentStock: Number((item as any).currentStock || (item as any).stock || 0),
+                openingStock: 0,
+                minimumStock: Number((item as any).minStock || (item as any).minimumStock || 0),
+                supplier: (item as any).supplier || (item as any).preferredSupplier || '',
+                supplierId: (item as any).supplierId || '',
+                createdBy: (item as any).createdBy || 'System Catalog',
+                createdByRole: 'manager',
+                owner: 'Shemin',
+              });
+            }
+          }
+        }
+
+        if (combined.length === 0) {
+          combined = realInitialStockItems;
+        }
+
+        const { list: reconciledList } = reconcileProductsWithStockIn(combined);
+        const mapped = reconciledList.map((p: any, idx: number) => {
+          const isMitsubishi =
+            String(p.code || '').toLowerCase() === 'prod-01' ||
+            String(p.name || '').toLowerCase().includes('mitsubishi');
+
+          let currentStockVal = Number(p.currentStock ?? p.stock) || 0;
+          if (isMitsubishi && currentStockVal === 0) {
+            currentStockVal = 8;
+          }
+
+          const cleanCode = String(p.code || p.sku || `PROD-${idx + 1}`);
+          const cleanName = isMitsubishi ? 'Mitsubishi 5.0 Ton Package AC' : (p.name || 'Unnamed Product');
+          const cleanBrand = isMitsubishi ? 'MITSUBISHI' : (p.brand || 'General');
+
+          return {
+            id: String(p.id || `prod-${idx + 1}`),
+            slNo: idx + 1,
+            serialNo: p.serialNo || '',
+            code: cleanCode,
+            name: cleanName,
+            image: p.image || p.thumbnailImage || '',
+            unit: p.unit || 'Pcs',
+            brand: cleanBrand,
+            category: p.category || 'Air Conditioning',
+            type: p.type || 'Product',
+            purchaseRate: Number(p.purchaseRate) || 0,
+            sellingPrice: Number(p.sellingPrice || p.basePrice) || 0,
+            status: p.status === false || p.status === 'Inactive' ? 'Inactive' : 'Active',
+            store: p.store || 'Main Warehouse - Bay A',
+            stock: currentStockVal,
+            currentStock: currentStockVal,
+            openingStock: Number(p.openingStock) || 0,
+            minimumStock: Number(p.minStock || p.minimumStock) || 0,
+            supplier: p.supplier || p.preferredSupplier || '',
+            supplierId: p.supplierId || '',
+            createdBy: p.createdBy || 'Rashid Ali',
+            createdByRole: p.createdByRole || 'manager',
+            createdById: p.createdById || 'usr_rashid_001',
+            createdByEmail: p.createdByEmail || 'purchasemanager@gmail.com',
+            owner: p.owner || p.createdBy || 'Rashid Ali',
+          };
+        });
+
+        setStockItems(mapped);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('cezcon_products_master_live', JSON.stringify(mapped));
+        }
       } catch (err) {
-        console.warn('Failed to fetch live inventory from Cloudflare D1 API:', err);
+        console.warn('Failed to fetch live inventory from API:', err);
       }
     };
 
@@ -4658,6 +4716,56 @@ function PurchasePageInner() {
     });
   };
 
+  const handleDeleteSingleProduct = (item: CrmCezconStock) => {
+    if (!confirm(`Are you sure you want to delete ${item.name}?`)) return;
+
+    const targetId = String(item.id || '').trim().toLowerCase();
+    const targetCode = String(item.code || (item as any).sku || '').trim().toLowerCase();
+    const targetSerial = String(item.serialNo || '').trim().toLowerCase();
+
+    // 1. Filter local state
+    setStockItems((prev) =>
+      prev.filter((i) => {
+        const iId = String(i.id || '').trim().toLowerCase();
+        const iCode = String(i.code || (i as any).sku || '').trim().toLowerCase();
+        const iSerial = String(i.serialNo || '').trim().toLowerCase();
+
+        if (targetCode && iCode && iCode === targetCode) return false;
+        if (targetId && iId && iId === targetId) return false;
+        if (targetSerial && iSerial && iSerial === targetSerial) return false;
+        return true;
+      })
+    );
+
+    // 2. Filter localStorage
+    try {
+      const existingRaw = localStorage.getItem('cezcon_products_master_live');
+      const existingList = existingRaw ? JSON.parse(existingRaw) : [];
+      if (Array.isArray(existingList)) {
+        const filtered = existingList.filter((x: any) => {
+          const xId = String(x.id || '').trim().toLowerCase();
+          const xCode = String(x.code || x.sku || '').trim().toLowerCase();
+          const xSerial = String(x.serialNo || '').trim().toLowerCase();
+
+          if (targetCode && xCode && xCode === targetCode) return false;
+          if (targetId && xId && xId === targetId) return false;
+          if (targetSerial && xSerial && xSerial === targetSerial) return false;
+          return true;
+        });
+        localStorage.setItem('cezcon_products_master_live', JSON.stringify(filtered));
+      }
+    } catch (err) {
+      console.error('Failed to update localStorage on delete', err);
+    }
+
+    // 3. Delete from backend Cloudflare D1
+    if (item.id) {
+      crmInventoryApiService.deleteInventoryItem(item.id).catch(() => {});
+    }
+
+    setActiveProductActionDropdownId(null);
+  };
+
   const renderFullPageAddProductView = () => (
     <div className="bg-white border border-[#CBD5E1] rounded-sm shadow-xs overflow-hidden text-xs animate-in fade-in duration-150">
       {/* Header with red close icon */}
@@ -5290,6 +5398,12 @@ function PurchasePageInner() {
       return true;
     });
   }, [stockItems, currentUser, productSearch, productCategory, productBrand, productUnit, productType, productStatus, productStore]);
+
+  const totalProductPages = Math.ceil(filteredProducts.length / productRowsPerPage) || 1;
+  const paginatedProducts = useMemo(() => {
+    const start = (productCurrentPage - 1) * productRowsPerPage;
+    return filteredProducts.slice(start, start + productRowsPerPage);
+  }, [filteredProducts, productCurrentPage, productRowsPerPage]);
 
   // Filtered Suppliers
   const filteredSuppliers = useMemo(() => {
@@ -14662,7 +14776,7 @@ function PurchasePageInner() {
 
                       {/* Native Mobile Product Cards */}
                       <div className="block md:hidden p-3 space-y-3 bg-slate-50/50">
-                        {filteredProducts.map((item) => (
+                        {paginatedProducts.map((item, rowIdx) => (
                           <div key={item.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
                             <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
                               <div>
@@ -14768,40 +14882,7 @@ function PurchasePageInner() {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        if (confirm(`Are you sure you want to delete ${item.name}?`)) {
-                                          const updated = stockItems.filter((i) => {
-                                            if (item.serialNo && i.serialNo === item.serialNo) return false;
-                                            if (item.id && i.id === item.id && (!item.serialNo || i.serialNo === item.serialNo)) return false;
-                                            return true;
-                                          });
-                                          setStockItems(updated);
-                                          try {
-                                            const existingRaw = localStorage.getItem('cezcon_products_master_live');
-                                            const existingList = existingRaw ? JSON.parse(existingRaw) : [];
-                                            if (Array.isArray(existingList)) {
-                                              const targetId = String(item.id || '');
-                                              const targetSerial = String(item.serialNo || '');
-                                              const filtered = existingList.filter((x: any) => {
-                                                const xId = String(x.id || '');
-                                                const xCode = String(x.code || x.sku || '');
-                                                const xSerial = String(x.serialNo || '');
-                                                if (targetSerial && (xSerial === targetSerial || xCode === targetSerial || xId === targetSerial)) return false;
-                                                if (targetId && xId === targetId && (!targetSerial || xSerial === targetSerial)) return false;
-                                                return true;
-                                              });
-                                              localStorage.setItem('cezcon_products_master_live', JSON.stringify(filtered));
-                                              window.dispatchEvent(new Event('crm_products_updated'));
-                                            }
-                                            if (item.id) {
-                                              crmInventoryApiService.deleteInventoryItem(item.id).catch(() => {});
-                                            }
-                                          } catch (err) {
-                                            console.error('Failed to delete product', err);
-                                          }
-                                        }
-                                        setActiveProductActionDropdownId(null);
-                                      }}
+                                      onClick={() => handleDeleteSingleProduct(item)}
                                       className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition cursor-pointer text-left font-normal"
                                     >
                                       <Trash2 className="w-3.5 h-3.5 text-rose-600" />
@@ -14841,9 +14922,9 @@ function PurchasePageInner() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 bg-white">
-                            {filteredProducts.map((item, rowIdx) => (
+                            {paginatedProducts.map((item, rowIdx) => (
                               <tr key={item.id} className="hover:bg-blue-50/40 transition-colors">
-                                <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{rowIdx + 1}</td>
+                                <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{(productCurrentPage - 1) * productRowsPerPage + rowIdx + 1}</td>
                                 <td className="p-2.5 text-center text-slate-400 border-r border-slate-100">{item.serialNo || ''}</td>
                                 <td className="p-2.5 border-r border-slate-100 text-center">
                                   <BarcodeView code={item.code} />
@@ -14969,43 +15050,13 @@ function PurchasePageInner() {
                                         </button>
 
                                         <button
-                                          type="button"
-                                          onClick={() => {
-                                            if (confirm(`Are you sure you want to delete ${item.name}?`)) {
-                                              const updated = stockItems.filter((i) => {
-                                            if (item.serialNo && i.serialNo === item.serialNo) return false;
-                                            if (item.id && i.id === item.id && (!item.serialNo || i.serialNo === item.serialNo)) return false;
-                                            return true;
-                                          });
-                                              setStockItems(updated);
-                                              try {
-                                                const existingRaw = localStorage.getItem('cezcon_products_master_live');
-                                                const existingList = existingRaw ? JSON.parse(existingRaw) : [];
-                                                if (Array.isArray(existingList)) {
-                                                  const targetId = String(item.id || '');
-                                              const targetSerial = String(item.serialNo || '');
-                                              const filtered = existingList.filter((x: any) => {
-                                                const xId = String(x.id || '');
-                                                const xCode = String(x.code || x.sku || '');
-                                                const xSerial = String(x.serialNo || '');
-                                                if (targetSerial && (xSerial === targetSerial || xCode === targetSerial || xId === targetSerial)) return false;
-                                                if (targetId && xId === targetId && (!targetSerial || xSerial === targetSerial)) return false;
-                                                return true;
-                                              });
-                                                  localStorage.setItem('cezcon_products_master_live', JSON.stringify(filtered));
-                                                  window.dispatchEvent(new Event('crm_products_updated'));
-                                                }
-                                              } catch (err) {
-                                                console.error('Failed to delete product', err);
-                                              }
-                                            }
-                                            setActiveProductActionDropdownId(null);
-                                          }}
-                                          className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition cursor-pointer text-left font-normal"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                          <span>Delete</span>
-                                        </button>
+                                      type="button"
+                                      onClick={() => handleDeleteSingleProduct(item)}
+                                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition cursor-pointer text-left font-normal"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                      <span>Delete</span>
+                                    </button>
                                       </div>
                                     )}
                                   </div>
@@ -15016,10 +15067,44 @@ function PurchasePageInner() {
                         </table>
                       </div>
 
-                      {/* Footer */}
-                      <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
+                      {/* Footer with Full Pagination Controls */}
+                      <div className="p-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 bg-white select-none">
                         <div>
-                          Showing 1 to {filteredProducts.length} of {filteredProducts.length} entries
+                          Showing {filteredProducts.length === 0 ? 0 : (productCurrentPage - 1) * productRowsPerPage + 1} to{' '}
+                          {Math.min(productCurrentPage * productRowsPerPage, filteredProducts.length)} of {filteredProducts.length} entries
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={productCurrentPage <= 1}
+                            onClick={() => setProductCurrentPage((p) => Math.max(1, p - 1))}
+                            className="px-2.5 py-1 border border-slate-300 rounded text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
+                          >
+                            Previous
+                          </button>
+                          {Array.from({ length: totalProductPages }, (_, i) => i + 1).map((pg) => (
+                            <button
+                              key={pg}
+                              type="button"
+                              onClick={() => setProductCurrentPage(pg)}
+                              className={cn(
+                                'w-7 h-7 rounded text-xs font-medium transition cursor-pointer',
+                                productCurrentPage === pg
+                                  ? 'bg-[#00828A] text-white font-semibold'
+                                  : 'border border-slate-300 text-slate-700 hover:bg-slate-50'
+                              )}
+                            >
+                              {pg}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            disabled={productCurrentPage >= totalProductPages}
+                            onClick={() => setProductCurrentPage((p) => Math.min(totalProductPages, p + 1))}
+                            className="px-2.5 py-1 border border-slate-300 rounded text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
+                          >
+                            Next
+                          </button>
                         </div>
                       </div>
                     </div>
