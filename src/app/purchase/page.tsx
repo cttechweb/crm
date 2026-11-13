@@ -2701,35 +2701,35 @@ function PurchasePageInner() {
         const mapped = res.invoices.map((inv: any, idx: number) => ({
           id: inv.id,
           slNo: idx + 1,
-          owner: inv.created_by_name || 'VAISHAK',
-          ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
-          invoiceNumber: inv.invoice_number,
-          pisn: `PIR${String(idx + 80)}`,
-          date: inv.invoice_date || getLiveTodayDateString(),
-          supplierId: inv.supplier_id,
-          supplier: inv.supplier_name || 'GULF ELECTRONICS COMPANY LLC',
-          poNumber: inv.purchase_order_no || inv.purchase_order_id || '',
-          order: '',
-          amount: inv.subtotal || inv.total_amount || 0,
-          paid: inv.amount_paid || 0,
-          balance: inv.outstanding_balance ?? (inv.total_amount - (inv.amount_paid || 0)),
-          discount: inv.discount_amount || 0,
-          vatAmount: inv.tax_amount || 0,
-          adjustment: inv.adjustment_amount || 0,
-          totalAmount: inv.total_amount || 0,
-          paymentDue: inv.due_date || '',
-          status: inv.payment_status || 'Due',
-          matchingStatus: inv.matching_status || 'Pending_Audit',
+          owner: inv.owner || inv.created_by_name || 'VAISHAK',
+          ownerAvatar: inv.ownerAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+          invoiceNumber: inv.invoiceNumber || inv.invoice_number,
+          pisn: inv.pisn || `PIR${String(idx + 80)}`,
+          date: inv.invoiceDate || inv.invoice_date || inv.date || getLiveTodayDateString(),
+          supplierId: inv.supplierId || inv.supplier_id,
+          supplier: inv.supplierName || inv.supplier_name || inv.supplier || 'Al Futtaim Engineering & Technologies LLC',
+          poNumber: inv.purchaseOrderNumber || inv.purchase_order_number || inv.purchase_order_no || inv.purchase_order_id || inv.poNumber || '',
+          order: inv.order || '',
+          amount: inv.subtotal || inv.totalAmount || inv.total_amount || 0,
+          paid: inv.amountPaid || inv.amount_paid || 0,
+          balance: inv.balanceDue ?? inv.balance_due ?? inv.outstanding_balance ?? ((inv.totalAmount || inv.total_amount || 0) - (inv.amountPaid || inv.amount_paid || 0)),
+          discount: inv.discountAmount || inv.discount_amount || 0,
+          vatAmount: inv.vatAmount || inv.tax_amount || 0,
+          adjustment: inv.adjustmentAmount || inv.adjustment_amount || 0,
+          totalAmount: inv.totalAmount || inv.total_amount || 0,
+          paymentDue: inv.dueDate || inv.due_date || '',
+          status: inv.paymentStatus || inv.payment_status || 'Due',
+          matchingStatus: inv.matchingStatus || inv.matching_status || 'Pending_Audit',
           deliveryStatus: 'Received',
           description: inv.notes || '',
           items: (inv.items || []).map((it: any) => ({
             id: it.id,
-            item: it.description || it.code,
+            item: it.description || it.item || it.code,
             code: it.code || '',
             unit: it.unit || 'Pcs',
-            qty: String(it.invoiced_qty || 1),
-            rate: String(it.unit_price || 0),
-            total: String(it.total_amount || 0),
+            qty: String(it.invoicedQty || it.invoiced_qty || it.qty || 1),
+            rate: String(it.unitPrice || it.unit_price || it.rate || 0),
+            total: String(it.totalAmount || it.total_amount || it.total || 0),
           })),
         }));
         setPurchaseInvoicesList(mapped);
@@ -4873,6 +4873,9 @@ function PurchasePageInner() {
     // 3. Delete from backend Cloudflare D1
     if (item.id) {
       crmInventoryApiService.deleteInventoryItem(item.id).catch(() => {});
+    }
+    if (item.code && item.code !== item.id) {
+      crmInventoryApiService.deleteInventoryItem(item.code).catch(() => {});
     }
 
     setActiveProductActionDropdownId(null);
@@ -14315,23 +14318,9 @@ function PurchasePageInner() {
                           <button
                             type="button"
                             onClick={() => {
-                              if (confirm(`Are you sure you want to delete ${viewingProduct.name}?`)) {
-                                const updated = stockItems.filter((i) => i.id !== viewingProduct.id);
-                                setStockItems(updated);
-                                try {
-                                  const existingRaw = localStorage.getItem('cezcon_products_master_live');
-                                  const existingList = existingRaw ? JSON.parse(existingRaw) : [];
-                                  if (Array.isArray(existingList)) {
-                                    const filtered = existingList.filter((x: any) => String(x.id) !== String(viewingProduct.id));
-                                    localStorage.setItem('cezcon_products_master_live', JSON.stringify(filtered));
-                                    window.dispatchEvent(new Event('crm_products_updated'));
-                                  }
-                                } catch (err) {
-                                  console.error('Failed to delete product', err);
-                                }
-                                setProductViewMode('list');
-                                setViewingProduct(null);
-                              }
+                              handleDeleteSingleProduct(viewingProduct);
+                              setProductViewMode('list');
+                              setViewingProduct(null);
                             }}
                             className="inline-flex items-center gap-1 px-3 py-1 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-xs font-semibold text-xs transition cursor-pointer"
                           >

@@ -128,11 +128,11 @@ export function RecordPaymentModal({
                   invoiceNumber: it.invoiceNumber || it.invoice_number,
                   invoiceDate: it.date || it.invoice_date || '2026-10-31',
                   supplierId: sId,
-                  supplierName: it.supplier || it.supplier_name || 'afsal',
-                  purchaseOrderNumber: it.poNumber || it.purchase_order_no || 'CTPO#2546',
-                  totalAmount: Number(it.totalAmount || it.total_amount || 2940),
+                  supplierName: it.supplier || it.supplier_name || it.supplierName || 'Registered Supplier',
+                  purchaseOrderNumber: it.poNumber || it.purchase_order_no || it.purchaseOrderNumber || '',
+                  totalAmount: Number(it.totalAmount || it.total_amount || 0),
                   amountPaid: Number(it.amountPaid || it.amount_paid || 0),
-                  balanceDue: Number(it.balance ?? it.balanceDue ?? it.totalAmount ?? 2940),
+                  balanceDue: Number(it.balance ?? it.balanceDue ?? it.totalAmount ?? 0),
                   paymentStatus: it.status || 'Due',
                   matchingStatus: it.matchingStatus || 'Verified_Matching',
                 } as CrmSupplierInvoice));
@@ -156,11 +156,11 @@ export function RecordPaymentModal({
           : eligible[0];
 
         if (target) {
-          const fullDue = target.balanceDue || target.totalAmount || 2940;
+          const fullDue = target.balanceDue || target.totalAmount || 0;
           setAllocations({ [target.id]: fullDue });
           setAmount(String(fullDue.toFixed(2)));
-          setReferenceNo((prev) => prev || `UTR-2026-${(target.invoiceNumber || 'AFSAL').replace(/[^a-zA-Z0-9]/g, '')}`);
-          setNotes((prev) => prev || `Full settlement for ${target.invoiceNumber} (PO ${target.purchaseOrderNumber || 'CTPO#2546'})`);
+          setReferenceNo((prev) => prev || `UTR-${Date.now().toString().slice(-6)}`);
+          setNotes((prev) => prev || `Settlement for invoice ${target.invoiceNumber}${target.purchaseOrderNumber ? ` (PO ${target.purchaseOrderNumber})` : ''}`);
         }
       } else {
         setAllocations({});
@@ -283,7 +283,8 @@ export function RecordPaymentModal({
           const rawPay = localStorage.getItem('crm_supplier_payments_list');
           const payments = rawPay ? JSON.parse(rawPay) : [];
           const voucherNumber = res?.payment?.voucherNumber || res?.payment?.voucher_number || `SPV-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-          const sName = availableSuppliers.find((s) => s.id === supplierId)?.name || 'afsal';
+          const foundSup = availableSuppliers.find((s) => s.id === supplierId || (s.name || s.supplierName) === supplierId);
+          const sName = foundSup?.name || foundSup?.supplierName || supplierId || 'Registered Supplier';
           const newEntry = {
             id: res?.payment?.id || `sp_${Date.now()}`,
             voucherNumber,
@@ -296,8 +297,8 @@ export function RecordPaymentModal({
             paymentMode,
             amount: disbursementAmount,
             bankName,
-            referenceNo: referenceNo.trim() || 'UTR-2026-INV2026002',
-            reference: referenceNo.trim() || 'UTR-2026-INV2026002',
+            referenceNo: referenceNo.trim() || `UTR-${Date.now().toString().slice(-6)}`,
+            reference: referenceNo.trim() || `UTR-${Date.now().toString().slice(-6)}`,
             status: 'Completed',
             allocations: payloadAllocations,
           };

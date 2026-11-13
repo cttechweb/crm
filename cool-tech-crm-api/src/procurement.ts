@@ -806,8 +806,8 @@ crmInventoryApp.delete('/:id', async (c) => {
 
   const now = new Date().toISOString();
   await db
-    .prepare('UPDATE crm_inventory SET is_deleted = 1, deleted_at = ?, deleted_by_id = ?, updated_at = ? WHERE id = ?')
-    .bind(now, user.id, now, id)
+    .prepare('UPDATE crm_inventory SET is_deleted = 1, deleted_at = ?, deleted_by_id = ?, updated_at = ? WHERE id = ? OR (code = ? AND code != "")')
+    .bind(now, user.id, now, id, id)
     .run();
 
   return c.json({ success: true, message: 'Inventory item removed successfully' });
@@ -5842,8 +5842,8 @@ supplierInvoicesApp.post('/', async (c) => {
 
   // 1. Verify Supplier
   const supplier = await db
-    .prepare('SELECT * FROM suppliers WHERE id = ? AND is_deleted = 0')
-    .bind(supplierId)
+    .prepare('SELECT * FROM suppliers WHERE (id = ? OR supplier_name = ? OR company_name = ?) AND is_deleted = 0')
+    .bind(supplierId, supplierId, supplierId)
     .first<SupplierRow>();
   if (!supplier) {
     return c.json({ success: false, message: 'Supplier not found' }, 404);
@@ -5852,7 +5852,7 @@ supplierInvoicesApp.post('/', async (c) => {
   // 2. Prevent Duplicate Invoice Number for this supplier
   const existingInv = await db
     .prepare('SELECT id FROM supplier_invoices WHERE supplier_id = ? AND invoice_number = ? AND is_deleted = 0')
-    .bind(supplierId, invoiceNumber)
+    .bind(supplier.id, invoiceNumber)
     .first();
   if (existingInv) {
     return c.json(
@@ -5867,8 +5867,8 @@ supplierInvoicesApp.post('/', async (c) => {
 
   // 3. Verify Purchase Order and ensure it is Approved
   const po = await db
-    .prepare('SELECT * FROM purchase_orders WHERE id = ? AND is_deleted = 0')
-    .bind(purchaseOrderId)
+    .prepare('SELECT * FROM purchase_orders WHERE (id = ? OR po_number = ?) AND is_deleted = 0')
+    .bind(purchaseOrderId, purchaseOrderId)
     .first<PurchaseOrderRow>();
   if (!po) {
     return c.json({ success: false, message: 'Linked Purchase Order not found' }, 404);
@@ -6611,8 +6611,8 @@ supplierPaymentsApp.post('/', async (c) => {
   }
 
   const supplier = await db
-    .prepare('SELECT * FROM suppliers WHERE id = ? AND is_deleted = 0')
-    .bind(supplierId)
+    .prepare('SELECT * FROM suppliers WHERE (id = ? OR supplier_name = ? OR company_name = ?) AND is_deleted = 0')
+    .bind(supplierId, supplierId, supplierId)
     .first<SupplierRow>();
   if (!supplier) {
     return c.json({ success: false, message: 'Supplier not found' }, 404);
@@ -6648,13 +6648,13 @@ supplierPaymentsApp.post('/', async (c) => {
     totalAllocated += allocAmt;
 
     const inv = await db
-      .prepare('SELECT * FROM supplier_invoices WHERE id = ? AND is_deleted = 0')
-      .bind(invId)
+      .prepare('SELECT * FROM supplier_invoices WHERE (id = ? OR invoice_number = ?) AND is_deleted = 0')
+      .bind(invId, invId)
       .first<SupplierInvoiceRow>();
     if (!inv) {
       return c.json({ success: false, message: `Allocated invoice (${invId}) not found` }, 404);
     }
-    if (inv.supplier_id !== supplierId) {
+    if (inv.supplier_id !== supplier.id && inv.supplier_id !== supplierId) {
       return c.json(
         {
           success: false,
@@ -7833,8 +7833,8 @@ supplierReconciliationApp.post('/reconcile', async (c) => {
   }
 
   const supplier = await db
-    .prepare('SELECT * FROM suppliers WHERE id = ? AND is_deleted = 0')
-    .bind(supplierId)
+    .prepare('SELECT * FROM suppliers WHERE (id = ? OR supplier_name = ? OR company_name = ?) AND is_deleted = 0')
+    .bind(supplierId, supplierId, supplierId)
     .first<SupplierRow>();
   if (!supplier) {
     return c.json({ success: false, message: 'Supplier not found' }, 404);
