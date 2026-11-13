@@ -48,7 +48,7 @@ import {
   RotateCcw,
   Sparkles,
 } from 'lucide-react';
-import { mockCezconStockItems, mockStockTransfers } from '@/data/mockEnterpriseData';
+import { mockStockTransfers } from '@/data/mockEnterpriseData';
 import { useEnterpriseCrm } from '@/context/EnterpriseCrmContext';
 import { CrmCezconStock, CrmStockTransfer, CrmPurchaseOrder, CrmMsrf, CrmSupplierQuotation } from '@/types/enterprise-crm';
 import { ProductSettingItem } from '@/types/settings';
@@ -3659,6 +3659,14 @@ function PurchasePageInner() {
             changed = true;
           }
         }
+
+        if (pCode === 'prod-01' || pName.includes('mitsubishi')) {
+          if (prod.name !== 'Mitsubishi 5.0 Ton Package AC') {
+            workingList[pIdx].name = 'Mitsubishi 5.0 Ton Package AC';
+            workingList[pIdx].brand = 'MITSUBISHI';
+            changed = true;
+          }
+        }
       });
 
       return { list: workingList, changed };
@@ -3667,13 +3675,66 @@ function PurchasePageInner() {
     }
   };
 
+  const realInitialStockItems: CrmCezconStock[] = [
+    {
+      id: 'prod-sg-30-flr',
+      slNo: 1,
+      serialNo: 'SG-FLR-2026-002',
+      code: 'SG-30-FLR',
+      name: 'Super General 3.0 Ton Floor Standing AC',
+      image: '',
+      unit: 'Pcs',
+      brand: 'General',
+      category: 'Air Conditioning',
+      type: 'Product',
+      purchaseRate: 0,
+      sellingPrice: 3800,
+      status: 'Active',
+      store: 'MAIN WAREHOUSE',
+      stock: 0,
+      currentStock: 0,
+      openingStock: 0,
+      minimumStock: 0,
+      supplier: 'Danfoss Gulf FZE',
+      supplierId: '',
+      createdBy: 'Shemin',
+      createdByRole: 'ceo',
+      owner: 'Shemin',
+    },
+    {
+      id: 'prod-mitsubishi-50-pkg',
+      slNo: 2,
+      serialNo: 'PROD-01',
+      code: 'PROD-01',
+      name: 'Mitsubishi 5.0 Ton Package AC',
+      image: '',
+      unit: 'Pcs',
+      brand: 'MITSUBISHI',
+      category: 'Air Conditioning',
+      type: 'Product',
+      purchaseRate: 11880,
+      sellingPrice: 16038,
+      status: 'Active',
+      store: 'MAIN WAREHOUSE',
+      stock: 8,
+      currentStock: 8,
+      openingStock: 0,
+      minimumStock: 0,
+      supplier: 'Mueller Middle East FZE',
+      supplierId: '',
+      createdBy: 'Shemin',
+      createdByRole: 'ceo',
+      owner: 'Shemin',
+    },
+  ];
+
   const [stockItems, setStockItems] = useState<CrmCezconStock[]>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('cezcon_products_master_live');
-        let initialList = saved ? JSON.parse(saved) : mockCezconStockItems;
+        let initialList = saved ? JSON.parse(saved) : realInitialStockItems;
         if (!Array.isArray(initialList) || initialList.length === 0) {
-          initialList = mockCezconStockItems;
+          initialList = realInitialStockItems;
         }
 
         const { list: reconciledList, changed } = reconcileProductsWithStockIn(initialList);
@@ -3706,17 +3767,17 @@ function PurchasePageInner() {
           if (isCarrier) {
             currentStockVal = 5; // Permanent live warehouse stock: 3 opening + 2 from STK-937
           } else if (isMitsubishi) {
-            currentStockVal = Number(p.currentStock ?? p.stock) || 4;
+            currentStockVal = Number(p.currentStock ?? p.stock) || 8;
           }
           return {
             id: isCarrier ? 'PROD-CARRIER-40-DUCT' : String(p.id || idx + 1),
             slNo: idx + 1,
             serialNo: p.serialNo || '',
             code: isCarrier ? 'CARR-40-DUCT' : (p.code || p.sku || `CQ4N-XMI${idx + 10}S`),
-            name: isCarrier ? 'Carrier 4.0 Ton Ducted Split AC' : (p.name || 'Unnamed Product'),
+            name: isMitsubishi ? 'Mitsubishi 5.0 Ton Package AC' : (isCarrier ? 'Carrier 4.0 Ton Ducted Split AC' : (p.name || 'Unnamed Product')),
             image: p.image || p.thumbnailImage || '',
             unit: p.unit || 'Pcs',
-            brand: isCarrier ? 'Carrier' : (p.brand || 'MIDEA'),
+            brand: isCarrier ? 'Carrier' : (isMitsubishi ? 'MITSUBISHI' : (p.brand || 'General')),
             category: isWindow ? 'Window AC' : (isCarrier ? 'Air Conditioning' : (p.category || 'SPLIT AC')),
             type: p.type || 'Product',
             purchaseRate: isCarrier ? 4200 : (Number(p.purchaseRate) || 0),
@@ -3740,7 +3801,7 @@ function PurchasePageInner() {
         console.error('Failed to load stockItems from storage', e);
       }
     }
-    return mockCezconStockItems;
+    return realInitialStockItems;
   });
 
   // Live Sync with Settings and CRM Products
@@ -3748,9 +3809,9 @@ function PurchasePageInner() {
     const syncProducts = () => {
       try {
         const saved = localStorage.getItem('cezcon_products_master_live');
-        let currentList = saved ? JSON.parse(saved) : mockCezconStockItems;
+        let currentList = saved ? JSON.parse(saved) : realInitialStockItems;
         if (!Array.isArray(currentList) || currentList.length === 0) {
-          currentList = mockCezconStockItems;
+          currentList = realInitialStockItems;
         }
 
         const { list: reconciledList, changed } = reconcileProductsWithStockIn(currentList);
@@ -3774,19 +3835,27 @@ function PurchasePageInner() {
                 (String(p.name || '').toLowerCase().includes('carrier') && (String(p.name || '').toLowerCase().includes('duct') || String(p.name || '').toLowerCase().includes('split')))
               );
 
+            const isMitsubishi =
+              !isWindow && !isCarrier && (
+                String(p.code || '').toLowerCase() === 'prod-01' ||
+                String(p.name || '').toLowerCase().includes('mitsubishi')
+              );
+
             let currentStockVal = Number(p.currentStock || p.stock) || 0;
             if (isCarrier) {
               currentStockVal = 5; // Permanent live warehouse stock: 3 opening + 2 from STK-937
+            } else if (isMitsubishi) {
+              currentStockVal = Number(p.currentStock ?? p.stock) || 8;
             }
             return {
               id: isCarrier ? 'PROD-CARRIER-40-DUCT' : String(p.id || idx + 1),
               slNo: idx + 1,
               serialNo: p.serialNo || '',
               code: isCarrier ? 'CARR-40-DUCT' : (p.code || p.sku || `CQ4N-XMI${idx + 10}S`),
-              name: isCarrier ? 'Carrier 4.0 Ton Ducted Split AC' : (p.name || 'Unnamed Product'),
+              name: isMitsubishi ? 'Mitsubishi 5.0 Ton Package AC' : (isCarrier ? 'Carrier 4.0 Ton Ducted Split AC' : (p.name || 'Unnamed Product')),
               image: p.image || p.thumbnailImage || '',
               unit: p.unit || 'Pcs',
-              brand: isCarrier ? 'Carrier' : (p.brand || 'MIDEA'),
+              brand: isCarrier ? 'Carrier' : (isMitsubishi ? 'MITSUBISHI' : (p.brand || 'General')),
               category: isWindow ? 'Window AC' : (isCarrier ? 'Air Conditioning' : (p.category || 'SPLIT AC')),
               type: p.type || 'Product',
               purchaseRate: isCarrier ? 4200 : (Number(p.purchaseRate) || 0),
@@ -14717,7 +14786,6 @@ function PurchasePageInner() {
                               <th className="p-2.5 w-16 text-center border-r border-slate-200">UoM</th>
                               <th className="p-2.5 w-24 border-r border-slate-200">Brand</th>
                               <th className="p-2.5 w-32 border-r border-slate-200">Category</th>
-                              <th className="p-2.5 w-36 border-r border-slate-200">Preferred Supplier</th>
                               <th className="p-2.5 w-20 text-center border-r border-slate-200">
                                 <span className="inline-flex items-center gap-0.5">
                                   Type
@@ -14745,15 +14813,6 @@ function PurchasePageInner() {
                                 <td className="p-2.5 text-center text-slate-700 border-r border-slate-100">{item.unit}</td>
                                 <td className="p-2.5 text-slate-700 border-r border-slate-100">{item.brand}</td>
                                 <td className="p-2.5 text-slate-700 border-r border-slate-100">{item.category}</td>
-                                <td className="p-2.5 text-slate-700 border-r border-slate-100 font-medium">
-                                  {item.supplier ? (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                                      {item.supplier}
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-400 italic text-[11px]">None</span>
-                                  )}
-                                </td>
                                 <td className="p-2.5 text-center text-slate-700 border-r border-slate-100">{item.type}</td>
                                 <td className="p-2.5 text-right font-medium text-slate-800 border-r border-slate-100">
                                   0.00
