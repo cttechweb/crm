@@ -6621,8 +6621,8 @@ supplierPaymentsApp.post('/', async (c) => {
   // Duplicate payment reference check
   if (referenceNo) {
     const existingRef = await db
-      .prepare('SELECT id, voucher_number FROM supplier_payments WHERE supplier_id = ? AND reference_no = ? AND is_deleted = 0')
-      .bind(supplierId, referenceNo)
+      .prepare('SELECT id, voucher_number FROM supplier_payments WHERE (supplier_id = ? OR supplier_id = ?) AND reference_no = ? AND is_deleted = 0')
+      .bind(supplier.id, supplierId, referenceNo)
       .first<{ id: string; voucher_number: string }>();
     if (existingRef) {
       return c.json(
@@ -6723,7 +6723,7 @@ supplierPaymentsApp.post('/', async (c) => {
       nextSl,
       voucherNumber,
       paymentDate,
-      supplierId,
+      supplier.id,
       supplier.supplier_name,
       paymentMode,
       bankName,
@@ -6748,16 +6748,22 @@ supplierPaymentsApp.post('/', async (c) => {
     const allocAmt = Math.round(Number(rawAlloc.amount ?? rawAlloc.allocatedAmount ?? rawAlloc.allocated_amount) * 100) / 100;
     const invId = rawAlloc.invoiceId || rawAlloc.invoice_id;
 
+    // Lookup invoice by ID or invoice_number
+    const inv = await db
+      .prepare('SELECT * FROM supplier_invoices WHERE (id = ? OR invoice_number = ?) AND is_deleted = 0')
+      .bind(invId, invId)
+      .first<SupplierInvoiceRow>();
+    const resolvedInvId = inv ? inv.id : invId;
+
     await db
       .prepare(`
         INSERT INTO supplier_payment_allocations (id, payment_id, invoice_id, allocated_amount, notes, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
       `)
-      .bind(allocId, id, invId, allocAmt, alloc.notes || null, now)
+      .bind(allocId, id, resolvedInvId, allocAmt, alloc.notes || null, now)
       .run();
 
     // Update invoice
-    const inv = await db.prepare('SELECT * FROM supplier_invoices WHERE id = ?').bind(invId).first<SupplierInvoiceRow>();
     if (inv) {
       const newPaid = Math.round(((inv.amount_paid || 0) + allocAmt) * 100) / 100;
       const newBalance = Math.max(0, Math.round((inv.total_amount - newPaid) * 100) / 100);
