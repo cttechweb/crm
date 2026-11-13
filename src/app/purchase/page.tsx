@@ -272,14 +272,56 @@ export const applyApprovalRegistry = (orders: any[]): any[] => {
 const defaultPurchaseInvoicesList: any[] = [];
 const mockPurchasePayments: any[] = [];
 const defaultSuppliersList: any[] = [
-  { id: 'sup_mueller_01', name: 'Mueller Middle East FZE', supplierName: 'Mueller Middle East FZE', companyName: 'Mueller Middle East FZE', trn: '100234567800003', owner: 'Murshid', status: 'Active', city: 'Dubai' },
-  { id: 'sup_danfoss_01', name: 'Danfoss Gulf FZE', supplierName: 'Danfoss Gulf FZE', companyName: 'Danfoss Gulf FZE', trn: '100456789000003', owner: 'Murshid', status: 'Active', city: 'Dubai' },
-  { id: 'sup_futtaim_01', name: 'Al Futtaim Engineering & Technologies LLC', supplierName: 'Al Futtaim Engineering & Technologies LLC', companyName: 'Al Futtaim Engineering & Technologies LLC', trn: '100987654300003', owner: 'Murshid', status: 'Active', city: 'Dubai' },
+  {
+    id: 'sup_1793802444812',
+    slNo: 1,
+    name: 'Al Futtaim Engineering & Technologies LLC',
+    supplierName: 'Al Futtaim Engineering & Technologies LLC',
+    companyName: 'Al Futtaim Engineering & Technologies LLC',
+    trn: '100234567800003',
+    contact: '+971 4 213 7777',
+    phone: '+971 4 213 7777',
+    email: 'sales@alfuttaim.ae',
+    address: 'Al Garhoud, Airport Road, Dubai, UAE',
+    owner: 'Musthafa Chirammal',
+    status: 'Active',
+    city: 'Dubai',
+  },
+  {
+    id: 'sup_1793802497966',
+    slNo: 2,
+    name: 'Danfoss Gulf FZE',
+    supplierName: 'Danfoss Gulf FZE',
+    companyName: 'Danfoss Middle East & Africa FZE',
+    trn: '100345678900003',
+    contact: '+971 4 887 2300',
+    phone: '+971 4 887 2300',
+    email: 'orders.gulf@danfoss.com',
+    address: 'JAFZA South, Jebel Ali Free Zone, Dubai, UAE',
+    owner: 'Musthafa Chirammal',
+    status: 'Active',
+    city: 'Dubai',
+  },
+  {
+    id: 'sup_1793802556342',
+    slNo: 3,
+    name: 'Mueller Middle East FZE',
+    supplierName: 'Mueller Middle East FZE',
+    companyName: 'Mueller Middle East FZE',
+    trn: '100456789000003',
+    contact: '+971 6 534 8822',
+    phone: '+971 6 534 8822',
+    email: 'sales@muellerme.com',
+    address: 'JAFZA South, Jebel Ali Free Zone, Dubai, UAE',
+    owner: 'Musthafa Chirammal',
+    status: 'Active',
+    city: 'Dubai',
+  },
 ];
 
 const defaultStoresList: any[] = [
   {
-    id: 'str_1',
+    id: 'str_main_warehouse',
     slNo: 1,
     name: 'MAIN WAREHOUSE',
     code: 'WH-01',
@@ -290,7 +332,7 @@ const defaultStoresList: any[] = [
     status: 'Active',
   },
   {
-    id: 'str_2',
+    id: 'str_m42_showroom',
     slNo: 2,
     name: 'M-42 OFFICE & SHOWROOM',
     code: 'SH-M42',
@@ -301,7 +343,7 @@ const defaultStoresList: any[] = [
     status: 'Active',
   },
   {
-    id: 'str_3',
+    id: 'str_ct_central',
     slNo: 3,
     name: 'CT CENTRAL STORE',
     code: 'CT-STORE',
@@ -401,11 +443,23 @@ function PurchasePageInner() {
         const res = await supplierApiService.getSuppliers({ limit: 200 });
         if (res && res.success && Array.isArray(res.suppliers) && res.suppliers.length > 0) {
           const cleaned = res.suppliers
-            .filter((s) => !isMockSupplier(s))
-            .map((s) => ({
-              ...s,
-              name: s.name || s.supplierName || 'Unnamed Supplier',
-              supplierName: s.supplierName || s.name || 'Unnamed Supplier',
+            .filter((s: any) => !isMockSupplier(s))
+            .map((s: any, idx: number) => ({
+              id: s.id,
+              slNo: s.slNo || s.sl_no || idx + 1,
+              name: s.name || s.supplierName || s.supplier_name || 'Unnamed Supplier',
+              supplierName: s.supplierName || s.supplier_name || s.name || 'Unnamed Supplier',
+              companyName: s.companyName || s.company_name || s.supplier_name || s.name || '',
+              trn: s.trn || '',
+              contact: s.contact || s.phone || '',
+              phone: s.phone || s.contact || '',
+              email: s.email || '',
+              address: s.address || '',
+              paymentTerms: s.paymentTerms || s.payment_terms || '30 Days',
+              outstanding: Number(s.outstanding) || 0,
+              owner: s.owner || 'Musthafa Chirammal',
+              ownerAvatar: s.ownerAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+              status: s.status || 'Active',
             }));
           if (cleaned.length > 0) {
             setSuppliersList(cleaned);
@@ -537,12 +591,13 @@ function PurchasePageInner() {
           return;
         }
 
-        const updated = [...newSuppliers, ...suppliersList];
+        const updated = [...suppliersList, ...newSuppliers];
         setSuppliersList(updated);
         try {
           localStorage.setItem('crm_suppliers_list', JSON.stringify(updated));
         } catch (err) { }
         newSuppliers.forEach((sup) => contextAddSupplier(sup));
+        supplierApiService.syncBatchSuppliers(newSuppliers).catch(() => { });
 
         alert(`Successfully imported ${newSuppliers.length} supplier(s).`);
         setSelectedSupplierFile(null);
@@ -624,7 +679,7 @@ function PurchasePageInner() {
       ownerAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
     };
     contextAddSupplier(sup);
-    const updated = [sup, ...suppliersList];
+    const updated = [...suppliersList, sup];
     setSuppliersList(updated);
     try {
       localStorage.setItem('crm_suppliers_list', JSON.stringify(updated));
@@ -638,11 +693,15 @@ function PurchasePageInner() {
     setNewSupplierForm({ name: '', companyName: '', trn: '', phone: '', email: '', address: '', paymentTerms: '30 Days' });
   };
 
-  const handleDeleteSupplier = (supId: string, supName: string) => {
+  const handleDeleteSupplier = async (supId: string, supName: string) => {
     setActiveSupplierDropdownId(null);
     if (window.confirm(`Are you sure you want to delete supplier "${supName}"?`)) {
       contextDeleteSupplier(supId);
-      supplierApiService.deleteSupplier(supId).catch(() => { });
+      try {
+        await supplierApiService.deleteSupplier(supId);
+      } catch (err) {
+        console.warn('API delete supplier error, fallback local:', err);
+      }
       const updated = suppliersList.filter((s) => s.id !== supId && (s.name || s.supplierName) !== supName);
       setSuppliersList(updated);
       try {
@@ -678,9 +737,21 @@ function PurchasePageInner() {
       .getStores()
       .then((res) => {
         if (res && res.success && res.stores && res.stores.length > 0) {
-          setStoresList(res.stores);
+          const mapped = res.stores.map((s: any, idx: number) => ({
+            id: s.id,
+            slNo: s.slNo || s.sl_no || idx + 1,
+            name: s.name,
+            code: s.code || '',
+            manager: s.manager || s.managerName || s.manager_name || 'Store Manager',
+            managerName: s.managerName || s.manager_name || s.manager || 'Store Manager',
+            phone: s.phone || '',
+            location: s.location || s.address || 'Dubai, UAE',
+            capacity: s.capacity || 'Standard',
+            status: s.status || (s.isActive !== 0 && s.is_active !== 0 ? 'Active' : 'Inactive'),
+          }));
+          setStoresList(mapped);
           try {
-            localStorage.setItem('crm_stores_list', JSON.stringify(res.stores));
+            localStorage.setItem('crm_stores_list', JSON.stringify(mapped));
           } catch (e) { }
         }
       })
@@ -689,6 +760,11 @@ function PurchasePageInner() {
   }, []);
 
   const [isAddStoreModalOpen, setIsAddStoreModalOpen] = useState(false);
+  const [activeStoreDropdownId, setActiveStoreDropdownId] = useState<string | null>(null);
+  const [editingStoreId, setEditingStoreId] = useState<string | null>(null);
+  const [viewingStore, setViewingStore] = useState<any | null>(null);
+  const [storeSearch, setStoreSearch] = useState('');
+  const [storeStatusFilter, setStoreStatusFilter] = useState('All');
   const [newStoreForm, setNewStoreForm] = useState({
     name: '',
     code: '',
@@ -702,25 +778,44 @@ function PurchasePageInner() {
     e.preventDefault();
     if (!newStoreForm.name.trim()) return;
     const storeData: any = {
-      id: `str_${Date.now()}`,
-      slNo: storesList.length + 1,
+      id: editingStoreId || `str_${Date.now()}`,
+      slNo: editingStoreId ? (storesList.find((s) => s.id === editingStoreId)?.slNo || 1) : storesList.length + 1,
       name: newStoreForm.name.trim(),
       code: newStoreForm.code.trim() || `WH-${Date.now().toString().slice(-3)}`,
       location: newStoreForm.location.trim() || 'Dubai, UAE',
       manager: newStoreForm.manager.trim() || currentUser?.name || 'Store Manager',
+      managerName: newStoreForm.manager.trim() || currentUser?.name || 'Store Manager',
       phone: newStoreForm.phone.trim() || '+971 4 000 0000',
       capacity: newStoreForm.capacity.trim() || '10,000 sq.ft',
       status: 'Active',
     };
+
+    if (editingStoreId) {
+      try {
+        await storeApiService.updateStore(editingStoreId, storeData);
+      } catch (err) {
+        console.warn('Failed to update store in backend:', err);
+      }
+      const updated = storesList.map((s) => (s.id === editingStoreId ? { ...s, ...storeData } : s));
+      setStoresList(updated);
+      try {
+        localStorage.setItem('crm_stores_list', JSON.stringify(updated));
+      } catch (e) { }
+      setIsAddStoreModalOpen(false);
+      setEditingStoreId(null);
+      setNewStoreForm({ name: '', code: '', location: '', manager: '', phone: '', capacity: '' });
+      return;
+    }
+
     try {
       const res = await storeApiService.createStore(storeData);
       const created = res.store || storeData;
-      const updated = [created, ...storesList];
+      const updated = [...storesList, created];
       setStoresList(updated);
       localStorage.setItem('crm_stores_list', JSON.stringify(updated));
     } catch (err) {
       console.warn('Failed to save store to backend, stored locally:', err);
-      const updated = [storeData, ...storesList];
+      const updated = [...storesList, storeData];
       setStoresList(updated);
       try {
         localStorage.setItem('crm_stores_list', JSON.stringify(updated));
@@ -728,6 +823,22 @@ function PurchasePageInner() {
     }
     setIsAddStoreModalOpen(false);
     setNewStoreForm({ name: '', code: '', location: '', manager: '', phone: '', capacity: '' });
+  };
+
+  const handleDeleteStore = async (storeId: string, storeName: string) => {
+    setActiveStoreDropdownId(null);
+    if (window.confirm(`Are you sure you want to delete store "${storeName}"?`)) {
+      try {
+        await storeApiService.deleteStore(storeId);
+      } catch (err) {
+        console.warn('Failed to delete store from backend:', err);
+      }
+      const updated = storesList.filter((s) => s.id !== storeId);
+      setStoresList(updated);
+      try {
+        localStorage.setItem('crm_stores_list', JSON.stringify(updated));
+      } catch (e) { }
+    }
   };
 
   // Stock Transfer Add Modal
@@ -3311,6 +3422,7 @@ function PurchasePageInner() {
   // Filter States - Supplier (Exact Cezcon CRM layout)
   const [supplierSearch, setSupplierSearch] = useState<string>('');
   const [supplierRowsPerPage, setSupplierRowsPerPage] = useState<number>(10);
+  const [supplierCurrentPage, setSupplierCurrentPage] = useState<number>(1);
 
   // Filter States & Sub-tabs - Products / Services (Exact Cezcon CRM layout)
   const [productSubTab, setProductSubTab] = useState<'products' | 'unit' | 'brand' | 'category'>('products');
@@ -5407,10 +5519,10 @@ function PurchasePageInner() {
 
   // Filtered Suppliers
   const filteredSuppliers = useMemo(() => {
-    return suppliersList.filter((item) => {
+    const list = suppliersList.filter((item) => {
       if (supplierSearch) {
         const q = supplierSearch.toLowerCase();
-        const matchName = (item.name || item.supplierName || '').toLowerCase().includes(q);
+        const matchName = (item.name || item.supplierName || item.supplier_name || '').toLowerCase().includes(q);
         const matchContact = (item.contact || item.phone || '').toLowerCase().includes(q);
         const matchEmail = (item.email || '').toLowerCase().includes(q);
         const matchTrn = (item.trn || '').toLowerCase().includes(q);
@@ -5419,7 +5531,34 @@ function PurchasePageInner() {
       }
       return true;
     });
+
+    return [...list].sort((a, b) => Number(a.slNo || a.sl_no || 0) - Number(b.slNo || b.sl_no || 0));
   }, [suppliersList, supplierSearch]);
+
+  const totalSupplierPages = Math.ceil(filteredSuppliers.length / supplierRowsPerPage) || 1;
+  const paginatedSuppliers = useMemo(() => {
+    const start = (supplierCurrentPage - 1) * supplierRowsPerPage;
+    return filteredSuppliers.slice(start, start + supplierRowsPerPage);
+  }, [filteredSuppliers, supplierCurrentPage, supplierRowsPerPage]);
+
+  // Filtered Stores & Warehouses
+  const filteredStores = useMemo(() => {
+    return storesList.filter((str) => {
+      if (storeStatusFilter !== 'All') {
+        const strStatus = str.status || (str.isActive !== 0 && str.is_active !== 0 ? 'Active' : 'Inactive');
+        if (strStatus !== storeStatusFilter) return false;
+      }
+      if (storeSearch) {
+        const q = storeSearch.toLowerCase();
+        const matchName = (str.name || '').toLowerCase().includes(q);
+        const matchCode = (str.code || '').toLowerCase().includes(q);
+        const matchMgr = (str.manager || str.managerName || str.manager_name || '').toLowerCase().includes(q);
+        const matchLoc = (str.location || str.address || '').toLowerCase().includes(q);
+        if (!matchName && !matchCode && !matchMgr && !matchLoc) return false;
+      }
+      return true;
+    });
+  }, [storesList, storeSearch, storeStatusFilter]);
 
   // Filtered Purchase Invoices
   const filteredPurchaseInvoices = useMemo(() => {
@@ -13480,7 +13619,7 @@ function PurchasePageInner() {
                       No records found
                     </div>
                   ) : (
-                    filteredSuppliers.map((sup) => {
+                    paginatedSuppliers.map((sup, idx) => {
                       const supName = sup.name || sup.supplierName || 'Unnamed Supplier';
                       const supContact = sup.contact || sup.phone || '';
                       const supOwner = sup.owner || 'Musthafa Chirammal';
@@ -13491,7 +13630,9 @@ function PurchasePageInner() {
                         <div key={sup.id} className="bg-white border border-slate-200 rounded-lg p-3 shadow-xs space-y-2.5 text-xs">
                           <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2">
                             <div className="space-y-0.5">
-                              <span className="font-bold text-[#2563EB] text-xs">{supName}</span>
+                              <span className="font-bold text-[#2563EB] text-xs">
+                                #{(supplierCurrentPage - 1) * supplierRowsPerPage + idx + 1} - {supName}
+                              </span>
                               {sup.trn && <div className="text-[10px] text-slate-500 font-mono">TRN: {sup.trn}</div>}
                             </div>
                             <div className="text-right">
@@ -13618,7 +13759,7 @@ function PurchasePageInner() {
                           </td>
                         </tr>
                       ) : (
-                        filteredSuppliers.map((sup) => {
+                        paginatedSuppliers.map((sup, idx) => {
                           const supName = sup.name || sup.supplierName || 'Unnamed Supplier';
                           const supContact = sup.contact || sup.phone || '';
                           const supOwner = sup.owner || 'Musthafa Chirammal';
@@ -13627,7 +13768,9 @@ function PurchasePageInner() {
 
                           return (
                             <tr key={sup.id} className="hover:bg-blue-50/40 transition-colors">
-                              <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{sup.slNo}</td>
+                              <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">
+                                {(supplierCurrentPage - 1) * supplierRowsPerPage + idx + 1}
+                              </td>
                               <td
                                 onClick={() => setViewingSupplier(sup)}
                                 className="p-2.5 border-r border-slate-100 font-medium text-[#2563EB] hover:underline cursor-pointer"
@@ -13734,11 +13877,48 @@ function PurchasePageInner() {
                   </table>
                 </div>
 
-                {/* Footer */}
-                <div className="p-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 bg-white">
+                {/* Table Footer with Pagination Controls */}
+                <div className="p-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 bg-white">
                   <div>
-                    Showing {filteredSuppliers.length === 0 ? 0 : 1} to {filteredSuppliers.length} of {filteredSuppliers.length} entries
+                    Showing {filteredSuppliers.length === 0 ? 0 : (supplierCurrentPage - 1) * supplierRowsPerPage + 1} to{' '}
+                    {Math.min(supplierCurrentPage * supplierRowsPerPage, filteredSuppliers.length)} of{' '}
+                    {filteredSuppliers.length} entries
                   </div>
+                  {totalSupplierPages > 1 && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSupplierCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={supplierCurrentPage === 1}
+                        className="px-2.5 py-1 border border-slate-300 rounded text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        Previous
+                      </button>
+                      {Array.from({ length: totalSupplierPages }, (_, i) => i + 1).map((pageNum) => (
+                        <button
+                          key={pageNum}
+                          type="button"
+                          onClick={() => setSupplierCurrentPage(pageNum)}
+                          className={cn(
+                            'px-2.5 py-1 rounded text-xs font-semibold cursor-pointer border',
+                            pageNum === supplierCurrentPage
+                              ? 'bg-[#00828A] text-white border-[#00828A]'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                          )}
+                        >
+                          {pageNum}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setSupplierCurrentPage((p) => Math.min(totalSupplierPages, p + 1))}
+                        disabled={supplierCurrentPage === totalSupplierPages}
+                        className="px-2.5 py-1 border border-slate-300 rounded text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -15761,7 +15941,11 @@ function PurchasePageInner() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsAddStoreModalOpen(true)}
+                  onClick={() => {
+                    setEditingStoreId(null);
+                    setNewStoreForm({ name: '', code: '', location: '', manager: '', phone: '', capacity: '' });
+                    setIsAddStoreModalOpen(true);
+                  }}
                   className="flex items-center gap-1 px-3 py-1 bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-bold uppercase rounded-xs transition shadow-xs cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -15772,11 +15956,21 @@ function PurchasePageInner() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-slate-600 font-medium block">Search Store / Warehouse</label>
-                    <input type="text" placeholder="Search store name, code or in-charge..." className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700" />
+                    <input
+                      type="text"
+                      placeholder="Search store name, code or in-charge..."
+                      value={storeSearch}
+                      onChange={(e) => setStoreSearch(e.target.value)}
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-500"
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-slate-600 font-medium block">Status</label>
-                    <select className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700">
+                    <select
+                      value={storeStatusFilter}
+                      onChange={(e) => setStoreStatusFilter(e.target.value)}
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-700 focus:outline-none cursor-pointer"
+                    >
                       <option value="All">All Status</option>
                       <option value="Active">Active</option>
                       <option value="Inactive">Inactive</option>
@@ -15790,7 +15984,7 @@ function PurchasePageInner() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse min-w-[800px]">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold">
+                    <tr className="border-b border-slate-200 bg-[#F8FAFC] text-slate-700 font-semibold select-none">
                       <th className="p-2.5 w-16 text-center border-r border-slate-200">SL.No</th>
                       <th className="p-2.5 border-r border-slate-200">Store Name</th>
                       <th className="p-2.5 border-r border-slate-200">Store Code</th>
@@ -15803,43 +15997,176 @@ function PurchasePageInner() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {storesList.map((str) => (
-                      <tr key={str.id} className="hover:bg-blue-50/40">
-                        <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{str.slNo}</td>
-                        <td className="p-2.5 border-r border-slate-100 font-bold text-slate-800">{str.name}</td>
-                        <td className="p-2.5 border-r border-slate-100 font-mono text-slate-600">{str.code}</td>
-                        <td className="p-2.5 border-r border-slate-100 font-medium text-slate-700">{str.manager || str.managerName}</td>
-                        <td className="p-2.5 border-r border-slate-100 text-slate-600 font-mono">{str.phone}</td>
-                        <td className="p-2.5 border-r border-slate-100 text-slate-600">{str.location}</td>
-                        <td className="p-2.5 border-r border-slate-100 text-slate-600">{str.capacity || 'Standard'}</td>
-                        <td className="p-2.5 text-center border-r border-slate-100">
-                          <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-green-100 text-green-800">{str.status || (str.isActive !== 0 ? 'Active' : 'Inactive')}</span>
-                        </td>
-                        <td className="p-2.5 text-center">
-                          <button type="button" className="inline-flex items-center gap-1 px-2 py-1 bg-[#0B1E2E] text-white rounded text-xs cursor-pointer"><Settings className="w-3.5 h-3.5" /><ChevronDown className="w-2.5 h-2.5" /></button>
+                    {filteredStores.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-10 text-center text-slate-500 font-medium text-xs">
+                          No stores or warehouses found
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredStores.map((str, idx) => (
+                        <tr key={str.id} className="hover:bg-blue-50/40 transition-colors">
+                          <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{idx + 1}</td>
+                          <td
+                            onClick={() => setViewingStore(str)}
+                            className="p-2.5 border-r border-slate-100 font-bold text-[#2563EB] hover:underline cursor-pointer"
+                          >
+                            {str.name}
+                          </td>
+                          <td className="p-2.5 border-r border-slate-100 font-mono text-slate-600">{str.code}</td>
+                          <td className="p-2.5 border-r border-slate-100 font-medium text-slate-700">{str.manager || str.managerName}</td>
+                          <td className="p-2.5 border-r border-slate-100 text-slate-600 font-mono">{str.phone}</td>
+                          <td className="p-2.5 border-r border-slate-100 text-slate-600">{str.location}</td>
+                          <td className="p-2.5 border-r border-slate-100 text-slate-600">{str.capacity || 'Standard'}</td>
+                          <td className="p-2.5 text-center border-r border-slate-100">
+                            <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-green-100 text-green-800">
+                              {str.status || (str.isActive !== 0 && str.is_active !== 0 ? 'Active' : 'Inactive')}
+                            </span>
+                          </td>
+                          <td className="p-2.5 text-center relative">
+                            <div className="relative inline-block text-left">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveStoreDropdownId(activeStoreDropdownId === str.id ? null : str.id);
+                                }}
+                                className="inline-flex items-center justify-center gap-1 px-2.5 py-1 bg-[#0B1E2E] hover:bg-[#020617] text-white rounded text-xs font-semibold cursor-pointer shadow-xs transition mx-auto"
+                                title="Actions"
+                              >
+                                <Settings className="w-3.5 h-3.5" />
+                                <ChevronDown className="w-2.5 h-2.5 text-slate-300" />
+                              </button>
+                              {activeStoreDropdownId === str.id && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute right-0 mt-1 w-32 bg-white rounded shadow-lg border border-slate-200 py-1 z-50 text-xs text-left"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveStoreDropdownId(null);
+                                      setViewingStore(str);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-800 transition cursor-pointer"
+                                  >
+                                    <BookOpen className="w-3.5 h-3.5 text-slate-500" />
+                                    <span>View</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveStoreDropdownId(null);
+                                      setEditingStoreId(str.id);
+                                      setNewStoreForm({
+                                        name: str.name || '',
+                                        code: str.code || '',
+                                        location: str.location || '',
+                                        manager: str.manager || str.managerName || '',
+                                        phone: str.phone || '',
+                                        capacity: str.capacity || '',
+                                      });
+                                      setIsAddStoreModalOpen(true);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-blue-600 transition cursor-pointer"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5 text-blue-600" />
+                                    <span>Edit</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteStore(str.id, str.name)}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-red-50 text-red-600 transition cursor-pointer border-t border-slate-100"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
               <div className="p-3 border-t border-slate-200 text-xs text-slate-600 bg-white">
-                Showing 1 to {storesList.length} of {storesList.length} entries
+                Showing {filteredStores.length === 0 ? 0 : 1} to {filteredStores.length} of {filteredStores.length} entries
               </div>
             </div>
 
-            {/* Modal: Add New Store */}
+            {/* Modal: View Store Details */}
+            {viewingStore && (
+              <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+                <div className="bg-white rounded shadow-xl w-full max-w-md border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <span className="font-semibold text-xs text-slate-800 flex items-center gap-1.5">
+                      <Store className="w-4 h-4 text-emerald-600" />
+                      <span>Store Details: {viewingStore.name}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setViewingStore(null)}
+                      className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="p-4 space-y-3 text-xs">
+                    <div className="bg-slate-50 p-3 rounded border border-slate-100 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Store Name:</span>
+                        <span className="font-bold text-slate-800">{viewingStore.name}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Store Code:</span>
+                        <span className="font-mono text-slate-700">{viewingStore.code || '-'}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">In-Charge Manager:</span>
+                        <span className="font-medium text-slate-700">{viewingStore.manager || viewingStore.managerName || '-'}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Phone:</span>
+                        <span className="font-mono text-slate-700">{viewingStore.phone || '-'}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Location:</span>
+                        <span className="text-slate-700">{viewingStore.location || '-'}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Capacity:</span>
+                        <span className="text-slate-700">{viewingStore.capacity || 'Standard'}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Status:</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-800">
+                          {viewingStore.status || 'Active'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Add / Edit Store */}
             {isAddStoreModalOpen && (
               <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
                 <div className="bg-white rounded shadow-xl w-full max-w-md border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                   <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                     <span className="font-semibold text-xs text-slate-800 flex items-center gap-1.5">
                       <Store className="w-4 h-4 text-emerald-600" />
-                      <span>Add New Store / Warehouse</span>
+                      <span>{editingStoreId ? 'Edit Store / Warehouse' : 'Add New Store / Warehouse'}</span>
                     </span>
                     <button
                       type="button"
-                      onClick={() => setIsAddStoreModalOpen(false)}
+                      onClick={() => {
+                        setIsAddStoreModalOpen(false);
+                        setEditingStoreId(null);
+                        setNewStoreForm({ name: '', code: '', location: '', manager: '', phone: '', capacity: '' });
+                      }}
                       className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
                     >
                       <X className="w-4 h-4" />
@@ -15915,7 +16242,11 @@ function PurchasePageInner() {
                     <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                       <button
                         type="button"
-                        onClick={() => setIsAddStoreModalOpen(false)}
+                        onClick={() => {
+                          setIsAddStoreModalOpen(false);
+                          setEditingStoreId(null);
+                          setNewStoreForm({ name: '', code: '', location: '', manager: '', phone: '', capacity: '' });
+                        }}
                         className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded border border-slate-300 cursor-pointer transition"
                       >
                         Cancel
@@ -15925,7 +16256,7 @@ function PurchasePageInner() {
                         className="px-4 py-1.5 text-xs bg-[#16A34A] hover:bg-[#15803D] text-white font-semibold rounded shadow-xs cursor-pointer transition inline-flex items-center gap-1.5"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Save Store</span>
+                        <span>{editingStoreId ? 'Update Store' : 'Save Store'}</span>
                       </button>
                     </div>
                   </form>

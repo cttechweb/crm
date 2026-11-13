@@ -557,6 +557,52 @@ storesApp.post('/', async (c) => {
   return c.json({ success: true, store: created }, 201);
 });
 
+storesApp.put('/:id', async (c) => {
+  const user = c.get('user');
+  const db = c.env.DB;
+  const id = c.req.param('id');
+
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ success: false, message: 'Invalid JSON payload' }, 400);
+  }
+
+  const existing = await db.prepare('SELECT id FROM stores WHERE id = ? AND is_deleted = 0').bind(id).first<StoreRow>();
+  if (!existing) {
+    return c.json({ success: false, message: 'Store not found' }, 404);
+  }
+
+  const now = new Date().toISOString();
+  await db
+    .prepare(`
+      UPDATE stores SET
+        name = COALESCE(?, name),
+        code = COALESCE(?, code),
+        location = COALESCE(?, location),
+        address = COALESCE(?, address),
+        manager_name = COALESCE(?, manager_name),
+        phone = COALESCE(?, phone),
+        updated_at = ?
+      WHERE id = ?
+    `)
+    .bind(
+      body.name?.trim() || null,
+      body.code?.trim() || null,
+      body.location?.trim() || null,
+      body.address?.trim() || null,
+      body.managerName?.trim() || body.manager_name?.trim() || null,
+      body.phone?.trim() || null,
+      now,
+      id
+    )
+    .run();
+
+  const updated = await db.prepare('SELECT * FROM stores WHERE id = ?').bind(id).first<StoreRow>();
+  return c.json({ success: true, store: updated });
+});
+
 storesApp.delete('/:id', async (c) => {
   const user = c.get('user');
   const db = c.env.DB;
