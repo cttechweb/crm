@@ -3105,17 +3105,61 @@ function PurchasePageInner() {
     return tot > 0 ? tot.toFixed(2) : '0.00';
   };
 
+  const handleConvertPoToInvoice = (po: any) => {
+    if (!po) return;
+    router.push('/purchase?tab=invoice');
+    setInvoiceViewMode('add');
+    setEditingInvoiceId(null);
+    handleSelectPurchaseOrder(po.poNumber || po.id);
+    const safePoNum = (po.poNumber || 'PO').replace(/[^a-zA-Z0-9]/g, '');
+    const nextInvNum = `INV-${safePoNum}-${Date.now().toString().slice(-4)}`;
+    setInvoiceNumberInput(nextInvNum);
+    setInvoiceDate(getLiveTodayDateString());
+  };
+
   const handleCreatePurchaseInvoice = () => {
     const invAmt = parseFloat(invoiceAmount) || 0;
     const invTotal = parseFloat(invoiceTotalAmount) || invAmt;
 
+    const targetSup = selectedSupplierObjForInvoice || suppliersList.find((s: any) =>
+      (s.supplierName || s.name || '').trim().toLowerCase() === invoiceSupplier.trim().toLowerCase() ||
+      s.id === invoiceSupplier
+    ) || suppliersList[0];
+    const targetSupplierId = targetSup?.id || (invoiceSupplier !== 'Select' ? invoiceSupplier : 'sup_1793802444812');
+    const targetSupplierName = targetSup?.name || targetSup?.supplierName || (invoiceSupplier !== 'Select' ? invoiceSupplier : 'Mueller Middle East FZE');
+
+    const targetPo = matchedPoForInvoice || (invoicePoNumber ? purchaseOrders.find((p: any) =>
+      (p.poNumber || '').toLowerCase().trim() === invoicePoNumber.toLowerCase().trim() ||
+      (p.id || '').toLowerCase().trim() === invoicePoNumber.toLowerCase().trim()
+    ) : null);
+    const targetPoId = targetPo?.id || (invoicePoNumber && invoicePoNumber !== 'Select' ? invoicePoNumber : undefined);
+    const targetPoNo = targetPo?.poNumber || (invoicePoNumber && invoicePoNumber !== 'Select' ? invoicePoNumber : undefined);
+
+    const payloadItems = invoiceItems.length > 0 ? invoiceItems.map((it: any) => ({
+      code: it.code || '',
+      description: it.item || it.description || 'General Item',
+      invoiced_qty: parseFloat(it.qty) || 1,
+      unit_price: parseFloat(it.rate) || 0,
+      tax_rate: 5,
+      unit: it.unit || 'Pcs',
+    })) : [
+      {
+        code: 'PROD-01',
+        description: invoiceDescription || 'General Purchased Equipment',
+        invoiced_qty: 1,
+        unit_price: invAmt,
+        tax_rate: 5,
+        unit: 'Pcs',
+      }
+    ];
+
     if (editingInvoiceId) {
       supplierInvoiceApiService
         .updateInvoice(editingInvoiceId, {
-          supplier_id: invoiceSupplier !== 'Select' ? invoiceSupplier : 'sup_1',
-          supplier_name: invoiceSupplier !== 'Select' ? invoiceSupplier : 'GULF ELECTRONICS COMPANY LLC',
-          purchase_order_id: invoicePoNumber || undefined,
-          purchase_order_no: invoicePoNumber || undefined,
+          supplier_id: targetSupplierId,
+          supplier_name: targetSupplierName,
+          purchase_order_id: targetPoId,
+          purchase_order_no: targetPoNo,
           invoice_number: invoiceNumberInput,
           invoice_date: invoiceDate,
           due_date: invoicePaymentDue,
@@ -3125,13 +3169,7 @@ function PurchasePageInner() {
           adjustment_amount: parseFloat(invoiceAdjustment) || 0,
           total_amount: invTotal,
           notes: invoiceDescription,
-          items: invoiceItems.map((it: any) => ({
-            description: it.item || it.description || 'General Item',
-            invoiced_qty: parseFloat(it.qty) || 1,
-            unit_price: parseFloat(it.rate) || 0,
-            tax_rate: 5,
-            unit: it.unit || 'Pcs',
-          })),
+          items: payloadItems,
         })
         .then(() => fetchLiveInvoices())
         .catch((err) => console.warn('Failed to sync invoice edit with server:', err));
@@ -3146,11 +3184,11 @@ function PurchasePageInner() {
                 invoiceOwner === 'Natal'
                   ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces'
                   : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=faces',
-              poNumber: invoicePoNumber || '',
+              poNumber: targetPoNo || '',
               invoiceNumber: invoiceNumberInput || item.invoiceNumber,
               pisn: invoicePisn || item.pisn,
               date: invoiceDate || item.date,
-              supplier: invoiceSupplier !== 'Select' ? invoiceSupplier : item.supplier,
+              supplier: targetSupplierName,
               order: invoiceOrder !== 'Select Order' ? invoiceOrder : '',
               withPurchaseItems: invoiceWithItems,
               amount: invAmt,
@@ -3180,10 +3218,10 @@ function PurchasePageInner() {
       const generatedInvoiceNumber = invoiceNumberInput || `INV-2026-${String(purchaseInvoicesList.length + 1).padStart(3, '0')}`;
       supplierInvoiceApiService
         .createInvoice({
-          supplier_id: invoiceSupplier !== 'Select' ? invoiceSupplier : 'sup_1',
-          supplier_name: invoiceSupplier !== 'Select' ? invoiceSupplier : 'GULF ELECTRONICS COMPANY LLC',
-          purchase_order_id: invoicePoNumber || undefined,
-          purchase_order_no: invoicePoNumber || undefined,
+          supplier_id: targetSupplierId,
+          supplier_name: targetSupplierName,
+          purchase_order_id: targetPoId,
+          purchase_order_no: targetPoNo,
           invoice_number: generatedInvoiceNumber,
           invoice_date: invoiceDate || getLiveTodayDateString(),
           due_date: invoicePaymentDue,
@@ -3193,13 +3231,7 @@ function PurchasePageInner() {
           adjustment_amount: parseFloat(invoiceAdjustment) || 0,
           total_amount: invTotal,
           notes: invoiceDescription,
-          items: invoiceItems.map((it: any) => ({
-            description: it.item || it.description || 'General Item',
-            invoiced_qty: parseFloat(it.qty) || 1,
-            unit_price: parseFloat(it.rate) || 0,
-            tax_rate: 5,
-            unit: it.unit || 'Pcs',
-          })),
+          items: payloadItems,
         })
         .then(() => fetchLiveInvoices())
         .catch((err) => console.warn('Failed to sync new invoice with server:', err));
@@ -7970,6 +8002,17 @@ function PurchasePageInner() {
                             <Printer className="w-3.5 h-3.5 text-white" />
                             <span>Print</span>
                           </button>
+                          {viewingPo.approval === 'Approved' && (
+                            <button
+                              type="button"
+                              onClick={() => handleConvertPoToInvoice(viewingPo)}
+                              className="px-3 py-1.5 bg-[#00828A] hover:bg-[#006D75] text-white rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition"
+                              title="Generate Supplier Tax Invoice from this Approved Purchase Order"
+                            >
+                              <FileText className="w-3.5 h-3.5 text-white" />
+                              <span>Generate Invoice</span>
+                            </button>
+                          )}
                           {viewingPo.approval !== 'Approved' && (
                             <button
                               type="button"
@@ -8489,6 +8532,19 @@ function PurchasePageInner() {
                                   <BookOpen className="w-4 h-4 text-slate-700 shrink-0" />
                                   <span>View</span>
                                 </button>
+                                {po.approval === 'Approved' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActivePoActionDropdownId(null);
+                                      handleConvertPoToInvoice(po);
+                                    }}
+                                    className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-teal-50 text-[#00828A] font-medium transition-colors cursor-pointer"
+                                  >
+                                    <FileText className="w-4 h-4 text-[#00828A] shrink-0" />
+                                    <span>Convert to Invoice</span>
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => handleDeletePurchaseOrder(po.id, po.poNumber)}
@@ -8740,6 +8796,19 @@ function PurchasePageInner() {
                                       }
                                       return null;
                                     })()}
+                                    {po.approval === 'Approved' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActivePoActionDropdownId(null);
+                                          handleConvertPoToInvoice(po);
+                                        }}
+                                        className="w-full px-3.5 py-2 flex items-center gap-2.5 hover:bg-teal-50 text-[#00828A] font-medium transition-colors cursor-pointer"
+                                      >
+                                        <FileText className="w-4 h-4 text-[#00828A] shrink-0" />
+                                        <span>Convert to Invoice</span>
+                                      </button>
+                                    )}
                                     <button
                                       type="button"
                                       onClick={() => handleDeletePurchaseOrder(po.id, po.poNumber)}

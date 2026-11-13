@@ -5471,14 +5471,14 @@ export async function calculateThreeWayMatch(
   }
 
   const po = await db
-    .prepare('SELECT * FROM purchase_orders WHERE id = ? AND is_deleted = 0')
-    .bind(poId)
+    .prepare('SELECT * FROM purchase_orders WHERE (id = ? OR po_number = ?) AND is_deleted = 0')
+    .bind(poId, poId)
     .first<PurchaseOrderRow>();
 
   if (!po) {
     return {
       overallStatus: 'Pending_Audit',
-      poId,
+      poId: poId || '',
       poNumber: '',
       poStatus: 'Not_Found',
       grnId: null,
@@ -5501,7 +5501,7 @@ export async function calculateThreeWayMatch(
   // Fetch PO items
   const poItemsRes = await db
     .prepare('SELECT * FROM purchase_order_items WHERE purchase_order_id = ? ORDER BY sort_order ASC')
-    .bind(poId)
+    .bind(po.id)
     .all<PurchaseOrderItemRow>();
   const poItems = poItemsRes.results || [];
 
@@ -5516,7 +5516,7 @@ export async function calculateThreeWayMatch(
   } else {
     const poGrns = await db
       .prepare('SELECT * FROM stock_in_vouchers WHERE (purchase_order_id = ? OR lpo_number = ?) AND is_deleted = 0')
-      .bind(poId, po.po_number)
+      .bind(po.id, po.po_number)
       .all<StockInRecordRow>();
     grns = poGrns.results || [];
   }
@@ -5976,10 +5976,10 @@ supplierInvoicesApp.post('/', async (c) => {
       invoiceNumber,
       invoiceDate,
       dueDate,
-      supplierId,
+      supplier.id,
       supplier.supplier_name,
-      purchaseOrderId,
-      po.po_number,
+      po ? po.id : purchaseOrderId,
+      po ? po.po_number : null,
       matchResult.grnId || grnId,
       matchResult.grnNumber || grnNumber,
       subtotal,
