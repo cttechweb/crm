@@ -3539,23 +3539,11 @@ function PurchasePageInner() {
 
             const cleanCode = itCode.toLowerCase();
             const cleanName = itName.toLowerCase();
-            const isCarrierItem =
-              cleanCode.includes('carr') ||
-              cleanCode.includes('1311') ||
-              cleanCode.includes('9708') ||
-              cleanName.includes('carrier');
 
             const existingIndex = workingList.findIndex((p: any) => {
               const pCode = String(p.code || p.sku || '').trim().toLowerCase();
               const pName = String(p.name || '').trim().toLowerCase();
-              const carrierMatch =
-                isCarrierItem &&
-                (pCode.includes('carr') || pName.includes('carrier') || pCode.includes('1311') || pCode.includes('9708'));
-              return (
-                carrierMatch ||
-                (cleanCode && pCode && (pCode === cleanCode || pCode.includes(cleanCode) || cleanCode.includes(pCode))) ||
-                (cleanName && pName && (pName === cleanName || pName.includes(cleanName) || cleanName.includes(pName)))
-              );
+              return (cleanCode && pCode && pCode === cleanCode) || (cleanName && pName && pName === cleanName);
             });
 
             const qty = Number(it.qty || it.received_qty || it.quantity || 1);
@@ -3563,64 +3551,48 @@ function PurchasePageInner() {
             const supplierName = voucher.supplier || voucher.supplierName || 'None';
 
             if (existingIndex !== -1) {
-              if (isCarrierItem) {
-                // Ensure permanent Carrier stock is 5 (3 opening + 2 from STK-937) and stable code
-                const curr = Number(workingList[existingIndex].currentStock || workingList[existingIndex].stock || 0);
-                if (curr < 5) {
-                  workingList[existingIndex].currentStock = 5;
-                  workingList[existingIndex].stock = 5;
-                  changed = true;
-                }
-                if (!workingList[existingIndex].code || workingList[existingIndex].code.startsWith('PROD-')) {
-                  workingList[existingIndex].code = 'CARR-40-DUCT';
-                  changed = true;
-                }
+              // Existing product already in workingList: update stock without renaming
+              const curr = Number(workingList[existingIndex].currentStock || workingList[existingIndex].stock || 0);
+              if (curr < qty) {
+                workingList[existingIndex].currentStock = qty;
+                workingList[existingIndex].stock = qty;
+                changed = true;
               }
             } else {
               changed = true;
-              const brandVal =
-                it.brand ||
-                (itName.toLowerCase().includes('mitsubishi')
-                  ? 'MITSUBISHI'
-                  : itName.toLowerCase().includes('carrier')
-                  ? 'Carrier'
-                  : itName.toLowerCase().includes('danfoss')
-                  ? 'Danfoss'
-                  : itName.toLowerCase().includes('daikin')
-                  ? 'Daikin'
-                  : 'General');
-
-              const permanentCode = isCarrierItem ? 'CARR-40-DUCT' : (itCode || `PROD-01`);
-              const permanentId = isCarrierItem ? 'PROD-CARRIER-40-DUCT' : `prod-si-${itCode || 'item'}`;
+              const isMitsubishi = cleanCode === 'prod-01' || cleanName.includes('mitsubishi');
+              const finalName = isMitsubishi ? 'Mitsubishi 5.0 Ton Package AC' : itName;
+              const finalBrand = isMitsubishi ? 'MITSUBISHI' : (it.brand || 'General');
+              const finalCode = itCode || (isMitsubishi ? 'PROD-01' : `PROD-${workingList.length + 1}`);
 
               const newProd: any = {
-                id: permanentId,
+                id: it.id || `prod-si-${finalCode}`,
                 slNo: workingList.length + 1,
-                serialNo: it.serialNo || permanentCode,
-                code: permanentCode,
-                name: isCarrierItem ? 'Carrier 4.0 Ton Ducted Split AC' : itName,
+                serialNo: it.serialNo || finalCode,
+                code: finalCode,
+                name: finalName,
                 image: '',
                 unit: it.unit || 'Pcs',
-                brand: brandVal,
+                brand: finalBrand,
                 category: it.category || 'Air Conditioning',
                 type: 'Product',
                 preferredSupplier: supplierName,
                 supplier: supplierName,
                 supplierId: voucher.supplierId || '',
-                purchaseRate: isCarrierItem ? 4200 : rate,
-                sellingPrice: it.sellingPrice ? Number(it.sellingPrice) : (isCarrierItem ? 5500 : (rate > 0 ? Math.round(rate * 1.25) : 0)),
+                purchaseRate: rate,
+                sellingPrice: it.sellingPrice ? Number(it.sellingPrice) : (rate > 0 ? Math.round(rate * 1.25) : 0),
                 status: 'Active',
                 store: voucher.warehouse || voucher.store || 'CT',
-                stock: isCarrierItem ? 5 : qty,
-                currentStock: isCarrierItem ? 5 : qty,
-                openingStock: isCarrierItem ? 3 : 0,
+                stock: qty,
+                currentStock: qty,
+                openingStock: 0,
                 minimumStock: 2,
                 minStock: 2,
                 createdBy: 'Stock In Intake',
                 createdByRole: 'manager',
                 owner: 'Stock Management',
               };
-              workingList.unshift(newProd);
+              workingList.push(newProd);
             }
           });
         }
@@ -3630,7 +3602,6 @@ function PurchasePageInner() {
       workingList.forEach((prod, pIdx) => {
         const pCode = String(prod.code || prod.sku || '').trim().toLowerCase();
         const pName = String(prod.name || '').trim().toLowerCase();
-        if (pCode.includes('carr-40') || pName.includes('carrier')) return; // Carrier has fixed 5-unit balance
 
         let totalQtyFromVouchers = 0;
         let hasVouchers = false;
@@ -3669,7 +3640,20 @@ function PurchasePageInner() {
         }
       });
 
-      return { list: workingList, changed };
+      // Deduplicate by clean product code or ID
+      const seenCodes = new Set<string>();
+      const deduplicatedList: any[] = [];
+      workingList.forEach((prod, idx) => {
+        const key = String(prod.code || prod.sku || prod.id || '').trim().toLowerCase();
+        if (!key || seenCodes.has(key)) return;
+        seenCodes.add(key);
+        deduplicatedList.push({
+          ...prod,
+          slNo: idx + 1,
+        });
+      });
+
+      return { list: deduplicatedList, changed };
     } catch {
       return { list: prods, changed: false };
     }
@@ -3744,52 +3728,40 @@ function PurchasePageInner() {
         }
 
         return reconciledList.map((p: any, idx: number) => {
-          const isWindow =
-            String(p.category || '').toLowerCase().includes('window') ||
-            String(p.name || '').toLowerCase().includes('window') ||
-            String(p.serialNo || p.code || '').toLowerCase().includes('51kwf');
-
-          const isCarrier =
-            !isWindow && (
-              String(p.code || '').toLowerCase() === 'carr-40-duct' ||
-              String(p.id || '') === 'prod-carrier-40-duct' ||
-              String(p.code || '').toLowerCase().includes('carr') ||
-              (String(p.name || '').toLowerCase().includes('carrier') && (String(p.name || '').toLowerCase().includes('duct') || String(p.name || '').toLowerCase().includes('split')))
-            );
-
           const isMitsubishi =
-            !isWindow && !isCarrier && (
-              String(p.code || '').toLowerCase() === 'prod-01' ||
-              String(p.name || '').toLowerCase().includes('mitsubishi')
-            );
+            String(p.code || '').toLowerCase() === 'prod-01' ||
+            String(p.name || '').toLowerCase().includes('mitsubishi');
 
           let currentStockVal = Number(p.currentStock ?? p.stock) || 0;
-          if (isCarrier) {
-            currentStockVal = 5; // Permanent live warehouse stock: 3 opening + 2 from STK-937
-          } else if (isMitsubishi) {
-            currentStockVal = Number(p.currentStock ?? p.stock) || 8;
+          if (isMitsubishi && currentStockVal === 0) {
+            currentStockVal = 8;
           }
+
+          const cleanCode = String(p.code || p.sku || `PROD-${idx + 1}`);
+          const cleanName = isMitsubishi ? 'Mitsubishi 5.0 Ton Package AC' : (p.name || 'Unnamed Product');
+          const cleanBrand = isMitsubishi ? 'MITSUBISHI' : (p.brand || 'General');
+
           return {
-            id: isCarrier ? 'PROD-CARRIER-40-DUCT' : String(p.id || idx + 1),
+            id: String(p.id || `prod-${idx + 1}`),
             slNo: idx + 1,
             serialNo: p.serialNo || '',
-            code: isCarrier ? 'CARR-40-DUCT' : (p.code || p.sku || `CQ4N-XMI${idx + 10}S`),
-            name: isMitsubishi ? 'Mitsubishi 5.0 Ton Package AC' : (isCarrier ? 'Carrier 4.0 Ton Ducted Split AC' : (p.name || 'Unnamed Product')),
+            code: cleanCode,
+            name: cleanName,
             image: p.image || p.thumbnailImage || '',
             unit: p.unit || 'Pcs',
-            brand: isCarrier ? 'Carrier' : (isMitsubishi ? 'MITSUBISHI' : (p.brand || 'General')),
-            category: isWindow ? 'Window AC' : (isCarrier ? 'Air Conditioning' : (p.category || 'SPLIT AC')),
+            brand: cleanBrand,
+            category: p.category || 'Air Conditioning',
             type: p.type || 'Product',
-            purchaseRate: isCarrier ? 4200 : (Number(p.purchaseRate) || 0),
-            sellingPrice: isCarrier ? 5500 : (Number(p.sellingPrice || p.basePrice) || 0),
+            purchaseRate: Number(p.purchaseRate) || 0,
+            sellingPrice: Number(p.sellingPrice || p.basePrice) || 0,
             status: p.status === false || p.status === 'Inactive' ? 'Inactive' : 'Active',
-            store: isCarrier ? 'CT' : (p.store || 'Main Warehouse - Bay A'),
+            store: p.store || 'Main Warehouse - Bay A',
             stock: currentStockVal,
             currentStock: currentStockVal,
-            openingStock: isCarrier ? 3 : 0,
+            openingStock: Number(p.openingStock) || 0,
             minimumStock: Number(p.minStock || p.minimumStock) || 0,
-            supplier: isCarrier ? 'Al Futtaim Engineering & Technologies LLC' : (p.supplier || p.preferredSupplier || ''),
-            supplierId: isCarrier ? 'sup_al_futtaim_001' : (p.supplierId || ''),
+            supplier: p.supplier || p.preferredSupplier || '',
+            supplierId: p.supplierId || '',
             createdBy: p.createdBy || (p.createdByRole === 'employee' ? 'Purchase Employee' : 'Rashid Ali'),
             createdByRole: p.createdByRole || (p.createdById && String(p.createdById).startsWith('emp_') ? 'employee' : 'manager'),
             createdById: p.createdById || (p.createdByRole === 'employee' ? 'emp_faisal_001' : 'usr_rashid_001'),
@@ -3822,52 +3794,40 @@ function PurchasePageInner() {
 
         setStockItems(
           reconciledList.map((p: any, idx: number) => {
-            const isWindow =
-              String(p.category || '').toLowerCase().includes('window') ||
-              String(p.name || '').toLowerCase().includes('window') ||
-              String(p.serialNo || p.code || '').toLowerCase().includes('51kwf');
-
-            const isCarrier =
-              !isWindow && (
-                String(p.code || '').toLowerCase() === 'carr-40-duct' ||
-                String(p.id || '') === 'prod-carrier-40-duct' ||
-                String(p.code || '').toLowerCase().includes('carr') ||
-                (String(p.name || '').toLowerCase().includes('carrier') && (String(p.name || '').toLowerCase().includes('duct') || String(p.name || '').toLowerCase().includes('split')))
-              );
-
             const isMitsubishi =
-              !isWindow && !isCarrier && (
-                String(p.code || '').toLowerCase() === 'prod-01' ||
-                String(p.name || '').toLowerCase().includes('mitsubishi')
-              );
+              String(p.code || '').toLowerCase() === 'prod-01' ||
+              String(p.name || '').toLowerCase().includes('mitsubishi');
 
-            let currentStockVal = Number(p.currentStock || p.stock) || 0;
-            if (isCarrier) {
-              currentStockVal = 5; // Permanent live warehouse stock: 3 opening + 2 from STK-937
-            } else if (isMitsubishi) {
-              currentStockVal = Number(p.currentStock ?? p.stock) || 8;
+            let currentStockVal = Number(p.currentStock ?? p.stock) || 0;
+            if (isMitsubishi && currentStockVal === 0) {
+              currentStockVal = 8;
             }
+
+            const cleanCode = String(p.code || p.sku || `PROD-${idx + 1}`);
+            const cleanName = isMitsubishi ? 'Mitsubishi 5.0 Ton Package AC' : (p.name || 'Unnamed Product');
+            const cleanBrand = isMitsubishi ? 'MITSUBISHI' : (p.brand || 'General');
+
             return {
-              id: isCarrier ? 'PROD-CARRIER-40-DUCT' : String(p.id || idx + 1),
+              id: String(p.id || `prod-${idx + 1}`),
               slNo: idx + 1,
               serialNo: p.serialNo || '',
-              code: isCarrier ? 'CARR-40-DUCT' : (p.code || p.sku || `CQ4N-XMI${idx + 10}S`),
-              name: isMitsubishi ? 'Mitsubishi 5.0 Ton Package AC' : (isCarrier ? 'Carrier 4.0 Ton Ducted Split AC' : (p.name || 'Unnamed Product')),
+              code: cleanCode,
+              name: cleanName,
               image: p.image || p.thumbnailImage || '',
               unit: p.unit || 'Pcs',
-              brand: isCarrier ? 'Carrier' : (isMitsubishi ? 'MITSUBISHI' : (p.brand || 'General')),
-              category: isWindow ? 'Window AC' : (isCarrier ? 'Air Conditioning' : (p.category || 'SPLIT AC')),
+              brand: cleanBrand,
+              category: p.category || 'Air Conditioning',
               type: p.type || 'Product',
-              purchaseRate: isCarrier ? 4200 : (Number(p.purchaseRate) || 0),
-              sellingPrice: isCarrier ? 5500 : (Number(p.sellingPrice || p.basePrice) || 0),
+              purchaseRate: Number(p.purchaseRate) || 0,
+              sellingPrice: Number(p.sellingPrice || p.basePrice) || 0,
               status: p.status === false || p.status === 'Inactive' ? 'Inactive' : 'Active',
-              store: isCarrier ? 'CT' : (p.store || 'Main Warehouse - Bay A'),
+              store: p.store || 'Main Warehouse - Bay A',
               stock: currentStockVal,
               currentStock: currentStockVal,
-              openingStock: isCarrier ? 3 : 0,
+              openingStock: Number(p.openingStock) || 0,
               minimumStock: Number(p.minStock || p.minimumStock) || 0,
-              supplier: isCarrier ? 'Al Futtaim Engineering & Technologies LLC' : (p.supplier || p.preferredSupplier || ''),
-              supplierId: isCarrier ? 'sup_al_futtaim_001' : (p.supplierId || ''),
+              supplier: p.supplier || p.preferredSupplier || '',
+              supplierId: p.supplierId || '',
               createdBy: p.createdBy || (p.createdByRole === 'employee' ? 'Purchase Employee' : 'Rashid Ali'),
               createdByRole: p.createdByRole || (p.createdById && String(p.createdById).startsWith('emp_') ? 'employee' : 'manager'),
               createdById: p.createdById || (p.createdByRole === 'employee' ? 'emp_faisal_001' : 'usr_rashid_001'),
@@ -3896,9 +3856,51 @@ function PurchasePageInner() {
         const res = await crmInventoryApiService.getInventory({ limit: 200 });
         if (res && res.success && Array.isArray(res.cezconStocks) && res.cezconStocks.length > 0) {
           const { list: reconciledList } = reconcileProductsWithStockIn(res.cezconStocks);
-          setStockItems(reconciledList);
+          const mapped = reconciledList.map((p: any, idx: number) => {
+            const isMitsubishi =
+              String(p.code || '').toLowerCase() === 'prod-01' ||
+              String(p.name || '').toLowerCase().includes('mitsubishi');
+
+            let currentStockVal = Number(p.currentStock ?? p.stock) || 0;
+            if (isMitsubishi && currentStockVal === 0) {
+              currentStockVal = 8;
+            }
+
+            const cleanCode = String(p.code || p.sku || `PROD-${idx + 1}`);
+            const cleanName = isMitsubishi ? 'Mitsubishi 5.0 Ton Package AC' : (p.name || 'Unnamed Product');
+            const cleanBrand = isMitsubishi ? 'MITSUBISHI' : (p.brand || 'General');
+
+            return {
+              id: String(p.id || `prod-${idx + 1}`),
+              slNo: idx + 1,
+              serialNo: p.serialNo || '',
+              code: cleanCode,
+              name: cleanName,
+              image: p.image || p.thumbnailImage || '',
+              unit: p.unit || 'Pcs',
+              brand: cleanBrand,
+              category: p.category || 'Air Conditioning',
+              type: p.type || 'Product',
+              purchaseRate: Number(p.purchaseRate) || 0,
+              sellingPrice: Number(p.sellingPrice || p.basePrice) || 0,
+              status: p.status === false || p.status === 'Inactive' ? 'Inactive' : 'Active',
+              store: p.store || 'Main Warehouse - Bay A',
+              stock: currentStockVal,
+              currentStock: currentStockVal,
+              openingStock: Number(p.openingStock) || 0,
+              minimumStock: Number(p.minStock || p.minimumStock) || 0,
+              supplier: p.supplier || p.preferredSupplier || '',
+              supplierId: p.supplierId || '',
+              createdBy: p.createdBy || 'Rashid Ali',
+              createdByRole: p.createdByRole || 'manager',
+              createdById: p.createdById || 'usr_rashid_001',
+              createdByEmail: p.createdByEmail || 'purchasemanager@gmail.com',
+              owner: p.owner || p.createdBy || 'Rashid Ali',
+            };
+          });
+          setStockItems(mapped);
           if (typeof window !== 'undefined') {
-            localStorage.setItem('cezcon_products_master_live', JSON.stringify(reconciledList));
+            localStorage.setItem('cezcon_products_master_live', JSON.stringify(mapped));
           }
         }
       } catch (err) {
@@ -14839,9 +14841,9 @@ function PurchasePageInner() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 bg-white">
-                            {filteredProducts.map((item) => (
+                            {filteredProducts.map((item, rowIdx) => (
                               <tr key={item.id} className="hover:bg-blue-50/40 transition-colors">
-                                <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{item.slNo}</td>
+                                <td className="p-2.5 text-center font-medium text-slate-600 border-r border-slate-100">{rowIdx + 1}</td>
                                 <td className="p-2.5 text-center text-slate-400 border-r border-slate-100">{item.serialNo || ''}</td>
                                 <td className="p-2.5 border-r border-slate-100 text-center">
                                   <BarcodeView code={item.code} />
