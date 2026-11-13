@@ -9,6 +9,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  Eye,
   CheckCircle,
   Search,
   Package,
@@ -228,6 +229,8 @@ export function ProductsTab() {
 
   // Action / Dropdown state
   const [openDropdownId, setOpenDropdownId] = useState<number | string | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [viewingProduct, setViewingProduct] = useState<ProductSettingItem | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<ProductSettingItem | null>(null);
   const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
@@ -1461,6 +1464,18 @@ export function ProductsTab() {
                               <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-md shadow-lg z-50 py-1 text-xs divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100">
                                 <button
                                   type="button"
+                                  onClick={() => {
+                                    setOpenDropdownId(null);
+                                    setViewingProduct(item);
+                                    setIsViewModalOpen(true);
+                                  }}
+                                  className="w-full text-left px-3 py-1.5 text-slate-700 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2 cursor-pointer font-medium"
+                                >
+                                  <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>View</span>
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => handleOpenEditForm(item)}
                                   className="w-full text-left px-3 py-1.5 text-slate-700 hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2 cursor-pointer"
                                 >
@@ -1704,6 +1719,190 @@ export function ProductsTab() {
           </div>
         </div>
       )}
+
+      {/* =========================================================================
+          MODAL: VIEW PRODUCT DETAILS
+          ========================================================================= */}
+      <Modal
+        isOpen={isViewModalOpen}
+        onClose={() => {
+          setIsViewModalOpen(false);
+          setViewingProduct(null);
+        }}
+        title="Product Details"
+        description="Comprehensive technical and commercial profile of this item."
+        icon={<Eye className="w-5 h-5 text-[#0F3652]" />}
+        maxWidth="2xl"
+      >
+        {viewingProduct && (
+          <div className="space-y-4 pt-1 text-xs">
+            {/* Top Bar: Name, Model & Badges */}
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold text-slate-900">{viewingProduct.name}</h3>
+                  {viewingProduct.badge && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+                      {viewingProduct.badge}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                  Model / ID: {viewingProduct.modelId || viewingProduct.id}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                  viewingProduct.status !== false ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {viewingProduct.status !== false ? 'Active' : 'Inactive'}
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                  (viewingProduct.inStock !== false && (viewingProduct.currentStock === undefined || viewingProduct.currentStock > 0))
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                }`}>
+                  {(viewingProduct.inStock !== false && (viewingProduct.currentStock === undefined || viewingProduct.currentStock > 0)) ? 'In Stock' : 'Out of Stock'}
+                </span>
+              </div>
+            </div>
+
+            {/* 2-Column Info Layout */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+              {/* Left Column: Image & Barcode */}
+              <div className="md:col-span-5 space-y-3">
+                <div className="w-full h-44 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center overflow-hidden p-2">
+                  {viewingProduct.image || viewingProduct.thumbnailImage ? (
+                    <img
+                      src={viewingProduct.image || viewingProduct.thumbnailImage}
+                      alt={viewingProduct.name}
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-slate-400 gap-1">
+                      <ImageIcon className="w-8 h-8 stroke-1" />
+                      <span className="text-[10px]">No image available</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Barcode representation */}
+                <div className="p-2.5 bg-white border border-slate-200 rounded-lg flex flex-col items-center justify-center">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Scannable Barcode</span>
+                  <BarcodeGraphic value={String(viewingProduct.code || viewingProduct.sku || viewingProduct.modelId || viewingProduct.id)} />
+                  <span className="font-mono text-[10px] text-slate-600 mt-1 font-semibold">
+                    {viewingProduct.code || viewingProduct.sku || viewingProduct.id}
+                  </span>
+                </div>
+              </div>
+
+              {/* Right Column: Pricing & Specifications Grid */}
+              <div className="md:col-span-7 space-y-3">
+                {/* Financial Rates */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2.5 bg-blue-50/50 rounded-lg border border-blue-100">
+                    <span className="text-[10px] text-slate-500 font-medium">Selling Price</span>
+                    <p className="text-base font-bold text-blue-700">
+                      {Number(viewingProduct.sellingPrice || viewingProduct.basePrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} <span className="text-[10px] font-normal">AED</span>
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                    <span className="text-[10px] text-slate-500 font-medium">Purchase Cost</span>
+                    <p className="text-base font-bold text-slate-700">
+                      {Number(viewingProduct.purchaseRate || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} <span className="text-[10px] font-normal">AED</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Attributes Table */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-left divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-100">
+                      <tr className="bg-slate-50/60">
+                        <td className="py-1.5 px-3 font-medium text-slate-500 w-1/3">Brand</td>
+                        <td className="py-1.5 px-3 font-semibold text-slate-800">{viewingProduct.brand || '—'}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1.5 px-3 font-medium text-slate-500">Category</td>
+                        <td className="py-1.5 px-3 text-slate-800">{viewingProduct.category || '—'}</td>
+                      </tr>
+                      <tr className="bg-slate-50/60">
+                        <td className="py-1.5 px-3 font-medium text-slate-500">Unit of Measure</td>
+                        <td className="py-1.5 px-3 text-slate-800">{viewingProduct.unit || 'Pcs'}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1.5 px-3 font-medium text-slate-500">Product Type</td>
+                        <td className="py-1.5 px-3 text-slate-800">{viewingProduct.type || 'Product'}</td>
+                      </tr>
+                      <tr className="bg-slate-50/60">
+                        <td className="py-1.5 px-3 font-medium text-slate-500">Store / Location</td>
+                        <td className="py-1.5 px-3 text-slate-800">{viewingProduct.store || 'All Store'}</td>
+                      </tr>
+                      {viewingProduct.currentStock !== undefined && (
+                        <tr>
+                          <td className="py-1.5 px-3 font-medium text-slate-500">Current Stock</td>
+                          <td className="py-1.5 px-3 font-bold text-slate-900">{viewingProduct.currentStock} {viewingProduct.unit || 'Pcs'}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Additional Description / Features */}
+                {viewingProduct.additionalDescription && (
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
+                    <span className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Specifications & Notes</span>
+                    <p className="text-[11px] text-slate-600 leading-relaxed whitespace-pre-wrap">
+                      {viewingProduct.additionalDescription}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Bottom Actions Row */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  showToast(`Printed barcode label for ${viewingProduct.code || viewingProduct.sku || viewingProduct.id}`);
+                }}
+                className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5 text-slate-500" />
+                <span>Print Barcode</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setIsViewModalOpen(false);
+                    setViewingProduct(null);
+                  }}
+                >
+                  Close
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const prodToEdit = viewingProduct;
+                    setIsViewModalOpen(false);
+                    setViewingProduct(null);
+                    handleOpenEditForm(prodToEdit);
+                  }}
+                  className="px-3 py-1.5 bg-[#0F3652] hover:bg-[#1E4E79] text-white rounded text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5 text-white" />
+                  <span>Edit Product</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* =========================================================================
           MODAL: DELETE PRODUCT
