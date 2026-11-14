@@ -1071,16 +1071,21 @@ export function CezconOrderModule() {
         const formattedItems: OrderItemRow[] = rawItems.map((it: any, idx: number) => {
           const qty = Number(it.quantity || it.qty || 1);
           const price = Number(it.unitPrice || it.rate || it.price || 0);
-          const code = it.itemCode || it.sku || it.code || `PROD-${idx + 1}`;
-          const brand = it.brand || '';
           const desc = it.name || it.productName || it.description || it.item || 'HVAC Equipment';
+          const matchedCatalogProd = catalogProducts.find(
+            (p) => (p.name || '').trim().toLowerCase() === desc.trim().toLowerCase()
+          );
+          const code = it.itemCode || it.sku || it.code || matchedCatalogProd?.code || matchedCatalogProd?.sku || String(matchedCatalogProd?.id || '') || `PROD-${idx + 1}`;
+          const brand = it.brand || matchedCatalogProd?.brand || '';
+          const unit = it.unit || matchedCatalogProd?.unit || 'Pcs';
+
           return {
             id: `item_${Date.now()}_${idx}`,
             description: desc,
             additionalDescription: it.additionalDescription || it.specifications || '',
             showAdditional: false,
             code: code,
-            unit: it.unit || 'Pcs',
+            unit: unit,
             brand: brand,
             qty: qty,
             price: price,
@@ -1090,14 +1095,6 @@ export function CezconOrderModule() {
 
         setLineItems(formattedItems);
         setIsOrderFormActive(true);
-
-        const productDetailsSummary = formattedItems
-          .map(
-            (it) =>
-              `Item: ${it.description}\nCode: ${it.code}\nQuantity: ${it.qty}\nBrand: ${it.brand || 'Standard'}\nUnit Price: ${it.price.toFixed(2)}`
-          )
-          .join('\n\n');
-        setComments(productDetailsSummary);
       } else if (quote.notes) {
         setComments(quote.notes);
       }
@@ -1204,6 +1201,38 @@ export function CezconOrderModule() {
 
       // 7. Business Opportunity sync
       setBusinessOpportunity(`${foundOpp.opportunityCode} - ${foundOpp.title}`);
+
+      // 8. Auto-fill Line Items if Opportunity has item rows
+      const oppRawItems = (foundOpp as any).items || (foundOpp as any).enquiryItems || [];
+      if (oppRawItems && oppRawItems.length > 0) {
+        const formattedItems: OrderItemRow[] = oppRawItems.map((it: any, idx: number) => {
+          const qty = Number(it.quantity || it.qty || 1);
+          const price = Number(it.unitPrice || it.rate || it.price || 0);
+          const desc = it.name || it.productName || it.description || it.item || 'HVAC Equipment';
+          const matchedCatalogProd = catalogProducts.find(
+            (p) => (p.name || '').trim().toLowerCase() === desc.trim().toLowerCase()
+          );
+          const code = it.itemCode || it.sku || it.code || matchedCatalogProd?.code || matchedCatalogProd?.sku || String(matchedCatalogProd?.id || '') || `PROD-${idx + 1}`;
+          const brand = it.brand || matchedCatalogProd?.brand || '';
+          const unit = it.unit || matchedCatalogProd?.unit || 'Pcs';
+
+          return {
+            id: `item_${Date.now()}_${idx}`,
+            description: desc,
+            additionalDescription: it.additionalDescription || it.specifications || '',
+            showAdditional: false,
+            code: code,
+            unit: unit,
+            brand: brand,
+            qty: qty,
+            price: price,
+            total: Number(it.totalAmount || it.lineTotal || it.total || (qty * price)),
+          };
+        });
+
+        setLineItems(formattedItems);
+        setIsOrderFormActive(true);
+      }
     }
   };
 
@@ -2293,45 +2322,47 @@ export function CezconOrderModule() {
                 </div>
               </div>
 
-              {/* Product Details / Comments */}
-              <div className="flex flex-col sm:flex-row sm:items-start gap-2">
-                <label className="sm:w-36 font-semibold text-slate-700 shrink-0 pt-1">
-                  Product Details
-                </label>
-                <div className="flex-1 space-y-1">
-                  <textarea
-                    rows={3}
-                    value={comments}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setComments(val);
-                      if (!isOrderFormActive && (!manualAmount || Number(manualAmount) === 0)) {
-                        const qMatch = val.match(/(?:Quantity|Qty)\s*:\s*(\d+)/i);
-                        const pMatch = val.match(/(?:Unit\s*Price|Price|Rate|Cost)\s*:\s*(?:AED)?\s*([0-9,.]+)/i);
-                        if (qMatch && pMatch) {
-                          const q = parseInt(qMatch[1], 10);
-                          const p = parseFloat(pMatch[1].replace(/,/g, ''));
-                          if (!isNaN(q) && !isNaN(p) && q > 0 && p > 0) {
-                            setManualAmount((q * p).toFixed(2));
+              {/* Product Details / Comments (Only for Direct Orders where Order Form table is NOT active) */}
+              {!isOrderFormActive && (
+                <div className="flex flex-col sm:flex-row sm:items-start gap-2">
+                  <label className="sm:w-36 font-semibold text-slate-700 shrink-0 pt-1">
+                    Product Details
+                  </label>
+                  <div className="flex-1 space-y-1">
+                    <textarea
+                      rows={3}
+                      value={comments}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setComments(val);
+                        if (!isOrderFormActive && (!manualAmount || Number(manualAmount) === 0)) {
+                          const qMatch = val.match(/(?:Quantity|Qty)\s*:\s*(\d+)/i);
+                          const pMatch = val.match(/(?:Unit\s*Price|Price|Rate|Cost)\s*:\s*(?:AED)?\s*([0-9,.]+)/i);
+                          if (qMatch && pMatch) {
+                            const q = parseInt(qMatch[1], 10);
+                            const p = parseFloat(pMatch[1].replace(/,/g, ''));
+                            if (!isNaN(q) && !isNaN(p) && q > 0 && p > 0) {
+                              setManualAmount((q * p).toFixed(2));
+                            }
                           }
                         }
-                      }
-                    }}
-                    placeholder="Enter product details (e.g. Item: Carrier 4.0 Ton Ducted Split AC, Code: CARR-40-DUCT, Quantity: 5, Brand: Carrier, Unit Price: 4500)"
-                    className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
-                  />
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span>💡 Tip: Specify <strong>Quantity</strong> and <strong>Unit Price</strong> above to auto-calculate Amount.</span>
-                    <button
-                      type="button"
-                      onClick={() => setIsOrderFormActive(true)}
-                      className="text-blue-600 hover:underline font-semibold cursor-pointer"
-                    >
-                      Need Item Rows? Open Order Form
-                    </button>
+                      }}
+                      placeholder="Enter product details (e.g. Item: Carrier 4.0 Ton Ducted Split AC, Code: CARR-40-DUCT, Quantity: 5, Brand: Carrier, Unit Price: 4500)"
+                      className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-blue-500 resize-y"
+                    />
+                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                      <span>💡 Tip: Specify <strong>Quantity</strong> and <strong>Unit Price</strong> above to auto-calculate Amount.</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsOrderFormActive(true)}
+                        className="text-blue-600 hover:underline font-semibold cursor-pointer"
+                      >
+                        Need Item Rows? Open Order Form
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Order Status */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
