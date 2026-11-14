@@ -286,8 +286,37 @@ export function CezconOrderModule() {
     top: number;
     left: number;
     width: number;
+    maxHeight?: number;
+    openUpwards?: boolean;
   } | null>(null);
   const [dropdownSearchTerm, setDropdownSearchTerm] = useState('');
+
+  // Smart floating dropdown positioner (prevents clipping below viewport)
+  const openProductDropdown = (rowIndex: number, inputEl: HTMLInputElement) => {
+    const rect = inputEl.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const dropdownMaxH = 340;
+
+    // Flip upwards if less than 300px below and more room above
+    const openUpwards = spaceBelow < 300 && spaceAbove > spaceBelow;
+    const maxH = openUpwards
+      ? Math.min(dropdownMaxH, Math.max(180, spaceAbove - 20))
+      : Math.min(dropdownMaxH, Math.max(180, spaceBelow - 20));
+
+    const top = openUpwards ? Math.max(10, rect.top - maxH - 4) : rect.bottom + 4;
+    const width = Math.max(rect.width, 420);
+    const left = Math.max(10, Math.min(rect.left, window.innerWidth - width - 16));
+
+    setDropdownTarget({
+      rowIndex,
+      top,
+      left,
+      width,
+      maxHeight: maxH,
+      openUpwards,
+    });
+  };
 
   // Fetch e-commerce products
   useEffect(() => {
@@ -306,7 +335,7 @@ export function CezconOrderModule() {
     };
   }, []);
 
-  // Close dropdown on click outside or Escape key
+  // Close dropdown on click outside, scroll outside, or Escape key
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -319,11 +348,25 @@ export function CezconOrderModule() {
         setDropdownTarget(null);
       }
     };
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target && !target.closest?.('.ecommerce-product-dropdown')) {
+        setDropdownTarget(null);
+      }
+    };
+    const handleResize = () => {
+      setDropdownTarget(null);
+    };
+
     document.addEventListener('mousedown', handleOutsideClick);
     document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleResize);
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
       document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleResize);
     };
   }, []);
 
@@ -1552,10 +1595,11 @@ export function CezconOrderModule() {
           top: `${dropdownTarget.top}px`,
           left: `${dropdownTarget.left}px`,
           width: `${dropdownTarget.width}px`,
-          maxHeight: '340px',
+          maxHeight: dropdownTarget.maxHeight ? `${dropdownTarget.maxHeight}px` : '340px',
           zIndex: 99999,
         }}
-        className="ecommerce-product-dropdown bg-white border border-slate-300 rounded-lg shadow-2xl overflow-hidden flex flex-col text-xs font-sans animate-in fade-in zoom-in-95 duration-100"
+        onWheel={(e) => e.stopPropagation()}
+        className="ecommerce-product-dropdown bg-white border border-slate-300 rounded-lg shadow-2xl overflow-hidden flex flex-col text-xs font-sans animate-in fade-in zoom-in-95 duration-100 overscroll-contain"
       >
         {/* Header */}
         <div className="px-3 py-2 bg-gradient-to-r from-slate-50 to-blue-50/50 border-b border-slate-200 flex items-center justify-between shrink-0">
@@ -1577,7 +1621,7 @@ export function CezconOrderModule() {
         </div>
 
         {/* Search Box inside dropdown */}
-        <div className="p-2 border-b border-slate-100 bg-white">
+        <div className="p-2 border-b border-slate-100 bg-white shrink-0">
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
@@ -1608,7 +1652,10 @@ export function CezconOrderModule() {
         </div>
 
         {/* Product Items List */}
-        <div className="overflow-y-auto max-h-[220px] divide-y divide-slate-100 bg-white">
+        <div
+          onWheel={(e) => e.stopPropagation()}
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-slate-100 bg-white"
+        >
           {matches.length === 0 ? (
             <div className="p-6 text-center text-slate-400">
               <Package className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
@@ -2460,13 +2507,7 @@ export function CezconOrderModule() {
                                   type="text"
                                   value={item.description}
                                   onFocus={(e) => {
-                                    const rect = e.currentTarget.getBoundingClientRect();
-                                    setDropdownTarget({
-                                      rowIndex: idx,
-                                      top: rect.bottom + 4,
-                                      left: rect.left,
-                                      width: Math.max(rect.width, 380),
-                                    });
+                                    openProductDropdown(idx, e.currentTarget);
                                     setDropdownSearchTerm(item.description || '');
                                   }}
                                   onChange={(e) => {
@@ -2474,13 +2515,7 @@ export function CezconOrderModule() {
                                     handleItemChange(idx, 'description', val);
                                     setDropdownSearchTerm(val);
                                     if (!dropdownTarget || dropdownTarget.rowIndex !== idx) {
-                                      const rect = e.currentTarget.getBoundingClientRect();
-                                      setDropdownTarget({
-                                        rowIndex: idx,
-                                        top: rect.bottom + 4,
-                                        left: rect.left,
-                                        width: Math.max(rect.width, 380),
-                                      });
+                                      openProductDropdown(idx, e.currentTarget);
                                     }
                                   }}
                                   placeholder="Type or click to pick E-Commerce product..."
