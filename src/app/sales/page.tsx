@@ -802,7 +802,7 @@ function SalesPipelineInner() {
   // Form State for Add Opportunity (Matching Cezcon CRM spec)
   const [oppFormData, setOppFormData] = useState({
     opportunityCode: 'CTEQ#' + Math.floor(7100 + Math.random() * 800),
-    leadNumber: 'CTL#1009',
+    leadNumber: '',
     createdFromLeadId: '',
     opportunityDate: new Date().toISOString().slice(0, 10),
     customer: '',
@@ -1166,7 +1166,7 @@ function SalesPipelineInner() {
     setIsOppNumModalOpen(false);
   };
 
-  // Auto-populate opportunity from URL lead parameters (e.g. ?action=add&leadNumber=CTL#1009)
+  // Auto-populate opportunity from URL lead parameters (e.g. ?action=add&leadNumber=CTL#1001)
   useEffect(() => {
     const pLeadNo = searchParams.get('leadNumber') || searchParams.get('leadNo') || searchParams.get('lead');
     const pLeadId = searchParams.get('leadId') || searchParams.get('createdFromLeadId');
@@ -1179,17 +1179,27 @@ function SalesPipelineInner() {
             `ctl#${1000 + (l.slNo || 1)}` === pLeadNo.toLowerCase()
           ))
       );
-      const effectiveNo = pLeadNo || matched?.leadNumber || (matched ? `CTL#${1000 + (matched.slNo || 1)}` : '');
-      setOppFormData((prev) => ({
-        ...prev,
-        leadNumber: effectiveNo,
-        createdFromLeadId: pLeadId || matched?.id || '',
-        customer: prev.customer || matched?.contactDetails?.company || '',
-        contactPerson: prev.contactPerson || matched?.contactDetails?.name || '',
-        phone: prev.phone || matched?.contactDetails?.phone || '',
-        source: prev.source || matched?.source || '',
-        campaign: prev.campaign || matched?.campaign || '',
-      }));
+      if (matched) {
+        const effectiveNo = matched.leadNumber || `CTL#${1000 + (matched.slNo || 1)}`;
+        const custName = matched.contactDetails?.company || matched.contactDetails?.name || '';
+        const cpName = matched.contactDetails?.name || custName;
+        const leadOwner = matched.owner || matched.leadAssigned?.name || '';
+        setOppFormData((prev) => ({
+          ...prev,
+          leadNumber: effectiveNo,
+          createdFromLeadId: matched.id,
+          customer: custName || prev.customer,
+          contactPerson: cpName || prev.contactPerson,
+          phone: matched.contactDetails?.phone || prev.phone,
+          source: (matched.source && matched.source !== 'Select Source') ? matched.source : prev.source,
+          sourceName: matched.sourceName || prev.sourceName,
+          campaign: (matched.campaign && matched.campaign !== 'Select Campaign') ? matched.campaign : prev.campaign,
+          title: matched.leadSpecification || prev.title,
+          amount: (matched.value && matched.value > 0) ? String(matched.value) : prev.amount,
+          location: matched.location || prev.location,
+          owner: leadOwner || prev.owner,
+        }));
+      }
     }
   }, [searchParams, leads]);
 
@@ -1865,12 +1875,10 @@ function SalesPipelineInner() {
   const handleOpenAddOpportunity = () => {
     setEditingOpportunityId(null);
     setSelectedOpportunity(null);
-    const defaultLead = leads && leads.length > 0 ? (leads.find((l) => l.leadNumber) || leads[0]) : null;
-    const defaultLeadNo = defaultLead ? (defaultLead.leadNumber || `CTL#${1000 + (defaultLead.slNo || 1)}`) : 'CTL#1009';
     setOppFormData({
       opportunityCode: 'CTEQ#' + Math.floor(7100 + Math.random() * 800),
-      leadNumber: defaultLeadNo,
-      createdFromLeadId: defaultLead?.id || '',
+      leadNumber: '',
+      createdFromLeadId: '',
       opportunityDate: new Date().toISOString().slice(0, 10),
       customer: '',
       contactPerson: '',
@@ -3742,18 +3750,26 @@ function SalesPipelineInner() {
                               });
                               if (matched) {
                                 const effectiveNo = matched.leadNumber || `CTL#${1000 + (matched.slNo || 1)}`;
-                                setOppFormData({
-                                  ...oppFormData,
+                                const custName = matched.contactDetails?.company || matched.contactDetails?.name || '';
+                                const cpName = matched.contactDetails?.name || custName;
+                                const leadOwner = matched.owner || matched.leadAssigned?.name || '';
+                                setOppFormData((prev) => ({
+                                  ...prev,
                                   leadNumber: effectiveNo,
                                   createdFromLeadId: matched.id,
-                                  customer: oppFormData.customer || matched.contactDetails?.company || '',
-                                  contactPerson: oppFormData.contactPerson || matched.contactDetails?.name || '',
-                                  phone: oppFormData.phone || matched.contactDetails?.phone || '',
-                                  source: oppFormData.source || matched.source || '',
-                                  campaign: oppFormData.campaign || matched.campaign || '',
-                                });
+                                  customer: custName || prev.customer,
+                                  contactPerson: cpName || prev.contactPerson,
+                                  phone: matched.contactDetails?.phone || prev.phone,
+                                  source: (matched.source && matched.source !== 'Select Source') ? matched.source : prev.source,
+                                  sourceName: matched.sourceName || prev.sourceName,
+                                  campaign: (matched.campaign && matched.campaign !== 'Select Campaign') ? matched.campaign : prev.campaign,
+                                  title: matched.leadSpecification || prev.title,
+                                  amount: (matched.value && matched.value > 0) ? String(matched.value) : prev.amount,
+                                  location: matched.location || prev.location,
+                                  owner: leadOwner || prev.owner,
+                                }));
                               } else {
-                                setOppFormData({ ...oppFormData, leadNumber: val });
+                                setOppFormData((prev) => ({ ...prev, leadNumber: val, createdFromLeadId: '' }));
                               }
                             }}
                             className="flex-1 bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:border-blue-500 cursor-pointer"
@@ -3765,15 +3781,13 @@ function SalesPipelineInner() {
                             {leads.map((l) => {
                               const lNo = l.leadNumber || `CTL#${1000 + (l.slNo || 1)}`;
                               const company = l.contactDetails?.company || l.contactDetails?.name || 'Lead';
+                              const cp = l.contactDetails?.name;
                               return (
                                 <option key={l.id} value={lNo}>
-                                  {lNo} — {company}
+                                  {lNo} — {company}{cp && cp !== company ? ` (${cp})` : ''}
                                 </option>
                               );
                             })}
-                            {!leads.some((l) => (l.leadNumber || '').includes('1009')) && (
-                              <option value="CTL#1009">CTL#1009 — MUSTAFA (MANAGER)</option>
-                            )}
                           </select>
                           <Link
                             href="/leads"

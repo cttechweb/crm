@@ -611,14 +611,19 @@ export function CezconOpportunityModule({ initialCreate = false }: CezconOpportu
                       if (matched) {
                         const effectiveNo = matched.leadNumber || `CTL#${1000 + (matched.slNo || 1)}`;
                         setFormLeadNumber(effectiveNo);
-                        if (!formCustomer && matched.contactDetails?.company) setFormCustomer(matched.contactDetails.company);
-                        if (!formContactPerson && matched.contactDetails?.name) setFormContactPerson(matched.contactDetails.name);
-                        if (!formPhone && matched.contactDetails?.phone) setFormPhone(matched.contactDetails.phone);
+                        const cName = matched.contactDetails?.company || matched.contactDetails?.name || '';
+                        if (cName) setFormCustomer(cName);
+                        if (matched.contactDetails?.name) setFormContactPerson(matched.contactDetails.name);
+                        if (matched.contactDetails?.phone) setFormPhone(matched.contactDetails.phone);
+                        if (matched.leadSpecification) setFormTitle(matched.leadSpecification);
+                        if (matched.value && matched.value > 0) setFormAmount(Number(matched.value));
+                        if (matched.campaign && matched.campaign !== 'Select Campaign') setFormCampaign(matched.campaign);
+                        if (matched.businessOpportunity) setFormBizType(matched.businessOpportunity);
                       } else {
                         setFormLeadNumber(val);
                       }
                     }}
-                    placeholder="e.g. CTL#1009 or select lead"
+                    placeholder="e.g. CTL#1001 or select lead"
                     className="w-full bg-white border border-slate-300 rounded px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none focus:border-blue-500 placeholder:text-slate-400"
                   />
                   <datalist id="cezcon-leads-datalist">
