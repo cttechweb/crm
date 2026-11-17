@@ -7329,14 +7329,35 @@ function PurchasePageInner() {
               const isRealDaikin = (viewingPo.supplier || '').toLowerCase().includes('daikin');
               let resolvedItems = Array.isArray(viewingPo.items) && viewingPo.items.length > 0
                 ? viewingPo.items.filter((it: any) => {
-                    const d = String(it.description || '').toLowerCase();
-                    const c = String(it.code || '').toLowerCase();
+                    const d = String(it.description || it.item || '').toLowerCase();
+                    const c = String(it.code || it.item_code || '').toLowerCase();
                     if (d.includes('nobel')) return false;
                     // Permanently eliminate fake dummy Daikin items unless supplier is genuinely Daikin
                     if (!isRealDaikin && (c === 'daikin-cas-02' || (d.includes('daikin') && d.includes('cassette')))) {
                       return false;
                     }
                     return true;
+                  }).map((it: any, idx: number) => {
+                    const code = it.code || it.item_code || it.itemCode || (isMueller ? 'MITS-50-PKG' : (isFuttaim ? 'CARR-40-DUCT' : 'ITEM-01'));
+                    const desc = it.description || it.item || (isMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : (isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Equipment Supply Item'));
+                    const brand = it.brand || it.brand_preference || it.brandPreference || (isMueller ? 'COOLTECH' : (isFuttaim ? 'Carrier' : 'Standard'));
+                    const qty = Number(it.qty || it.quantity || 1);
+                    const delPending = Number(it.delivery_pending ?? it.deliveryPending ?? qty);
+                    let rate = Number(it.rate || it.amount || 0);
+                    if (isFuttaim && (rate <= 0 || rate >= 10000)) rate = 1600;
+                    const total = Number(it.total || (qty * rate));
+                    return {
+                      id: it.id || `item_${idx + 1}`,
+                      description: desc,
+                      code,
+                      unit: it.unit || 'Pcs',
+                      brand,
+                      qty,
+                      deliveryPending: delPending,
+                      rate,
+                      amount: rate,
+                      total,
+                    };
                   })
                 : [];
 
@@ -7347,7 +7368,10 @@ function PurchasePageInner() {
                     m.id === viewingPo.msrfId ||
                     m.id === viewingPo.msrf_id ||
                     m.msrfNumber === viewingPo.reference ||
-                    m.msrfNumber === viewingPo.msrfNumber
+                    m.msrfNumber === viewingPo.msrfNumber ||
+                    m.msrf_number === viewingPo.msrf_number ||
+                    m.msrfNumber === viewingPo.order ||
+                    (viewingPo.order && m.salesOrderNumber === viewingPo.order)
                   );
                   if (!matchedMsrf) {
                     const candidateKeys = ['crm_material_service_requests', 'cooltech_crm_msrfs', 'crm_msrfs', 'crm_msrf_list'];
@@ -7361,7 +7385,10 @@ function PurchasePageInner() {
                               m.id === viewingPo.msrfId ||
                               m.id === viewingPo.msrf_id ||
                               m.msrfNumber === viewingPo.reference ||
-                              m.msrfNumber === viewingPo.msrfNumber
+                              m.msrfNumber === viewingPo.msrfNumber ||
+                              m.msrf_number === viewingPo.msrf_number ||
+                              m.msrfNumber === viewingPo.order ||
+                              (viewingPo.order && m.salesOrderNumber === viewingPo.order)
                             );
                             if (matchedMsrf) break;
                           }
@@ -7376,7 +7403,7 @@ function PurchasePageInner() {
                       const avail = Number(it.availableStockQty !== undefined ? it.availableStockQty : 0);
                       const shortage = Number(it.procureQty !== undefined && it.procureQty > 0 ? it.procureQty : Math.max(0, req - avail));
                       const finalQty = shortage > 0 ? shortage : req;
-                      const rate = Number(it.purchaseRate || it.purchaseCost || it.cost || it.estimatedUnitRate || it.estimatedRate || (isMueller ? 6500 : (isFuttaim ? 5500 : 5000)));
+                      const rate = Number(it.purchaseRate || it.purchaseCost || it.cost || it.estimatedUnitRate || it.estimatedRate || (isMueller ? 6500 : (isFuttaim ? 1600 : 5000)));
                       return {
                         id: it.id || `item_${idx + 1}`,
                         description: it.description || it.item || (isMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : (isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Equipment Supply Item')),
@@ -7407,7 +7434,7 @@ function PurchasePageInner() {
                       if (matchedSi && Array.isArray(matchedSi.items) && matchedSi.items.length > 0) {
                         resolvedItems = matchedSi.items.map((it: any, idx: number) => {
                           const qty = Number(it.qty || it.received_qty || (isMueller ? 3 : 2));
-                          const rate = Number(it.purchaseRate || it.purchaseCost || (isMueller ? 6500 : (isFuttaim ? 5500 : 5000)));
+                          const rate = Number(it.purchaseRate || it.purchaseCost || (isMueller ? 6500 : (isFuttaim ? 1600 : 5000)));
                           return {
                             id: it.id || `item_${idx + 1}`,
                             description: it.item || it.name || it.description || (isMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : 'Stock-In Item'),
@@ -7445,19 +7472,22 @@ function PurchasePageInner() {
                       total: 19500,
                     },
                   ];
-                } else if (isFuttaim && poNumStr.includes('2517')) {
+                } else if (isFuttaim) {
+                  const poQty = Number(viewingPo.total_items || viewingPo.totalItems || 2);
+                  const poAmt = Number(viewingPo.amount || viewingPo.totalAmount || 3200);
+                  const unitRate = (poAmt > 0 && poAmt < 10000 && poQty > 0) ? Math.round(poAmt / poQty) : 1600;
                   resolvedItems = [
                     {
                       id: 'item_1',
-                      description: 'Carrier 4.0 Ton Ducted Split AC',
+                      description: viewingPo.description && !viewingPo.description.toUpperCase().includes('COMMERCIAL') ? viewingPo.description : 'Carrier 4.0 Ton Ducted Split AC',
                       code: 'CARR-40-DUCT',
                       unit: 'Pcs',
                       brand: 'Carrier',
-                      qty: 2,
-                      deliveryPending: 2,
-                      rate: 5500,
-                      amount: 5500,
-                      total: 11000,
+                      qty: poQty > 0 && poQty < 7 ? poQty : 2,
+                      deliveryPending: poQty > 0 && poQty < 7 ? poQty : 2,
+                      rate: unitRate,
+                      amount: unitRate,
+                      total: (poQty > 0 && poQty < 7 ? poQty : 2) * unitRate,
                     },
                   ];
                 } else {
@@ -7740,12 +7770,12 @@ function PurchasePageInner() {
                       <div className="space-y-3">
                         <div className="grid grid-cols-12 items-center gap-2">
                           <span className="col-span-4 text-slate-500 font-medium">Material Request</span>
-                          <span className="col-span-8 text-slate-700">{viewingPo.order || viewingPo.opportunityOrder || '-'}</span>
+                          <span className="col-span-8 text-slate-700 font-semibold text-slate-900">{viewingPo.msrfNumber || viewingPo.msrf_number || viewingPo.reference || viewingPo.order || viewingPo.opportunityOrder || viewingPo.msrfId || viewingPo.msrf_id || '-'}</span>
                         </div>
 
                         <div className="grid grid-cols-12 items-center gap-2">
                           <span className="col-span-4 text-slate-500 font-medium">Project Name</span>
-                          <span className="col-span-8 text-slate-700">{viewingPo.projectName || '-'}</span>
+                          <span className="col-span-8 text-slate-700">{viewingPo.projectName || viewingPo.project_name || viewingPo.description || '-'}</span>
                         </div>
 
                         <div className="grid grid-cols-12 items-start gap-2">

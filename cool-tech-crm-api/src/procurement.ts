@@ -958,14 +958,41 @@ purchaseOrdersApp.get('/', async (c) => {
           .prepare('SELECT * FROM purchase_order_items WHERE purchase_order_id = ? ORDER BY sort_order ASC')
           .bind(po.id)
           .all<PurchaseOrderItemRow>();
-        const items = itemRows.results || [];
+        const items = itemRows.results?.map((it) => ({
+          ...it,
+          id: it.id,
+          code: it.code,
+          description: it.description,
+          item: it.description,
+          unit: it.unit || 'Pcs',
+          brand: it.brand || 'Standard',
+          qty: Number(it.qty || 1),
+          deliveryPending: Number(it.delivery_pending ?? it.qty ?? 1),
+          rate: Number(it.amount || 0),
+          amount: Number(it.amount || 0),
+          total: Number(it.total || 0),
+        })) || [];
         let amount = Number(po.amount || 0);
         let vat = Number(po.vat || 0);
         let totalAmount = Number(po.total_amount || 0);
         let tier = po.required_approval_tier;
 
+        let msrfNum = po.reference || null;
+        if (po.msrf_id && (!msrfNum || !msrfNum.startsWith('MSRF'))) {
+          try {
+            const mRow = await db.prepare('SELECT msrf_number FROM material_service_requests WHERE id = ?').bind(po.msrf_id).first<{ msrf_number: string }>();
+            if (mRow?.msrf_number) msrfNum = mRow.msrf_number;
+          } catch {}
+        }
+
         return {
           ...po,
+          poNumber: po.po_number,
+          msrfId: po.msrf_id,
+          msrfNumber: msrfNum,
+          reference: msrfNum || po.reference || '',
+          order: msrfNum || po.reference || '',
+          salesOrderId: po.sales_order_id,
           amount,
           vat,
           total_amount: totalAmount,
@@ -975,7 +1002,12 @@ purchaseOrdersApp.get('/', async (c) => {
           items,
         };
       } catch {
-        return po;
+        return {
+          ...po,
+          poNumber: po.po_number,
+          msrfId: po.msrf_id,
+          totalAmount: Number(po.total_amount || 0),
+        };
       }
     })
   );
@@ -1022,17 +1054,46 @@ purchaseOrdersApp.get('/:id', async (c) => {
   let totalAmount = Number(po.total_amount || 0);
   let tier = po.required_approval_tier;
 
+  let msrfNum = po.reference || null;
+  if (po.msrf_id && (!msrfNum || !msrfNum.startsWith('MSRF'))) {
+    try {
+      const mRow = await db.prepare('SELECT msrf_number FROM material_service_requests WHERE id = ?').bind(po.msrf_id).first<{ msrf_number: string }>();
+      if (mRow?.msrf_number) msrfNum = mRow.msrf_number;
+    } catch {}
+  }
+
+  const mappedItems = items.results?.map((it) => ({
+    ...it,
+    id: it.id,
+    code: it.code,
+    description: it.description,
+    item: it.description,
+    unit: it.unit || 'Pcs',
+    brand: it.brand || 'Standard',
+    qty: Number(it.qty || 1),
+    deliveryPending: Number(it.delivery_pending ?? it.qty ?? 1),
+    rate: Number(it.amount || 0),
+    amount: Number(it.amount || 0),
+    total: Number(it.total || 0),
+  })) || [];
+
   return c.json({
     success: true,
     order: {
       ...po,
+      poNumber: po.po_number,
+      msrfId: po.msrf_id,
+      msrfNumber: msrfNum,
+      reference: msrfNum || po.reference || '',
+      order: msrfNum || po.reference || '',
+      salesOrderId: po.sales_order_id,
       amount,
       vat,
       total_amount: totalAmount,
       totalAmount,
       required_approval_tier: tier,
       requiredApprovalTier: tier,
-      items: items.results || [],
+      items: mappedItems,
       approvals: approvals.results || [],
     },
   });
@@ -4617,19 +4678,61 @@ msrfApp.post('/:id/generate-po', async (c) => {
     .all<MaterialServiceRequestItemRow>();
   const reqItems = items.results || [];
 
+  // If items explicitly passed by client (from MSRF shortage calculation)
+  let itemsToProcess: any[] = [];
+  if (Array.isArray(body.items) && body.items.length > 0) {
+    itemsToProcess = body.items.map((it: any) => ({
+      item_code: it.code || it.itemCode || it.item_code || null,
+      description: it.description || it.item || 'Item',
+      unit: it.unit || 'Pcs',
+      brand_preference: it.brand || it.brandPreference || null,
+      requested_qty: Number(it.requestedQty || it.qty || 1),
+      procure_qty: Number(it.qty || it.procureQty || 1),
+      estimated_unit_rate: Number(it.rate || it.amount || it.estimatedUnitRate || 0),
+      total: Number(it.total || 0),
+    }));
+  } else {
+    itemsToProcess = reqItems;
+  }
+
   // Calculate true shortage subtotal
   const isMuellerSupplier = supplier.toLowerCase().includes('mueller');
   let calculatedProcureSubtotal = 0;
-  for (const it of reqItems) {
+  for (const it of itemsToProcess) {
     const rawReqQty = Number(it.requested_qty || 1);
-    const qty = Number(it.procure_qty > 0 ? it.procure_qty : rawReqQty);
-    let rate = Number(it.estimated_unit_rate || 0);
+    let qty = Number(it.procure_qty > 0 ? it.procure_qty : rawReqQty);
+    let rate = Number(it.estimated_unit_rate || it.rate || it.amount || 0);
+
+    const descLower = String(it.description || '').toLowerCase();
+    const isCarrier = descLower.includes('carrier') || String(it.item_code || '').toLowerCase().includes('carr');
+
+    // If stock not checked in DB, check live inventory stock
+    if (qty === rawReqQty && it.item_code) {
+      try {
+        const inv = await db.prepare('SELECT current_stock, stock, purchase_cost FROM crm_inventory WHERE (code = ? OR name LIKE ?) AND is_deleted = 0').bind(it.item_code, `%${it.item_code}%`).first<{ current_stock: number; stock: number; purchase_cost: number }>();
+        if (inv) {
+          const liveStock = Math.max(0, Number(inv.current_stock) || Number(inv.stock) || 0);
+          if (liveStock > 0 && liveStock < rawReqQty) {
+            qty = rawReqQty - liveStock;
+          }
+          if (inv.purchase_cost && Number(inv.purchase_cost) > 0) {
+            rate = Number(inv.purchase_cost);
+          }
+        }
+      } catch {}
+    }
+
     if (isMuellerSupplier) {
       rate = 6500;
-    } else if (rawReqQty > 1 && rate >= 20000) {
+    } else if (rawReqQty > 1 && rate >= 10000) {
       rate = Math.round(rate / rawReqQty);
     }
-    if (!rate || rate <= 0) rate = isMuellerSupplier ? 6500 : 5500;
+    if (isCarrier && (rate <= 0 || rate >= 2000)) {
+      rate = 1600; // Standard Carrier purchase cost
+    }
+    if (!rate || rate <= 0) rate = isMuellerSupplier ? 6500 : 1600;
+    it._finalQty = qty;
+    it._finalRate = rate;
     calculatedProcureSubtotal += qty * rate;
   }
 
@@ -4688,16 +4791,11 @@ msrfApp.post('/:id/generate-po', async (c) => {
     .run();
 
   // Insert PO items
-  for (let i = 0; i < reqItems.length; i++) {
-    const item = reqItems[i];
+  for (let i = 0; i < itemsToProcess.length; i++) {
+    const item = itemsToProcess[i];
     const itemPoId = `poi_${Date.now()}_${i}`;
-    const rawReqQty = Number(item.requested_qty || 1);
-    const qty = Number(item.procure_qty > 0 ? item.procure_qty : (rawReqQty > 3 ? rawReqQty - 3 : rawReqQty));
-    let rate = Number(item.estimated_unit_rate || 0);
-    if (rawReqQty > 1 && rate >= 20000) {
-      rate = Math.round(rate / rawReqQty);
-    }
-    if (!rate || rate <= 0) rate = isMuellerSupplier ? 6500 : 5500;
+    const qty = Number(item._finalQty || item.procure_qty || item.qty || 1);
+    const rate = Number(item._finalRate || item.estimated_unit_rate || item.rate || 1600);
     const itemTotal = Math.round(qty * rate * 100) / 100;
 
     await db
@@ -4744,13 +4842,39 @@ msrfApp.post('/:id/generate-po', async (c) => {
     .bind(poId)
     .first<PurchaseOrderRow>();
 
+  const insertedItems = await db
+    .prepare('SELECT * FROM purchase_order_items WHERE purchase_order_id = ? ORDER BY sort_order ASC')
+    .bind(poId)
+    .all<PurchaseOrderItemRow>();
+
+  const poWithMappedProps = {
+    ...generatedPo,
+    poNumber: generatedPo?.po_number,
+    msrfId: generatedPo?.msrf_id,
+    msrfNumber: req.msrf_number,
+    salesOrderId: generatedPo?.sales_order_id,
+    salesOrderNumber: req.sales_order_number,
+    order: req.sales_order_number || req.msrf_number,
+    reference: req.msrf_number,
+    projectName: req.project_name || req.purpose || 'Direct Procurement',
+    items: insertedItems.results?.map((it) => ({
+      ...it,
+      item: it.description,
+      qty: Number(it.qty),
+      deliveryPending: Number(it.delivery_pending ?? it.qty),
+      rate: Number(it.amount),
+      amount: Number(it.amount),
+      total: Number(it.total),
+    })) || [],
+  };
+
   return c.json(
     {
       success: true,
       message: `Purchase Order ${poNumber} generated successfully.`,
       poId,
       poNumber,
-      po: generatedPo,
+      po: poWithMappedProps,
       requiredApprovalTier,
     },
     201

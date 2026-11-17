@@ -508,6 +508,8 @@ export function mapBackendPurchaseOrderToFrontend(row: any): CrmPurchaseOrder {
     isAdhoc: Boolean(row.isAdhoc ?? row.is_adhoc),
     deliveryMode: row.deliveryMode || row.delivery_mode || undefined,
     msrfId: row.msrfId || row.msrf_id || undefined,
+    msrfNumber: row.msrfNumber || row.msrf_number || row.reference || undefined,
+    order: row.order || row.salesOrderNumber || row.sales_order_number || row.msrfNumber || row.msrf_number || row.reference || undefined,
     salesOrderId: row.salesOrderId || row.sales_order_id || undefined,
     approvals: Array.isArray(row.approvals) ? row.approvals.map(mapBackendApprovalToFrontend) : undefined,
     items: Array.isArray(row.items)
@@ -1476,7 +1478,23 @@ export const msrfApiService = {
     };
   },
 
-  async generatePO(id: string, payload?: { deliveryMode?: string; expectedDeliveryDate?: string; supplier?: string }) {
+  async generatePO(
+    id: string,
+    payload?: {
+      deliveryMode?: string;
+      expectedDeliveryDate?: string;
+      supplier?: string;
+      items?: any[];
+      amount?: number;
+      vat?: number;
+      totalAmount?: number;
+      reference?: string;
+      msrfNumber?: string;
+      order?: string;
+      projectName?: string;
+      description?: string;
+    }
+  ) {
     const res = await apiClient.post<{ success: boolean; po: BackendPurchaseOrderRow; message?: string }>(
       `/api/msrf/${encodeURIComponent(id)}/generate-po`,
       payload || {},

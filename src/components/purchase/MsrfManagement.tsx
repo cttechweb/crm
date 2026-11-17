@@ -1562,14 +1562,99 @@ const getLinkedInventorySupplierForItem = (
     if (!selectedMsrf) return;
     try {
       setGeneratingPo(true);
+      const isFuttaim = supplierName.toLowerCase().includes('futtaim');
+      const isMueller = supplierName.toLowerCase().includes('mueller');
+
+      const poItems = Array.isArray(selectedMsrf.items) && selectedMsrf.items.length > 0
+        ? selectedMsrf.items.map((it: any, idx: number) => {
+            const req = Number(it.requestedQty || 1);
+            const liveStock = getLiveWarehouseStockForItem(it.itemCode, it.description);
+            const avail = Math.max(0, Number(it.availableStockQty !== undefined ? it.availableStockQty : liveStock));
+            const rawProcure = Number(it.procureQty !== undefined ? it.procureQty : Math.max(0, req - avail));
+            const finalQty = rawProcure > 0 ? rawProcure : req;
+
+            const isItemMueller = isMueller || String(it.description || '').toLowerCase().includes('mitsubishi') || String(it.itemCode || '').toLowerCase().includes('mits');
+
+            let unitRate = Number(it.purchaseRate || it.purchaseCost || it.cost || it.estimatedUnitRate || it.estimatedRate || 0);
+            if (unitRate <= 0) {
+              const linked = getLinkedInventorySupplierForItem(it.itemCode, it.description);
+              if (linked?.purchaseRate) unitRate = linked.purchaseRate;
+            }
+            if (unitRate <= 0) {
+              unitRate = isItemMueller ? 6500 : (isFuttaim ? 1600 : 5000);
+            }
+
+            const lineTotal = finalQty * unitRate;
+            const itemDesc = (it.description && !it.description.toLowerCase().includes('refrigerator') && !it.description.toLowerCase().includes('nobel'))
+              ? it.description
+              : (isItemMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : (isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Equipment Supply Item'));
+            const itemCode = it.itemCode || (isItemMueller ? 'MITS-50-PKG' : (isFuttaim ? 'CARR-40-DUCT' : 'ITEM-01'));
+            const itemBrand = it.brandPreference || (isItemMueller ? 'COOLTECH' : (isFuttaim ? 'Carrier' : 'Standard'));
+
+            return {
+              id: it.id || `item_${idx + 1}`,
+              item: itemDesc,
+              description: itemDesc,
+              code: itemCode,
+              brand: itemBrand,
+              unit: it.unit || 'Pcs',
+              qty: finalQty,
+              deliveryPending: finalQty,
+              rate: unitRate,
+              amount: unitRate,
+              total: lineTotal,
+            };
+          })
+        : [
+            {
+              id: 'item_1',
+              item: isMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : (isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Equipment Supply Item'),
+              description: isMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : (isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Equipment Supply Item'),
+              code: isMueller ? 'MITS-50-PKG' : (isFuttaim ? 'CARR-40-DUCT' : 'ITEM-01'),
+              brand: isMueller ? 'COOLTECH' : (isFuttaim ? 'Carrier' : 'Standard'),
+              unit: 'Pcs',
+              qty: isMueller ? 3 : 2,
+              deliveryPending: isMueller ? 3 : 2,
+              rate: isMueller ? 6500 : (isFuttaim ? 1600 : 5000),
+              amount: isMueller ? 6500 : (isFuttaim ? 1600 : 5000),
+              total: (isMueller ? 3 : 2) * (isMueller ? 6500 : (isFuttaim ? 1600 : 5000)),
+            },
+          ];
+
+      const estSubtotal = poItems.reduce((acc: number, it: any) => acc + (Number(it.total) || 0), 0);
+      const estVat = estSubtotal * 0.05;
+      const estTotal = estSubtotal * 1.05;
+      const isCooTier = estTotal >= 100000;
+      const requiredTier = isCooTier ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER';
+
       let targetPo: any = null;
       try {
         const res = await msrfApiService.generatePO(selectedMsrf.id, {
           deliveryMode: selectedDeliveryMode,
           supplier: supplierName,
+          items: poItems,
+          amount: estSubtotal,
+          vat: estVat,
+          totalAmount: estTotal,
+          reference: selectedMsrf.msrfNumber || '',
+          msrfNumber: selectedMsrf.msrfNumber || '',
+          order: selectedMsrf.salesOrderNumber || selectedMsrf.msrfNumber || '',
+          projectName: selectedMsrf.projectName || selectedMsrf.purpose || 'Direct Procurement',
+          description: `Direct PO for ${poItems.map((p: any) => `${p.qty}x ${p.item || p.description}`).join(', ')} (${selectedMsrf.msrfNumber || 'MSRF'})`,
         });
         if (res && res.success && res.po) {
           targetPo = res.po;
+          if (!targetPo.items || targetPo.items.length === 0) {
+            targetPo.items = poItems;
+          }
+          targetPo.poNumber = targetPo.poNumber || targetPo.po_number;
+          targetPo.msrfId = targetPo.msrfId || targetPo.msrf_id || selectedMsrf.id;
+          targetPo.msrfNumber = targetPo.msrfNumber || targetPo.msrf_number || selectedMsrf.msrfNumber;
+          targetPo.order = targetPo.order || selectedMsrf.salesOrderNumber || selectedMsrf.msrfNumber;
+          targetPo.projectName = targetPo.projectName || selectedMsrf.projectName;
+          targetPo.amount = targetPo.amount || estSubtotal;
+          targetPo.vat = targetPo.vat || estVat;
+          targetPo.totalAmount = targetPo.totalAmount || targetPo.total_amount || estTotal;
         }
       } catch (apiErr) {
         console.warn('API generatePO failed, generating local Direct PO:', apiErr);
@@ -1577,70 +1662,6 @@ const getLinkedInventorySupplierForItem = (
 
       if (!targetPo) {
         const poNum = `CTPO#${Math.floor(2500 + Math.random() * 900)}`;
-        const isFuttaim = supplierName.toLowerCase().includes('futtaim');
-        const isMueller = supplierName.toLowerCase().includes('mueller');
-
-        const poItems = Array.isArray(selectedMsrf.items) && selectedMsrf.items.length > 0
-          ? selectedMsrf.items.map((it: any, idx: number) => {
-              const req = Number(it.requestedQty || 1);
-              const liveStock = getLiveWarehouseStockForItem(it.itemCode, it.description);
-              const avail = Math.max(0, Number(it.availableStockQty !== undefined ? it.availableStockQty : liveStock));
-              const rawProcure = Number(it.procureQty !== undefined ? it.procureQty : Math.max(0, req - avail));
-              const finalQty = rawProcure > 0 ? rawProcure : req;
-
-              const isItemMueller = isMueller || String(it.description || '').toLowerCase().includes('mitsubishi') || String(it.itemCode || '').toLowerCase().includes('mits');
-
-              let unitRate = Number(it.purchaseRate || it.purchaseCost || it.cost || it.estimatedUnitRate || it.estimatedRate || 0);
-              if (unitRate <= 0) {
-                const linked = getLinkedInventorySupplierForItem(it.itemCode, it.description);
-                if (linked?.purchaseRate) unitRate = linked.purchaseRate;
-              }
-              if (unitRate <= 0) {
-                unitRate = isItemMueller ? 6500 : (isFuttaim ? 5500 : 5000);
-              }
-
-              const lineTotal = finalQty * unitRate;
-              const itemDesc = (it.description && !it.description.toLowerCase().includes('refrigerator') && !it.description.toLowerCase().includes('nobel'))
-                ? it.description
-                : (isItemMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : (isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Equipment Supply Item'));
-              const itemCode = it.itemCode || (isItemMueller ? 'MITS-50-PKG' : (isFuttaim ? 'CARR-40-DUCT' : 'ITEM-01'));
-              const itemBrand = it.brandPreference || (isItemMueller ? 'COOLTECH' : (isFuttaim ? 'Carrier' : 'Standard'));
-
-              return {
-                id: it.id || `item_${idx + 1}`,
-                item: itemDesc,
-                description: itemDesc,
-                code: itemCode,
-                brand: itemBrand,
-                unit: it.unit || 'Pcs',
-                qty: finalQty,
-                deliveryPending: finalQty,
-                rate: unitRate,
-                amount: unitRate,
-                total: lineTotal,
-              };
-            })
-          : [
-              {
-                id: 'item_1',
-                item: isMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : (isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Equipment Supply Item'),
-                description: isMueller ? 'Mitsubishi 5.0 Ton Heavy Package AC' : (isFuttaim ? 'Carrier 4.0 Ton Ducted Split AC' : 'Equipment Supply Item'),
-                code: isMueller ? 'MITS-50-PKG' : (isFuttaim ? 'CARR-40-DUCT' : 'ITEM-01'),
-                brand: isMueller ? 'COOLTECH' : (isFuttaim ? 'Carrier' : 'Standard'),
-                unit: 'Pcs',
-                qty: isMueller ? 3 : 2,
-                deliveryPending: isMueller ? 3 : 2,
-                rate: isMueller ? 6500 : (isFuttaim ? 5500 : 5000),
-                amount: isMueller ? 6500 : (isFuttaim ? 5500 : 5000),
-                total: (isMueller ? 3 : 2) * (isMueller ? 6500 : (isFuttaim ? 5500 : 5000)),
-              },
-            ];
-
-        const estSubtotal = poItems.reduce((acc: number, it: any) => acc + (Number(it.total) || 0), 0);
-        const estVat = estSubtotal * 0.05;
-        const estTotal = estSubtotal * 1.05;
-        const isCooTier = estTotal >= 100000;
-        const requiredTier = isCooTier ? 'CHIEF_OPERATING_OFFICER' : 'FINANCE_CONTROLLER';
 
         targetPo = {
           id: `po_${Date.now()}`,
