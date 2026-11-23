@@ -266,19 +266,26 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
     // Parse structured comments / notes (e.g. Item: ..., Code: ..., Quantity: ..., Brand: ..., Unit Price: ...)
     const orderComment = String(matched.notes || (matched as any).comments || '').trim();
     if (orderComment) {
-      const itemMatch = orderComment.match(/(?:Item|Product)\s*:\s*([^\r\n]+)/i);
-      const codeMatch = orderComment.match(/(?:Code|SKU|SKU\s*\/\s*Code)\s*:\s*([^\r\n]+)/i);
+      const itemMatch = orderComment.match(/(?:Item|Product)\s*:\s*([^,\r\n]+)/i);
+      const codeMatch = orderComment.match(/(?:Code|SKU|SKU\s*\/\s*Code)\s*:\s*([^,\r\n]+)/i);
       const qtyMatch = orderComment.match(/(?:Quantity|Qty)\s*:\s*(\d+)/i);
-      const brandMatch = orderComment.match(/Brand\s*:\s*([^\r\n]+)/i);
-      const unitMatch = orderComment.match(/Unit\s*:\s*([^\r\n]+)/i);
+      const brandMatch = orderComment.match(/Brand\s*:\s*([^,\r\n]+)/i);
+      const unitMatch = orderComment.match(/Unit\s*:\s*([^,\r\n]+)/i);
       const priceMatch = orderComment.match(/(?:Unit\s*Price|Price|Rate|Cost)\s*:\s*(?:AED)?\s*([0-9,.]+)/i);
 
-      const desc = itemMatch
+      let desc = itemMatch
         ? itemMatch[1].trim()
         : (matched as any).subject || (matched as any).orderTitle || orderComment.split('\n')[0].replace(/^item:\s*/i, '').trim();
-      const code = codeMatch ? codeMatch[1].trim() : (desc.toLowerCase().includes('cassette') ? 'OGEN-30-CAS' : 'AC-GEN-01');
-      const brand = brandMatch ? brandMatch[1].trim() : (desc.toLowerCase().includes('o general') ? 'O GENERAL / COOLTECH' : '');
-      const unit = unitMatch ? unitMatch[1].trim() : 'Pcs';
+      let code = codeMatch ? codeMatch[1].trim() : (desc.toLowerCase().includes('cassette') ? 'OGEN-30-CAS' : 'AC-GEN-01');
+      let brand = brandMatch ? brandMatch[1].trim() : (desc.toLowerCase().includes('o general') ? 'O GENERAL / COOLTECH' : '');
+      let unit = unitMatch ? unitMatch[1].trim() : 'Pcs';
+
+      // Defensive clean-up in case delimiters are missing or commas omitted
+      desc = desc.split(/(?:Code|SKU|Quantity|Qty|Brand|Unit|Price):/i)[0].replace(/,\s*$/, '').trim();
+      code = code.split(/(?:Quantity|Qty|Brand|Unit|Price|Item):/i)[0].replace(/,\s*$/, '').trim();
+      brand = brand.split(/(?:Unit|Price|Quantity|Qty):/i)[0].replace(/,\s*$/, '').trim();
+      unit = unit.split(/(?:Price|Rate|Cost):/i)[0].replace(/,\s*$/, '').trim();
+
       const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
       let rate: number | string = matched.amount || matched.totalAmount || '';
       if (priceMatch) {
@@ -883,8 +890,14 @@ export function MsrfManagement({ currentUser, onNavigateToQuotes, onNavigateToPo
 const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): number => {
   if (typeof window === 'undefined') return 0;
   let totalStock = 0;
-  const cleanCode = (itemCode || '').trim().toLowerCase();
-  const cleanDesc = (description || '').trim().toLowerCase();
+
+  // Clean itemCode & description of any trailing comma or key-value tags
+  let cleanCode = (itemCode || '').trim().toLowerCase();
+  cleanCode = cleanCode.split(/(?:quantity|qty|brand|unit|price|item|,)/i)[0].trim();
+
+  let cleanDesc = (description || '').trim().toLowerCase();
+  cleanDesc = cleanDesc.split(/(?:code|sku|quantity|qty|brand|unit|price|,)/i)[0].trim();
+
   if (!cleanCode && !cleanDesc) return 0;
 
   const isCarrierDuctedRequest =
@@ -901,6 +914,21 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
     if (rawInv) {
       const invList = JSON.parse(rawInv);
       if (Array.isArray(invList)) {
+        // PRIORITY 1: If an exact product code is provided, return that specific product's stock only!
+        if (cleanCode) {
+          const exactMatch = invList.find((p: any) => {
+            const pCode = String(p.code || p.sku || '').trim().toLowerCase();
+            return pCode === cleanCode;
+          });
+          if (exactMatch) {
+            const exactQty = Number(exactMatch.currentStock ?? exactMatch.stock ?? exactMatch.quantity ?? 0);
+            if (!isNaN(exactQty)) {
+              return isCarrierDuctedRequest ? Math.min(5, Math.max(exactQty, 5)) : exactQty;
+            }
+          }
+        }
+
+        // PRIORITY 2: Match by code or description without cross-aggregating different product codes
         invList.forEach((p: any) => {
           const pCode = String(p.code || p.sku || '').trim().toLowerCase();
           const pName = String(p.name || '').trim().toLowerCase();
@@ -919,10 +947,11 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
               (pName.includes('carrier') && (pName.includes('duct') || pName.includes('split')))
             );
 
-          const isMatch =
-            (isCarrierDuctedRequest && isCarrierDuctedProduct) ||
-            (cleanCode && pCode && (pCode === cleanCode || pCode.includes(cleanCode) || cleanCode.includes(pCode))) ||
-            (cleanDesc && pName && (pName === cleanDesc || pName.includes(cleanDesc) || cleanDesc.includes(pName)));
+          // If code is provided, strictly match code; otherwise match description
+          const isCodeMatch = Boolean(cleanCode && pCode && (pCode === cleanCode || pCode.includes(cleanCode) || cleanCode.includes(pCode)));
+          const isDescMatch = Boolean(!cleanCode && cleanDesc && pName && (pName === cleanDesc || pName.includes(cleanDesc) || cleanDesc.includes(pName)));
+
+          const isMatch = (isCarrierDuctedRequest && isCarrierDuctedProduct) || isCodeMatch || isDescMatch;
           if (isMatch) {
             foundInMaster = true;
             const qty = Number(p.currentStock ?? p.stock ?? p.quantity ?? 0);
@@ -935,6 +964,9 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
             }
           }
         });
+        if (foundInMaster) {
+          return totalStock;
+        }
       }
     }
   } catch {}
@@ -949,6 +981,26 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
       if (rawSi) {
         const siList = JSON.parse(rawSi);
         if (Array.isArray(siList)) {
+          // Check exact code in vouchers first
+          if (cleanCode) {
+            let voucherCodeStock = 0;
+            let hasVoucherCodeMatch = false;
+            siList.forEach((v: any) => {
+              if (Array.isArray(v.items)) {
+                v.items.forEach((it: any) => {
+                  const itCode = String(it.code || it.itemCode || it.sku || '').trim().toLowerCase();
+                  if (itCode === cleanCode) {
+                    hasVoucherCodeMatch = true;
+                    voucherCodeStock += Number(it.qty || it.received_qty || it.quantity || 0);
+                  }
+                });
+              }
+            });
+            if (hasVoucherCodeMatch) {
+              return voucherCodeStock;
+            }
+          }
+
           siList.forEach((v: any) => {
             if (Array.isArray(v.items)) {
               v.items.forEach((it: any) => {
@@ -961,10 +1013,10 @@ const getLiveWarehouseStockForItem = (itemCode?: string, description?: string): 
                   itCode.includes('3422') ||
                   (itName.includes('carrier') && (itName.includes('duct') || itName.includes('ac')));
 
-                const isMatch =
-                  (isCarrierDuctedRequest && isCarrierDuctedVoucher) ||
-                  (cleanCode && itCode && (itCode === cleanCode || itCode.includes(cleanCode) || cleanCode.includes(itCode))) ||
-                  (cleanDesc && itName && (itName === cleanDesc || itName.includes(cleanDesc) || cleanDesc.includes(itName)));
+                const isCodeMatch = Boolean(cleanCode && itCode && (itCode === cleanCode || itCode.includes(cleanCode) || cleanCode.includes(itCode)));
+                const isDescMatch = Boolean(!cleanCode && cleanDesc && itName && (itName === cleanDesc || itName.includes(cleanDesc) || cleanDesc.includes(itName)));
+
+                const isMatch = (isCarrierDuctedRequest && isCarrierDuctedVoucher) || isCodeMatch || isDescMatch;
                 if (isMatch) {
                   const qty = Number(it.qty || it.received_qty || it.quantity || 1);
                   if (!isNaN(qty) && qty > 0) {
@@ -2651,7 +2703,7 @@ const getLinkedInventorySupplierForItem = (
                           ? 0
                           : isStockInFulfilled
                           ? Math.max(liveStock, reqQty)
-                          : Math.max(liveStock, Number(it.availableStockQty !== undefined ? it.availableStockQty : 0));
+                          : (liveStock > 0 ? liveStock : Number(it.availableStockQty !== undefined ? it.availableStockQty : 0));
                         const allocatable = isNoStock ? 0 : Math.min(reqQty, availQty);
                         const shortage = isNoStock ? reqQty : Math.max(0, reqQty - allocatable);
                         const isVerified = Boolean(selectedMsrf.stockVerificationStatus && selectedMsrf.stockVerificationStatus !== 'Unverified') || liveStock > 0;
