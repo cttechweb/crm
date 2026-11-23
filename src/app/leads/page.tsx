@@ -866,7 +866,7 @@ export function LeadsContent() {
 
     const enteredOwner = newLead.owner.trim() || currentUser?.name || assignableUsers[0]?.name || '';
     const enteredAssignee = newLead.assignedTo.trim() || enteredOwner;
-    const effectiveOwnerId = newLead.assignedToId || newLead.ownerId || currentUser?.id || assignableUsers[0]?.id;
+    const effectiveOwnerId = newLead.ownerId || currentUser?.id || assignableUsers[0]?.id;
     const effectiveCreatedBy = currentUser?.name || 'Super Admin';
     const effectiveAssignedEmployee = enteredAssignee;
 
@@ -1068,8 +1068,6 @@ export function LeadsContent() {
                           ...newLead,
                           ownerId: selectedId,
                           owner: selectedName,
-                          assignedToId: selectedId,
-                          assignedTo: selectedName,
                         });
                       }}
                       className="w-full bg-transparent text-slate-800 text-xs font-medium focus:outline-none cursor-pointer pr-4 appearance-none"
@@ -1105,8 +1103,6 @@ export function LeadsContent() {
                           ...newLead,
                           assignedToId: selectedId,
                           assignedTo: selectedName,
-                          ownerId: selectedId,
-                          owner: selectedName,
                         });
                       }}
                       className="w-full bg-transparent text-slate-800 text-xs font-semibold focus:outline-none cursor-pointer pr-4 appearance-none"
@@ -3819,11 +3815,9 @@ export function LeadsContent() {
 
                   targetIds.forEach((id) => {
                     updateLead(id, {
-                      ownerId: assignToOwnerId,
                       assignedEmployee: assignToOwner,
                       leadAssigned: { name: assignToOwner, avatar: assigneePhoto },
                       assignedDate: todayDate,
-                      owner: assignToOwner,
                     });
                   });
 
@@ -3948,11 +3942,9 @@ export function LeadsContent() {
                   const todayDate = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
                   const assigneePhoto = getEmployeePhoto(assignToOwner) || '';
                   updateLead(assigningLead.id, {
-                    ownerId: assignToOwnerId,
                     assignedEmployee: assignToOwner,
                     leadAssigned: { name: assignToOwner, avatar: assigneePhoto },
                     assignedDate: todayDate,
-                    owner: assignToOwner,
                   });
                   alert(`Lead "${assigningLead.contactDetails.name}" assigned successfully to ${assignToOwner}!`);
                   setAssigningLead(null);

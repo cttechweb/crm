@@ -371,7 +371,7 @@ leadsApp.post('/', async (c) => {
       const matched = await c.env.DB.prepare('SELECT id, full_name FROM users WHERE full_name = ? OR email = ? OR LOWER(full_name) LIKE ? LIMIT 1')
         .bind(explicitAssignee, explicitAssignee, `%${explicitAssignee.toLowerCase()}%`)
         .first<{ id: string; full_name: string }>();
-      if (matched) {
+      if (matched && !body.owner_id && !body.owner_name) {
         ownerId = matched.id;
         ownerName = matched.full_name;
       }
@@ -703,8 +703,7 @@ leadsApp.put('/:id', async (c) => {
         .bind(body.assigned_employee.trim(), body.assigned_employee.trim(), `%${body.assigned_employee.trim().toLowerCase()}%`)
         .first<{ id: string; full_name: string }>();
       if (resolved) {
-        body.owner_id = resolved.id;
-        body.owner_name = resolved.full_name;
+        body.assigned_employee = resolved.full_name;
       }
     }
 

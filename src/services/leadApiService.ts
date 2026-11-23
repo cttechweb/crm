@@ -254,7 +254,11 @@ export function mapCrmLeadToBackendPayload(lead: Partial<CrmLead>): Record<strin
   }
   if (lead.owner !== undefined) payload.owner_name = lead.owner;
   if (lead.ownerAvatar !== undefined) payload.owner_avatar = lead.ownerAvatar;
-  if (lead.assignedEmployee !== undefined) payload.assigned_employee = lead.assignedEmployee;
+  if (lead.assignedEmployee !== undefined) {
+    payload.assigned_employee = lead.assignedEmployee;
+  } else if (lead.leadAssigned?.name !== undefined) {
+    payload.assigned_employee = lead.leadAssigned.name;
+  }
   if (lead.assignedManager !== undefined) payload.assigned_manager = lead.assignedManager;
   if (lead.department !== undefined) payload.department = lead.department;
 
