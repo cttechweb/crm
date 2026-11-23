@@ -126,6 +126,7 @@ function SalesPipelineInner() {
     deleteOpportunity,
     updateOpportunity,
     customers,
+    refreshCustomers,
     addCustomer,
     leads,
     campaigns,
@@ -146,6 +147,32 @@ function SalesPipelineInner() {
     addDeliveryNote: contextAddDeliveryNote,
     deleteDeliveryNote: contextDeleteDeliveryNote,
   } = useEnterpriseCrm();
+
+  // Ensure latest live customers are always loaded on sales page
+  useEffect(() => {
+    refreshCustomers?.();
+  }, [refreshCustomers]);
+
+  const allSalesCustomerNames = useMemo(() => {
+    const names = new Set<string>();
+    if (customers && customers.length > 0) {
+      customers.forEach((c) => {
+        const name = (c.customerName || c.companyName || (c as any).name || '').trim();
+        if (name && name !== 'Rizz') names.add(name);
+      });
+    }
+    if (invoices && invoices.length > 0) {
+      invoices.forEach((i) => {
+        if (i.customer && i.customer.trim()) names.add(i.customer.trim());
+      });
+    }
+    if (salesOpportunities && salesOpportunities.length > 0) {
+      salesOpportunities.forEach((o) => {
+        if (o.customer && o.customer.trim()) names.add(o.customer.trim());
+      });
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [customers, invoices, salesOpportunities]);
 
   const activeSalesUsers = useMemo(() => {
     const LEGACY_MOCK_IDS = new Set([
@@ -622,18 +649,18 @@ function SalesPipelineInner() {
   const [showSelectCustomerAlert, setShowSelectCustomerAlert] = useState(true);
   const [receiptFormData, setReceiptFormData] = useState({
     receiptNumber: 'CTRV#1044',
-    invoiceRef: 'CTINV#15521',
-    customer: 'Rizz',
-    contactPerson: 'richu',
-    phone: '+971 0506693043',
+    invoiceRef: '',
+    customer: '',
+    contactPerson: '',
+    phone: '',
     receiptType: 'Cash',
     paymentMethod: 'Cash',
     receiptDate: new Date().toLocaleDateString('en-GB').split('/').join('-'),
-    amount: '3150.00' as string | number,
-    tags: 'CTINV#15521, CTSO#3924, Cleared',
-    description: 'Payment received against Tax Invoice CTINV#15521 (CTSO#3924 / Ac) for Rizz - 1.5-Ton Inverter Split AC Unit',
+    amount: '' as string | number,
+    tags: '',
+    description: '',
     termsAndConditions: 'Standard 30-Day Payment Terms',
-    termsText: 'Payment received with thanks from Rizz against Tax Invoice CTINV#15521.\nAmount Received: AED 3,150.00.\nPayment Status: Cleared in full.\nVAT Accounting: Tax Invoice CTINV#15521 accounted for under UAE FTA regulations.',
+    termsText: '',
     documentName: '',
     status: 'Cleared',
   });
@@ -11063,7 +11090,7 @@ function SalesPipelineInner() {
                         opportunityOrderRef: addInvoiceData.opportunityOrder || 'CTSO#3854 / SUPER GENERAL AC UNITS WITH INST',
                         orderRef: matchedOrder?.orderNumber || (addInvoiceData.opportunityOrder?.startsWith('SO-') || addInvoiceData.opportunityOrder?.startsWith('CTSO#') ? addInvoiceData.opportunityOrder.split('/')[0].trim() : undefined),
                         orderId: matchedOrder?.id,
-                        customer: addInvoiceData.customer || 'OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN',
+                        customer: addInvoiceData.customer || matchedOrder?.customer || 'Direct Client',
                         contactPerson: addInvoiceData.attention?.trim() || '',
                         phone: '+971 0506693043',
                         owner: currentUser?.name || 'Staff',
@@ -12612,14 +12639,12 @@ function SalesPipelineInner() {
                         onChange={(e) => setFilterInvoiceCustomer(e.target.value)}
                         className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                       >
-                        <option value="">Select Customer</option>
-                        <option value="OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN">OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN</option>
-                        <option value="BURJEEL HOLDINGS">BURJEEL HOLDINGS</option>
-                        <option value="YORK GENERAL CONTRACTING LLC">YORK GENERAL CONTRACTING LLC</option>
-                        <option value="SAEED AL ZAABI GENERAL TRADING">SAEED AL ZAABI GENERAL TRADING</option>
-                        <option value="APTIVE GENERAL TRADING">APTIVE GENERAL TRADING</option>
-                        <option value="SPECTRA TECH TRADING LLC">SPECTRA TECH TRADING LLC</option>
-                        <option value="REEM EMIRATES ALUMINIUM">REEM EMIRATES ALUMINIUM</option>
+                        <option value="">All Customers</option>
+                        {allSalesCustomerNames.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -13635,27 +13660,29 @@ function SalesPipelineInner() {
                                   (custName && o.customer?.toLowerCase().includes(custName.toLowerCase()))
                               );
 
-                              const invAmount = targetInv ? Number((targetInv as any).balance ?? targetInv.amount ?? 3150) : 3150;
-                              const invNo = targetInv ? targetInv.invoiceNumber : 'CTINV#15521';
-                              const ordNo = targetOrder?.orderNumber || (targetInv?.opportunityOrderRef ? targetInv.opportunityOrderRef.split(' ')[0] : 'CTSO#3924');
+                              const invAmount = targetInv ? Number((targetInv as any).balance ?? targetInv.amount ?? 0) : 0;
+                              const invNo = targetInv ? targetInv.invoiceNumber : '';
+                              const ordNo = targetOrder?.orderNumber || (targetInv?.opportunityOrderRef ? targetInv.opportunityOrderRef.split(' ')[0] : '');
                               const todayStr = new Date().toLocaleDateString('en-GB').split('/').join('-');
 
-                              const autogenDesc = `Payment received against Tax Invoice ${invNo} (${ordNo}) for ${custName} - 1.5-Ton Inverter Split AC Unit`;
-                              const autogenTags = `${invNo}, ${ordNo}, Cleared`;
-                              const autogenTerms = `Payment received with thanks from ${custName} against Tax Invoice ${invNo}.\nAmount Received: AED ${invAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}.\nPayment Status: Cleared in full.\nVAT Accounting: Tax Invoice ${invNo} accounted for under UAE FTA regulations.`;
+                              const autogenDesc = invNo
+                                ? `Payment received against Tax Invoice ${invNo}${ordNo ? ` (${ordNo})` : ''} for ${custName}`
+                                : `Payment received for ${custName}`;
+                              const autogenTags = [invNo, ordNo, 'Cleared'].filter(Boolean).join(', ');
+                              const autogenTerms = `Payment received with thanks from ${custName}${invNo ? ` against Tax Invoice ${invNo}` : ''}.\nAmount Received: AED ${invAmount > 0 ? invAmount.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '0.00'}.\nPayment Status: Cleared in full.\nVAT Accounting: Accounted for under UAE FTA regulations.`;
 
                               setReceiptFormData((prev) => ({
                                 ...prev,
                                 customer: custName,
-                                amount: String(invAmount.toFixed(2)),
+                                amount: invAmount > 0 ? String(invAmount.toFixed(2)) : prev.amount || '',
                                 receiptDate: todayStr,
                                 invoiceRef: invNo,
                                 tags: autogenTags,
                                 description: autogenDesc,
                                 termsAndConditions: 'Standard 30-Day Payment Terms',
                                 termsText: autogenTerms,
-                                contactPerson: targetInv?.contactPerson || (targetOrder as any)?.contactPerson || 'richu',
-                                phone: targetInv?.phone || targetOrder?.phone || '+971 0506693043',
+                                contactPerson: targetInv?.contactPerson || (targetOrder as any)?.contactPerson || prev.contactPerson || '',
+                                phone: targetInv?.phone || targetOrder?.phone || prev.phone || '',
                                 receiptType: prev.receiptType || 'Cash',
                                 paymentMethod: prev.paymentMethod || 'Cash',
                               }));
@@ -13663,23 +13690,14 @@ function SalesPipelineInner() {
                             className="w-full px-2.5 py-1.5 border border-slate-300 rounded-xs text-xs bg-white text-slate-700 focus:outline-none focus:border-blue-400"
                           >
                             <option value="">Select Customer</option>
-                            <option value="Rizz">Rizz</option>
-                            {customers && customers.length > 0 ? (
-                              customers
-                                .filter((c) => (c.customerName || c.companyName) !== 'Rizz')
-                                .map((c) => (
-                                  <option key={c.id} value={c.customerName || c.companyName || ''}>
-                                    {c.customerName || c.companyName}
-                                  </option>
-                                ))
-                            ) : (
-                              <>
-                                <option value="OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN">OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN</option>
-                                <option value="BURJEEL HOLDINGS">BURJEEL HOLDINGS</option>
-                                <option value="EMAAR HOSPITALITY GROUP">EMAAR HOSPITALITY GROUP</option>
-                                <option value="NATIONAL INNOVATIVE GENERAL MAINTENANCE L.L.C.">NATIONAL INNOVATIVE GENERAL MAINTENANCE L.L.C.</option>
-                              </>
+                            {receiptFormData.customer && !allSalesCustomerNames.includes(receiptFormData.customer) && (
+                              <option value={receiptFormData.customer}>{receiptFormData.customer}</option>
                             )}
+                            {allSalesCustomerNames.map((name) => (
+                              <option key={name} value={name}>
+                                {name}
+                              </option>
+                            ))}
                           </select>
                         </div>
                       </div>
@@ -14050,11 +14068,12 @@ function SalesPipelineInner() {
                         onChange={(e) => setFilterReceiptCustomer(e.target.value)}
                         className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-blue-500 bg-white text-slate-700"
                       >
-                        <option value="">Select Customer</option>
-                        <option value="OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN">OFFICE OF H.H. SHEIKH HAMDAN BIN ZAYED AL NAHYAN</option>
-                        <option value="BURJEEL HOLDINGS">BURJEEL HOLDINGS</option>
-                        <option value="EMAAR HOSPITALITY GROUP">EMAAR HOSPITALITY GROUP</option>
-                        <option value="NATIONAL INNOVATIVE GENERAL MAINTENANCE L.L.C.">NATIONAL INNOVATIVE GENERAL MAINTENANCE L.L.C.</option>
+                        <option value="">All Customers</option>
+                        {allSalesCustomerNames.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -14088,32 +14107,25 @@ function SalesPipelineInner() {
                     onClick={() => {
                       const todayStr = new Date().toLocaleDateString('en-GB').split('/').join('-');
                       const nextReceiptNum = 'CTRV#' + Math.floor(1040 + Math.random() * 200);
-                      const dueInv = invoices.find(
-                        (i) => (i.customer?.toLowerCase().includes('rizz') || i.invoiceNumber === 'CTINV#15521') && (i.status === 'Due' || i.status === 'Unpaid' || !i.status)
-                      ) || invoices[0];
-                      const custName = dueInv?.customer || 'Rizz';
-                      const invAmount = dueInv ? Number((dueInv as any).balance ?? dueInv.amount ?? 3150) : 3150;
-                      const invNo = dueInv ? dueInv.invoiceNumber : 'CTINV#15521';
-                      const ordNo = dueInv?.opportunityOrderRef ? dueInv.opportunityOrderRef.split(' ')[0] : 'CTSO#3924';
 
                       setReceiptFormData({
                         receiptNumber: nextReceiptNum,
-                        invoiceRef: invNo,
-                        customer: custName,
-                        contactPerson: dueInv?.contactPerson || 'richu',
-                        phone: dueInv?.phone || '+971 0506693043',
+                        invoiceRef: '',
+                        customer: '',
+                        contactPerson: '',
+                        phone: '',
                         receiptType: 'Cash',
                         paymentMethod: 'Cash',
                         receiptDate: todayStr,
-                        amount: String(invAmount.toFixed(2)),
-                        tags: `${invNo}, ${ordNo}, Cleared`,
-                        description: `Payment received against Tax Invoice ${invNo} (${ordNo}) for ${custName} - 1.5-Ton Inverter Split AC Unit`,
+                        amount: '',
+                        tags: '',
+                        description: '',
                         termsAndConditions: 'Standard 30-Day Payment Terms',
-                        termsText: `Payment received with thanks from ${custName} against Tax Invoice ${invNo}.\nAmount Received: AED ${invAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}.\nPayment Status: Cleared in full.\nVAT Accounting: Tax Invoice ${invNo} accounted for under UAE FTA regulations.`,
+                        termsText: '',
                         documentName: '',
                         status: 'Cleared',
                       });
-                      setShowSelectCustomerAlert(false);
+                      setShowSelectCustomerAlert(true);
                       setIsCreateReceiptModalOpen(true);
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-[#16A34A] hover:bg-[#15803D] text-white rounded text-xs font-bold cursor-pointer shadow-xs transition uppercase"
