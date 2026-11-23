@@ -1063,10 +1063,13 @@ export function LeadsContent() {
                       onChange={(e) => {
                         const selectedId = e.target.value;
                         const matched = assignableUsers.find((u) => u.id === selectedId);
+                        const selectedName = matched ? matched.name : selectedId;
                         setNewLead({
                           ...newLead,
                           ownerId: selectedId,
-                          owner: matched ? matched.name : selectedId,
+                          owner: selectedName,
+                          assignedToId: selectedId,
+                          assignedTo: selectedName,
                         });
                       }}
                       className="w-full bg-transparent text-slate-800 text-xs font-medium focus:outline-none cursor-pointer pr-4 appearance-none"
@@ -1097,10 +1100,13 @@ export function LeadsContent() {
                       onChange={(e) => {
                         const selectedId = e.target.value;
                         const matched = assignableUsers.find((u) => u.id === selectedId);
+                        const selectedName = matched ? matched.name : selectedId;
                         setNewLead({
                           ...newLead,
                           assignedToId: selectedId,
-                          assignedTo: matched ? matched.name : selectedId,
+                          assignedTo: selectedName,
+                          ownerId: selectedId,
+                          owner: selectedName,
                         });
                       }}
                       className="w-full bg-transparent text-slate-800 text-xs font-semibold focus:outline-none cursor-pointer pr-4 appearance-none"

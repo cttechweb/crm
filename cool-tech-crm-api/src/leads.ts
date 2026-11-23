@@ -88,11 +88,37 @@ async function canAccessLead(
   }
 
   if (user.role === 'EMPLOYEE') {
-    return lead.owner_id === user.id || lead.created_by_id === user.id;
+    const uName = (user.full_name || '').trim().toLowerCase();
+    const ownerName = (lead.owner_name || '').trim().toLowerCase();
+    const assignee = (lead.assigned_employee || '').trim().toLowerCase();
+    const matchesName = Boolean(
+      uName.length > 0 &&
+      (ownerName === uName ||
+        ownerName.includes(uName) ||
+        uName.includes(ownerName) ||
+        assignee === uName ||
+        assignee.includes(uName) ||
+        uName.includes(assignee))
+    );
+    return lead.owner_id === user.id || lead.created_by_id === user.id || matchesName;
   }
 
   if (user.role === 'MANAGER') {
     if (lead.owner_id === user.id || lead.created_by_id === user.id || !lead.owner_id) {
+      return true;
+    }
+    const uName = (user.full_name || '').trim().toLowerCase();
+    const ownerName = (lead.owner_name || '').trim().toLowerCase();
+    const assignee = (lead.assigned_employee || '').trim().toLowerCase();
+    if (
+      uName.length > 0 &&
+      (ownerName === uName ||
+        ownerName.includes(uName) ||
+        uName.includes(ownerName) ||
+        assignee === uName ||
+        assignee.includes(uName) ||
+        uName.includes(assignee))
+    ) {
       return true;
     }
     return isOwnerInManagerScope(user, lead.owner_id, db);
@@ -118,15 +144,47 @@ leadsApp.get('/', async (c) => {
   const whereClauses: string[] = ['l.is_deleted = 0'];
   const bindParams: unknown[] = [];
 
-  // Enforce server-side RBAC scoping
+  // Enforce server-side RBAC scoping (matching by ID, full name, or assigned employee name)
   if (user.role === 'EMPLOYEE') {
-    whereClauses.push('(l.owner_id = ? OR l.created_by_id = ?)');
-    bindParams.push(user.id, user.id);
+    const cleanName = (user.full_name || '').trim().toLowerCase();
+    if (cleanName) {
+      whereClauses.push(
+        '(l.owner_id = ? OR l.created_by_id = ? OR LOWER(l.owner_name) = ? OR LOWER(l.owner_name) LIKE ? OR LOWER(l.assigned_employee) = ? OR LOWER(l.assigned_employee) LIKE ?)'
+      );
+      bindParams.push(
+        user.id,
+        user.id,
+        cleanName,
+        `%${cleanName}%`,
+        cleanName,
+        `%${cleanName}%`
+      );
+    } else {
+      whereClauses.push('(l.owner_id = ? OR l.created_by_id = ?)');
+      bindParams.push(user.id, user.id);
+    }
   } else if (user.role === 'MANAGER') {
-    whereClauses.push(
-      '(l.owner_id = ? OR l.created_by_id = ? OR l.owner_id IS NULL OR l.owner_id IN (SELECT id FROM users WHERE reports_to = ? OR (team_id IS NOT NULL AND team_id = ?)))'
-    );
-    bindParams.push(user.id, user.id, user.id, user.team_id || '');
+    const cleanName = (user.full_name || '').trim().toLowerCase();
+    if (cleanName) {
+      whereClauses.push(
+        '(l.owner_id = ? OR l.created_by_id = ? OR LOWER(l.owner_name) = ? OR LOWER(l.owner_name) LIKE ? OR LOWER(l.assigned_employee) = ? OR LOWER(l.assigned_employee) LIKE ? OR l.owner_id IS NULL OR l.owner_id IN (SELECT id FROM users WHERE reports_to = ? OR (team_id IS NOT NULL AND team_id = ?)))'
+      );
+      bindParams.push(
+        user.id,
+        user.id,
+        cleanName,
+        `%${cleanName}%`,
+        cleanName,
+        `%${cleanName}%`,
+        user.id,
+        user.team_id || ''
+      );
+    } else {
+      whereClauses.push(
+        '(l.owner_id = ? OR l.created_by_id = ? OR l.owner_id IS NULL OR l.owner_id IN (SELECT id FROM users WHERE reports_to = ? OR (team_id IS NOT NULL AND team_id = ?)))'
+      );
+      bindParams.push(user.id, user.id, user.id, user.team_id || '');
+    }
   }
 
   // Status Filter
@@ -305,6 +363,17 @@ leadsApp.post('/', async (c) => {
         ownerName = matched.full_name;
       } else {
         ownerName = body.owner_name.trim();
+      }
+    }
+
+    const explicitAssignee = typeof body.assigned_employee === 'string' ? body.assigned_employee.trim() : '';
+    if (explicitAssignee && explicitAssignee !== user.full_name) {
+      const matched = await c.env.DB.prepare('SELECT id, full_name FROM users WHERE full_name = ? OR email = ? OR LOWER(full_name) LIKE ? LIMIT 1')
+        .bind(explicitAssignee, explicitAssignee, `%${explicitAssignee.toLowerCase()}%`)
+        .first<{ id: string; full_name: string }>();
+      if (matched) {
+        ownerId = matched.id;
+        ownerName = matched.full_name;
       }
     }
   } else if (user.role === 'MANAGER') {
@@ -628,6 +697,14 @@ leadsApp.put('/:id', async (c) => {
       body.owner_name = targetOwnerName;
       if (!body.assigned_employee) {
         body.assigned_employee = targetOwnerName;
+      }
+    } else if (!targetOwnerId && body.assigned_employee !== undefined && typeof body.assigned_employee === 'string' && body.assigned_employee.trim()) {
+      const resolved = await c.env.DB.prepare('SELECT id, full_name FROM users WHERE full_name = ? OR email = ? OR LOWER(full_name) LIKE ? LIMIT 1')
+        .bind(body.assigned_employee.trim(), body.assigned_employee.trim(), `%${body.assigned_employee.trim().toLowerCase()}%`)
+        .first<{ id: string; full_name: string }>();
+      if (resolved) {
+        body.owner_id = resolved.id;
+        body.owner_name = resolved.full_name;
       }
     }
 

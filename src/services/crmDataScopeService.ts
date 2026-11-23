@@ -245,8 +245,10 @@ export function canAccessLead(
   const uId = normalizeIdentifier(currentUser.id);
 
   const leadOwner = normalizeIdentifier(lead.owner);
+  const leadOwnerId = normalizeIdentifier(lead.ownerId);
   const leadCreator = normalizeIdentifier(lead.createdBy);
   const leadAssignee = normalizeIdentifier(lead.assignedEmployee || lead.leadAssigned?.name);
+  const leadAssigneeId = normalizeIdentifier((lead as any).assignedToId);
   const leadDept = normalizeIdentifier(lead.department);
 
   // Detect exact lead origin department
@@ -290,7 +292,13 @@ export function canAccessLead(
       );
     };
 
-    return matchesUser(leadOwner) || matchesUser(leadCreator) || matchesUser(leadAssignee);
+    return (
+      matchesUser(leadOwner) ||
+      matchesUser(leadOwnerId) ||
+      matchesUser(leadCreator) ||
+      matchesUser(leadAssignee) ||
+      matchesUser(leadAssigneeId)
+    );
   }
 
   // 3. Manager Scope: Own records + Team / Department records
