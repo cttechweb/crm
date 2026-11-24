@@ -179,7 +179,7 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
   // Query D1 users table using verified firebase_uid and exact schema columns
   try {
     const query = await c.env.DB.prepare(
-      'SELECT id, firebase_uid, email, full_name, role, is_active, department, position, designation, permissions, reports_to FROM users WHERE firebase_uid = ? LIMIT 1'
+      'SELECT id, firebase_uid, email, full_name, role, is_active, department, position, reports_to FROM users WHERE firebase_uid = ? LIMIT 1'
     )
       .bind(verifiedUid)
       .all<CrmUserProfile>();
@@ -189,7 +189,7 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
     // JIT Account Linking: If not found by firebase_uid, resolve by verified Firebase email
     if (!userProfile && verifiedEmail) {
       const emailQuery = await c.env.DB.prepare(
-        'SELECT id, firebase_uid, email, full_name, role, is_active, department, position, designation, permissions, reports_to FROM users WHERE LOWER(TRIM(email)) = ? LIMIT 1'
+        'SELECT id, firebase_uid, email, full_name, role, is_active, department, position, reports_to FROM users WHERE LOWER(TRIM(email)) = ? LIMIT 1'
       )
         .bind(verifiedEmail)
         .all<CrmUserProfile>();
@@ -227,7 +227,7 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
 
       if (isSheminAdmin) {
         const rootAdminQuery = await c.env.DB.prepare(
-          'SELECT id, firebase_uid, email, full_name, role, is_active, department, position, designation, permissions, reports_to FROM users WHERE role = \'SUPER_ADMIN\' OR id = \'usr_superadmin_001\' LIMIT 1'
+          'SELECT id, firebase_uid, email, full_name, role, is_active, department, position, reports_to FROM users WHERE role = \'SUPER_ADMIN\' OR id = \'usr_superadmin_001\' LIMIT 1'
         ).all<CrmUserProfile>();
 
         const rootAdmin = rootAdminQuery.results?.[0];
@@ -382,8 +382,6 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
       role: normalizedRole,
     });
     c.set('firebaseUid', verifiedUid);
-
-    await next();
   } catch (dbErr: unknown) {
     const errMsg = dbErr instanceof Error ? dbErr.message : 'Database error';
     return c.json(
@@ -396,4 +394,6 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
       500
     );
   }
+
+  await next();
 };
