@@ -425,6 +425,9 @@ export async function apiFetch<T = unknown>(
       const obj = responseData as Record<string, unknown>;
       if (typeof obj.message === 'string') {
         errorMessage = obj.message;
+        if (typeof obj.detail === 'string' && obj.detail && !obj.message.includes(obj.detail)) {
+          errorMessage = `${obj.message}: ${obj.detail}`;
+        }
       } else if (typeof obj.error === 'string') {
         errorMessage = obj.error;
       }

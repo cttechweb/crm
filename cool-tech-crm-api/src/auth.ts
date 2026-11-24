@@ -226,11 +226,16 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
       );
 
       if (isSheminAdmin) {
-        const rootAdminQuery = await c.env.DB.prepare(
-          'SELECT id, firebase_uid, email, full_name, role, is_active, department, position, reports_to FROM users WHERE role = \'SUPER_ADMIN\' OR id = \'usr_superadmin_001\' LIMIT 1'
-        ).all<CrmUserProfile>();
+        let rootAdmin: CrmUserProfile | undefined;
+        try {
+          const rootAdminQuery = await c.env.DB.prepare(
+            'SELECT id, firebase_uid, email, full_name, role, is_active, department, position, reports_to FROM users WHERE role = \'SUPER_ADMIN\' OR id = \'usr_superadmin_001\' OR email = \'cooltechuae@gmail.com\' LIMIT 1'
+          ).all<CrmUserProfile>();
+          rootAdmin = rootAdminQuery.results?.[0];
+        } catch (rootErr) {
+          console.warn('[authMiddleware] Safe fallback: could not query rootAdmin:', rootErr);
+        }
 
-        const rootAdmin = rootAdminQuery.results?.[0];
         if (rootAdmin) {
           try {
             await c.env.DB.prepare(
@@ -249,25 +254,29 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
           };
         } else {
           const seedId = 'usr_superadmin_001';
-          await c.env.DB.prepare(
-            'INSERT OR IGNORE INTO users (id, firebase_uid, email, full_name, role, is_active, position, department) VALUES (?, ?, ?, ?, ?, 1, ?, ?)'
-          )
-            .bind(
-              seedId,
-              verifiedUid,
-              verifiedEmail || 'shemin123@gmail.com',
-              'Muhammed Shemin',
-              'SUPER_ADMIN',
-              'CEO',
-              'Executive Management'
+          try {
+            await c.env.DB.prepare(
+              'INSERT OR IGNORE INTO users (id, firebase_uid, email, full_name, role, is_active, position, department) VALUES (?, ?, ?, ?, ?, 1, ?, ?)'
             )
-            .run();
+              .bind(
+                seedId,
+                verifiedUid,
+                verifiedEmail || 'cooltechuae@gmail.com',
+                'shemin',
+                'SUPER_ADMIN',
+                'CEO',
+                'Executive Management'
+              )
+              .run();
+          } catch (insertErr) {
+            console.warn('[authMiddleware] Safe fallback: could not seed rootAdmin:', insertErr);
+          }
 
           userProfile = {
             id: seedId,
             firebase_uid: verifiedUid,
-            email: verifiedEmail || 'shemin123@gmail.com',
-            full_name: 'Muhammed Shemin',
+            email: verifiedEmail || 'cooltechuae@gmail.com',
+            full_name: 'shemin',
             role: 'SUPER_ADMIN',
             is_active: 1,
             position: 'CEO',
@@ -330,12 +339,15 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
     // Authenticated user context enrichment: verify designation, permissions, and extended profile fields from D1
     try {
       const extraRes = await c.env.DB.prepare(
-        'SELECT designation, permissions, business_opportunity, store, sales_visit_permission, phone, username, avatar_image, dob FROM users WHERE id = ? LIMIT 1'
+        'SELECT department, position, reports_to, designation, permissions, business_opportunity, store, sales_visit_permission, phone, username, avatar_image, dob FROM users WHERE id = ? LIMIT 1'
       )
         .bind(userProfile.id)
         .all<any>();
       if (extraRes.results?.[0]) {
         const extra = extraRes.results[0];
+        userProfile.department = extra.department ?? userProfile.department ?? null;
+        userProfile.position = extra.position ?? userProfile.position ?? null;
+        userProfile.reports_to = extra.reports_to ?? userProfile.reports_to ?? null;
         userProfile.designation = extra.designation ?? null;
         userProfile.permissions = extra.permissions ?? null;
         userProfile.business_opportunity = extra.business_opportunity ?? null;
@@ -388,7 +400,7 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
       {
         success: false,
         code: 'DATABASE_ERROR',
-        message: 'Failed to verify user profile against database.',
+        message: `Failed to verify user profile against database: ${errMsg}`,
         detail: errMsg,
       },
       500
