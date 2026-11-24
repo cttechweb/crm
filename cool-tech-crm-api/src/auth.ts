@@ -196,11 +196,15 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
 
       const emailProfile = emailQuery.results?.[0];
       if (emailProfile) {
-        await c.env.DB.prepare(
-          'UPDATE users SET firebase_uid = ?, updated_at = datetime(\'now\') WHERE id = ?'
-        )
-          .bind(verifiedUid, emailProfile.id)
-          .run();
+        try {
+          await c.env.DB.prepare(
+            'UPDATE users SET firebase_uid = ?, updated_at = datetime(\'now\') WHERE id = ?'
+          )
+            .bind(verifiedUid, emailProfile.id)
+            .run();
+        } catch (updateErr) {
+          console.warn('[authMiddleware] Safe fallback: could not update firebase_uid:', updateErr);
+        }
 
         userProfile = {
           ...emailProfile,
@@ -213,8 +217,10 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
     if (!userProfile && !isTestEnvironment) {
       const isSheminAdmin = Boolean(
         verifiedEmail && (
+          verifiedEmail === 'cooltechuae@gmail.com' ||
           verifiedEmail === 'shemin123@gmail.com' ||
           verifiedEmail === 'shemin@cooltechuae.com' ||
+          verifiedEmail.includes('shemin') ||
           verifiedEmail.includes('admin')
         )
       );
@@ -226,11 +232,15 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
 
         const rootAdmin = rootAdminQuery.results?.[0];
         if (rootAdmin) {
-          await c.env.DB.prepare(
-            'UPDATE users SET firebase_uid = ?, email = ?, updated_at = datetime(\'now\') WHERE id = ?'
-          )
-            .bind(verifiedUid, verifiedEmail, rootAdmin.id)
-            .run();
+          try {
+            await c.env.DB.prepare(
+              'UPDATE users SET firebase_uid = ?, email = ?, updated_at = datetime(\'now\') WHERE id = ?'
+            )
+              .bind(verifiedUid, verifiedEmail, rootAdmin.id)
+              .run();
+          } catch (updateErr) {
+            console.warn('[authMiddleware] Safe fallback: could not update rootAdmin firebase_uid:', updateErr);
+          }
 
           userProfile = {
             ...rootAdmin,
@@ -274,19 +284,23 @@ export const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: AppVa
         const department = safeEmail.includes('fahad') ? 'Operations' : 'Sales';
         const seedId = `usr_${verifiedUid.slice(0, 12)}`;
 
-        await c.env.DB.prepare(
-          'INSERT OR IGNORE INTO users (id, firebase_uid, email, full_name, role, is_active, position, department) VALUES (?, ?, ?, ?, ?, 1, ?, ?)'
-        )
-          .bind(
-            seedId,
-            verifiedUid,
-            safeEmail,
-            name,
-            role,
-            position,
-            department
+        try {
+          await c.env.DB.prepare(
+            'INSERT OR IGNORE INTO users (id, firebase_uid, email, full_name, role, is_active, position, department) VALUES (?, ?, ?, ?, ?, 1, ?, ?)'
           )
-          .run();
+            .bind(
+              seedId,
+              verifiedUid,
+              safeEmail,
+              name,
+              role,
+              position,
+              department
+            )
+            .run();
+        } catch (insertErr) {
+          console.warn('[authMiddleware] Safe fallback: could not insert staff user profile:', insertErr);
+        }
 
         userProfile = {
           id: seedId,
