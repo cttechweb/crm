@@ -640,6 +640,83 @@ quotationsApp.put('/:id', async (c) => {
   }
 });
 
+// POST /api/quotations/:id/approve - CEO / COO Executive Sign-off
+quotationsApp.post('/:id/approve', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => ({} as any));
+
+  try {
+    const existing = await c.env.DB.prepare(
+      'SELECT * FROM quotations WHERE (id = ? OR quotation_number = ?) AND is_deleted = 0 LIMIT 1'
+    ).bind(id, id).first<QuotationRow>();
+
+    if (!existing) return c.json({ success: false, message: 'Quotation not found' }, 404);
+
+    const approvedPrice = Number(body.total_amount ?? body.totalAmount ?? existing.total_amount);
+    const paymentTerms = String(body.payment_terms ?? body.paymentTerms ?? existing.payment_terms ?? '30 Days Net B2B Credit');
+    const executiveNotes = String(body.notes ?? 'Approved by Executive Management (CEO/COO)');
+
+    await c.env.DB.prepare(`
+      UPDATE quotations
+      SET status = 'Approved',
+          total_amount = ?,
+          payment_terms = ?,
+          customer_notes = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).bind(approvedPrice, paymentTerms, executiveNotes, existing.id).run();
+
+    const updated = await c.env.DB.prepare('SELECT * FROM quotations WHERE id = ?').bind(existing.id).first<QuotationRow>();
+    const updatedItems = await c.env.DB.prepare(
+      'SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC'
+    ).bind(existing.id).all<QuotationItemRow>();
+
+    return c.json({
+      success: true,
+      message: `Quotation ${existing.quotation_number} approved successfully by ${user.full_name || 'Executive Management'}.`,
+      quotation: { ...updated, items: updatedItems.results || [] },
+    });
+  } catch (err: unknown) {
+    return c.json({ success: false, message: String(err) }, 500);
+  }
+});
+
+// POST /api/quotations/:id/reject - Executive Decline
+quotationsApp.post('/:id/reject', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => ({} as any));
+
+  try {
+    const existing = await c.env.DB.prepare(
+      'SELECT * FROM quotations WHERE (id = ? OR quotation_number = ?) AND is_deleted = 0 LIMIT 1'
+    ).bind(id, id).first<QuotationRow>();
+
+    if (!existing) return c.json({ success: false, message: 'Quotation not found' }, 404);
+
+    const reason = String(body.reason || 'Declined by Executive Management');
+
+    await c.env.DB.prepare(`
+      UPDATE quotations
+      SET status = 'Rejected',
+          customer_notes = ?,
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).bind(reason, existing.id).run();
+
+    const updated = await c.env.DB.prepare('SELECT * FROM quotations WHERE id = ?').bind(existing.id).first<QuotationRow>();
+
+    return c.json({
+      success: true,
+      message: `Quotation ${existing.quotation_number} rejected.`,
+      quotation: updated,
+    });
+  } catch (err: unknown) {
+    return c.json({ success: false, message: String(err) }, 500);
+  }
+});
+
 // DELETE /api/quotations/:id
 quotationsApp.delete('/:id', async (c) => {
   const user = c.get('user');

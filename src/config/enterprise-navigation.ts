@@ -63,6 +63,7 @@ export const ENTERPRISE_NAV_ITEMS: EnterpriseNavItem[] = [
       { label: 'Customer', href: '/customers', iconName: 'Shield' },
       { label: 'Contact', href: '/customers/contacts', iconName: 'Contact' },
       { label: 'B2B Applications', href: '/customers/retailer-applications', iconName: 'Building2' },
+      { label: 'B2B Quotations', href: '/customers/b2b-quotations', iconName: 'FileCheck' },
     ],
   },
   {

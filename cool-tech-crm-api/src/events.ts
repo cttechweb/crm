@@ -132,6 +132,11 @@ eventsApp.post('/', async (c) => {
       return handleRetailerApplicationEvent(c, event, data, idempotencyKey, eventId);
     }
 
+    case 'quote.created':
+    case 'quote.updated': {
+      return handleQuoteEvent(c, event, data, idempotencyKey, eventId);
+    }
+
     default: {
       return c.json(
         {
@@ -226,7 +231,7 @@ async function handleRetailerApplicationEvent(
         `)
         .bind(eventId, existing.id)
         .run()
-        .catch(() => {});
+        .catch(() => { });
 
       return c.json(
         {
@@ -340,4 +345,159 @@ async function handleRetailerApplicationEvent(
       500
     );
   }
+}
+
+/**
+ * Handles 'quote.created' and 'quote.updated' event with duplicate prevention and D1 persistence
+ */
+async function handleQuoteEvent(
+  c: Context<{ Bindings: Env; Variables: AppVariables }>,
+  event: CrmInboundEvent,
+  data: any,
+  idempotencyKey: string,
+  eventId: string
+) {
+  const db = c.env.DB;
+  const quoteId = String(data.quote_id || event.entity_id || '').trim();
+  const userId = String(data.user_id || '').trim();
+  const customerName = String(data.customer_name || data.name || '').trim();
+  const companyName = String(data.company_name || data.company || customerName || 'Valued B2B Partner').trim();
+  const email = String(data.customer_email || data.email || '').trim().toLowerCase();
+  const phone = String(data.customer_phone || data.phone || '').trim();
+  const deliveryAddress = data.delivery_address || data.project_location || 'Abu Dhabi, UAE';
+  const projectDescription = data.project_description || data.notes || 'B2B Commercial Quotation Request';
+  const quoteDate = new Date().toISOString().split('T')[0];
+
+  if (!quoteId) {
+    return c.json({ success: false, error: 'Bad Request', message: 'Missing quote_id in data payload.' }, 400);
+  }
+
+  // Idempotency check: see if quote exists
+  const existing = await db
+    .prepare('SELECT id, quotation_number, status FROM quotations WHERE id = ? OR quotation_number = ? LIMIT 1')
+    .bind(quoteId, quoteId)
+    .first<{ id: string; quotation_number: string; status: string }>();
+
+  // Parse and calculate line items
+  const items: any[] = Array.isArray(data.products) ? data.products : (Array.isArray(data.items) ? data.items : []);
+  let subtotal = 0;
+  const processedItems = items.map((p: any, idx: number) => {
+    const qty = Number(p.quantity || p.qty || 1);
+    const unitPrice = Number(p.unitPrice || p.unit_price || p.price || 0);
+    const total = qty * unitPrice;
+    subtotal += total;
+    return {
+      id: `qitm_${Date.now()}_${idx}`,
+      productId: p.productId || p.product_id || null,
+      itemCode: p.itemCode || p.item_code || null,
+      description: p.productName || p.product_name || p.name || p.description || 'Equipment Item',
+      quantity: qty,
+      unitPrice: unitPrice,
+      totalAmount: total,
+      sortOrder: idx,
+    };
+  });
+
+  const vatRate = 5;
+  const vatAmount = subtotal * 0.05;
+  const totalAmount = subtotal + vatAmount;
+
+  if (existing) {
+    await db
+      .prepare(`
+        UPDATE quotations 
+        SET customer = COALESCE(?, customer),
+            contact_person = COALESCE(?, contact_person),
+            phone = COALESCE(?, phone),
+            email = COALESCE(?, email),
+            shipping_address = COALESCE(?, shipping_address),
+            updated_at = datetime('now')
+        WHERE id = ?
+      `)
+      .bind(companyName, customerName, phone, email, deliveryAddress, existing.id)
+      .run();
+
+    return c.json({
+      success: true,
+      status: 'idempotent_ok',
+      crm_record_id: existing.id,
+      quotation_number: existing.quotation_number,
+      quotation_status: existing.status,
+      message: 'Quotation already registered in CRM. Updated contact information.',
+    });
+  }
+
+  // Insert into quotations table
+  await db
+    .prepare(`
+      INSERT INTO quotations (
+        id, quotation_number, customer, contact_person, phone, email,
+        billing_address, shipping_address, subject, quote_date,
+        subtotal, discount_total, vat_rate, vat_amount, total_amount,
+        status, owner, assigned_to, payment_terms, delivery_terms, customer_notes,
+        created_at, updated_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, 0, ?, ?, ?,
+        'Pending CEO Approval', 'Muhammed Shamseer', 'Muhammed Shereef', '30 Days Net B2B Credit', 'Ex-Works Abu Dhabi / Free Delivery within UAE', ?,
+        datetime('now'), datetime('now')
+      )
+    `)
+    .bind(
+      quoteId,
+      quoteId,
+      companyName,
+      customerName,
+      phone,
+      email,
+      deliveryAddress,
+      deliveryAddress,
+      projectDescription,
+      quoteDate,
+      subtotal,
+      vatRate,
+      vatAmount,
+      totalAmount,
+      projectDescription
+    )
+    .run();
+
+  // Insert quotation items
+  for (const item of processedItems) {
+    await db
+      .prepare(`
+        INSERT INTO quotation_items (
+          id, quotation_id, product_id, item_code, description,
+          quantity, unit, unit_price, discount, vat_rate, vat_amount, total_amount, sort_order
+        ) VALUES (
+          ?, ?, ?, ?, ?,
+          ?, 'Pcs', ?, 0, 5, ?, ?, ?
+        )
+      `)
+      .bind(
+        item.id,
+        quoteId,
+        item.productId,
+        item.itemCode,
+        item.description,
+        item.quantity,
+        item.unitPrice,
+        item.totalAmount * 0.05,
+        item.totalAmount,
+        item.sortOrder
+      )
+      .run();
+  }
+
+  return c.json(
+    {
+      success: true,
+      crm_record_id: quoteId,
+      quotation_number: quoteId,
+      quotation_status: 'Pending CEO Approval',
+      message: 'Commercial quotation received. Assigned to CEO (Muhammed Shamseer) & COO (Muhammed Shereef) for executive review.',
+    },
+    201
+  );
 }
