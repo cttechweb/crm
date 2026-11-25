@@ -268,8 +268,8 @@ export function NavDropdown({ items, isOpen, onClose }: NavDropdownProps) {
                   </div>
                   {item.badge && (
                     <span className={cn(
-                      'text-[10px] px-1.5 py-0.5 rounded font-bold',
-                      isHighlighted ? 'bg-white text-[#2563EB]' : 'bg-blue-100 text-blue-700'
+                      'text-[10px] px-2 py-0.5 rounded-full font-extrabold shadow-2xs tracking-tight',
+                      isHighlighted ? 'bg-white text-rose-600 font-black' : 'bg-rose-600 text-white'
                     )}>
                       {item.badge}
                     </span>

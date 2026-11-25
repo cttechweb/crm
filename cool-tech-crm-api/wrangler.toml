@@ -7,6 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 FIREBASE_PROJECT_ID = "cool-tech-crm"
 ALLOWED_ORIGIN = "https://crm-kappa-vert.vercel.app"
 ECOMMERCE_API_URL = "https://cooltech-api-worker.ctauhweb.workers.dev"
+CRM_API_KEY = "cooltech_local_dev_secret_key_2026"
 
 [[d1_databases]]
 binding = "DB"

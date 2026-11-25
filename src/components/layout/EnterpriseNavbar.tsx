@@ -50,11 +50,13 @@ import {
   Upload,
   ArrowDownToLine,
   MessageSquare,
+  Building2,
 } from 'lucide-react';
 import { ENTERPRISE_NAV_ITEMS, MANAGER_NAV_ITEMS, EnterpriseNavItem } from '@/config/enterprise-navigation';
 import { NavDropdown } from '@/components/layout/NavDropdown';
 import { authMockService } from '@/services/authMockService';
 import { chatApiService } from '@/services/chatApiService';
+import { retailerApplicationApiService } from '@/services/retailerApplicationApiService';
 import { cn } from '@/lib/utils';
 
 const renderHeaderIcon = (name?: string, active: boolean = false) => {
@@ -104,6 +106,7 @@ const renderHeaderIcon = (name?: string, active: boolean = false) => {
     case 'Upload': return <Upload className={cls} />;
     case 'ArrowDownToLine': return <ArrowDownToLine className={cls} />;
     case 'MessageSquare': return <MessageSquare className={cls} />;
+    case 'Building2': return <Building2 className={cls} />;
     default: return <Hourglass className={cls} />;
   }
 };
@@ -200,6 +203,7 @@ export function EnterpriseNavbar() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
+  const [pendingRetailerAppsCount, setPendingRetailerAppsCount] = useState<number>(0);
   const navContainerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -221,6 +225,38 @@ export function EnterpriseNavbar() {
       clearInterval(interval);
     };
   }, [currentUser]);
+
+  // Live polling & event listener for pending B2B retailer applications
+  useEffect(() => {
+    let mounted = true;
+    const fetchPendingApplications = async () => {
+      try {
+        const res = await retailerApplicationApiService.getApplications({
+          status: 'pending',
+          limit: 1,
+        });
+        if (mounted && res && typeof res.total === 'number') {
+          setPendingRetailerAppsCount(res.total);
+        }
+      } catch {
+        // non-blocking
+      }
+    };
+
+    fetchPendingApplications();
+    const interval = setInterval(fetchPendingApplications, 15000);
+
+    const handleAppUpdated = () => {
+      void fetchPendingApplications();
+    };
+    window.addEventListener('crm_retailer_app_updated', handleAppUpdated);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+      window.removeEventListener('crm_retailer_app_updated', handleAppUpdated);
+    };
+  }, []);
 
   useEffect(() => {
     const syncUser = () => {
@@ -272,8 +308,35 @@ export function EnterpriseNavbar() {
     const isSuper = role === 'super_admin' || role === 'super admin' || (user.profileType || '').toLowerCase().includes('super admin');
     const isAdmin = role === 'admin' || Boolean(user.isAdmin) || (user.profileType || '').toLowerCase().includes('admin');
 
-    if (isSuper || isAdmin) {
-      return baseNavItems;
+    const badgeText = pendingRetailerAppsCount > 0
+      ? (pendingRetailerAppsCount > 99 ? '99+' : String(pendingRetailerAppsCount))
+      : undefined;
+
+    const applyBadges = (items: EnterpriseNavItem[]) => {
+      return items.map((navItem) => {
+        if (navItem.id === 'customers' || navItem.id === 'employee-customers') {
+          const updatedChildren = navItem.children?.map((child) => {
+            if (child.href === '/customers/retailer-applications') {
+              return {
+                ...child,
+                badge: badgeText,
+              };
+            }
+            return child;
+          });
+
+          return {
+            ...navItem,
+            badge: badgeText,
+            children: updatedChildren,
+          };
+        }
+        return navItem;
+      });
+    };
+
+    if (!user || isSuper || isAdmin) {
+      return applyBadges(baseNavItems);
     }
 
     const dept = (user.department || '').toLowerCase();
@@ -306,7 +369,7 @@ export function EnterpriseNavbar() {
         desig.includes('sales') ||
         pos.includes('sales'));
 
-    return baseNavItems.map((item) => {
+    const resolvedItems = baseNavItems.map((item) => {
       // For Sales Executives/Staff: customize Purchase dropdown to focus on Material Requests (MSRF) and catalog
       if (item.id === 'purchase' && isSalesEmployee) {
         return {
@@ -321,7 +384,9 @@ export function EnterpriseNavbar() {
       }
       return item;
     });
-  }, [currentUser]);
+
+    return applyBadges(resolvedItems);
+  }, [currentUser, pendingRetailerAppsCount]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

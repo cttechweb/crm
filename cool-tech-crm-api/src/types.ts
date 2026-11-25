@@ -39,6 +39,7 @@ export interface Env {
   ECOMMERCE_SERVICE?: Fetcher;
   ECOMMERCE_API_URL?: string;
   ENVIRONMENT?: string;
+  CRM_API_KEY?: string;
 }
 
 export interface CrmProductItem {
@@ -1385,3 +1386,53 @@ export interface ChatMessageReadRow {
   user_id: string;
   read_at: string;
 }
+
+export type RetailerApplicationStatus = 'pending' | 'under_review' | 'approved' | 'rejected';
+
+export interface RetailerApplicationRow {
+  id: string;
+  website_application_id: string;
+  website_user_id: string;
+  company_name: string;
+  legal_name: string | null;
+  trade_license_number: string;
+  tax_registration_number: string | null;
+  business_type: string | null;
+  emirate: string | null;
+  city: string | null;
+  address: string | null;
+  contact_person: string;
+  designation: string | null;
+  email: string;
+  phone: string;
+  whatsapp_number: string | null;
+  interested_categories: string | null;
+  annual_volume_estimate: string | null;
+  payment_terms_requested: string | null;
+  trade_license_url: string | null;
+  tax_certificate_url: string | null;
+  status: RetailerApplicationStatus;
+  rejection_reason: string | null;
+  review_notes: string | null;
+  reviewed_by_id: string | null;
+  reviewed_by_name: string | null;
+  reviewed_at: string | null;
+  customer_id: string | null;
+  idempotency_key: string | null;
+  last_event_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmInboundEvent<T = Record<string, any>> {
+  event_id: string;
+  event_type: string;
+  entity_type: string;
+  entity_id: string;
+  occurred_at: string;
+  source: string;
+  version: string;
+  idempotency_key?: string;
+  data: T;
+}
+

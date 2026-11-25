@@ -40,6 +40,8 @@ import {
 import { notificationsApp } from './notifications.ts';
 import { chatApp } from './chat.ts';
 import { ChatRoom } from './chatDurableObject.ts';
+import { eventsApp } from './events.ts';
+import { retailerApplicationsApp } from './retailerApplications.ts';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -429,6 +431,13 @@ app.route('/api/notifications', notificationsApp);
 
 // 14. Live Chat & Team Collaboration Endpoints
 app.route('/api/chat', chatApp);
+
+// 15. Inbound Events & Integration Endpoints (Protected by shared secret CRM_API_KEY)
+app.route('/api/v1/events', eventsApp);
+app.route('/api/events', eventsApp);
+
+// 16. B2B Retailer Applications Query Endpoints (Protected by authMiddleware)
+app.route('/api/retailer-applications', retailerApplicationsApp);
 
 // Global 404 handler
 app.notFound((c) => {

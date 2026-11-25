@@ -44,6 +44,8 @@ next-env.d.ts
 **/node_modules/
 .wrangler/
 **/.wrangler/
+.dev.vars
+**/.dev.vars
 
 # backups and patches
 backups/
