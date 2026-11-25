@@ -197,6 +197,73 @@ retailerApplicationsApp.get('/:id', async (c) => {
 });
 
 /**
+ * Helper to dispatch retailer approval or rejection to cooltechuae website backend
+ */
+async function dispatchStatusToEcommerce(
+  env: Env,
+  websiteAppId: string,
+  crmRecordId: string,
+  status: 'approved' | 'rejected',
+  notes: string | null
+): Promise<{ success: boolean; error?: string }> {
+  const payload = {
+    event: status === 'approved' ? 'retailer.application.approved' : 'retailer.application.rejected',
+    event_type: status === 'approved' ? 'retailer.application.approved' : 'retailer.application.rejected',
+    entity_id: websiteAppId,
+    crm_record_id: crmRecordId,
+    status,
+    notes,
+  };
+
+  const secret = env.CRM_API_KEY?.trim() || 'cooltech_local_dev_secret_key_2026';
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${secret}`,
+    'X-CRM-Signature': secret,
+  };
+
+  // 1. Try Cloudflare Service Binding first (fastest, direct worker-to-worker)
+  if (env.ECOMMERCE_SERVICE) {
+    try {
+      const res = await env.ECOMMERCE_SERVICE.fetch(
+        new Request('https://cooltech-api-worker/api/webhooks/crm', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(6000),
+        })
+      );
+      if (res.ok) {
+        return { success: true };
+      }
+    } catch (sbErr) {
+      console.warn('[CRM Retailer Applications] Service binding dispatch failed, falling back to HTTP:', sbErr);
+    }
+  }
+
+  // 2. HTTP Fallback to live public endpoint
+  try {
+    const ecomBaseUrl = env.ECOMMERCE_API_URL || 'https://cooltech-api-worker.ctauhweb.workers.dev';
+    const httpRes = await fetch(`${ecomBaseUrl.replace(/\/$/, '')}/api/webhooks/crm`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (httpRes.ok) {
+      return { success: true };
+    }
+    const errText = await httpRes.text().catch(() => '');
+    return { success: false, error: `HTTP ${httpRes.status}: ${errText}` };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[CRM Retailer Applications] Error dispatching status to e-commerce worker:', msg);
+    return { success: false, error: msg };
+  }
+}
+
+/**
  * 3. POST /api/retailer-applications/:id/approve
  * Approves a retailer application, records reviewer details, and sets status to 'approved'
  */
@@ -220,9 +287,9 @@ retailerApplicationsApp.post('/:id/approve', async (c) => {
 
   try {
     const existing = await db
-      .prepare('SELECT id, status FROM retailer_applications WHERE id = ? OR website_application_id = ? LIMIT 1')
+      .prepare('SELECT id, website_application_id, status FROM retailer_applications WHERE id = ? OR website_application_id = ? LIMIT 1')
       .bind(id, id)
-      .first<{ id: string; status: string }>();
+      .first<{ id: string; website_application_id: string; status: string }>();
 
     if (!existing) {
       return c.json({ success: false, error: 'Not Found', message: `Application '${id}' not found.` }, 404);
@@ -245,6 +312,10 @@ retailerApplicationsApp.post('/:id/approve', async (c) => {
       .bind(reviewerId, reviewerName, reviewNotes, existing.id)
       .run();
 
+    // Outbound Dispatch: Synchronize approved status to website backend (cooltech-api-worker)
+    const targetWebsiteAppId = existing.website_application_id || existing.id;
+    await dispatchStatusToEcommerce(c.env, targetWebsiteAppId, existing.id, 'approved', reviewNotes);
+
     const updated = await db
       .prepare('SELECT * FROM retailer_applications WHERE id = ? LIMIT 1')
       .bind(existing.id)
@@ -252,7 +323,7 @@ retailerApplicationsApp.post('/:id/approve', async (c) => {
 
     return c.json({
       success: true,
-      message: 'Retailer application successfully approved.',
+      message: 'Retailer application successfully approved and synchronized with website.',
       application: formatRetailerApplication(updated),
     });
   } catch (err: unknown) {
@@ -291,9 +362,9 @@ retailerApplicationsApp.post('/:id/reject', async (c) => {
 
   try {
     const existing = await db
-      .prepare('SELECT id, status FROM retailer_applications WHERE id = ? OR website_application_id = ? LIMIT 1')
+      .prepare('SELECT id, website_application_id, status FROM retailer_applications WHERE id = ? OR website_application_id = ? LIMIT 1')
       .bind(id, id)
-      .first<{ id: string; status: string }>();
+      .first<{ id: string; website_application_id: string; status: string }>();
 
     if (!existing) {
       return c.json({ success: false, error: 'Not Found', message: `Application '${id}' not found.` }, 404);
@@ -317,6 +388,10 @@ retailerApplicationsApp.post('/:id/reject', async (c) => {
       .bind(reason, reviewerId, reviewerName, reviewNotes, existing.id)
       .run();
 
+    // Outbound Dispatch: Synchronize rejected status to website backend (cooltech-api-worker)
+    const targetWebsiteAppId = existing.website_application_id || existing.id;
+    await dispatchStatusToEcommerce(c.env, targetWebsiteAppId, existing.id, 'rejected', reason);
+
     const updated = await db
       .prepare('SELECT * FROM retailer_applications WHERE id = ? LIMIT 1')
       .bind(existing.id)
@@ -324,7 +399,7 @@ retailerApplicationsApp.post('/:id/reject', async (c) => {
 
     return c.json({
       success: true,
-      message: 'Retailer application rejected.',
+      message: 'Retailer application rejected and synchronized with website.',
       application: formatRetailerApplication(updated),
     });
   } catch (err: unknown) {
