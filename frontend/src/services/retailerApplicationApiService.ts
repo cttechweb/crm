@@ -205,4 +205,29 @@ export const retailerApplicationApiService = {
 
     return response.application;
   },
+
+  /**
+   * Permanently deletes a retailer application by ID
+   */
+  async deleteApplication(id: string): Promise<boolean> {
+    const cleanId = encodeURIComponent(id.trim());
+    const response = await apiClient.delete<{ success: boolean; message?: string }>(
+      `/api/retailer-applications/${cleanId}`,
+      {
+        requireAuth: true,
+        timeoutMs: 15000,
+      }
+    );
+
+    if (!response || !response.success) {
+      throw new ApiError(
+        response?.message || `Failed to delete retailer application "${id}".`,
+        500,
+        response,
+        `/api/retailer-applications/${cleanId}`
+      );
+    }
+
+    return true;
+  },
 };

@@ -8,17 +8,10 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  Users,
-  Target,
   AlertCircle,
   CheckCircle2,
   ShieldCheck,
   Sparkles,
-  TrendingUp,
-  Activity,
-  DollarSign,
-  Briefcase,
-  Zap,
 } from 'lucide-react';
 import { authMockService } from '@/services/authMockService';
 import { sendPasswordReset } from '@/services/firebaseAuthService';
@@ -38,7 +31,6 @@ export default function LoginPage() {
   const [resetEmail, setResetEmail] = useState('');
   const [isSendingReset, setIsSendingReset] = useState(false);
   const [resetFeedback, setResetFeedback] = useState<{ success?: string; error?: string } | null>(null);
-  const [activePreviewTab, setActivePreviewTab] = useState<'overview' | 'sales' | 'pipeline'>('overview');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,246 +81,66 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen lg:h-screen lg:max-h-screen w-full flex flex-col lg:flex-row bg-[#F4FAFE] select-none font-sans overflow-y-auto lg:overflow-hidden">
       {/* ========================================================= */}
-      {/* LEFT HALF: Executive Enterprise CRM Dashboard Console     */}
+      {/* LEFT HALF: Executive Enterprise CRM Showcase Panel        */}
       {/* ========================================================= */}
-      <div className="hidden lg:flex relative w-full lg:w-[52%] xl:w-[50%] h-full max-h-screen bg-gradient-to-br from-[#0284C7] via-[#0369A1] to-[#0A2540] text-white p-5 sm:p-7 xl:p-8 flex-col justify-between overflow-hidden shadow-2xl z-10">
-        {/* Ambient Background Rings */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-sky-300/20 blur-3xl" />
-          <div className="absolute top-1/4 -right-20 w-[460px] h-[460px] rounded-full border-[55px] border-white/10 blur-[1px]" />
-          <div className="absolute top-1/3 -right-6 w-[520px] h-[520px] rounded-full bg-sky-400/10 blur-2xl" />
-          <div className="absolute -bottom-16 left-12 w-72 h-72 rounded-full bg-sky-300/15 blur-2xl" />
-        </div>
-
-        {/* 1. TOP BRAND HEADER */}
-        <div className="relative z-10 flex-shrink-0 flex items-center justify-between">
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            {/* Vector Cool Technologies C-wave Emblem */}
-            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-white/95 p-1 shadow-md flex items-center justify-center backdrop-blur-sm flex-shrink-0">
-              <svg viewBox="0 0 80 80" className="w-7 h-7 sm:w-9 sm:h-9" xmlns="http://www.w3.org/2000/svg">
-                <path d="M58 12 A32 32 0 0 0 18 40" fill="none" stroke="#00AEEF" strokeWidth="6.5" strokeLinecap="round" />
-                <path d="M53 19 A24 24 0 0 0 22 40" fill="none" stroke="#00AEEF" strokeWidth="6" strokeLinecap="round" />
-                <path d="M48 26 A16 16 0 0 0 26 40" fill="none" stroke="#00AEEF" strokeWidth="5" strokeLinecap="round" />
-                <path d="M18 40 A32 32 0 0 0 58 68" fill="none" stroke="#0F172A" strokeWidth="6.5" strokeLinecap="round" />
-                <path d="M22 40 A24 24 0 0 0 53 61" fill="none" stroke="#0F172A" strokeWidth="6" strokeLinecap="round" />
-                <path d="M26 40 A16 16 0 0 0 48 54" fill="none" stroke="#0F172A" strokeWidth="5" strokeLinecap="round" />
-              </svg>
-            </div>
-
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1.5 leading-none">
-                <span className="text-lg sm:text-xl font-black tracking-tight text-white drop-shadow-sm">
-                  COOL
-                </span>
-                <span className="text-[10px] sm:text-xs font-bold tracking-widest uppercase text-sky-200">
-                  TECHNOLOGIES
-                </span>
-              </div>
-              <span className="text-[8px] sm:text-[9px] text-sky-200/90 font-medium tracking-widest uppercase mt-0.5">
-                the science of cooling
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 sm:gap-2 bg-white/10 backdrop-blur-md border border-white/15 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-[11px] text-sky-100">
-            <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="font-semibold">Enterprise ERP v4.8</span>
-          </div>
-        </div>
-
-        {/* 2. HEADLINE & VALUE PROP */}
-        <div className="relative z-10 my-3 sm:my-3.5 max-w-xl">
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight leading-tight drop-shadow-sm">
-            Smart CRM for Smarter Business
-          </h1>
-          <p className="mt-1 text-xs sm:text-sm text-sky-100/90 font-normal leading-relaxed">
-            Enterprise command center for Leads, Sales, Commercial HVAC Service Operations &amp; Analytics.
-          </p>
-        </div>
-
-        {/* 3. EXECUTIVE CRM DASHBOARD PREVIEW */}
-        <div className="relative z-10 w-full bg-white rounded-2xl sm:rounded-3xl border border-white/80 p-3 sm:p-4 shadow-xl shadow-blue-950/25 text-slate-800 font-sans my-2 lg:my-auto">
-          {/* Dashboard Model Header Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 sm:pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <div className="flex gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block" />
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" />
-              </div>
-              <span className="text-xs font-bold text-slate-900 tracking-wide ml-1">
-                Executive Control Hub
-              </span>
-            </div>
-
-            {/* Interactive Preview Tabs */}
-            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[9px] sm:text-[10px] font-semibold overflow-x-auto max-w-full">
-              <button
-                type="button"
-                onClick={() => setActivePreviewTab('overview')}
-                className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${activePreviewTab === 'overview'
-                  ? 'bg-[#0284C7] text-white font-bold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-                  }`}
-              >
-                Overview
-              </button>
-              <button
-                type="button"
-                onClick={() => setActivePreviewTab('sales')}
-                className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${activePreviewTab === 'sales'
-                  ? 'bg-[#0284C7] text-white font-bold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-                  }`}
-              >
-                Sales Funnel
-              </button>
-              <button
-                type="button"
-                onClick={() => setActivePreviewTab('pipeline')}
-                className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${activePreviewTab === 'pipeline'
-                  ? 'bg-[#0284C7] text-white font-bold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-                  }`}
-              >
-                Recent Deals
-              </button>
-            </div>
-          </div>
-
-          {/* 4 White Executive KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3">
-            {/* KPI 1 */}
-            <div className="bg-[#F8FAFC] rounded-xl p-2.5 border border-slate-200/80 shadow-2xs hover:shadow-xs transition-all">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Total Leads</span>
-                <Users className="w-3.5 h-3.5 text-sky-600" />
-              </div>
-              <p className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight">742</p>
-              <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-bold mt-0.5">
-                <TrendingUp className="w-3 h-3" />
-                <span>+12.4% this mo</span>
-              </div>
-            </div>
-
-            {/* KPI 2 */}
-            <div className="bg-[#F8FAFC] rounded-xl p-2.5 border border-slate-200/80 shadow-2xs hover:shadow-xs transition-all">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Active Deals</span>
-                <Target className="w-3.5 h-3.5 text-emerald-600" />
-              </div>
-              <p className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight">186</p>
-              <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-bold mt-0.5">
-                <TrendingUp className="w-3 h-3" />
-                <span>84% Win Rate</span>
-              </div>
-            </div>
-
-            {/* KPI 3 */}
-            <div className="bg-[#F8FAFC] rounded-xl p-2.5 border border-slate-200/80 shadow-2xs hover:shadow-xs transition-all">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Revenue</span>
-                <DollarSign className="w-3.5 h-3.5 text-amber-600" />
-              </div>
-              <p className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight">AED 2.84M</p>
-              <div className="flex items-center gap-1 text-[10px] text-sky-600 font-bold mt-0.5">
-                <span>+20% vs Target</span>
-              </div>
-            </div>
-
-            {/* KPI 4 */}
-            <div className="bg-[#F8FAFC] rounded-xl p-2.5 border border-slate-200/80 shadow-2xs hover:shadow-xs transition-all">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Customers</span>
-                <Briefcase className="w-3.5 h-3.5 text-purple-600" />
-              </div>
-              <p className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight">1,248</p>
-              <div className="flex items-center gap-1 text-[10px] text-purple-600 font-bold mt-0.5">
-                <span>99.4% SLA Score</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Dynamic Content Panel */}
-          <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {/* Column 1: Sales Performance Bar Visualizer */}
-            <div className="bg-[#F8FAFC] rounded-xl p-2.5 border border-slate-200/80 flex flex-col justify-between">
-              <div className="flex items-center justify-between text-[11px] font-bold text-slate-800 mb-1.5">
-                <span className="flex items-center gap-1.5">
-                  <Activity className="w-3.5 h-3.5 text-sky-600" />
-                  <span>Sales Revenue Trends</span>
-                </span>
-                <span className="text-[10px] text-sky-600 font-semibold">Q1-Q3 2026</span>
+      <div className="hidden lg:flex relative w-full lg:w-[52%] xl:w-[50%] h-full max-h-screen bg-[#0284C7] flex-col justify-between overflow-hidden shadow-2xl z-10">
+        {/* 1. TOP BRAND HEADER & CAPTION */}
+        <div className="relative z-20 px-8 pt-8 pb-3 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-white p-1 shadow-md flex items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 80 80" className="w-9 h-9" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M58 12 A32 32 0 0 0 18 40" fill="none" stroke="#00AEEF" strokeWidth="6.5" strokeLinecap="round" />
+                  <path d="M53 19 A24 24 0 0 0 22 40" fill="none" stroke="#00AEEF" strokeWidth="6" strokeLinecap="round" />
+                  <path d="M48 26 A16 16 0 0 0 26 40" fill="none" stroke="#00AEEF" strokeWidth="5" strokeLinecap="round" />
+                  <path d="M18 40 A32 32 0 0 0 58 68" fill="none" stroke="#0F172A" strokeWidth="6.5" strokeLinecap="round" />
+                  <path d="M22 40 A24 24 0 0 0 53 61" fill="none" stroke="#0F172A" strokeWidth="6" strokeLinecap="round" />
+                  <path d="M26 40 A16 16 0 0 0 48 54" fill="none" stroke="#0F172A" strokeWidth="5" strokeLinecap="round" />
+                </svg>
               </div>
 
-              {/* Bar Chart */}
-              <div className="h-16 flex items-end justify-between gap-1.5 pt-1 px-1">
-                {[
-                  { m: 'Jan', h: 40, v: '140K' },
-                  { m: 'Feb', h: 60, v: '180K' },
-                  { m: 'Mar', h: 50, v: '160K' },
-                  { m: 'Apr', h: 80, v: '240K' },
-                  { m: 'May', h: 65, v: '200K' },
-                  { m: 'Jun', h: 95, v: '280K' },
-                  { m: 'Jul', h: 85, v: '260K' },
-                ].map((bar, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
-                    <div className="w-full bg-slate-200/80 rounded-t-sm h-16 flex items-end">
-                      <div
-                        className="w-full bg-gradient-to-t from-[#0284C7] to-sky-400 rounded-t-sm group-hover:brightness-110 transition-all shadow-xs"
-                        style={{ height: `${bar.h}%` }}
-                      />
-                    </div>
-                    <span className="text-[8px] text-slate-500 font-semibold">{bar.m}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Column 2: Recent Live Enterprise Deal Stream */}
-            <div className="bg-[#F8FAFC] rounded-xl p-2.5 border border-slate-200/80 flex flex-col justify-between">
-              <div className="flex items-center justify-between text-[11px] font-bold text-slate-800 mb-1.5">
-                <span className="flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Recent Pipeline Activities</span>
-                </span>
-                <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
-                  Live
-                </span>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between bg-white border border-slate-200/70 px-2 py-1 rounded-lg text-[10px] shadow-2xs">
-                  <div className="flex flex-col">
-                    <span className="font-bold text-slate-900 leading-tight">Lumina Health Systems</span>
-                    <span className="text-[9px] text-slate-500">Commercial HVAC Cooling • Quote Approved</span>
-                  </div>
-                  <span className="font-bold text-emerald-600">AED 145K</span>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5 leading-none">
+                  <span className="text-xl font-black tracking-tight text-white drop-shadow-sm">
+                    COOL
+                  </span>
+                  <span className="text-xs font-bold tracking-widest uppercase text-sky-200">
+                    TECHNOLOGIES
+                  </span>
                 </div>
-
-                <div className="flex items-center justify-between bg-white border border-slate-200/70 px-2 py-1 rounded-lg text-[10px] shadow-2xs">
-                  <div className="flex flex-col">
-                    <span className="font-bold text-slate-900 leading-tight">Apex Cooling Towers</span>
-                    <span className="text-[9px] text-slate-500">Chiller Plant Maintenance • Order Won</span>
-                  </div>
-                  <span className="font-bold text-sky-600">AED 82K</span>
-                </div>
-
-                <div className="flex items-center justify-between bg-white border border-slate-200/70 px-2 py-1 rounded-lg text-[10px] shadow-2xs">
-                  <div className="flex flex-col">
-                    <span className="font-bold text-slate-900 leading-tight">Metro Infra Corp</span>
-                    <span className="text-[9px] text-slate-500">Industrial VRF Units • In Proposal</span>
-                  </div>
-                  <span className="font-bold text-amber-600">AED 220K</span>
-                </div>
+                <span className="text-[9px] text-sky-200/90 font-medium tracking-widest uppercase mt-0.5">
+                  the science of cooling
+                </span>
               </div>
             </div>
           </div>
+
+          {/* Headline & Value Proposition (The Caption) */}
+          <div className="mt-5 max-w-xl">
+            <h1 className="text-2xl sm:text-3xl xl:text-4xl font-black text-white tracking-tight leading-tight drop-shadow-sm">
+              Smart CRM for Smarter Business
+            </h1>
+            <p className="mt-1.5 text-xs sm:text-sm text-sky-100/90 font-medium leading-relaxed">
+              Enterprise command center for Leads, Sales, Commercial HVAC Service Operations &amp; Analytics.
+            </p>
+          </div>
         </div>
 
-        {/* 4. BOTTOM ENTERPRISE SECURITY */}
-        <div className="relative z-10 flex items-center justify-between text-[10px] text-sky-200/80 pt-2 border-t border-white/10">
-          <span className="flex items-center gap-1">
+        {/* 2. FULL-BLEED HEADQUARTERS BUILDING PHOTO */}
+        <div className="relative flex-1 w-full overflow-hidden flex items-end">
+          <img
+            src="/login-building.jpg"
+            alt="Cool Technologies Headquarters"
+            className="w-full h-full object-cover object-bottom"
+          />
+          {/* Subtle gradient blending sky into top header */}
+          <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#0284C7] to-transparent pointer-events-none" />
+        </div>
+
+        {/* 3. BOTTOM ENTERPRISE SECURITY FOOTER */}
+        <div className="relative z-20 h-10 bg-[#002B49]/80 backdrop-blur-xs flex items-center justify-between px-8 text-[11px] text-sky-200/90 border-t border-white/10 flex-shrink-0">
+          <span className="flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-sky-300" />
             <span>Role-Based Protected Workspace</span>
           </span>

@@ -640,6 +640,89 @@ quotationsApp.put('/:id', async (c) => {
   }
 });
 
+/**
+ * Helper to dispatch quotation approval or decline to cooltechuae website backend
+ * and trigger customer-facing notification / email delivery.
+ */
+async function dispatchQuotationStatusToEcommerce(
+  env: Env,
+  quotation: QuotationRow,
+  status: 'Approved' | 'Rejected',
+  details: {
+    total_amount?: number;
+    payment_terms?: string;
+    notes?: string;
+    reason?: string;
+    reviewer?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const payload = {
+    event: status === 'Approved' ? 'b2b.quotation.approved' : 'b2b.quotation.rejected',
+    event_type: status === 'Approved' ? 'b2b.quotation.approved' : 'b2b.quotation.rejected',
+    quotation_id: quotation.id,
+    quotation_number: quotation.quotation_number,
+    customer: quotation.customer,
+    contact_person: quotation.contact_person,
+    email: quotation.email,
+    phone: quotation.phone,
+    shipping_address: quotation.shipping_address,
+    status,
+    total_amount: details.total_amount,
+    payment_terms: details.payment_terms,
+    executive_notes: details.notes,
+    reason: details.reason,
+    reviewer: details.reviewer,
+    timestamp: new Date().toISOString(),
+  };
+
+  const secret = env.CRM_API_KEY?.trim() || 'cooltech_local_dev_secret_key_2026';
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${secret}`,
+    'X-CRM-Signature': secret,
+  };
+
+  // 1. Try Cloudflare Service Binding first
+  if (env.ECOMMERCE_SERVICE) {
+    try {
+      const res = await env.ECOMMERCE_SERVICE.fetch(
+        new Request('https://cooltech-api-worker/api/webhooks/crm', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(6000),
+        })
+      );
+      if (res.ok) {
+        return { success: true };
+      }
+    } catch (sbErr) {
+      console.warn('[CRM Quotations] Service binding dispatch failed, falling back to HTTP:', sbErr);
+    }
+  }
+
+  // 2. HTTP Fallback to live public endpoint
+  try {
+    const ecomBaseUrl = env.ECOMMERCE_API_URL || 'https://cooltech-api-worker.ctauhweb.workers.dev';
+    const httpRes = await fetch(`${ecomBaseUrl.replace(/\/$/, '')}/api/webhooks/crm`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (httpRes.ok) {
+      return { success: true };
+    }
+    const errText = await httpRes.text().catch(() => '');
+    return { success: false, error: `HTTP ${httpRes.status}: ${errText}` };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[CRM Quotations] Failed to dispatch quotation status to ecommerce:', msg);
+    return { success: false, error: msg };
+  }
+}
+
 // POST /api/quotations/:id/approve - CEO / COO Executive Sign-off
 quotationsApp.post('/:id/approve', async (c) => {
   const user = c.get('user');
@@ -671,6 +754,30 @@ quotationsApp.post('/:id/approve', async (c) => {
     const updatedItems = await c.env.DB.prepare(
       'SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC'
     ).bind(existing.id).all<QuotationItemRow>();
+
+    // 1. Internal CRM Notification for Sales, CEO, and Management
+    await createSystemNotification(c.env.DB, {
+      title: `Quotation Approved: ${existing.quotation_number}`,
+      message: `Quotation for ${existing.customer} was officially approved by ${user.full_name || 'CEO'} for AED ${approvedPrice.toLocaleString()} (${paymentTerms}).`,
+      type: 'approval',
+      linkUrl: `/customers/b2b-quotations/${existing.id}`,
+      metadata: {
+        quotationId: existing.id,
+        quotationNumber: existing.quotation_number,
+        customer: existing.customer,
+        approvedPrice,
+        paymentTerms,
+        reviewer: user.full_name || 'CEO',
+      },
+    }).catch((err) => console.warn('[Quotation Approval] System notification error:', err));
+
+    // 2. Outbound Customer & Website Notification
+    await dispatchQuotationStatusToEcommerce(c.env, existing, 'Approved', {
+      total_amount: approvedPrice,
+      payment_terms: paymentTerms,
+      notes: executiveNotes,
+      reviewer: user.full_name || 'CEO',
+    });
 
     return c.json({
       success: true,
@@ -707,6 +814,27 @@ quotationsApp.post('/:id/reject', async (c) => {
 
     const updated = await c.env.DB.prepare('SELECT * FROM quotations WHERE id = ?').bind(existing.id).first<QuotationRow>();
 
+    // 1. Internal CRM Notification
+    await createSystemNotification(c.env.DB, {
+      title: `Quotation Declined: ${existing.quotation_number}`,
+      message: `Quotation for ${existing.customer} was declined by ${user.full_name || 'CEO'}. Reason: ${reason}`,
+      type: 'closure',
+      linkUrl: `/customers/b2b-quotations/${existing.id}`,
+      metadata: {
+        quotationId: existing.id,
+        quotationNumber: existing.quotation_number,
+        customer: existing.customer,
+        reason,
+        reviewer: user.full_name || 'CEO',
+      },
+    }).catch((err) => console.warn('[Quotation Rejection] System notification error:', err));
+
+    // 2. Outbound Customer & Website Notification
+    await dispatchQuotationStatusToEcommerce(c.env, existing, 'Rejected', {
+      reason,
+      reviewer: user.full_name || 'CEO',
+    });
+
     return c.json({
       success: true,
       message: `Quotation ${existing.quotation_number} rejected.`,
@@ -729,8 +857,8 @@ quotationsApp.delete('/:id', async (c) => {
   try {
     await c.env.DB.prepare(`
       UPDATE quotations SET is_deleted = 1, deleted_at = datetime('now'), deleted_by_id = ?
-      WHERE id = ?
-    `).bind(user.id, id).run();
+      WHERE id = ? OR quotation_number = ?
+    `).bind(user?.id || 'usr_superadmin_001', id, id).run();
 
     return c.json({ success: true, message: 'Quotation deleted' });
   } catch (err: unknown) {

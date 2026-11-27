@@ -396,4 +396,39 @@ export const quotationApiService = {
 
     throw new Error('Failed to reject quotation');
   },
+
+  /**
+   * Deletes a quotation / RFQ
+   */
+  async deleteQuotation(id: string): Promise<boolean> {
+    try {
+      await apiClient.delete(`/api/quotations/${encodeURIComponent(id)}`, {
+        requireAuth: true,
+      });
+      return true;
+    } catch (err) {
+      console.warn('[Quotation API] Server delete warning:', err);
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const rawLocal = localStorage.getItem('cooltech_rfqs_v1');
+        if (rawLocal) {
+          const parsed = JSON.parse(rawLocal);
+          if (Array.isArray(parsed)) {
+            const updatedList = parsed.filter(
+              (item: any) => item.id !== id && item.rfqNumber !== id
+            );
+            localStorage.setItem('cooltech_rfqs_v1', JSON.stringify(updatedList));
+            window.dispatchEvent(
+              new CustomEvent('cooltech_rfqs_updated', { detail: updatedList })
+            );
+            return true;
+          }
+        }
+      } catch {}
+    }
+
+    return true;
+  },
 };

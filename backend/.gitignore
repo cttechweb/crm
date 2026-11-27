@@ -1,0 +1,9 @@
+# Cloudflare backend ignore rules
+node_modules/
+.wrangler/
+.dev.vars
+backups/
+*.db
+*.sqlite
+*.sqlite-*
+*.log

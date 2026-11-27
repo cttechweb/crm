@@ -39,15 +39,23 @@ For the complete architectural blueprint, workflow diagrams, RBAC hierarchies, m
 
 ## 🛠️ Quick Start
 
+This project is simply structured into `frontend/` and `backend/`:
+
+### Frontend (Next.js 15 UI):
 ```bash
-# Install dependencies
-npm install
-
-# Run development server
+cd frontend
 npm run dev
-
-# Run TypeScript compiler check
-npx tsc --noEmit
+# Running on http://localhost:3000
 ```
 
-The application runs on `http://localhost:3000`.
+### Backend (Cloudflare Workers API):
+```bash
+cd backend
+npx wrangler dev
+```
+
+From the root directory, you can also run:
+```bash
+npm run dev:frontend   # Starts frontend
+npm run dev:backend    # Starts backend
+```

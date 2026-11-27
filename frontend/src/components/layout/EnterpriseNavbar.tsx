@@ -57,6 +57,7 @@ import { NavDropdown } from '@/components/layout/NavDropdown';
 import { authMockService } from '@/services/authMockService';
 import { chatApiService } from '@/services/chatApiService';
 import { retailerApplicationApiService } from '@/services/retailerApplicationApiService';
+import { quotationApiService } from '@/services/quotationApiService';
 import { cn } from '@/lib/utils';
 
 const renderHeaderIcon = (name?: string, active: boolean = false) => {
@@ -204,6 +205,7 @@ export function EnterpriseNavbar() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
   const [pendingRetailerAppsCount, setPendingRetailerAppsCount] = useState<number>(0);
+  const [pendingQuotationsCount, setPendingQuotationsCount] = useState<number>(0);
   const navContainerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -258,6 +260,38 @@ export function EnterpriseNavbar() {
     };
   }, []);
 
+  // Live polling & event listener for pending B2B quotations
+  useEffect(() => {
+    let mounted = true;
+    const fetchPendingQuotations = async () => {
+      try {
+        const res = await quotationApiService.getQuotations({ limit: 100 });
+        if (mounted && res && Array.isArray(res.quotations)) {
+          const count = res.quotations.filter(
+            (q) => q.status === 'Pending CEO Approval' || q.status === 'Pending' || q.status === 'Draft'
+          ).length;
+          setPendingQuotationsCount(count);
+        }
+      } catch {
+        // non-blocking
+      }
+    };
+
+    fetchPendingQuotations();
+    const interval = setInterval(fetchPendingQuotations, 15000);
+
+    const handleQuoteUpdated = () => {
+      void fetchPendingQuotations();
+    };
+    window.addEventListener('crm_quotation_updated', handleQuoteUpdated);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+      window.removeEventListener('crm_quotation_updated', handleQuoteUpdated);
+    };
+  }, []);
+
   useEffect(() => {
     const syncUser = () => {
       const user = authMockService.getCurrentUser();
@@ -308,8 +342,17 @@ export function EnterpriseNavbar() {
     const isSuper = role === 'super_admin' || role === 'super admin' || (user.profileType || '').toLowerCase().includes('super admin');
     const isAdmin = role === 'admin' || Boolean(user.isAdmin) || (user.profileType || '').toLowerCase().includes('admin');
 
-    const badgeText = pendingRetailerAppsCount > 0
+    const totalPending = pendingRetailerAppsCount + pendingQuotationsCount;
+    const parentBadgeText = totalPending > 0
+      ? (totalPending > 99 ? '99+' : String(totalPending))
+      : undefined;
+
+    const retailerBadgeText = pendingRetailerAppsCount > 0
       ? (pendingRetailerAppsCount > 99 ? '99+' : String(pendingRetailerAppsCount))
+      : undefined;
+
+    const quotationBadgeText = pendingQuotationsCount > 0
+      ? (pendingQuotationsCount > 99 ? '99+' : String(pendingQuotationsCount))
       : undefined;
 
     const applyBadges = (items: EnterpriseNavItem[]) => {
@@ -319,7 +362,13 @@ export function EnterpriseNavbar() {
             if (child.href === '/customers/retailer-applications') {
               return {
                 ...child,
-                badge: badgeText,
+                badge: retailerBadgeText,
+              };
+            }
+            if (child.href === '/customers/b2b-quotations') {
+              return {
+                ...child,
+                badge: quotationBadgeText,
               };
             }
             return child;
@@ -327,7 +376,7 @@ export function EnterpriseNavbar() {
 
           return {
             ...navItem,
-            badge: badgeText,
+            badge: parentBadgeText,
             children: updatedChildren,
           };
         }
@@ -386,7 +435,7 @@ export function EnterpriseNavbar() {
     });
 
     return applyBadges(resolvedItems);
-  }, [currentUser, pendingRetailerAppsCount]);
+  }, [currentUser, pendingRetailerAppsCount, pendingQuotationsCount]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

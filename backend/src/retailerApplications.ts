@@ -14,6 +14,7 @@
 import { Hono } from 'hono';
 import type { Env, AppVariables, RetailerApplicationRow } from './types.ts';
 import { authMiddleware } from './auth.ts';
+import { createSystemNotification } from './notifications.ts';
 
 export const retailerApplicationsApp = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -321,6 +322,20 @@ retailerApplicationsApp.post('/:id/approve', async (c) => {
       .bind(existing.id)
       .first<any>();
 
+    // Internal CRM Notification
+    await createSystemNotification(c.env.DB, {
+      title: `Retailer Approved: ${updated?.company_name || 'Retailer Account'}`,
+      message: `B2B Retailer Application for ${updated?.company_name || 'Retailer'} (Lic: ${updated?.trade_license_number || 'N/A'}) was approved by ${reviewerName}.`,
+      type: 'approval',
+      linkUrl: `/customers/retailer-applications/${existing.id}`,
+      metadata: {
+        applicationId: existing.id,
+        companyName: updated?.company_name,
+        tradeLicenseNumber: updated?.trade_license_number,
+        reviewer: reviewerName,
+      },
+    }).catch((err) => console.warn('[Retailer Approval] System notification error:', err));
+
     return c.json({
       success: true,
       message: 'Retailer application successfully approved and synchronized with website.',
@@ -397,6 +412,20 @@ retailerApplicationsApp.post('/:id/reject', async (c) => {
       .bind(existing.id)
       .first<any>();
 
+    // Internal CRM Notification
+    await createSystemNotification(c.env.DB, {
+      title: `Retailer Rejected: ${updated?.company_name || 'Retailer Account'}`,
+      message: `B2B Retailer Application for ${updated?.company_name || 'Retailer'} was rejected by ${reviewerName}. Reason: ${reason}`,
+      type: 'closure',
+      linkUrl: `/customers/retailer-applications/${existing.id}`,
+      metadata: {
+        applicationId: existing.id,
+        companyName: updated?.company_name,
+        reason,
+        reviewer: reviewerName,
+      },
+    }).catch((err) => console.warn('[Retailer Rejection] System notification error:', err));
+
     return c.json({
       success: true,
       message: 'Retailer application rejected and synchronized with website.',
@@ -406,5 +435,50 @@ retailerApplicationsApp.post('/:id/reject', async (c) => {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[CRM Retailer Applications] Reject error for '${id}':`, msg);
     return c.json({ success: false, error: 'Database Error', message: 'Failed to reject retailer application.' }, 500);
+  }
+});
+
+/**
+ * 5. DELETE /api/retailer-applications/:id
+ * Permanently deletes a retailer application by ID or website_application_id
+ */
+retailerApplicationsApp.delete('/:id', async (c) => {
+  const db = c.env.DB;
+  const user = c.get('user');
+  const id = c.req.param('id')?.trim();
+
+  if (!id) {
+    return c.json({ success: false, error: 'Bad Request', message: 'Application ID is required.' }, 400);
+  }
+
+  // Security: only Super Admin, Admin, or Manager can delete
+  if (user && user.role === 'EMPLOYEE') {
+    return c.json({ success: false, error: 'Forbidden', message: 'Employees cannot delete retailer applications.' }, 403);
+  }
+
+  try {
+    const existing = await db
+      .prepare('SELECT id, website_application_id FROM retailer_applications WHERE id = ? OR website_application_id = ? LIMIT 1')
+      .bind(id, id)
+      .first<{ id: string; website_application_id: string }>();
+
+    if (!existing) {
+      return c.json({ success: false, error: 'Not Found', message: `Application '${id}' not found.` }, 404);
+    }
+
+    await db
+      .prepare('DELETE FROM retailer_applications WHERE id = ?')
+      .bind(existing.id)
+      .run();
+
+    return c.json({
+      success: true,
+      message: 'Retailer application successfully deleted.',
+      deletedId: existing.id,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[CRM Retailer Applications] Delete error for '${id}':`, msg);
+    return c.json({ success: false, error: 'Database Error', message: 'Failed to delete retailer application.' }, 500);
   }
 });

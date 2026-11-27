@@ -30,17 +30,7 @@ export function validateAndGetBaseUrl(): string {
   }
 
   const envVal = process.env.NEXT_PUBLIC_API_URL;
-  let target = envVal !== undefined && envVal.trim() !== '' ? envVal.trim() : DEFAULT_FALLBACK_URL;
-
-  // 2. Client-side local development smart fallback:
-  // If running in browser on localhost or 127.0.0.1 and target is pointing to the remote worker,
-  // route to the local backend running at http://127.0.0.1:8787
-  if (typeof window !== 'undefined') {
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    if (isLocalhost && (target.includes('workers.dev') || target === DEFAULT_FALLBACK_URL)) {
-      target = 'http://127.0.0.1:8787';
-    }
-  }
+  const target = envVal !== undefined && envVal.trim() !== '' ? envVal.trim() : DEFAULT_FALLBACK_URL;
 
   try {
     const parsed = new URL(target);

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import {
   X,
   Building2,
@@ -15,6 +16,8 @@ import {
   AlertCircle,
   Loader2,
   ShieldCheck,
+  Trash2,
+  Maximize2,
 } from 'lucide-react';
 import { Quotation, quotationApiService } from '@/services/quotationApiService';
 
@@ -23,6 +26,7 @@ interface ExecutiveQuotationDetailModalProps {
   onClose: () => void;
   quotation: Quotation | null;
   onStatusUpdated?: (updated: Quotation) => void;
+  onDeleted?: (deletedId: string) => void;
 }
 
 export function ExecutiveQuotationDetailModal({
@@ -30,9 +34,11 @@ export function ExecutiveQuotationDetailModal({
   onClose,
   quotation,
   onStatusUpdated,
+  onDeleted,
 }: ExecutiveQuotationDetailModalProps) {
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -96,9 +102,28 @@ export function ExecutiveQuotationDetailModal({
     }
   };
 
+  const handleDelete = async () => {
+    if (!quotation) return;
+    if (!window.confirm(`Are you sure you want to permanently delete quotation ${quotation.quotation_number}?`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setActionError(null);
+    try {
+      await quotationApiService.deleteQuotation(quotation.id);
+      if (onDeleted) onDeleted(quotation.id);
+      onClose();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to delete quotation.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-8">
+      <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-8">
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white">
@@ -128,12 +153,23 @@ export function ExecutiveQuotationDetailModal({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/customers/b2b-quotations/${quotation.id}`}
+              onClick={onClose}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-cyan-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition"
+              title="Open Full Page View"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span>Open Full Page</span>
+            </Link>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Alerts */}
@@ -345,12 +381,24 @@ export function ExecutiveQuotationDetailModal({
 
         {/* Footer Actions */}
         <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-t border-slate-200">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 transition"
-          >
-            Close
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 transition cursor-pointer"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isDeleting || isApproving || isRejecting}
+              className="px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Delete Quotation"
+            >
+              {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              <span>Delete</span>
+            </button>
+          </div>
 
           {isPending && (
             <div className="flex items-center gap-2">
